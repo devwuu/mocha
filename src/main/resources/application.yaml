@@ -5,3 +5,26 @@ spring:
   # optional: 파일 없으면 기동 실패 없이 스킵(CI/미설정 프로파일 안전). .env.local은 .gitignore 대상.
   config:
     import: "optional:file:.env.local[.properties]"
+
+# 모카 설정 골격 (튜닝 대상, ref: plan.md §5). 코드 default와 별개로 여기서 초기값 명시.
+mocha:
+  llm:
+    # 추출용 경량 모델. 품질 미달 시 상위 모델로 교체(OQ-5).
+    model: gpt-4o-mini
+  search:
+    # 보강 검색 상한 — 비용/지연 통제.
+    max-results: 3
+  pending:
+    # 확인 대기 노트 TTL. 초과 시 자동 폐기 + 안내 (ADR-3).
+    ttl: 24h
+  photo:
+    # 텍스트/사진 분리 수신 그룹핑 윈도우 (FR-10).
+    session-window: 10m
+    # 인덱스 카드용 썸네일 폭. EXIF orientation 보정 포함.
+    thumb-width: 480
+  data:
+    # 노트 JSON·사진·pending 원본 루트 (커밋 금지).
+    dir: ./data
+  site:
+    # 정적 HTML·썸네일 파생물 루트 (커밋 금지, 전체 재생성 가능).
+    dir: ./site
