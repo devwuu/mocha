@@ -19,6 +19,8 @@ repositories {
 
 dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter'
+	// JSON = 유일한 원본 저장 포맷. jackson-databind + jsr310(날짜) + parameter-names 포함 (ref: data-model.md#2, ADR-1)
+	implementation 'org.springframework.boot:spring-boot-starter-json'
 	// Thymeleaf: 정적 HTML 생성기 용법(오프라인 실행). starter-web 미포함 (ref: plan.md#ADR-7)
 	implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
 
