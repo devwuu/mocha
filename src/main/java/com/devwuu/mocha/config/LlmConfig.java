@@ -3,6 +3,8 @@ package com.devwuu.mocha.config;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.llm.LlmClient;
 import com.devwuu.mocha.llm.OpenAiLlmClient;
+import com.devwuu.mocha.llm.OpenAiSearchClient;
+import com.devwuu.mocha.llm.SearchClient;
 import com.openai.client.OpenAIClient;
 import com.openai.client.okhttp.OpenAIOkHttpClient;
 import org.springframework.beans.factory.annotation.Value;
@@ -30,5 +32,13 @@ public class LlmConfig {
             @Value("${mocha.llm.model}") String model,
             @Value("${mocha.llm.max-retries:1}") int maxRetries) {
         return new OpenAiLlmClient(openAiClient, model, maxRetries, MochaObjectMapper.create());
+    }
+
+    @Bean
+    public SearchClient searchClient(
+            OpenAIClient openAiClient,
+            @Value("${mocha.llm.model}") String model,
+            @Value("${mocha.search.max-results:3}") int maxResults) {
+        return new OpenAiSearchClient(openAiClient, model, maxResults, MochaObjectMapper.create());
     }
 }

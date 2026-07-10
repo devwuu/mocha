@@ -6,6 +6,7 @@
 !.env.example
 /data/*
 /site/*
+/ideas/*
 
 .gradle
 build/
