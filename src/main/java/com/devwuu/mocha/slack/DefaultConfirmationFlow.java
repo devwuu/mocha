@@ -12,6 +12,7 @@ import com.devwuu.mocha.pipeline.NoteCandidate;
 import com.devwuu.mocha.pipeline.NoteEnricher;
 import com.devwuu.mocha.pipeline.NoteExtractor;
 import com.devwuu.mocha.pipeline.NoteMatcher;
+import com.devwuu.mocha.pipeline.PendingReviser;
 import com.devwuu.mocha.render.SiteRenderer;
 import com.devwuu.mocha.repository.NoteRepository;
 import com.devwuu.mocha.repository.PendingStore;
@@ -38,11 +39,11 @@ import java.util.Optional;
  *       {@link PendingStore#put} → {@link PreviewMessenger#publish} → preview_ts 반영 재저장. (tasks T3-6)</li>
  *   <li>{@link #confirmSave} — pending 로드·TTL 판정(V-7) → {@link NoteRepository#upsertEntry}로 커밋 →
  *       pending clear → {@link SiteRenderer#renderAll} 트리거 → 완료 안내(노트 경로). (tasks T3-5)</li>
+ *   <li>{@link #revisePending} — pending 수정 반영 배선: {@link PendingReviser#revise}로 draft에 수정 병합 →
+ *       {@link PendingStore#put} → {@link PreviewMessenger#publish}로 같은 미리보기 메시지 edit(preview_ts 보존).
+ *       엔트리 개수는 불변이다(AC-5). (tasks T3-7)</li>
  *   <li>{@link #cancel} — pending 폐기 + 취소 안내. 저장은 일어나지 않는다(AC-4).</li>
  * </ul>
- * <p>{@link #revisePending}(pending 수정 반영)의 오케스트레이션 배선은 아직 미완이다 — 구성요소
- * ({@code PendingReviser}/{@code PreviewMessenger})는 존재하지만 이 흐름으로 엮는 일은 T3-7 몫이라 현 동작(로그)을
- * 보존한다.
  * <p>POLICY: 사용자 [저장] 확인 없이 {@link NoteRepository} 쓰기를 호출하지 않는다 (ref: plan.md#ADR-3, AC-4).
  * 신규 파이프라인은 미리보기 단계까지만 진행하며 {@link PendingStore}에만 기록한다 — 노트 JSON은 손대지 않는다.
  */
@@ -60,6 +61,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
     static final String CANCELED = "이번 기록은 지웠어요 멍! 다음에 또 마시면 불러주세요 🐾"; // 취소 안내
     static final String BROKEN_PENDING = "기록이 뭔가 이상해요 멍… 다시 보내주시겠어요? 🐾"; // 방어(엔트리/슬러그 결손)
     static final String NEW_NOTE_FAILED = "기록을 정리하다 문제가 생겼어요 멍… 잠시 뒤 다시 보내주시겠어요? 🐾"; // 추출/검색/전송 실패(plan §7)
+    static final String REVISE_FAILED = "수정을 반영하다 문제가 생겼어요 멍… 다시 말씀해 주시겠어요? 🐾"; // 수정 병합/전송 실패(plan §7). 기존 pending은 보존
 
     private final PendingStore pendingStore;
     private final NoteRepository noteRepository;
@@ -68,6 +70,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
     private final NoteExtractor noteExtractor;
     private final NoteMatcher noteMatcher;
     private final NoteEnricher noteEnricher;
+    private final PendingReviser pendingReviser;
     private final PreviewMessenger previewMessenger;
     private final String siteDir;
     private final Clock clock;
@@ -81,10 +84,11 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
             NoteExtractor noteExtractor,
             NoteMatcher noteMatcher,
             NoteEnricher noteEnricher,
+            PendingReviser pendingReviser,
             PreviewMessenger previewMessenger,
             @Value("${mocha.site.dir}") String siteDir) {
         this(pendingStore, noteRepository, siteRenderer, responder,
-                noteExtractor, noteMatcher, noteEnricher, previewMessenger, siteDir, Clock.system(SEOUL));
+                noteExtractor, noteMatcher, noteEnricher, pendingReviser, previewMessenger, siteDir, Clock.system(SEOUL));
     }
 
     // 테스트에서 시간을 고정하기 위한 생성자(NoteRepository·PendingStore와 동일 패턴).
@@ -96,6 +100,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
             NoteExtractor noteExtractor,
             NoteMatcher noteMatcher,
             NoteEnricher noteEnricher,
+            PendingReviser pendingReviser,
             PreviewMessenger previewMessenger,
             String siteDir,
             Clock clock) {
@@ -106,6 +111,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         this.noteExtractor = noteExtractor;
         this.noteMatcher = noteMatcher;
         this.noteEnricher = noteEnricher;
+        this.pendingReviser = pendingReviser;
         this.previewMessenger = previewMessenger;
         this.siteDir = siteDir;
         this.clock = clock;
@@ -199,8 +205,22 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
 
     @Override
     public void revisePending(IncomingMessage message, PendingNote pending) {
-        // TODO(T3-4 배선): PendingReviser→PreviewMessenger로 엮는 오케스트레이션 미완.
-        log.info("pending 수정 분기(오케스트레이션 미배선): user={} text={}", message.userId(), message.text());
+        String userId = message.userId();
+        String channelId = message.channelId();
+        try {
+            // [1] 수정 분기: 수정 텍스트를 LLM 패치로 받아 기존 draft에 병합한다 — 엔트리 개수 불변, 새 노트 미생성(AC-5).
+            // match·preview_ts·created_at은 PendingReviser가 보존하므로 같은 미리보기 메시지를 edit로 갱신하게 된다.
+            PendingNote revised = pendingReviser.revise(pending, message.text());
+
+            // 갱신본을 먼저 영속화(재시작 생존, NFR-2) → preview_ts가 살아 있어 publish는 재전송이 아닌 edit로 갱신한다.
+            pendingStore.put(userId, revised);
+            previewMessenger.publish(channelId, revised);
+            log.info("pending 수정 반영: user={} slug={}", userId, revised.draft().slug());
+        } catch (Exception e) {
+            // 수정 병합·전송 실패 — 신규와 달리 기존 pending은 폐기하지 않는다(이전 미리보기가 여전히 유효). 오류만 안내한다(plan §7).
+            log.warn("pending 수정 실패(기존 pending 보존): user={}", userId, e);
+            responder.post(channelId, REVISE_FAILED);
+        }
     }
 
     @Override

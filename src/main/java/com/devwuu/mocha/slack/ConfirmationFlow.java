@@ -12,8 +12,8 @@ import com.devwuu.mocha.domain.PendingNote;
  *   <li>{@link #revisePending} — pending 수정 반영 후 미리보기 갱신, T3-4.
  *   <li>{@link #confirmSave}/{@link #cancel} — [저장]/[취소] 커밋, T3-5.
  * </ul>
- * <p>구현: {@link DefaultConfirmationFlow}. T3-5 시점엔 [저장]/[취소] 커밋 경로만 실배선돼 있고,
- * {@link #startNewNote}/{@link #revisePending}의 오케스트레이션 배선은 아직 남아 있다.
+ * <p>구현: {@link DefaultConfirmationFlow}. T3-7 시점엔 네 경로가 모두 실배선돼 있다
+ * (신규 파이프라인·수정 반영·저장·취소).
  */
 public interface ConfirmationFlow {
 

@@ -6,6 +6,7 @@ import com.devwuu.mocha.llm.SearchClient;
 import com.devwuu.mocha.pipeline.NoteEnricher;
 import com.devwuu.mocha.pipeline.NoteExtractor;
 import com.devwuu.mocha.pipeline.NoteMatcher;
+import com.devwuu.mocha.pipeline.PendingReviser;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -15,7 +16,7 @@ import org.springframework.context.annotation.Configuration;
  * 오케스트레이션 부품이라 {@code @Component} 스캔 대신 여기서 명시적으로 조립한다 — 외부 경계
  * ({@link LlmClient}/{@link SearchClient})만 주입하고, 도메인 JSON 규칙은 {@link MochaObjectMapper}로 통일한다
  * (LlmConfig·RepositoryConfig와 동일 방침).
- * <p>{@code PendingReviser}(수정 분기)는 T3-7에서 배선한다 — 여기서는 신규 파이프라인([2]~[4])만 다룬다.
+ * <p>{@link PendingReviser}(수정 분기, [1])도 같은 방침으로 여기서 조립한다 — {@link LlmClient}만 주입한다(tasks T3-7).
  */
 @Configuration
 public class PipelineConfig {
@@ -33,5 +34,10 @@ public class PipelineConfig {
     @Bean
     public NoteEnricher noteEnricher(SearchClient searchClient) {
         return new NoteEnricher(searchClient);
+    }
+
+    @Bean
+    public PendingReviser pendingReviser(LlmClient llmClient) {
+        return new PendingReviser(llmClient, MochaObjectMapper.create());
     }
 }

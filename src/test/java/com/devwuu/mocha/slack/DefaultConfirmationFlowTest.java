@@ -18,6 +18,8 @@ import com.devwuu.mocha.pipeline.ExtractionResult;
 import com.devwuu.mocha.pipeline.NoteEnricher;
 import com.devwuu.mocha.pipeline.NoteExtractor;
 import com.devwuu.mocha.pipeline.NoteMatcher;
+import com.devwuu.mocha.pipeline.PendingReviser;
+import com.devwuu.mocha.pipeline.RevisionResult;
 import com.devwuu.mocha.render.SiteRenderer;
 import com.devwuu.mocha.repository.JsonFileNoteRepository;
 import com.devwuu.mocha.repository.NoteRepository;
@@ -97,9 +99,13 @@ class DefaultConfirmationFlowTest {
         }
     }
 
-    /** 추출 응답을 미리 지정하는 fake LLM — 계약(구조)만 검증, 생성 자체는 대체(CLAUDE.md §5.3). */
+    /**
+     * 추출/수정 응답을 미리 지정하는 fake LLM — 계약(구조)만 검증, 생성 자체는 대체(CLAUDE.md §5.3).
+     * 요청의 responseType으로 추출({@link ExtractionResult})과 수정({@link RevisionResult}) 응답을 분기한다.
+     */
     private static final class FakeLlmClient implements LlmClient {
         ExtractionResult canned;
+        RevisionResult cannedRevision;
         RuntimeException failure;
 
         @SuppressWarnings("unchecked")
@@ -107,6 +113,9 @@ class DefaultConfirmationFlowTest {
         public <T> T complete(LlmRequest<T> request) {
             if (failure != null) {
                 throw failure;
+            }
+            if (request.responseType() == RevisionResult.class) {
+                return (T) cannedRevision;
             }
             return (T) canned;
         }
@@ -159,6 +168,7 @@ class DefaultConfirmationFlowTest {
     private final NoteExtractor extractor = new NoteExtractor(llmClient, MochaObjectMapper.create());
     private final NoteMatcher matcher = new NoteMatcher();
     private final NoteEnricher enricher = new NoteEnricher(searchClient);
+    private final PendingReviser reviser = new PendingReviser(llmClient, MochaObjectMapper.create());
 
     private NoteRepository noteRepository() {
         return new JsonFileNoteRepository(dataDir, MochaObjectMapper.create());
@@ -167,7 +177,7 @@ class DefaultConfirmationFlowTest {
     private DefaultConfirmationFlow flow(NoteRepository repo) {
         return new DefaultConfirmationFlow(
                 pendingStore, repo, siteRenderer, responder,
-                extractor, matcher, enricher, previewMessenger, "./site", clock);
+                extractor, matcher, enricher, reviser, previewMessenger, "./site", clock);
     }
 
     private static ExtractionResult extraction(
@@ -285,6 +295,68 @@ class DefaultConfirmationFlowTest {
         assertEquals(1, pendingStore.clearCount, "전송 실패 시 남은 pending을 폐기한다");
         assertTrue(pendingStore.get("U1").isEmpty(), "미리보기 없으면 pending도 없다");
         assertEquals(List.of(DefaultConfirmationFlow.NEW_NOTE_FAILED), responder.messages);
+    }
+
+    // --- T3-7: pending 수정 오케스트레이션(revisePending) ---
+
+    @Test
+    @DisplayName("AC-5: 수정 텍스트 반영 → 같은 미리보기를 edit로 갱신, 엔트리 미생성·노트 JSON 무변경")
+    void revisePendingUpdatesPreviewWithoutNewEntry() {
+        NoteRepository repo = noteRepository();
+        PendingNote pending = pendingWith("coffeevera-yirgacheffe");
+        pendingStore.setPending(pending);
+        // 사용자가 감상만 바꿈 → my_taste 패치만 실린다.
+        llmClient.cannedRevision = new RevisionResult(null, null, null, null, null, null, "산미가 낮아 부드러웠다", null);
+
+        flow(repo).revisePending(message("산미는 낮음으로"), pending);
+
+        // 미리보기가 갱신 발행됐고 preview_ts가 보존돼(=edit) 같은 메시지를 고친다.
+        assertNotNull(previewMessenger.published, "수정 후 미리보기가 갱신 발행되어야 한다");
+        assertEquals(pending.previewTs(), previewMessenger.published.previewTs(),
+                "preview_ts 보존 → 재전송이 아닌 edit로 갱신한다");
+        // AC-5: 엔트리는 새로 만들지 않고 제자리 갱신한다.
+        Note draft = previewMessenger.published.draft();
+        assertEquals(1, draft.entries().size(), "수정은 엔트리를 새로 만들지 않는다(AC-5)");
+        assertEquals("산미가 낮아 부드러웠다", draft.entries().get(0).myTaste(), "감상이 제자리 갱신된다");
+
+        // 갱신본이 영속화된다(재시작 생존).
+        assertEquals(1, pendingStore.puts.size(), "수정 갱신본을 pending에 재저장한다");
+        assertEquals("산미가 낮아 부드러웠다", pendingStore.puts.get(0).draft().entries().get(0).myTaste());
+        // 미리보기 단계이므로 노트 JSON은 손대지 않는다(AC-4).
+        assertTrue(repo.findAll().isEmpty(), "수정 반영은 노트 JSON을 만들지 않는다");
+        assertTrue(responder.messages.isEmpty(), "정상 수정이면 오류 안내가 없다");
+    }
+
+    @Test
+    @DisplayName("AC-2/V-6: 검색 보강 필드를 수정하면 source=user로 승격된다")
+    void revisePendingPromotesSearchFieldToUser() {
+        NoteRepository repo = noteRepository();
+        PendingNote pending = pendingWith("coffeevera-yirgacheffe"); // origin=Sourced.search("에티오피아")
+        pendingStore.setPending(pending);
+        llmClient.cannedRevision = new RevisionResult(null, null, "콜롬비아", null, null, null, null, null);
+
+        flow(repo).revisePending(message("원산지는 콜롬비아야"), pending);
+
+        Note draft = previewMessenger.published.draft();
+        assertEquals("콜롬비아", draft.origin().value());
+        assertEquals(Source.USER, draft.origin().source(), "수정된 필드는 user로 승격된다(AC-2 재료)");
+    }
+
+    @Test
+    @DisplayName("plan §7: 수정 병합 실패 → 오류 안내, 기존 pending 보존(폐기 안 함)")
+    void revisePendingKeepsPendingOnFailure() {
+        NoteRepository repo = noteRepository();
+        PendingNote pending = pendingWith("coffeevera-yirgacheffe");
+        pendingStore.setPending(pending);
+        llmClient.failure = new LlmException("수정 병합 실패");
+
+        flow(repo).revisePending(message("산미는 낮음으로"), pending);
+
+        assertTrue(pendingStore.puts.isEmpty(), "실패 시 갱신본을 저장하지 않는다");
+        assertEquals(0, pendingStore.clearCount, "실패해도 기존 pending은 폐기하지 않는다");
+        assertTrue(pendingStore.get("U1").isPresent(), "기존 확인 대기 노트가 그대로 남는다");
+        assertNull(previewMessenger.published, "수정 실패 시 미리보기 갱신도 없다");
+        assertEquals(List.of(DefaultConfirmationFlow.REVISE_FAILED), responder.messages);
     }
 
     // --- T3-5: [저장]/[취소] 커밋 ---
