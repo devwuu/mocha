@@ -1,0 +1,137 @@
+package com.devwuu.mocha.slack;
+
+import com.slack.api.app_backend.interactive_components.payload.BlockActionPayload;
+import com.slack.api.bolt.App;
+import com.slack.api.bolt.AppConfig;
+import com.slack.api.bolt.socket_mode.SocketModeApp;
+import com.slack.api.model.event.MessageEvent;
+import com.slack.api.socket_mode.SocketModeClient;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.SmartLifecycle;
+import org.springframework.stereotype.Component;
+
+import java.util.List;
+import java.util.regex.Pattern;
+
+/**
+ * 파이프라인 진입 — Slack Socket Mode 수신 게이트웨이 (ref: plan.md#ADR-2, §3; tasks T3-1).
+ * <p>HTTP 컨트롤러에 대응하는 <b>얇은 수신 계층</b>이다(CLAUDE.md §2): Bolt 이벤트를 파싱해 내부
+ * 표현({@link IncomingMessage}/{@link IncomingAction})으로 바꾸고 {@link ConversationRouter}에 위임할 뿐,
+ * pending 분기·저장 같은 로직은 갖지 않는다. 인바운드 개방 없이 WebSocket 아웃바운드로만 연결한다(NFR-1).
+ * <p>재연결은 Slack SDK에 위임하고 시작/종료만 로그로 남긴다(plan.md §7). 토큰(2종)은 환경변수로 주입하며,
+ * 미설정 시 연결을 건너뛰어 토큰 없는 프로파일(테스트/CI)에서도 컨텍스트가 뜬다.
+ */
+@Component
+public class SlackGateway implements SmartLifecycle {
+
+    private static final Logger log = LoggerFactory.getLogger(SlackGateway.class);
+
+    // 모든 block action을 라우터로 흘려보낸다 — 저장/취소 등 action_id 분기는 라우터 몫(ADR-3).
+    private static final Pattern ALL_ACTIONS = Pattern.compile(".+");
+
+    private final ConversationRouter router;
+    private final String botToken;
+    private final String appToken;
+
+    private volatile boolean running = false;
+    private SocketModeApp socketModeApp;
+
+    public SlackGateway(
+            ConversationRouter router,
+            @Value("${mocha.slack.bot-token:}") String botToken,
+            @Value("${mocha.slack.app-token:}") String appToken) {
+        this.router = router;
+        this.botToken = botToken;
+        this.appToken = appToken;
+    }
+
+    // --- 파싱 + 위임 (얇은 수신 계층의 본체, 네트워크 없이 단위 테스트 대상) ---
+
+    /**
+     * 평문 메시지 이벤트를 내부 표현으로 파싱해 라우터에 넘긴다.
+     * <p>편집/삭제/파일공유 등 subtype 메시지는 Slack 모델에서 별도 이벤트 클래스로 오므로 이 핸들러
+     * ({@code MessageEvent.class})에는 도달하지 않는다 — 사진(file_share) 수신은 T4에서 해당 이벤트를 따로 배선한다.
+     */
+    void handleMessageEvent(MessageEvent event) {
+        // 봇 자신·다른 봇이 보낸 메시지는 무시 — 미리보기 응답을 다시 입력으로 먹는 에코 루프 방지.
+        if (event.getBotId() != null) {
+            return;
+        }
+        router.onMessage(new IncomingMessage(
+                event.getUser(), event.getChannel(), event.getText(), event.getTs()));
+    }
+
+    /**
+     * Block Kit 액션(버튼)을 내부 표현으로 파싱해 라우터에 넘긴다. 첫 액션만 취한다(버튼 1개 전제).
+     */
+    void handleBlockAction(BlockActionPayload payload) {
+        List<BlockActionPayload.Action> actions = payload.getActions();
+        if (actions == null || actions.isEmpty()) {
+            return;
+        }
+        BlockActionPayload.Action action = actions.get(0);
+        String userId = payload.getUser() != null ? payload.getUser().getId() : null;
+        String channelId = payload.getChannel() != null ? payload.getChannel().getId() : null;
+        // 버튼이 달린 메시지의 ts = 미리보기 메시지(preview_ts). 수정/저장 시 이 메시지를 edit한다(data-model §2.3).
+        String messageTs = payload.getContainer() != null ? payload.getContainer().getMessageTs() : null;
+        router.onAction(new IncomingAction(
+                userId, channelId, action.getActionId(), action.getValue(), messageTs));
+    }
+
+    // --- 소켓 수명주기 (SmartLifecycle) ---
+
+    @Override
+    public void start() {
+        if (isBlank(botToken) || isBlank(appToken)) {
+            log.warn("Slack 토큰 미설정(SLACK_BOT_TOKEN/SLACK_APP_TOKEN) — Socket Mode 연결을 건너뜁니다.");
+            return;
+        }
+        try {
+            // 기본 Tyrus 백엔드는 javax.websocket 구현을 요구 → 단일 jar인 JavaWebSocket 백엔드로 구동(build.gradle).
+            socketModeApp = new SocketModeApp(appToken, SocketModeClient.Backend.JavaWebSocket, buildApp());
+            socketModeApp.startAsync(); // 논블로킹 — 단절 시 SDK가 자동 재연결(plan.md §7)
+            running = true;
+            log.info("Slack Socket Mode 연결 시작.");
+        } catch (Exception e) {
+            throw new IllegalStateException("Slack Socket Mode 시작 실패", e);
+        }
+    }
+
+    @Override
+    public void stop() {
+        if (socketModeApp != null) {
+            try {
+                socketModeApp.close();
+                log.info("Slack Socket Mode 연결 종료.");
+            } catch (Exception e) {
+                log.warn("Slack Socket Mode 종료 중 오류", e);
+            }
+        }
+        running = false;
+    }
+
+    @Override
+    public boolean isRunning() {
+        return running;
+    }
+
+    // Bolt App에 핸들러를 배선한다. 각 핸들러는 파싱을 handle*로 위임하고 즉시 ack로 응답한다.
+    private App buildApp() {
+        App app = new App(AppConfig.builder().singleTeamBotToken(botToken).build());
+        app.event(MessageEvent.class, (payload, ctx) -> {
+            handleMessageEvent(payload.getEvent());
+            return ctx.ack();
+        });
+        app.blockAction(ALL_ACTIONS, (req, ctx) -> {
+            handleBlockAction(req.getPayload());
+            return ctx.ack();
+        });
+        return app;
+    }
+
+    private static boolean isBlank(String s) {
+        return s == null || s.isBlank();
+    }
+}
