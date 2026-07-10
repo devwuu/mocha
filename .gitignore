@@ -3,8 +3,6 @@
 /.reference/*
 .env.local
 
-
-README.md
 .gradle
 build/
 !gradle/wrapper/gradle-wrapper.jar
