@@ -11,6 +11,8 @@ mocha:
   llm:
     # 추출용 경량 모델. 품질 미달 시 상위 모델로 교체(OQ-5).
     model: gpt-4o-mini
+    # 구조화 응답 스키마/도메인 위반(V-1) 시 재추출 횟수. 총 시도 = 1 + max-retries.
+    max-retries: 1
   search:
     # 보강 검색 상한 — 비용/지연 통제.
     max-results: 3
