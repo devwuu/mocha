@@ -4,8 +4,8 @@
 .env
 .env.local
 !.env.example
-
-/data/
+/data/*
+/site/*
 
 .gradle
 build/

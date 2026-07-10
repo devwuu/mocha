@@ -2,12 +2,15 @@ package com.devwuu.mocha.config;
 
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.repository.JsonFileNoteRepository;
+import com.devwuu.mocha.repository.JsonFilePendingStore;
 import com.devwuu.mocha.repository.NoteRepository;
+import com.devwuu.mocha.repository.PendingStore;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.nio.file.Path;
+import java.time.Duration;
 
 /**
  * 저장소 빈 배선. 파일 경로는 {@code mocha.data.dir}에서만 온다(plan.md §5, CLAUDE.md §3).
@@ -20,5 +23,12 @@ public class RepositoryConfig {
     @Bean
     public NoteRepository noteRepository(@Value("${mocha.data.dir}") String dataDir) {
         return new JsonFileNoteRepository(Path.of(dataDir), MochaObjectMapper.create());
+    }
+
+    @Bean
+    public PendingStore pendingStore(
+            @Value("${mocha.data.dir}") String dataDir,
+            @Value("${mocha.pending.ttl}") Duration ttl) {
+        return new JsonFilePendingStore(Path.of(dataDir), MochaObjectMapper.create(), ttl);
     }
 }
