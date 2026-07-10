@@ -5,8 +5,19 @@ import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.domain.Rating;
+import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.json.MochaObjectMapper;
+import com.devwuu.mocha.llm.LlmClient;
+import com.devwuu.mocha.llm.LlmException;
+import com.devwuu.mocha.llm.LlmRequest;
+import com.devwuu.mocha.llm.SearchClient;
+import com.devwuu.mocha.llm.SearchQuery;
+import com.devwuu.mocha.llm.SearchResult;
+import com.devwuu.mocha.pipeline.ExtractionResult;
+import com.devwuu.mocha.pipeline.NoteEnricher;
+import com.devwuu.mocha.pipeline.NoteExtractor;
+import com.devwuu.mocha.pipeline.NoteMatcher;
 import com.devwuu.mocha.render.SiteRenderer;
 import com.devwuu.mocha.repository.JsonFileNoteRepository;
 import com.devwuu.mocha.repository.NoteRepository;
@@ -16,25 +27,32 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * T3-5: [저장]/[취소] 커밋 파이프라인 검증. 저장소는 실제 파일 I/O(@TempDir, CLAUDE.md §5.2)로 AC-4를
- * 파일 존재로 단언하고, pending·렌더·Slack 통지는 fake로 대체해 커밋 순서/거부 경로를 결정론적으로 본다.
+ * T3-5: [저장]/[취소] 커밋 파이프라인 + T3-6: 신규 노트 오케스트레이션(startNewNote) 검증. 저장소는 실제
+ * 파일 I/O(@TempDir, CLAUDE.md §5.2)로 AC-4를 파일 부재로 단언하고, LLM·검색·Slack 전송은 fake로 대체해
+ * 추출→매칭→보강→미리보기 흐름과 커밋 순서/거부 경로를 결정론적으로 본다.
  */
 class DefaultConfirmationFlowTest {
 
-    /** get()이 돌려줄 pending을 테스트가 지정하는 fake. clear 호출 여부를 캡처한다. */
+    /** get()이 돌려줄 pending을 지정하고, put/clear 호출을 캡처하는 fake. */
     private static final class FakePendingStore implements PendingStore {
         private Optional<PendingNote> pending = Optional.empty();
+        final List<PendingNote> puts = new ArrayList<>();
         int clearCount = 0;
 
         void setPending(PendingNote p) {
@@ -43,7 +61,8 @@ class DefaultConfirmationFlowTest {
 
         @Override
         public void put(String userId, PendingNote pending) {
-            throw new UnsupportedOperationException();
+            puts.add(pending);
+            this.pending = Optional.of(pending);
         }
 
         @Override
@@ -78,19 +97,83 @@ class DefaultConfirmationFlowTest {
         }
     }
 
+    /** 추출 응답을 미리 지정하는 fake LLM — 계약(구조)만 검증, 생성 자체는 대체(CLAUDE.md §5.3). */
+    private static final class FakeLlmClient implements LlmClient {
+        ExtractionResult canned;
+        RuntimeException failure;
+
+        @SuppressWarnings("unchecked")
+        @Override
+        public <T> T complete(LlmRequest<T> request) {
+            if (failure != null) {
+                throw failure;
+            }
+            return (T) canned;
+        }
+    }
+
+    /** 검색 보강 결과를 미리 지정하는 fake. 기본은 무결과(AC-12). */
+    private static final class FakeSearchClient implements SearchClient {
+        SearchResult canned = SearchResult.empty();
+
+        @Override
+        public SearchResult search(SearchQuery query) {
+            return canned;
+        }
+    }
+
+    /** 발행된 pending을 캡처하고 preview_ts를 돌려주는 미리보기 어댑터 스텁(Slack 미접촉). */
+    private static final class CapturingPreviewMessenger extends PreviewMessenger {
+        PendingNote published;
+        String ts = "1720000000.000123";
+        boolean fail = false;
+
+        CapturingPreviewMessenger() {
+            super(new PreviewBlocks(), null);
+        }
+
+        @Override
+        public String publish(String channelId, PendingNote pending) {
+            if (fail) {
+                throw new IllegalStateException("전송 실패");
+            }
+            this.published = pending;
+            return ts;
+        }
+    }
+
     @TempDir
     Path dataDir;
+
+    // 시간 고정 — today/타임스탬프를 결정론적으로(Asia/Seoul 2026-07-11).
+    private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
+    private final Clock clock = Clock.fixed(Instant.parse("2026-07-11T02:00:00Z"), SEOUL);
 
     private final FakePendingStore pendingStore = new FakePendingStore();
     private final FakeSiteRenderer siteRenderer = new FakeSiteRenderer();
     private final FakeSlackResponder responder = new FakeSlackResponder();
+    private final FakeLlmClient llmClient = new FakeLlmClient();
+    private final FakeSearchClient searchClient = new FakeSearchClient();
+    private final CapturingPreviewMessenger previewMessenger = new CapturingPreviewMessenger();
+
+    private final NoteExtractor extractor = new NoteExtractor(llmClient, MochaObjectMapper.create());
+    private final NoteMatcher matcher = new NoteMatcher();
+    private final NoteEnricher enricher = new NoteEnricher(searchClient);
 
     private NoteRepository noteRepository() {
         return new JsonFileNoteRepository(dataDir, MochaObjectMapper.create());
     }
 
     private DefaultConfirmationFlow flow(NoteRepository repo) {
-        return new DefaultConfirmationFlow(pendingStore, repo, siteRenderer, responder, "./site");
+        return new DefaultConfirmationFlow(
+                pendingStore, repo, siteRenderer, responder,
+                extractor, matcher, enricher, previewMessenger, "./site", clock);
+    }
+
+    private static ExtractionResult extraction(
+            String coffeeName, String roastery, String origin, String myTaste, Rating rating) {
+        // targetDate=null → NoteExtractor가 today로 기본화(data-model §4).
+        return new ExtractionResult(coffeeName, roastery, origin, null, null, myTaste, rating, null, null);
     }
 
     private static PendingNote pendingWith(String slug) {
@@ -107,6 +190,104 @@ class DefaultConfirmationFlowTest {
     private static IncomingAction action(String actionId) {
         return new IncomingAction("U1", "C1", actionId, "slug", "1720000000.000999");
     }
+
+    private static IncomingMessage message(String text) {
+        return new IncomingMessage("U1", "C1", text, "1720000100.000001");
+    }
+
+    // --- T3-6: 신규 파이프라인(startNewNote) ---
+
+    @Test
+    @DisplayName("AC-1: 한 줄 메시지 → 추출·매칭·보강 후 미리보기가 전송되고 preview_ts가 pending에 반영된다")
+    void startNewNoteSendsPreview() {
+        NoteRepository repo = noteRepository();
+        llmClient.canned = extraction("커피베라 예가체프", "커피베라", null, "새콤하고 좋았다", Rating.GOOD);
+
+        flow(repo).startNewNote(message("커피베라 예가체프 마셨는데 새콤하고 좋았다"));
+
+        // 미리보기가 실제로 발행됐다(AC-1).
+        assertNotNull(previewMessenger.published, "미리보기가 전송되어야 한다");
+        Note draft = previewMessenger.published.draft();
+        assertEquals("커피베라 예가체프", draft.coffeeName());
+        assertEquals(1, draft.entries().size(), "이번 시음 엔트리 1건이 조립된다");
+        assertEquals(LocalDate.of(2026, 7, 11), draft.entries().get(0).date(), "target_date가 today로 기본화된다");
+        assertEquals(MatchInfo.MatchType.NEW, previewMessenger.published.match().type(), "후보 없음 → 신규 판정");
+
+        // put 2회: 전송 전(preview_ts=null) → 전송 후(확정 ts) 재저장.
+        assertEquals(2, pendingStore.puts.size());
+        assertNull(pendingStore.puts.get(0).previewTs());
+        assertEquals(previewMessenger.ts, pendingStore.puts.get(1).previewTs(), "확정된 preview_ts가 pending에 반영된다");
+
+        // AC-4: 미리보기 전 어떤 노트 JSON도 만들어지지 않는다.
+        assertTrue(repo.findAll().isEmpty(), "미리보기 단계는 노트 JSON을 만들지 않는다(AC-4)");
+    }
+
+    @Test
+    @DisplayName("AC-12: 검색이 무결과여도 사용자 값만으로 미리보기가 진행되고 미언급 필드는 빈 채 남는다")
+    void startNewNoteProceedsWithoutSearchResults() {
+        NoteRepository repo = noteRepository();
+        llmClient.canned = extraction("커피베라 예가체프", "커피베라", null, "새콤함", Rating.GOOD);
+        searchClient.canned = SearchResult.empty(); // 무결과
+
+        flow(repo).startNewNote(message("커피베라 예가체프 마셨어"));
+
+        assertNotNull(previewMessenger.published, "무결과여도 미리보기는 진행된다(AC-12)");
+        Note draft = previewMessenger.published.draft();
+        assertEquals("커피베라", draft.roastery().value());
+        assertEquals(Source.USER, draft.roastery().source());
+        assertNull(draft.origin(), "검색이 못 찾은 미언급 필드는 빈 채 남는다");
+        assertTrue(responder.messages.isEmpty(), "정상 진행이면 오류 안내가 없다");
+    }
+
+    @Test
+    @DisplayName("AC-2/V-6: 사용자 명시 필드는 검색 값으로 덮이지 않고(source=user), 빈 필드만 source=search로 보강된다")
+    void startNewNoteKeepsUserFieldsAndEnrichesEmptyOnes() {
+        NoteRepository repo = noteRepository();
+        // 사용자는 로스터리만 말함. origin은 미언급 → 검색 보강 대상.
+        llmClient.canned = extraction("예가체프", "커피베라", null, "새콤함", Rating.GOOD);
+        searchClient.canned = new SearchResult(
+                "다른로스터리", "에티오피아", null, null, List.of(), List.of("https://example.com/y"));
+
+        flow(repo).startNewNote(message("커피베라 예가체프 새콤했어"));
+
+        Note draft = previewMessenger.published.draft();
+        // V-6/AC-3: 사용자가 말한 로스터리는 검색 값("다른로스터리")으로 덮이지 않는다.
+        assertEquals("커피베라", draft.roastery().value());
+        assertEquals(Source.USER, draft.roastery().source());
+        // 빈 필드(origin)는 검색으로 채워지고 source=search로 마킹된다(AC-2 재료).
+        assertEquals("에티오피아", draft.origin().value());
+        assertEquals(Source.SEARCH, draft.origin().source());
+        assertTrue(draft.sources().contains("https://example.com/y"), "검색 참조 링크가 병합된다");
+    }
+
+    @Test
+    @DisplayName("plan §7: 추출(LLM) 실패 → 오류 안내 + pending 미생성, 노트 JSON 무변경")
+    void startNewNoteReportsFailureWithoutPending() {
+        NoteRepository repo = noteRepository();
+        llmClient.failure = new LlmException("추출 실패");
+
+        flow(repo).startNewNote(message("커피베라 예가체프 마셨어"));
+
+        assertTrue(pendingStore.puts.isEmpty(), "실패 시 pending을 만들지 않는다");
+        assertTrue(repo.findAll().isEmpty(), "실패 시 노트 JSON도 없다");
+        assertEquals(List.of(DefaultConfirmationFlow.NEW_NOTE_FAILED), responder.messages);
+    }
+
+    @Test
+    @DisplayName("전송 실패 → 절반만 만들어진 pending을 폐기하고 오류 안내한다")
+    void startNewNoteClearsPendingOnPublishFailure() {
+        NoteRepository repo = noteRepository();
+        llmClient.canned = extraction("예가체프", "커피베라", null, "새콤함", Rating.GOOD);
+        previewMessenger.fail = true;
+
+        flow(repo).startNewNote(message("커피베라 예가체프 마셨어"));
+
+        assertEquals(1, pendingStore.clearCount, "전송 실패 시 남은 pending을 폐기한다");
+        assertTrue(pendingStore.get("U1").isEmpty(), "미리보기 없으면 pending도 없다");
+        assertEquals(List.of(DefaultConfirmationFlow.NEW_NOTE_FAILED), responder.messages);
+    }
+
+    // --- T3-5: [저장]/[취소] 커밋 ---
 
     @Test
     @DisplayName("[저장]: upsertEntry 커밋 → pending clear → renderAll 트리거 → 완료 안내")
