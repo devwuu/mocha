@@ -71,7 +71,7 @@ site/                      # (런타임) 정적 HTML — 재생성 가능한 파
 모카는 인바운드 개방 없이(공인 IP·SSL·포트포워딩 불요) Slack **Socket Mode**로 메시지·사진을 받습니다(ADR-2, NFR-1). 로컬에서 처음 구동하려면 개인 Slack 워크스페이스와 앱을 한 번 준비해야 합니다. 아래 절차로 봇 토큰(`xoxb-`)과 앱 토큰(`xapp-`) 2종을 발급받아 `.env`에 넣으면 됩니다. *(미래 셀프호스팅 배포 시 이 부록이 설치 가이드의 씨앗이 됩니다.)*
 
 1. **개인 워크스페이스 신설** — [slack.com/get-started](https://slack.com/get-started)에서 개인용 워크스페이스를 새로 만듭니다. 단일 사용자·개인 데이터 격리가 목적이므로 기존 팀 워크스페이스와 섞지 않습니다(OQ-4, NFR-6).
-2. **앱 생성** — [api.slack.com/apps](https://api.slack.com/apps) → **Create New App → From scratch**. 이름은 `Moka`(또는 모카), 워크스페이스는 1번에서 만든 것을 선택합니다.
+2. **앱 생성** — [api.slack.com/apps](https://api.slack.com/apps) → **Create New App → From scratch**. 이름은 `Mocha`(또는 모카), 워크스페이스는 1번에서 만든 것을 선택합니다.
 3. **Socket Mode 활성화 → App-Level Token 발급** — 좌측 **Settings → Socket Mode**를 Enable. 이때 앱 레벨 토큰을 생성하라는 창이 뜨면 scope `connections:write`로 만듭니다. 여기서 나오는 **`xapp-...`** 이 `SLACK_APP_TOKEN`입니다.
 4. **이벤트 구독** — **Features → Event Subscriptions**를 Enable. Socket Mode라 Request URL은 필요 없습니다. **Subscribe to bot events**에 다음을 추가합니다:
    - `message.im` — 봇과의 DM 텍스트 수신(FR-1)
@@ -82,7 +82,7 @@ site/                      # (런타임) 정적 HTML — 재생성 가능한 파
    - `files:read` — 첨부 사진 다운로드(FR-10)
 6. **Block Kit 인터랙션 활성화** — **Features → Interactivity & Shortcuts**를 Enable. Socket Mode라 URL은 비워 둡니다. [저장]/[취소] 버튼 액션 수신에 필요합니다(FR-4).
 7. **워크스페이스에 설치 → Bot Token 발급** — **OAuth & Permissions → Install to Workspace**. 설치 후 나오는 **`xoxb-...`** 이 `SLACK_BOT_TOKEN`입니다. (스코프를 바꾸면 재설치가 필요합니다.)
-8. **봇 초대** — Slack에서 모카 봇에게 DM을 열어 대화를 시작합니다. (채널에서 쓸 거라면 해당 채널에 `/invite @Moka`.)
+8. **봇 초대** — Slack에서 모카 봇에게 DM을 열어 대화를 시작합니다. (채널에서 쓸 거라면 해당 채널에 `/invite @Mocha`.)
 9. **토큰 주입** — `.env.example`을 복사해 `.env`(또는 `.env.local`)를 만들고 `SLACK_BOT_TOKEN`·`SLACK_APP_TOKEN`·`OPENAI_API_KEY`를 채웁니다. **`.env`류는 절대 커밋하지 않습니다**(`.gitignore`로 차단, CLAUDE.md §5).
 
 </details>
