@@ -1,6 +1,8 @@
 /specs/*
 /.claude/*
 /.reference/*
+.env.local
+
 
 HELP.md
 .gradle
