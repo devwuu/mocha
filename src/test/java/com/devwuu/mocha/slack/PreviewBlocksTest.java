@@ -1,0 +1,151 @@
+package com.devwuu.mocha.slack;
+
+import com.devwuu.mocha.domain.Entry;
+import com.devwuu.mocha.domain.MatchInfo;
+import com.devwuu.mocha.domain.Note;
+import com.devwuu.mocha.domain.PendingNote;
+import com.devwuu.mocha.domain.Rating;
+import com.devwuu.mocha.domain.Sourced;
+import com.slack.api.model.block.ActionsBlock;
+import com.slack.api.model.block.ContextBlock;
+import com.slack.api.model.block.HeaderBlock;
+import com.slack.api.model.block.LayoutBlock;
+import com.slack.api.model.block.SectionBlock;
+import com.slack.api.model.block.composition.MarkdownTextObject;
+import com.slack.api.model.block.composition.TextObject;
+import com.slack.api.model.block.element.ButtonElement;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/**
+ * T3-3: 확인 미리보기 Block Kit 조립 검증 — draft → 블록 구조 스냅샷과 source별 표기 분기(AC-2/AC-15).
+ * 순수 함수라 Slack 네트워크 없이 단위로 단언한다(CLAUDE.md §5.3).
+ */
+class PreviewBlocksTest {
+
+    private final PreviewBlocks previewBlocks = new PreviewBlocks();
+
+    private static Entry entry(String myTaste, Rating rating) {
+        return new Entry(LocalDate.of(2026, 7, 10), myTaste, rating, List.of(), OffsetDateTime.now());
+    }
+
+    private static String md(TextObject text) {
+        return ((MarkdownTextObject) text).getText();
+    }
+
+    @Test
+    @DisplayName("AC-2/AC-15: 기존 매칭 + 검색 필드에는 (검색) 표기, 사용자 필드에는 표기 없음")
+    void existingMatchAndSearchTags() {
+        Note draft = new Note(
+                "coffeevera-yirgacheffe-g1",
+                "커피베라 예가체프 G1",
+                Sourced.user("커피베라"),          // 사용자 값 — (검색) 없음
+                Sourced.search("에티오피아"),        // 검색 보강 — (검색)
+                Sourced.search("워시드"),
+                null,                               // 미언급 — 필드 생략
+                Sourced.search(List.of("자몽", "홍차")), // official_notes 검색
+                List.of("https://roastery.example/yirga", "https://coffee.example/wiki"),
+                List.of(entry("새콤하고 좋았다", Rating.GOOD)),
+                OffsetDateTime.now(),
+                OffsetDateTime.now());
+        PendingNote pending = new PendingNote(
+                draft, MatchInfo.existing("coffeevera-yirgacheffe-g1", LocalDate.of(2026, 7, 10)),
+                null, OffsetDateTime.now());
+
+        List<LayoutBlock> blocks = previewBlocks.build(pending);
+
+        // 헤더
+        assertTrue(blocks.get(0) instanceof HeaderBlock);
+        assertEquals(PreviewBlocks.HEADER, ((HeaderBlock) blocks.get(0)).getText().getText());
+
+        // 매칭 표시(AC-15): 기존 노트 + 커피명 + 날짜
+        String matchLine = md(((SectionBlock) blocks.get(1)).getText());
+        assertTrue(matchLine.contains("기존 노트"), matchLine);
+        assertTrue(matchLine.contains("커피베라 예가체프 G1"), matchLine);
+        assertTrue(matchLine.contains("2026-07-10"), matchLine);
+
+        // 출처 필드 표기 분기(AC-2)
+        SectionBlock fieldsSection = firstFieldsSection(blocks);
+        assertNotNull(fieldsSection);
+        String roastery = fieldByLabel(fieldsSection, "로스터리");
+        String origin = fieldByLabel(fieldsSection, "원산지");
+        assertFalse(roastery.contains("(검색)"), "사용자 값에는 (검색) 표기 없음: " + roastery);
+        assertTrue(origin.contains("(검색)"), "검색 값에는 (검색) 표기: " + origin);
+        // 미언급 필드(roast_level)는 생략
+        assertTrue(fieldsSection.getFields().stream().map(PreviewBlocksTest::md)
+                .noneMatch(f -> f.contains("로스팅")));
+
+        // official_notes(검색)와 my_taste 2단 분리
+        assertTrue(blocks.stream().anyMatch(b -> b instanceof SectionBlock s
+                && s.getText() instanceof MarkdownTextObject t
+                && t.getText().contains("로스터리가 말하길") && t.getText().contains("(검색)")));
+        assertTrue(blocks.stream().anyMatch(b -> b instanceof SectionBlock s
+                && s.getText() instanceof MarkdownTextObject t
+                && t.getText().contains("내가 느끼길") && t.getText().contains("새콤하고 좋았다")));
+
+        // 출처 링크(FR-12) — context 블록에 링크 2개
+        ContextBlock context = (ContextBlock) blocks.stream().filter(b -> b instanceof ContextBlock)
+                .findFirst().orElseThrow();
+        String sources = ((MarkdownTextObject) context.getElements().get(0)).getText();
+        assertTrue(sources.contains("<https://roastery.example/yirga|1>"), sources);
+        assertTrue(sources.contains("<https://coffee.example/wiki|2>"), sources);
+
+        // [저장]/[취소] 버튼 — action_id 계약
+        ActionsBlock actions = (ActionsBlock) blocks.get(blocks.size() - 1);
+        List<ButtonElement> buttons = actions.getElements().stream()
+                .map(e -> (ButtonElement) e).toList();
+        assertEquals(2, buttons.size());
+        assertEquals(DefaultConversationRouter.ACTION_SAVE, buttons.get(0).getActionId());
+        assertEquals(DefaultConversationRouter.ACTION_CANCEL, buttons.get(1).getActionId());
+    }
+
+    @Test
+    @DisplayName("AC-15: 신규 매칭이면 '새 노트' 표기, 사용자 전용 필드엔 (검색) 없음, 검색 무결과면 출처 블록 생략")
+    void newMatchWithoutSearch() {
+        Note draft = new Note(
+                "coffeevera-yirgacheffe-g1",
+                "커피베라 예가체프 G1",
+                Sourced.user("커피베라"),
+                null, null, null,
+                null,
+                List.of(),                          // 출처 없음
+                List.of(entry("새콤함", Rating.PERFECT)),
+                OffsetDateTime.now(),
+                OffsetDateTime.now());
+        PendingNote pending = new PendingNote(draft, MatchInfo.newNote(), null, OffsetDateTime.now());
+
+        List<LayoutBlock> blocks = previewBlocks.build(pending);
+
+        String matchLine = md(((SectionBlock) blocks.get(1)).getText());
+        assertTrue(matchLine.contains("새 노트"), matchLine);
+
+        // 사용자 값에는 (검색) 없음, 평가는 라벨 표기
+        SectionBlock fieldsSection = firstFieldsSection(blocks);
+        assertFalse(fieldByLabel(fieldsSection, "로스터리").contains("(검색)"));
+        assertTrue(fieldByLabel(fieldsSection, "평가").contains(Rating.PERFECT.label()));
+
+        // 출처 없음 → context(출처) 블록 없음
+        assertTrue(blocks.stream().noneMatch(b -> b instanceof ContextBlock));
+    }
+
+    private static SectionBlock firstFieldsSection(List<LayoutBlock> blocks) {
+        return (SectionBlock) blocks.stream()
+                .filter(b -> b instanceof SectionBlock s && s.getFields() != null && !s.getFields().isEmpty())
+                .findFirst().orElseThrow();
+    }
+
+    private static String fieldByLabel(SectionBlock section, String label) {
+        return section.getFields().stream().map(PreviewBlocksTest::md)
+                .filter(f -> f.contains("*" + label + "*"))
+                .findFirst().orElseThrow(() -> new AssertionError("필드 없음: " + label));
+    }
+}
