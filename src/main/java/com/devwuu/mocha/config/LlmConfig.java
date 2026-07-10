@@ -20,7 +20,7 @@ import org.springframework.context.annotation.Configuration;
 public class LlmConfig {
 
     @Bean
-    public OpenAIClient openAiClient(@Value("${OPENAI_API_KEY:}") String apiKey) {
+    public OpenAIClient openAiClient(@Value("${mocha.openai.api-key:}") String apiKey) {
         return OpenAIOkHttpClient.builder()
                 .apiKey(apiKey)
                 .build();

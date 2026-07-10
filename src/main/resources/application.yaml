@@ -13,6 +13,10 @@ mocha:
     # 환경변수(.env → .env.local)로 주입. 미설정 시 빈 값 → 소켓 연결을 건너뛰고 컨텍스트만 뜬다(테스트/CI 안전).
     bot-token: ${SLACK_BOT_TOKEN:}
     app-token: ${SLACK_APP_TOKEN:}
+  openai:
+    # OpenAI API 키(종량제). 비밀이므로 코드/설정에 하드코딩 금지 —
+    # 환경변수(.env → .env.local)로 주입. 미설정 시 빈 값 → 실제 호출 시에만 필요(컨텍스트/CI 안전).
+    api-key: ${OPENAI_API_KEY:}
   llm:
     # 추출용 경량 모델. 품질 미달 시 상위 모델로 교체(OQ-5).
     model: gpt-4o-mini
