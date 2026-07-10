@@ -1,3 +1,7 @@
 spring:
   application:
     name: mocha
+  # T0-2 실측용: 로컬 비밀(.env.local, KEY=VALUE)을 프로퍼티 소스로 로드해 ${OPENAI_API_KEY} 등을 바인딩.
+  # optional: 파일 없으면 기동 실패 없이 스킵(CI/미설정 프로파일 안전). .env.local은 .gitignore 대상.
+  config:
+    import: "optional:file:.env.local[.properties]"
