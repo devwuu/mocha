@@ -49,6 +49,7 @@ class DefaultConversationRouterTest {
         final List<IncomingMessage> revisions = new ArrayList<>();
         final List<IncomingAction> saves = new ArrayList<>();
         final List<IncomingAction> cancels = new ArrayList<>();
+        final List<IncomingMedia> media = new ArrayList<>();
 
         @Override
         public void startNewNote(IncomingMessage message) {
@@ -68,6 +69,11 @@ class DefaultConversationRouterTest {
         @Override
         public void cancel(IncomingAction action) {
             cancels.add(action);
+        }
+
+        @Override
+        public void receiveMedia(IncomingMedia media) {
+            this.media.add(media);
         }
     }
 
@@ -125,6 +131,17 @@ class DefaultConversationRouterTest {
 
         assertEquals(List.of(action), flow.cancels);
         assertTrue(flow.saves.isEmpty());
+    }
+
+    @Test
+    @DisplayName("T4-2: 사진 수신 → receiveMedia로 위임한다(세션 그룹핑은 flow가 처리)")
+    void routesMediaToFlow() {
+        IncomingMedia media = new IncomingMedia(
+                "U1", "C1", List.of(new IncomingPhoto("https://slack/f1", "a.jpg")), "1720000000.000300");
+
+        router.onMedia(media);
+
+        assertEquals(List.of(media), flow.media);
     }
 
     @Test

@@ -63,4 +63,10 @@ public class DefaultConversationRouter implements ConversationRouter {
             log.warn("알 수 없는 액션 무시: actionId={} user={}", actionId, action.userId());
         }
     }
+
+    @Override
+    public void onMedia(IncomingMedia media) {
+        // 세션 그룹핑(윈도우 판정·pending 첨부 vs 버퍼)은 오케스트레이션 몫이라 그대로 위임한다(FR-10, ADR-3 정신).
+        flow.receiveMedia(media);
+    }
 }

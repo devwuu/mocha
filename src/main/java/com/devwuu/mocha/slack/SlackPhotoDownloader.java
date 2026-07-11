@@ -19,7 +19,7 @@ import java.time.Duration;
  * <p>비정상 응답·I/O 실패는 삼키지 않고 {@link PhotoDownloadException}으로 수렴시킨다(plan.md §7).
  */
 @Component
-public class SlackPhotoDownloader {
+public class SlackPhotoDownloader implements PhotoDownloader {
 
     private final String botToken;
     private final HttpClient http;
@@ -40,6 +40,7 @@ public class SlackPhotoDownloader {
      *
      * @throws PhotoDownloadException 2xx 외 응답 또는 네트워크/인터럽트 실패 시.
      */
+    @Override
     public byte[] download(String urlPrivate) {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(urlPrivate))

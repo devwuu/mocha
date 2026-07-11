@@ -5,6 +5,7 @@ import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
 import com.devwuu.mocha.domain.PendingNote;
+import com.devwuu.mocha.domain.PhotoSession;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.pipeline.ExtractionResult;
 import com.devwuu.mocha.pipeline.MatchResult;
@@ -16,6 +17,8 @@ import com.devwuu.mocha.pipeline.PendingReviser;
 import com.devwuu.mocha.render.SiteRenderer;
 import com.devwuu.mocha.repository.NoteRepository;
 import com.devwuu.mocha.repository.PendingStore;
+import com.devwuu.mocha.repository.PhotoSessionStore;
+import com.devwuu.mocha.repository.PhotoStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,9 +27,11 @@ import org.springframework.stereotype.Component;
 
 import java.nio.file.Path;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -43,6 +48,8 @@ import java.util.Optional;
  *       {@link PendingStore#put} → {@link PreviewMessenger#publish}로 같은 미리보기 메시지 edit(preview_ts 보존).
  *       엔트리 개수는 불변이다(AC-5). (tasks T3-7)</li>
  *   <li>{@link #cancel} — pending 폐기 + 취소 안내. 저장은 일어나지 않는다(AC-4).</li>
+ *   <li>{@link #receiveMedia} — 사진 수신 세션 그룹핑: pending 있으면 첨부, 없으면 세션 버퍼링. 윈도우 밖은
+ *       새 흐름(FR-10, AC-8). [저장] 시 {@link PhotoStore#commit}으로 스테이징을 노트 트리로 확정한다. (tasks T4-2)</li>
  * </ul>
  * <p>POLICY: 사용자 [저장] 확인 없이 {@link NoteRepository} 쓰기를 호출하지 않는다 (ref: plan.md#ADR-3, AC-4).
  * 신규 파이프라인은 미리보기 단계까지만 진행하며 {@link PendingStore}에만 기록한다 — 노트 JSON은 손대지 않는다.
@@ -62,6 +69,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
     static final String BROKEN_PENDING = "기록이 뭔가 이상해요 멍… 다시 보내주시겠어요? 🐾"; // 방어(엔트리/슬러그 결손)
     static final String NEW_NOTE_FAILED = "기록을 정리하다 문제가 생겼어요 멍… 잠시 뒤 다시 보내주시겠어요? 🐾"; // 추출/검색/전송 실패(plan §7)
     static final String REVISE_FAILED = "수정을 반영하다 문제가 생겼어요 멍… 다시 말씀해 주시겠어요? 🐾"; // 수정 병합/전송 실패(plan §7). 기존 pending은 보존
+    static final String PHOTO_FAILED = "사진을 받다 문제가 생겼어요 멍… 다시 올려주시겠어요? 🐾"; // 다운로드/스테이징/전송 실패(plan §7)
 
     private final PendingStore pendingStore;
     private final NoteRepository noteRepository;
@@ -72,6 +80,10 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
     private final NoteEnricher noteEnricher;
     private final PendingReviser pendingReviser;
     private final PreviewMessenger previewMessenger;
+    private final PhotoDownloader photoDownloader;
+    private final PhotoStore photoStore;
+    private final PhotoSessionStore photoSessionStore;
+    private final Duration sessionWindow;
     private final String siteDir;
     private final Clock clock;
 
@@ -86,9 +98,14 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
             NoteEnricher noteEnricher,
             PendingReviser pendingReviser,
             PreviewMessenger previewMessenger,
+            PhotoDownloader photoDownloader,
+            PhotoStore photoStore,
+            PhotoSessionStore photoSessionStore,
+            @Value("${mocha.photo.session-window}") Duration sessionWindow,
             @Value("${mocha.site.dir}") String siteDir) {
         this(pendingStore, noteRepository, siteRenderer, responder,
-                noteExtractor, noteMatcher, noteEnricher, pendingReviser, previewMessenger, siteDir, Clock.system(SEOUL));
+                noteExtractor, noteMatcher, noteEnricher, pendingReviser, previewMessenger,
+                photoDownloader, photoStore, photoSessionStore, sessionWindow, siteDir, Clock.system(SEOUL));
     }
 
     // 테스트에서 시간을 고정하기 위한 생성자(NoteRepository·PendingStore와 동일 패턴).
@@ -102,6 +119,10 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
             NoteEnricher noteEnricher,
             PendingReviser pendingReviser,
             PreviewMessenger previewMessenger,
+            PhotoDownloader photoDownloader,
+            PhotoStore photoStore,
+            PhotoSessionStore photoSessionStore,
+            Duration sessionWindow,
             String siteDir,
             Clock clock) {
         this.pendingStore = pendingStore;
@@ -113,6 +134,10 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         this.noteEnricher = noteEnricher;
         this.pendingReviser = pendingReviser;
         this.previewMessenger = previewMessenger;
+        this.photoDownloader = photoDownloader;
+        this.photoStore = photoStore;
+        this.photoSessionStore = photoSessionStore;
+        this.sessionWindow = sessionWindow;
         this.siteDir = siteDir;
         this.clock = clock;
     }
@@ -123,7 +148,24 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         String channelId = message.channelId();
         try {
             LocalDate today = LocalDate.now(clock);
+            OffsetDateTime now = OffsetDateTime.now(clock);
             List<Note> existingNotes = noteRepository.findAll();
+
+            // FR-10 세션 그룹핑: 텍스트보다 먼저 도착해 버퍼링된 사진이 윈도우 안이면 이 노트로 흡수한다.
+            // 소비(clear)는 pending 전송이 성공한 뒤에만 — 실패 시 사진이 세션에 남아 재시도로 살아남게 한다.
+            // 윈도우 밖 세션은 이 텍스트에 묶이지 않는다: 버려진 스테이징을 정리하고 새 흐름으로 진행한다(AC-8 후반).
+            List<String> sessionNames = List.of();
+            boolean consumeSession = false;
+            Optional<PhotoSession> session = photoSessionStore.get(userId);
+            if (session.isPresent()) {
+                if (withinSessionWindow(session.get().lastMediaAt(), now)) {
+                    sessionNames = session.get().stagedNames();
+                    consumeSession = true;
+                } else {
+                    photoStore.discard(userId);
+                    photoSessionStore.clear(userId);
+                }
+            }
 
             // [2] 추출 → [3] 매칭. LLM/스키마 실패는 여기서 예외로 던져져 아래 catch로 수렴한다(plan §7, V-1).
             ExtractionResult extraction =
@@ -138,8 +180,9 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
                     ? noteRepository.nextAvailableSlug(match.targetDate().toString())
                     : match.matchedNote().slug();
 
-            OffsetDateTime now = OffsetDateTime.now(clock);
-            Entry entry = new Entry(match.targetDate(), extraction.myTaste(), extraction.rating(), List.of(), now);
+            // 흡수한 세션 사진의 임시 미리보기 경로. 실제 저장 경로는 [저장] 시 commit이 확정한다(V-4).
+            List<String> photoPaths = provisionalPhotoPaths(slug, match.targetDate(), sessionNames);
+            Entry entry = new Entry(match.targetDate(), extraction.myTaste(), extraction.rating(), photoPaths, now);
             Note draft = assembleDraft(slug, extraction.coffeeName(), enriched, entry, now);
             MatchInfo matchInfo = match.toMatchInfo();
 
@@ -154,7 +197,12 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
                 pendingStore.clear(userId);
                 throw publishFailure;
             }
-            log.info("신규 파이프라인 미리보기 전송: user={} slug={} match={}", userId, slug, matchInfo.type());
+            // 사진은 pending으로 이관됐다 — 세션 버퍼는 비운다(스테이징 원본은 [저장] 시 commit이 옮긴다).
+            if (consumeSession) {
+                photoSessionStore.clear(userId);
+            }
+            log.info("신규 파이프라인 미리보기 전송: user={} slug={} match={} photos={}",
+                    userId, slug, matchInfo.type(), sessionNames.size());
         } catch (Exception e) {
             // 추출·검색·전송 등 어느 단계 실패든 오류 응답으로 수렴하고 pending은 남기지 않는다(plan §7).
             log.warn("신규 파이프라인 실패(pending 미생성): user={}", userId, e);
@@ -230,6 +278,9 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         Optional<PendingNote> pendingOpt = pendingStore.get(userId);
         if (pendingOpt.isEmpty()) {
             log.info("[저장] 무효 — pending 부재/만료: user={}", userId);
+            // 만료/부재면 대기 중이던 스테이징 사진도 버려진 것 — 노트 트리로 새지 않게 정리한다(FR-10).
+            photoStore.discard(userId);
+            photoSessionStore.clear(userId);
             responder.post(action.channelId(), NOTHING_TO_SAVE);
             return;
         }
@@ -244,10 +295,19 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
             return;
         }
 
+        // 사진 커밋: 스테이징 원본을 photos/<slug>/<date>/로 이동하고 상대 경로를 확정한다(V-4, FR-10).
+        // 로컬 move라 저장 커밋 경계 안에서 수행한다(외부 I/O는 수신 시점에 이미 끝남, CLAUDE.md §3).
+        String date = entry.date().toString();
+        List<String> committedPhotos = photoStore.commit(userId, slug, date);
+        Entry committedEntry = new Entry(
+                entry.date(), entry.myTaste(), entry.rating(), committedPhotos, entry.updatedAt());
+
         // POLICY: 사용자 [저장] 확인을 거친 뒤에만 저장한다 (ref: plan.md#ADR-3, AC-4).
-        Note saved = noteRepository.upsertEntry(slug, metaOf(draft), entry);
+        Note saved = noteRepository.upsertEntry(slug, metaOf(draft), committedEntry);
         pendingStore.clear(userId);
-        log.info("[저장] 커밋 완료: slug={} entries={}", saved.slug(), saved.entries().size());
+        photoSessionStore.clear(userId);
+        log.info("[저장] 커밋 완료: slug={} entries={} photos={}",
+                saved.slug(), saved.entries().size(), committedPhotos.size());
 
         // 저장은 이미 커밋됨 — 렌더 실패는 데이터 손실이 아니므로 로그만 남기고 계속한다(plan.md §7, ADR-1).
         try {
@@ -261,10 +321,107 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
 
     @Override
     public void cancel(IncomingAction action) {
-        // [취소]는 저장 없이 pending만 폐기한다(AC-4).
+        // [취소]는 저장 없이 pending만 폐기한다(AC-4). 대기 중이던 스테이징 사진·세션도 함께 정리한다(FR-10).
         pendingStore.clear(action.userId());
+        photoStore.discard(action.userId());
+        photoSessionStore.clear(action.userId());
         log.info("[취소] pending 폐기: user={}", action.userId());
         responder.post(action.channelId(), CANCELED);
+    }
+
+    @Override
+    public void receiveMedia(IncomingMedia media) {
+        String userId = media.userId();
+        String channelId = media.channelId();
+        try {
+            Optional<PendingNote> pending = pendingStore.get(userId);
+            if (pending.isPresent()) {
+                // 진행 중 노트가 있으면 사진은 그 노트에 첨부한다 — pending 중 텍스트=수정(ADR-3)과 같은 정신.
+                attachToPending(userId, channelId, pending.get(), stageAll(userId, media));
+            } else {
+                // 담을 노트가 아직 없다 → 세션 버퍼에 쌓아 뒤이을 텍스트를 기다린다(FR-10).
+                bufferMedia(userId, media);
+            }
+        } catch (Exception e) {
+            // 다운로드/스테이징/전송 실패는 삼키지 않고 안내로 수렴한다(plan §7).
+            log.warn("사진 수신 실패: user={}", userId, e);
+            responder.post(channelId, PHOTO_FAILED);
+        }
+    }
+
+    // 수신 사진을 내려받아 사용자 스테이징에 저장하고 스테이징된 파일명을 순서대로 돌려준다.
+    private List<String> stageAll(String userId, IncomingMedia media) {
+        List<String> names = new ArrayList<>();
+        for (IncomingPhoto photo : media.photos()) {
+            byte[] bytes = photoDownloader.download(photo.urlPrivate());
+            names.add(photoStore.stage(userId, photo.filename(), bytes));
+        }
+        return names;
+    }
+
+    // 진행 중 pending의 이번 시음 엔트리에 사진을 덧붙이고 미리보기를 갱신한다(preview_ts 보존 → edit).
+    private void attachToPending(String userId, String channelId, PendingNote pending, List<String> newNames)
+            throws Exception {
+        Note draft = pending.draft();
+        Entry entry = latestEntry(draft);
+        if (entry == null) {
+            // 방어: 엔트리 없는 pending에는 첨부할 자리가 없다 — 세션 버퍼로 흘리지 않고 그냥 로그만.
+            log.warn("사진 첨부 무효 — 엔트리 없는 pending: user={}", userId);
+            return;
+        }
+        List<String> merged = new ArrayList<>(entry.photos());
+        merged.addAll(provisionalPhotoPaths(draft.slug(), entry.date(), newNames));
+        Entry withPhotos = new Entry(entry.date(), entry.myTaste(), entry.rating(), merged, entry.updatedAt());
+        PendingNote updated = new PendingNote(
+                withLatestEntry(draft, withPhotos), pending.match(), pending.previewTs(), pending.createdAt());
+
+        pendingStore.put(userId, updated);
+        previewMessenger.publish(channelId, updated); // preview_ts 있음 → 같은 미리보기 edit
+        log.info("pending 사진 첨부: user={} slug={} photos={}", userId, draft.slug(), merged.size());
+    }
+
+    // pending 없음: 윈도우 밖 이전 세션은 버리고 새로 시작, 안이면 이어붙여 버퍼링한다(AC-8).
+    private void bufferMedia(String userId, IncomingMedia media) {
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        List<String> priorNames = List.of();
+        Optional<PhotoSession> existing = photoSessionStore.get(userId);
+        if (existing.isPresent()) {
+            if (withinSessionWindow(existing.get().lastMediaAt(), now)) {
+                priorNames = existing.get().stagedNames();
+            } else {
+                // 윈도우 밖 = 이전 세션은 버려진 것 → 새 흐름. 새 사진을 담기 전에 옛 스테이징을 비운다(AC-8 후반).
+                photoStore.discard(userId);
+                photoSessionStore.clear(userId);
+            }
+        }
+        List<String> names = new ArrayList<>(priorNames);
+        names.addAll(stageAll(userId, media));
+        photoSessionStore.put(userId, new PhotoSession(now, names));
+        log.info("사진 세션 버퍼링: user={} photos={}", userId, names.size());
+    }
+
+    // 스테이징 파일명을 확정 저장 경로 규칙(photos/<slug>/<date>/<name>)에 맞춘 임시 미리보기 경로로 변환한다.
+    // 실제 파일 이동·최종 경로는 [저장] 시 PhotoStore.commit이 정한다(충돌 시 -N 접미 가능).
+    private static List<String> provisionalPhotoPaths(String slug, LocalDate date, List<String> names) {
+        if (names.isEmpty()) {
+            return List.of();
+        }
+        String prefix = "photos/" + slug + "/" + date + "/";
+        return names.stream().map(name -> prefix + name).toList();
+    }
+
+    // draft의 이번 시음 엔트리(마지막 1건)를 교체한 새 draft를 만든다.
+    private static Note withLatestEntry(Note draft, Entry entry) {
+        List<Entry> entries = new ArrayList<>(draft.entries());
+        entries.set(entries.size() - 1, entry);
+        return new Note(
+                draft.slug(), draft.coffeeName(), draft.roastery(), draft.origin(), draft.process(),
+                draft.roastLevel(), draft.officialNotes(), draft.sources(),
+                entries, draft.createdAt(), draft.updatedAt());
+    }
+
+    private boolean withinSessionWindow(OffsetDateTime lastMediaAt, OffsetDateTime now) {
+        return Duration.between(lastMediaAt, now).compareTo(sessionWindow) <= 0;
     }
 
     // draft(Note)에서 노트 단위 메타만 뽑는다 — 엔트리·slug·타임스탬프는 upsertEntry가 다룬다.

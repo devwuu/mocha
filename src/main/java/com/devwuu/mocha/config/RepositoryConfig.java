@@ -3,9 +3,11 @@ package com.devwuu.mocha.config;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.repository.JsonFileNoteRepository;
 import com.devwuu.mocha.repository.JsonFilePendingStore;
+import com.devwuu.mocha.repository.JsonFilePhotoSessionStore;
 import com.devwuu.mocha.repository.LocalPhotoStore;
 import com.devwuu.mocha.repository.NoteRepository;
 import com.devwuu.mocha.repository.PendingStore;
+import com.devwuu.mocha.repository.PhotoSessionStore;
 import com.devwuu.mocha.repository.PhotoStore;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -37,5 +39,10 @@ public class RepositoryConfig {
     @Bean
     public PhotoStore photoStore(@Value("${mocha.data.dir}") String dataDir) {
         return new LocalPhotoStore(Path.of(dataDir));
+    }
+
+    @Bean
+    public PhotoSessionStore photoSessionStore(@Value("${mocha.data.dir}") String dataDir) {
+        return new JsonFilePhotoSessionStore(Path.of(dataDir), MochaObjectMapper.create());
     }
 }

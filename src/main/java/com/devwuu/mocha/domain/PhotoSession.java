@@ -1,0 +1,20 @@
+package com.devwuu.mocha.domain;
+
+import java.time.OffsetDateTime;
+import java.util.List;
+
+/**
+ * 사진 세션 — 텍스트가 아직 도착하지 않은 상태에서 스테이징된 사진을 묶어 두는 버퍼 (ref: spec FR-10, tasks T4-2).
+ * <p>사진과 텍스트는 분리 수신될 수 있고, 사진이 먼저 오면 담을 pending(=draft)이 아직 없다. 그래서 그 사이의
+ * 스테이징 상태를 {@code data/photo-session.json}에 영속화한다(재시작 생존 정신, NFR-2). 뒤이어 텍스트가
+ * {@code mocha.photo.session-window}(기본 10분) 안에 도착하면 이 세션의 사진이 그 노트로 흡수되고, 윈도우 밖이면
+ * 새 흐름으로 갈린다(AC-8).
+ *
+ * @param lastMediaAt  마지막 미디어 수신 시각 — 그룹핑 윈도우 판정 기준(Asia/Seoul).
+ * @param stagedNames  {@link com.devwuu.mocha.repository.PhotoStore}에 스테이징된 파일명(수신 순). 저장 확정 시 slug/date로 이동된다.
+ */
+public record PhotoSession(
+        OffsetDateTime lastMediaAt,
+        List<String> stagedNames
+) {
+}

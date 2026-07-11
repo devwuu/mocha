@@ -14,4 +14,7 @@ public interface ConversationRouter {
 
     /** Block Kit 버튼 액션 위임. 저장/취소 등 확인 상태 머신 전이(FR-4). */
     void onAction(IncomingAction action);
+
+    /** 사진(파일 공유) 수신 위임. 시간 윈도우 내 미디어를 같은 노트로 묶는 세션 그룹핑(FR-10, T4-2). */
+    void onMedia(IncomingMedia media);
 }

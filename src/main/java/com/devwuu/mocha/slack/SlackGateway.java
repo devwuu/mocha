@@ -4,7 +4,9 @@ import com.slack.api.app_backend.interactive_components.payload.BlockActionPaylo
 import com.slack.api.bolt.App;
 import com.slack.api.bolt.AppConfig;
 import com.slack.api.bolt.socket_mode.SocketModeApp;
+import com.slack.api.model.File;
 import com.slack.api.model.event.MessageEvent;
+import com.slack.api.model.event.MessageFileShareEvent;
 import com.slack.api.socket_mode.SocketModeClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,6 +14,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.SmartLifecycle;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
 
@@ -49,10 +52,13 @@ public class SlackGateway implements SmartLifecycle {
 
     // --- 파싱 + 위임 (얇은 수신 계층의 본체, 네트워크 없이 단위 테스트 대상) ---
 
+    // 이미지 파일만 커피 사진으로 취급한다 — 그 외 첨부(문서 등)는 무시.
+    private static final String IMAGE_MIME_PREFIX = "image/";
+
     /**
      * 평문 메시지 이벤트를 내부 표현으로 파싱해 라우터에 넘긴다.
      * <p>편집/삭제/파일공유 등 subtype 메시지는 Slack 모델에서 별도 이벤트 클래스로 오므로 이 핸들러
-     * ({@code MessageEvent.class})에는 도달하지 않는다 — 사진(file_share) 수신은 T4에서 해당 이벤트를 따로 배선한다.
+     * ({@code MessageEvent.class})에는 도달하지 않는다 — 사진(file_share)은 {@link #handleFileShareEvent}가 받는다.
      */
     void handleMessageEvent(MessageEvent event) {
         // 봇 자신·다른 봇이 보낸 메시지는 무시 — 미리보기 응답을 다시 입력으로 먹는 에코 루프 방지.
@@ -78,6 +84,42 @@ public class SlackGateway implements SmartLifecycle {
         String messageTs = payload.getContainer() != null ? payload.getContainer().getMessageTs() : null;
         router.onAction(new IncomingAction(
                 userId, channelId, action.getActionId(), action.getValue(), messageTs));
+    }
+
+    /**
+     * 파일 공유 메시지(사진 업로드)를 파싱해 라우터에 넘긴다 (ref: tasks T4-2, FR-10).
+     * <p>이미지 파일만 사진으로 추려 {@link IncomingMedia}로 먼저 위임하고(스테이징이 세션에 자리 잡게),
+     * 같은 이벤트에 캡션 텍스트가 실려 있으면 {@link IncomingMessage}로 이어 위임한다 — 사진→텍스트 순서라야
+     * 세션 그룹핑이 성립한다(사진 세션 위에 텍스트가 얹혀 하나의 노트가 된다).
+     */
+    void handleFileShareEvent(MessageFileShareEvent event) {
+        List<IncomingPhoto> photos = imagePhotos(event.getFiles());
+        if (!photos.isEmpty()) {
+            router.onMedia(new IncomingMedia(
+                    event.getUser(), event.getChannel(), photos, event.getTs()));
+        }
+        String text = event.getText();
+        if (text != null && !text.isBlank()) {
+            router.onMessage(new IncomingMessage(
+                    event.getUser(), event.getChannel(), text, event.getTs()));
+        }
+    }
+
+    // 이미지 파일만 추려 내부 표현으로 변환. 인증 다운로드용으로 url_private_download를 우선 사용한다.
+    private static List<IncomingPhoto> imagePhotos(List<File> files) {
+        List<IncomingPhoto> photos = new ArrayList<>();
+        if (files == null) {
+            return photos;
+        }
+        for (File file : files) {
+            String mimetype = file.getMimetype();
+            if (mimetype == null || !mimetype.startsWith(IMAGE_MIME_PREFIX)) {
+                continue;
+            }
+            String url = file.getUrlPrivateDownload() != null ? file.getUrlPrivateDownload() : file.getUrlPrivate();
+            photos.add(new IncomingPhoto(url, file.getName()));
+        }
+        return photos;
     }
 
     // --- 소켓 수명주기 (SmartLifecycle) ---
@@ -122,6 +164,10 @@ public class SlackGateway implements SmartLifecycle {
         App app = new App(AppConfig.builder().singleTeamBotToken(botToken).build());
         app.event(MessageEvent.class, (payload, ctx) -> {
             handleMessageEvent(payload.getEvent());
+            return ctx.ack();
+        });
+        app.event(MessageFileShareEvent.class, (payload, ctx) -> {
+            handleFileShareEvent(payload.getEvent());
             return ctx.ack();
         });
         app.blockAction(ALL_ACTIONS, (req, ctx) -> {

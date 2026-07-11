@@ -4,6 +4,7 @@ import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.PendingNote;
+import com.devwuu.mocha.domain.PhotoSession;
 import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.domain.Sourced;
@@ -24,12 +25,15 @@ import com.devwuu.mocha.render.SiteRenderer;
 import com.devwuu.mocha.repository.JsonFileNoteRepository;
 import com.devwuu.mocha.repository.NoteRepository;
 import com.devwuu.mocha.repository.PendingStore;
+import com.devwuu.mocha.repository.PhotoSessionStore;
+import com.devwuu.mocha.repository.PhotoStore;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -131,6 +135,76 @@ class DefaultConfirmationFlowTest {
         }
     }
 
+    /** url_private → 바이트 다운로드 대체(실 Slack 미접촉, CLAUDE.md §5.2). */
+    private static final class FakePhotoDownloader implements PhotoDownloader {
+        RuntimeException failure;
+        final List<String> downloaded = new ArrayList<>();
+
+        @Override
+        public byte[] download(String urlPrivate) {
+            if (failure != null) {
+                throw failure;
+            }
+            downloaded.add(urlPrivate);
+            return new byte[]{1, 2, 3};
+        }
+    }
+
+    /** 스테이징/커밋을 인메모리로 흉내내는 fake — 파일 규칙은 LocalPhotoStore 테스트가 따로 본다. */
+    private static final class FakePhotoStore implements PhotoStore {
+        final List<String> staged = new ArrayList<>();
+        final List<String> committed = new ArrayList<>();
+        int discardCount = 0;
+
+        @Override
+        public String stage(String userId, String filename, byte[] bytes) {
+            staged.add(filename);
+            return filename;
+        }
+
+        @Override
+        public List<String> commit(String userId, String slug, String date) {
+            List<String> paths = staged.stream().map(n -> "photos/" + slug + "/" + date + "/" + n).toList();
+            committed.addAll(paths);
+            staged.clear();
+            return paths;
+        }
+
+        @Override
+        public void discard(String userId) {
+            staged.clear();
+            discardCount++;
+        }
+    }
+
+    /** 사진 세션을 지정/캡처하는 fake. */
+    private static final class FakePhotoSessionStore implements PhotoSessionStore {
+        Optional<PhotoSession> session = Optional.empty();
+        final List<PhotoSession> puts = new ArrayList<>();
+        int clearCount = 0;
+
+        void setSession(PhotoSession s) {
+            this.session = Optional.ofNullable(s);
+        }
+
+        @Override
+        public void put(String userId, PhotoSession session) {
+            puts.add(session);
+            this.session = Optional.of(session);
+        }
+
+        @Override
+        public Optional<PhotoSession> get(String userId) {
+            return session;
+        }
+
+        @Override
+        public void clear(String userId) {
+            clearCount++;
+            session = Optional.empty();
+        }
+    }
+
     /** 발행된 pending을 캡처하고 preview_ts를 돌려주는 미리보기 어댑터 스텁(Slack 미접촉). */
     private static final class CapturingPreviewMessenger extends PreviewMessenger {
         PendingNote published;
@@ -164,6 +238,10 @@ class DefaultConfirmationFlowTest {
     private final FakeLlmClient llmClient = new FakeLlmClient();
     private final FakeSearchClient searchClient = new FakeSearchClient();
     private final CapturingPreviewMessenger previewMessenger = new CapturingPreviewMessenger();
+    private final FakePhotoDownloader photoDownloader = new FakePhotoDownloader();
+    private final FakePhotoStore photoStore = new FakePhotoStore();
+    private final FakePhotoSessionStore photoSessionStore = new FakePhotoSessionStore();
+    private static final Duration SESSION_WINDOW = Duration.ofMinutes(10);
 
     private final NoteExtractor extractor = new NoteExtractor(llmClient, MochaObjectMapper.create());
     private final NoteMatcher matcher = new NoteMatcher();
@@ -177,7 +255,8 @@ class DefaultConfirmationFlowTest {
     private DefaultConfirmationFlow flow(NoteRepository repo) {
         return new DefaultConfirmationFlow(
                 pendingStore, repo, siteRenderer, responder,
-                extractor, matcher, enricher, reviser, previewMessenger, "./site", clock);
+                extractor, matcher, enricher, reviser, previewMessenger,
+                photoDownloader, photoStore, photoSessionStore, SESSION_WINDOW, "./site", clock);
     }
 
     private static ExtractionResult extraction(
@@ -203,6 +282,14 @@ class DefaultConfirmationFlowTest {
 
     private static IncomingMessage message(String text) {
         return new IncomingMessage("U1", "C1", text, "1720000100.000001");
+    }
+
+    private static IncomingMedia media(String... filenames) {
+        List<IncomingPhoto> photos = new ArrayList<>();
+        for (String f : filenames) {
+            photos.add(new IncomingPhoto("https://slack/" + f, f));
+        }
+        return new IncomingMedia("U1", "C1", photos, "1720000100.000002");
     }
 
     // --- T3-6: 신규 파이프라인(startNewNote) ---
@@ -424,5 +511,119 @@ class DefaultConfirmationFlowTest {
         assertEquals(0, pendingStore.clearCount, "손상 pending은 커밋 clear 대상이 아니다");
         assertEquals(List.of(DefaultConfirmationFlow.BROKEN_PENDING), responder.messages);
         assertFalse(responder.messages.isEmpty());
+    }
+
+    // --- T4-2: 사진 세션 그룹핑(FR-10, AC-8) ---
+
+    @Test
+    @DisplayName("AC-8 전반: 윈도우 내 사진 세션 + 텍스트 → 하나의 pending에 사진 3장이 묶인다")
+    void startNewNoteAbsorbsSessionPhotosWithinWindow() {
+        NoteRepository repo = noteRepository();
+        llmClient.canned = extraction("커피베라 예가체프", "커피베라", null, "새콤함", Rating.GOOD);
+        // 방금(윈도우 내) 도착해 버퍼링된 사진 3장.
+        photoSessionStore.setSession(new PhotoSession(
+                OffsetDateTime.now(clock), List.of("a.jpg", "b.jpg", "c.jpg")));
+
+        flow(repo).startNewNote(message("커피베라 예가체프 마셨어"));
+
+        Note draft = previewMessenger.published.draft();
+        List<String> photos = draft.entries().get(0).photos();
+        assertEquals(3, photos.size(), "윈도우 내 사진 3장이 이번 노트로 묶인다(AC-8 전반)");
+        assertTrue(photos.get(0).startsWith("photos/" + draft.slug() + "/"),
+                "미리보기 사진 경로는 확정 저장 경로 규칙을 따른다: " + photos.get(0));
+        assertEquals(1, photoSessionStore.clearCount, "사진이 pending으로 이관되면 세션 버퍼를 비운다");
+        assertEquals(0, photoStore.discardCount, "윈도우 내 세션은 폐기하지 않는다(저장 시 commit 대상)");
+    }
+
+    @Test
+    @DisplayName("AC-8 후반: 윈도우 밖 사진 세션은 이 텍스트에 묶이지 않고 스테이징이 폐기된다(새 흐름)")
+    void startNewNoteDropsStaleSessionPhotos() {
+        NoteRepository repo = noteRepository();
+        llmClient.canned = extraction("커피베라 예가체프", "커피베라", null, "새콤함", Rating.GOOD);
+        // 20분 전(윈도우 밖) 사진 → 버려진 것.
+        photoSessionStore.setSession(new PhotoSession(
+                OffsetDateTime.now(clock).minusMinutes(20), List.of("old.jpg")));
+
+        flow(repo).startNewNote(message("커피베라 예가체프 마셨어"));
+
+        Note draft = previewMessenger.published.draft();
+        assertTrue(draft.entries().get(0).photos().isEmpty(), "윈도우 밖 사진은 이 노트에 묶이지 않는다(AC-8 후반)");
+        assertEquals(1, photoStore.discardCount, "버려진 스테이징을 정리한다");
+    }
+
+    @Test
+    @DisplayName("T4-2: pending 없이 사진만 수신 → 세션 버퍼에 쌓고 미리보기는 아직 보내지 않는다")
+    void receiveMediaBuffersWhenNoPending() {
+        NoteRepository repo = noteRepository();
+
+        flow(repo).receiveMedia(media("a.jpg", "b.jpg", "c.jpg"));
+
+        assertEquals(3, photoDownloader.downloaded.size(), "3장 모두 내려받는다");
+        assertEquals(3, photoStore.staged.size(), "3장 모두 스테이징된다");
+        assertEquals(1, photoSessionStore.puts.size(), "세션 버퍼에 저장된다");
+        assertEquals(3, photoSessionStore.puts.get(0).stagedNames().size());
+        assertNull(previewMessenger.published, "텍스트가 없으니 미리보기는 아직 없다");
+        assertTrue(repo.findAll().isEmpty(), "노트 JSON은 만들지 않는다");
+    }
+
+    @Test
+    @DisplayName("T4-2: 진행 중 pending에 사진 수신 → 그 노트에 첨부하고 같은 미리보기를 edit로 갱신한다")
+    void receiveMediaAttachesToExistingPending() {
+        NoteRepository repo = noteRepository();
+        PendingNote pending = pendingWith("coffeevera-yirgacheffe"); // 엔트리 photos 비어 있음
+        pendingStore.setPending(pending);
+
+        flow(repo).receiveMedia(media("a.jpg", "b.jpg"));
+
+        Note draft = previewMessenger.published.draft();
+        assertEquals(2, draft.entries().get(0).photos().size(), "진행 중 노트에 사진 2장이 첨부된다");
+        assertEquals(pending.previewTs(), previewMessenger.published.previewTs(),
+                "preview_ts 보존 → 재전송이 아닌 edit로 갱신한다");
+        assertEquals(1, pendingStore.puts.size(), "첨부 갱신본을 pending에 재저장한다");
+        assertTrue(repo.findAll().isEmpty(), "첨부는 노트 JSON을 만들지 않는다(AC-4)");
+    }
+
+    @Test
+    @DisplayName("AC-8 후반: 윈도우 밖 이전 세션 위로 사진이 오면 옛 스테이징을 버리고 새 세션으로 시작한다")
+    void receiveMediaStartsFreshSessionAfterWindow() {
+        NoteRepository repo = noteRepository();
+        photoSessionStore.setSession(new PhotoSession(
+                OffsetDateTime.now(clock).minusMinutes(20), List.of("old.jpg")));
+
+        flow(repo).receiveMedia(media("new.jpg"));
+
+        assertEquals(1, photoStore.discardCount, "윈도우 밖 이전 세션의 스테이징을 폐기한다");
+        PhotoSession latest = photoSessionStore.puts.get(photoSessionStore.puts.size() - 1);
+        assertEquals(List.of("new.jpg"), latest.stagedNames(), "새 사진만으로 세션을 다시 시작한다(옛 사진 미포함)");
+    }
+
+    @Test
+    @DisplayName("T4-2: [저장] 시 스테이징 사진을 photos/<slug>/<date>/로 commit해 엔트리에 상대 경로로 담는다(V-4)")
+    void confirmSaveCommitsStagedPhotos() {
+        NoteRepository repo = noteRepository();
+        photoStore.staged.add("a.jpg"); // 대기 중 스테이징 사진
+        pendingStore.setPending(pendingWith("coffeevera-yirgacheffe")); // 엔트리 date=2026-07-11
+
+        flow(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
+
+        Note saved = repo.findBySlug("coffeevera-yirgacheffe").orElseThrow();
+        List<String> photos = saved.entries().get(0).photos();
+        assertEquals(List.of("photos/coffeevera-yirgacheffe/2026-07-11/a.jpg"), photos,
+                "스테이징 사진이 확정 상대 경로로 엔트리에 담긴다(V-4)");
+        assertTrue(photoStore.staged.isEmpty(), "commit 후 스테이징은 비워진다");
+    }
+
+    @Test
+    @DisplayName("AC-4/FR-10: [취소] 시 대기 중이던 스테이징 사진·세션도 함께 폐기된다")
+    void cancelDiscardsStagedPhotos() {
+        NoteRepository repo = noteRepository();
+        photoStore.staged.add("a.jpg");
+        pendingStore.setPending(pendingWith("coffeevera-yirgacheffe"));
+
+        flow(repo).cancel(action(DefaultConversationRouter.ACTION_CANCEL));
+
+        assertEquals(1, photoStore.discardCount, "취소는 스테이징 사진을 폐기한다");
+        assertTrue(photoStore.staged.isEmpty());
+        assertEquals(1, photoSessionStore.clearCount, "사진 세션도 함께 정리한다");
     }
 }

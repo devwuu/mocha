@@ -1,7 +1,9 @@
 package com.devwuu.mocha.slack;
 
 import com.slack.api.app_backend.interactive_components.payload.BlockActionPayload;
+import com.slack.api.model.File;
 import com.slack.api.model.event.MessageEvent;
+import com.slack.api.model.event.MessageFileShareEvent;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -21,6 +23,7 @@ class SlackGatewayTest {
     private static final class CapturingRouter implements ConversationRouter {
         final List<IncomingMessage> messages = new ArrayList<>();
         final List<IncomingAction> actions = new ArrayList<>();
+        final List<IncomingMedia> media = new ArrayList<>();
 
         @Override
         public void onMessage(IncomingMessage message) {
@@ -31,6 +34,19 @@ class SlackGatewayTest {
         public void onAction(IncomingAction action) {
             actions.add(action);
         }
+
+        @Override
+        public void onMedia(IncomingMedia media) {
+            this.media.add(media);
+        }
+    }
+
+    private static File imageFile(String name, String urlDownload, String mimetype) {
+        File file = new File();
+        file.setName(name);
+        file.setMimetype(mimetype);
+        file.setUrlPrivateDownload(urlDownload);
+        return file;
     }
 
     private SlackGateway gateway(ConversationRouter router) {
@@ -104,6 +120,50 @@ class SlackGatewayTest {
         // 버튼이 달린 메시지 ts = 미리보기 메시지(preview_ts)
         assertEquals("1720000000.000999", parsed.messageTs());
         assertTrue(router.messages.isEmpty());
+    }
+
+    @Test
+    @DisplayName("T4-2: 파일 공유 이벤트의 이미지만 추려 onMedia로 위임하고, 비이미지는 거른다")
+    void parsesFileShareToMedia() {
+        CapturingRouter router = new CapturingRouter();
+        MessageFileShareEvent event = new MessageFileShareEvent();
+        event.setUser("U1");
+        event.setChannel("C1");
+        event.setTs("1720000000.000400");
+        event.setFiles(List.of(
+                imageFile("a.jpg", "https://slack/a", "image/jpeg"),
+                imageFile("doc.pdf", "https://slack/doc", "application/pdf"), // 비이미지 → 제외
+                imageFile("b.png", "https://slack/b", "image/png")));
+
+        gateway(router).handleFileShareEvent(event);
+
+        assertEquals(1, router.media.size());
+        IncomingMedia media = router.media.get(0);
+        assertEquals("U1", media.userId());
+        assertEquals("C1", media.channelId());
+        assertEquals(2, media.photos().size(), "이미지 2장만 추려진다(pdf 제외)");
+        assertEquals("https://slack/a", media.photos().get(0).urlPrivate());
+        assertEquals("a.jpg", media.photos().get(0).filename());
+        // 캡션 없는 앨범이면 텍스트 위임은 없다.
+        assertTrue(router.messages.isEmpty());
+    }
+
+    @Test
+    @DisplayName("T4-2: 캡션이 실린 앨범은 사진(onMedia) 먼저, 캡션(onMessage) 뒤로 위임한다")
+    void parsesFileShareWithCaption() {
+        CapturingRouter router = new CapturingRouter();
+        MessageFileShareEvent event = new MessageFileShareEvent();
+        event.setUser("U1");
+        event.setChannel("C1");
+        event.setTs("1720000000.000500");
+        event.setText("커피베라 예가체프 새콤했어");
+        event.setFiles(List.of(imageFile("a.jpg", "https://slack/a", "image/jpeg")));
+
+        gateway(router).handleFileShareEvent(event);
+
+        assertEquals(1, router.media.size(), "사진이 먼저 위임된다(세션 자리잡기)");
+        assertEquals(1, router.messages.size(), "캡션이 이어 위임된다");
+        assertEquals("커피베라 예가체프 새콤했어", router.messages.get(0).text());
     }
 
     @Test
