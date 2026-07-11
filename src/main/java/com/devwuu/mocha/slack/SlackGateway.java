@@ -7,6 +7,7 @@ import com.slack.api.bolt.socket_mode.SocketModeApp;
 import com.slack.api.methods.MethodsClient;
 import com.slack.api.methods.response.auth.AuthTestResponse;
 import com.slack.api.model.File;
+import com.slack.api.model.event.FileSharedEvent;
 import com.slack.api.model.event.MessageChangedEvent;
 import com.slack.api.model.event.MessageEvent;
 import com.slack.api.model.event.MessageFileShareEvent;
@@ -268,6 +269,11 @@ public class SlackGateway implements SmartLifecycle {
         // 대상은 봇 활동 유발분(message_changed)으로 한정 — bot_message/message_deleted는 실제 404 관측 시 추가.
         // (ref: specs/coffee-note-agent/changes/0003-socket-mode-noop-handlers/delta.md#ADR-12, AC-Δ1/AC-Δ3)
         app.event(MessageChangedEvent.class, (payload, ctx) -> ctx.ack());
+        // POLICY: 봇 카드 업로드가 되돌려보내는 top-level file_shared(FileSharedEvent) 이벤트는 라우터 위임 없이
+        // no-op ack로 소비한다. 핸들러가 없으면 Bolt가 404 no handler found로 반려해 로그 잡음이 되고(실측 404),
+        // 사용자 사진은 MessageFileShareEvent로 별도 수신하므로 이 경로에 위임할 것이 없다(message_changed no-op과 동일 정신).
+        // (ref: specs/coffee-note-agent/changes/0008-socket-mode-async-ack/delta.md#ADR-19, AC-Δ3)
+        app.event(FileSharedEvent.class, (payload, ctx) -> ctx.ack());
         return app;
     }
 

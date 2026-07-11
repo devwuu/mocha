@@ -15,6 +15,7 @@ import com.slack.api.bolt.response.Response;
 import com.slack.api.bolt.util.EventsApiPayloadParser;
 import com.slack.api.model.File;
 import com.slack.api.model.event.Event;
+import com.slack.api.model.event.FileSharedEvent;
 import com.slack.api.model.event.MessageChangedEvent;
 import com.slack.api.model.event.MessageEvent;
 import com.slack.api.model.event.MessageFileShareEvent;
@@ -297,6 +298,31 @@ class SlackGatewayTest {
 
         // AC-Δ3: no-op 핸들러는 ctx.ack()만 하고 ConversationRouter를 부르지 않는다(파이프라인 유입 차단).
         Response ack = forChanged.get(0).apply(null, new EventContext());
+        assertEquals(Integer.valueOf(200), ack.getStatusCode(), "no-op는 ack(200)만 반환한다");
+        assertTrue(router.messages.isEmpty() && router.actions.isEmpty() && router.media.isEmpty(),
+                "no-op 핸들러는 라우터를 호출하지 않는다");
+    }
+
+    @Test
+    @DisplayName("AC-Δ3: file_shared에 no-op ack 핸들러가 배선되고, 호출 시 라우터를 부르지 않는다")
+    void registersNoopAckForFileShared() throws Exception {
+        CapturingRouter router = new CapturingRouter();
+        // buildApp은 AppConfig에 봇 토큰을 요구한다 — 네트워크 호출 없이 배선만 검증하므로 더미 토큰이면 충분.
+        SlackGateway gateway = new SlackGateway(router, null, "xoxb-test", "xapp-test");
+
+        App app = gateway.buildApp();
+
+        // AC-Δ3: 봇 카드 업로드가 되돌려보내는 top-level file_shared에 핸들러가 있어 Bolt가 404 대신 소비한다.
+        String key = EventsApiPayloadParser.getEventTypeAndSubtype(FileSharedEvent.class);
+        @SuppressWarnings("unchecked")
+        Map<String, List<BoltEventHandler<Event>>> handlers =
+                (Map<String, List<BoltEventHandler<Event>>>) readField(app, "eventHandlers");
+        List<BoltEventHandler<Event>> forFileShared = handlers.get(key);
+        assertNotNull(forFileShared, "file_shared 핸들러가 등록되어야 한다: " + key);
+        assertEquals(1, forFileShared.size());
+
+        // AC-Δ3: no-op 핸들러는 ctx.ack()만 하고 ConversationRouter를 부르지 않는다(라우터 위임 없음).
+        Response ack = forFileShared.get(0).apply(null, new EventContext());
         assertEquals(Integer.valueOf(200), ack.getStatusCode(), "no-op는 ack(200)만 반환한다");
         assertTrue(router.messages.isEmpty() && router.actions.isEmpty() && router.media.isEmpty(),
                 "no-op 핸들러는 라우터를 호출하지 않는다");
