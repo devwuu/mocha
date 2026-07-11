@@ -81,11 +81,6 @@ public class SlackGateway implements SmartLifecycle {
      * ({@code MessageEvent.class})에는 도달하지 않는다 — 사진(file_share)은 {@link #handleFileShareEvent}가 받는다.
      */
     void handleMessageEvent(MessageEvent event) {
-        // DIAG(0007): 재질문이 "같은 메시지 재전송"인지 확인용 임시 로그 — 동일 ts가 두 번 찍히면 Slack 재전송이다.
-        // 원인 확정 후 제거. (ref: changes/0007 실사용 검증)
-        log.info("DIAG message: user={} ts={} botId={} textLen={}",
-                event.getUser(), event.getTs(), event.getBotId(),
-                event.getText() != null ? event.getText().length() : 0);
         // 봇 자신·다른 봇이 보낸 메시지는 무시 — 미리보기 응답을 다시 입력으로 먹는 에코 루프 방지.
         if (event.getBotId() != null) {
             return;
