@@ -1,8 +1,14 @@
 package com.devwuu.mocha.llm;
 
 import com.devwuu.mocha.json.MochaObjectMapper;
+import com.openai.models.responses.ResponseCreateParams;
+import com.openai.models.responses.ResponseFormatTextJsonSchemaConfig;
+import com.openai.models.responses.Tool;
+import com.openai.models.responses.ToolChoiceTypes;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -40,6 +46,30 @@ class OpenAiSearchClientTest {
 
     private static SearchQuery query() {
         return new SearchQuery("커피베라 예가체프 G1", "커피베라");
+    }
+
+    @Test
+    @DisplayName("AC-Δ1/AC-Δ2: buildParams가 web_search 도구·tool_choice 강제·strict JSON schema를 붙인다")
+    void buildsParamsWithForcedWebSearchAndStrictSchema() {
+        OpenAiSearchClient client =
+                new OpenAiSearchClient(null, "gpt-4o", 3, MochaObjectMapper.create());
+
+        ResponseCreateParams params = client.buildParams(query());
+
+        // web_search_preview 도구가 붙는다.
+        List<Tool> tools = params.tools().orElseThrow();
+        assertThat(tools).anySatisfy(tool -> assertThat(tool.isWebSearchPreview()).isTrue());
+
+        // AC-Δ2(P3): tool_choice로 web_search를 강제한다.
+        assertThat(params.toolChoice()).get().satisfies(choice ->
+                assertThat(choice.asTypes().type()).isEqualTo(ToolChoiceTypes.Type.WEB_SEARCH_PREVIEW));
+
+        // AC-Δ1(P1): text.format에 strict JSON schema가 붙고, 스키마가 SearchPayload 6필드를 요구한다.
+        ResponseFormatTextJsonSchemaConfig format =
+                params.text().orElseThrow().format().orElseThrow().asJsonSchema();
+        assertThat(format.strict()).contains(true);
+        assertThat(format.schema()._additionalProperties())
+                .containsKeys("type", "properties", "required", "additionalProperties");
     }
 
     @Test

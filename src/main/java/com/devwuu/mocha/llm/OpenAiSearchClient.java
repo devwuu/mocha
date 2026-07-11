@@ -2,16 +2,22 @@ package com.devwuu.mocha.llm;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.openai.client.OpenAIClient;
+import com.openai.core.JsonValue;
 import com.openai.models.responses.Response;
 import com.openai.models.responses.ResponseCreateParams;
+import com.openai.models.responses.ResponseFormatTextJsonSchemaConfig;
 import com.openai.models.responses.ResponseOutputItem;
 import com.openai.models.responses.ResponseOutputMessage;
+import com.openai.models.responses.ResponseTextConfig;
+import com.openai.models.responses.ToolChoiceTypes;
 import com.openai.models.responses.WebSearchPreviewTool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.databind.ObjectMapper;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * OpenAI web search(Responses API) 기반 {@link SearchClient} 구현 (ref: plan.md#ADR-5, spec FR-3).
@@ -19,6 +25,9 @@ import java.util.List;
  * fallback 규칙을 인코딩한다 — official_notes는 <b>로스터리 공식 출처 한정</b>이고, 공식 페이지를 못
  * 찾으면 단일 원산지 커피만 원두 일반 사실(origin 등)을 일반 출처에서 보강하고 블렌드는 공란으로 둔다
  * (FR-3/AC-16, ADR-5 보강 fallback POLICY). "추측 금지"는 유지한다.
+ * <p>보강은 Responses API 한 콜로 (a) {@code web_search_preview} 도구를 {@code tool_choice}로 강제 실행하고,
+ * (b) {@code text.format}에 strict JSON schema를 붙여 <b>스키마 보장 JSON</b>으로 받는다 — 응답에 산문·인용이
+ * 섞여도 형식 때문에 검색 결과가 버려지지 않게(P1), 경량 모델이 검색을 건너뛰지 못하게(P3) 한다(ADR-13).
  * <p>검색 실패·무결과·응답 파싱 실패는 예외로 새지 않고 {@link SearchResult#empty()}로 수렴한다 —
  * 상위(NoteEnricher)가 사용자 입력만으로 진행하게 하기 위함(AC-12, plan §7).
  */
@@ -92,16 +101,64 @@ public class OpenAiSearchClient implements SearchClient {
      * <p>테스트는 이 메서드를 override해 결정론적 응답으로 대체한다(실 API 스모크는 수동, CLAUDE.md §5.2).
      */
     protected String rawSearch(SearchQuery query) {
-        ResponseCreateParams params = ResponseCreateParams.builder()
+        Response response = client.responses().create(buildParams(query));
+        return outputText(response);
+    }
+
+    // POLICY: 웹 검색 보강은 web_search를 tool_choice로 강제 + structured output(strict JSON)으로 수신 (ADR-13)
+    // 파라미터 조립을 분리해 테스트가 SDK 호출 없이 도구·tool_choice·strict schema 배선을 검사할 수 있게 한다.
+    ResponseCreateParams buildParams(SearchQuery query) {
+        return ResponseCreateParams.builder()
                 .model(model)
                 .addTool(WebSearchPreviewTool.builder()
                         .type(WebSearchPreviewTool.Type.WEB_SEARCH_PREVIEW)
                         .build())
+                // P3: web_search를 강제해 모델이 검색을 건너뛰지 못하게 한다(AC-Δ2).
+                .toolChoice(ToolChoiceTypes.builder()
+                        .type(ToolChoiceTypes.Type.WEB_SEARCH_PREVIEW)
+                        .build())
+                // P1: strict JSON schema로 받아 산문·인용 혼입에도 형식이 보장된다(AC-Δ1).
+                .text(ResponseTextConfig.builder()
+                        .format(searchSchemaFormat())
+                        .build())
                 .instructions(INSTRUCTIONS.formatted(maxResults))
                 .input(buildInput(query))
                 .build();
-        Response response = client.responses().create(params);
-        return outputText(response);
+    }
+
+    // SearchPayload 6필드(roastery/origin/process/roast_level/official_notes/sources)의 strict JSON schema.
+    // roastery류는 미확인 시 null 허용(["string","null"]), notes/sources는 문자열 배열. 전 필드 required·additionalProperties=false.
+    private static ResponseFormatTextJsonSchemaConfig searchSchemaFormat() {
+        return ResponseFormatTextJsonSchemaConfig.builder()
+                .name("coffee_enrichment")
+                .strict(true)
+                .schema(searchSchema())
+                .build();
+    }
+
+    private static ResponseFormatTextJsonSchemaConfig.Schema searchSchema() {
+        Map<String, Object> nullableString = Map.of("type", List.of("string", "null"));
+        Map<String, Object> stringArray = Map.of("type", "array", "items", Map.of("type", "string"));
+
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("roastery", nullableString);
+        properties.put("origin", nullableString);
+        properties.put("process", nullableString);
+        properties.put("roast_level", nullableString);
+        properties.put("official_notes", stringArray);
+        properties.put("sources", stringArray);
+
+        Map<String, Object> schema = new LinkedHashMap<>();
+        schema.put("type", "object");
+        schema.put("properties", properties);
+        schema.put("required", List.of(
+                "roastery", "origin", "process", "roast_level", "official_notes", "sources"));
+        schema.put("additionalProperties", false);
+
+        ResponseFormatTextJsonSchemaConfig.Schema.Builder builder =
+                ResponseFormatTextJsonSchemaConfig.Schema.builder();
+        schema.forEach((key, value) -> builder.putAdditionalProperty(key, JsonValue.from(value)));
+        return builder.build();
     }
 
     private String buildInput(SearchQuery query) {
