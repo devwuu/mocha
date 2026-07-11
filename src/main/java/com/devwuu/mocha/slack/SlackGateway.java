@@ -12,6 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.SmartLifecycle;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -26,7 +27,9 @@ import java.util.regex.Pattern;
  * <p>재연결은 Slack SDK에 위임하고 시작/종료만 로그로 남긴다(plan.md §7). 토큰(2종)은 환경변수로 주입하며,
  * 미설정 시 연결을 건너뛰어 토큰 없는 프로파일(테스트/CI)에서도 컨텍스트가 뜬다.
  */
+// CLI --rerender(rerender 프로파일)에서는 수신 소켓을 띄우지 않는다 — 리렌더만 하고 종료(tasks T5-1).
 @Component
+@Profile("!rerender")
 public class SlackGateway implements SmartLifecycle {
 
     private static final Logger log = LoggerFactory.getLogger(SlackGateway.class);

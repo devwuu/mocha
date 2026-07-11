@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title th:text="${note.coffeeName} + ' · 모카'">커피 노트</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  body{margin:0;background:#efe9e2;font-family:'Gowun Batang',serif}
+  a{color:#6f4e37}a:hover{color:#4a3423}
+  .wrap{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;box-sizing:border-box}
+  .card{width:460px;height:650px;background:#efe6d8;border-radius:6px;box-shadow:0 2px 12px rgba(43,31,22,.12);display:flex;box-sizing:border-box;padding:18px;color:#4a3a2c}
+  .frame{flex:1;border:1px solid #b8a58c;display:flex;flex-direction:column;padding:32px 34px 16px;box-sizing:border-box;background:#f8f3ea}
+  .backlink{margin-top:18px;font-size:12px;letter-spacing:1px;color:#a8896b;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <div class="frame">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid #d9c9b3;padding-bottom:14px">
+        <div style="font-size:11px;letter-spacing:3px;color:#a8896b">COFFEE NOTE</div>
+        <div style="font-size:11px;letter-spacing:1px;color:#a8896b" th:text="${fmt.dotted(note.date)}">2026. 7. 10</div>
+      </div>
+
+      <div style="padding:24px 0 20px;border-bottom:1px solid #e2d5c3;text-align:center">
+        <div style="font-size:13px;color:#8a6f57;margin-bottom:6px" th:if="${note.roastery != null}" th:text="${note.roastery.value}">로스터리</div>
+        <div style="font-size:28px;font-weight:700;line-height:1.35;color:#3d2e21" th:text="${note.coffeeName}">커피</div>
+      </div>
+
+      <div style="display:flex;padding:16px 0;border-bottom:1px solid #e2d5c3;text-align:center">
+        <div style="flex:1.2;border-right:1px solid #e2d5c3">
+          <div style="font-size:10.5px;color:#b09879;margin-bottom:6px">원산지<span th:if="${note.origin != null and note.origin.source.name() == 'SEARCH'}"> ·검색</span></div>
+          <div style="font-size:13px;color:#5c4835" th:text="${note.origin != null ? note.origin.value : '—'}">—</div>
+        </div>
+        <div style="flex:.8;border-right:1px solid #e2d5c3">
+          <div style="font-size:10.5px;color:#b09879;margin-bottom:6px">가공<span th:if="${note.process != null and note.process.source.name() == 'SEARCH'}"> ·검색</span></div>
+          <div style="font-size:13px;color:#5c4835" th:text="${note.process != null ? note.process.value : '—'}">—</div>
+        </div>
+        <div style="flex:.8">
+          <div style="font-size:10.5px;color:#b09879;margin-bottom:6px">로스팅<span th:if="${note.roastLevel != null and note.roastLevel.source.name() == 'SEARCH'}"> ·검색</span></div>
+          <div style="font-size:13px;color:#5c4835" th:text="${note.roastLevel != null ? note.roastLevel.value : '—'}">—</div>
+        </div>
+      </div>
+
+      <div style="padding:18px 0;border-bottom:1px solid #e2d5c3;text-align:center" th:if="${!note.officialNotes.isEmpty()}">
+        <div style="font-size:11px;color:#a8896b;margin-bottom:8px">로스터리가 말하길</div>
+        <div style="font-size:15px;line-height:1.8;color:#5c4835" th:text="${#strings.listJoin(note.officialNotes, ' · ')}">자몽 · 홍차</div>
+      </div>
+
+      <div style="flex:1;padding-top:20px;display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline">
+          <div style="font-size:11px;color:#a8896b">내가 느끼길</div>
+          <div th:if="${note.rating != null and note.rating.name() == 'PERFECT'}" style="font-size:11px;color:#f8f3ea;background:#6f5138;border:1px solid #6f5138;border-radius:999px;padding:3px 12px" th:text="${note.rating.label()}">완전 내스타일</div>
+          <div th:if="${note.rating != null and note.rating.name() != 'PERFECT'}" style="font-size:11px;color:#8a6f57;border:1px solid #c9b59a;border-radius:999px;padding:3px 12px" th:text="${note.rating.label()}">맛있다</div>
+        </div>
+        <div style="font-size:15px;line-height:2;color:#4a3a2c;flex:1;white-space:pre-line" th:text="${note.myTaste}">감상</div>
+        <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap" th:if="${!note.photos.isEmpty()}">
+          <img th:each="photo : ${note.photos}" th:src="${photo}" alt="사진" style="width:104px;height:104px;border-radius:50%;object-fit:cover">
+        </div>
+      </div>
+
+      <div style="border-top:1px solid #d9c9b3;padding:2px 0 2px 3px;text-align:center;font-size:10.5px;letter-spacing:3px;color:#c4ad91;margin-top:24px">— 커피 독후감 · 모카 —</div>
+    </div>
+  </div>
+  <a class="backlink" th:href="${indexHref}">← 목록</a>
+</div>
+</body>
+</html>

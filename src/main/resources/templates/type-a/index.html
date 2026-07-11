@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>나의 커피 기록 · 모카</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  body{margin:0;background:#efe9e2;font-family:'Gowun Batang',serif}
+  a{color:#6f4e37}a:hover{color:#4a3423}
+  .wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px;box-sizing:border-box}
+  .card{width:460px;min-height:650px;background:#efe6d8;border-radius:6px;box-shadow:0 2px 12px rgba(43,31,22,.12);display:flex;box-sizing:border-box;padding:18px;color:#4a3a2c}
+  .frame{flex:1;border:1px solid #b8a58c;display:flex;flex-direction:column;padding:32px 34px 16px;box-sizing:border-box;background:#f8f3ea}
+  .row{text-decoration:none;color:inherit;display:flex;align-items:baseline;gap:14px;padding:17px 2px;border-bottom:1px solid #e2d5c3}
+  .empty{margin-top:40px;text-align:center;font-size:13px;color:#8a6f57}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <div class="frame">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid #d9c9b3;padding-bottom:14px">
+        <div style="font-size:11px;letter-spacing:3px;color:#a8896b">COFFEE NOTE — INDEX</div>
+      </div>
+
+      <div style="padding:24px 0 18px;border-bottom:1px solid #e2d5c3;text-align:center">
+        <div style="font-size:26px;font-weight:700;line-height:1.4;color:#3d2e21">나의 커피 기록</div>
+        <div style="font-size:12.5px;color:#8a6f57;margin-top:6px" th:text="'원두 ' + ${index.noteCount} + '개 · 기록 ' + ${index.recordCount} + '번'">원두 0개</div>
+      </div>
+
+      <div style="flex:1;display:flex;flex-direction:column">
+        <a th:each="row : ${index.rows}" class="row" th:href="${row.href}">
+          <div style="font-size:11px;color:#b09879;width:44px;flex:none" th:text="${fmt.dottedMonthDay(row.date)}">7.10</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:15.5px;font-weight:700;color:#3d2e21" th:text="${row.coffeeName}">커피</div>
+            <div style="font-size:12px;color:#8a6f57;margin-top:4px"
+                 th:text="(${row.roastery} != null ? ${row.roastery} + ' · ' : '') + (${row.origin} != null ? ${row.origin} + ' · ' : '') + '기록 ' + ${row.recordCount} + '번'">로스터리 · 기록</div>
+          </div>
+          <div th:if="${row.rating != null and row.rating.name() == 'PERFECT'}" style="font-size:10.5px;color:#f8f3ea;background:#6f5138;border:1px solid #6f5138;border-radius:999px;padding:3px 10px;flex:none;white-space:nowrap" th:text="${row.rating.label()}">완전 내스타일</div>
+          <div th:if="${row.rating != null and row.rating.name() != 'PERFECT'}" style="font-size:10.5px;color:#8a6f57;border:1px solid #c9b59a;border-radius:999px;padding:3px 10px;flex:none;white-space:nowrap" th:text="${row.rating.label()}">맛있다</div>
+        </a>
+        <div class="empty" th:if="${index.rows.isEmpty()}">아직 기록이 없습니다.</div>
+      </div>
+
+      <div style="border-top:1px solid #d9c9b3;padding:15px 0 2px 3px;margin-top:16px;text-align:center;font-size:10.5px;letter-spacing:3px;color:#c4ad91">— 커피 독후감 · 모카 —</div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
