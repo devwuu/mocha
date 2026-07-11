@@ -4,6 +4,8 @@ import com.slack.api.app_backend.interactive_components.payload.BlockActionPaylo
 import com.slack.api.bolt.App;
 import com.slack.api.bolt.AppConfig;
 import com.slack.api.bolt.socket_mode.SocketModeApp;
+import com.slack.api.methods.MethodsClient;
+import com.slack.api.methods.response.auth.AuthTestResponse;
 import com.slack.api.model.File;
 import com.slack.api.model.event.MessageChangedEvent;
 import com.slack.api.model.event.MessageEvent;
@@ -39,17 +41,22 @@ public class SlackGateway implements SmartLifecycle {
     private static final Pattern ALL_ACTIONS = Pattern.compile(".+");
 
     private final ConversationRouter router;
+    private final MethodsClient methods;
     private final String botToken;
     private final String appToken;
 
     private volatile boolean running = false;
+    // 봇 자신의 user ID — start()에서 auth.test로 확보. file_share 에코 필터의 유일한 신뢰 경로(ADR-17).
+    private volatile String botUserId;
     private SocketModeApp socketModeApp;
 
     public SlackGateway(
             ConversationRouter router,
+            MethodsClient methods,
             @Value("${mocha.slack.bot-token:}") String botToken,
             @Value("${mocha.slack.app-token:}") String appToken) {
         this.router = router;
+        this.methods = methods;
         this.botToken = botToken;
         this.appToken = appToken;
     }
@@ -97,6 +104,12 @@ public class SlackGateway implements SmartLifecycle {
      * 버퍼 그룹핑이 성립한다(사진 버퍼 위에 텍스트가 얹혀 하나의 노트가 된다).
      */
     void handleFileShareEvent(MessageFileShareEvent event) {
+        // POLICY: 봇 자신이 유발한 file_share는 라우터에 위임하지 않는다 — 카드 배달 에코 루프 차단 (ADR-17, FR-1).
+        // MessageFileShareEvent에는 bot_id 필드가 없어(SDK 실측) getBotId 무시를 복사할 수 없다 — 봇 user ID 비교가 유일한 신뢰 경로.
+        // (ref: specs/coffee-note-agent/changes/0007-bot-echo-and-intent-gate/delta.md#ADR-17, AC-Δ1)
+        if (botUserId != null && botUserId.equals(event.getUser())) {
+            return;
+        }
         List<IncomingPhoto> photos = imagePhotos(event.getFiles());
         if (!photos.isEmpty()) {
             router.onMedia(new IncomingMedia(
@@ -135,6 +148,14 @@ public class SlackGateway implements SmartLifecycle {
             return;
         }
         try {
+            // 봇 자신의 user ID를 확보해 file_share 에코 필터의 기준으로 둔다(ADR-17). auth.test 실패는 소켓 시작
+            // 실패로 취급한다 — bot token이 불량이면 어차피 송신(카드 배달)도 불가하므로 조용히 넘기지 않는다.
+            AuthTestResponse auth = methods.authTest(r -> r);
+            if (auth == null || !auth.isOk() || auth.getUserId() == null) {
+                throw new IllegalStateException("auth.test 실패로 봇 user ID 확보 불가: "
+                        + (auth != null ? auth.getError() : "null 응답"));
+            }
+            botUserId = auth.getUserId();
             // 기본 Tyrus 백엔드는 javax.websocket 구현을 요구 → 단일 jar인 JavaWebSocket 백엔드로 구동(build.gradle).
             socketModeApp = new SocketModeApp(appToken, SocketModeClient.Backend.JavaWebSocket, buildApp());
             socketModeApp.startAsync(); // 논블로킹 — 단절 시 SDK가 자동 재연결(plan.md §7)

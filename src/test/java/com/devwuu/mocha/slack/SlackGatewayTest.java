@@ -60,8 +60,8 @@ class SlackGatewayTest {
     }
 
     private SlackGateway gateway(ConversationRouter router) {
-        // 토큰 미설정 = 소켓 미연결. 파싱 경로만 검증한다.
-        return new SlackGateway(router, "", "");
+        // 토큰 미설정 = 소켓 미연결. 파싱 경로만 검증한다. MethodsClient는 start() 미호출이라 불필요(null).
+        return new SlackGateway(router, null, "", "");
     }
 
     @Test
@@ -177,6 +177,46 @@ class SlackGatewayTest {
     }
 
     @Test
+    @DisplayName("AC-Δ1: 봇 자신이 배달한 카드(file_share)는 onMedia/onMessage로 위임하지 않는다 — 에코 루프 차단")
+    void ignoresOwnFileShare() {
+        CapturingRouter router = new CapturingRouter();
+        SlackGateway gateway = gateway(router);
+        seedBotUserId(gateway, "UBOT"); // start()의 auth.test 확보분을 네트워크 없이 시딩(리플렉션)
+
+        MessageFileShareEvent event = new MessageFileShareEvent();
+        event.setUser("UBOT"); // 봇 자신이 유발한 카드 배달 이벤트
+        event.setChannel("C1");
+        event.setTs("1720000000.000600");
+        event.setText("저장했어요 멍! 🐾"); // 카드 캡션 — 신규 기록으로 둔갑하면 안 됨
+        event.setFiles(List.of(imageFile("card.jpg", "https://slack/card", "image/jpeg")));
+
+        gateway.handleFileShareEvent(event);
+
+        assertTrue(router.media.isEmpty(), "봇 카드 JPG는 사진으로 버퍼링되지 않는다");
+        assertTrue(router.messages.isEmpty(), "봇 캡션은 신규 기록 텍스트로 유입되지 않는다");
+    }
+
+    @Test
+    @DisplayName("AC-Δ2: 봇 ID가 확보돼도 사용자 file_share·캡션은 종전대로 위임한다 — 필터가 사용자 경로를 가리지 않음")
+    void delegatesUserFileShareEvenWhenBotIdKnown() {
+        CapturingRouter router = new CapturingRouter();
+        SlackGateway gateway = gateway(router);
+        seedBotUserId(gateway, "UBOT");
+
+        MessageFileShareEvent event = new MessageFileShareEvent();
+        event.setUser("U1"); // 사용자 — 봇과 다른 ID
+        event.setChannel("C1");
+        event.setTs("1720000000.000700");
+        event.setText("커피베라 예가체프 새콤했어");
+        event.setFiles(List.of(imageFile("a.jpg", "https://slack/a", "image/jpeg")));
+
+        gateway.handleFileShareEvent(event);
+
+        assertEquals(1, router.media.size(), "사용자 사진은 종전대로 위임된다(FR-10/AC-8 불변)");
+        assertEquals(1, router.messages.size(), "사용자 캡션도 종전대로 위임된다");
+    }
+
+    @Test
     @DisplayName("액션이 비어 있으면 위임하지 않는다 — 파싱 방어")
     void ignoresEmptyActions() {
         CapturingRouter router = new CapturingRouter();
@@ -193,7 +233,7 @@ class SlackGatewayTest {
     void registersNoopAckForMessageChanged() throws Exception {
         CapturingRouter router = new CapturingRouter();
         // buildApp은 AppConfig에 봇 토큰을 요구한다 — 네트워크 호출 없이 배선만 검증하므로 더미 토큰이면 충분.
-        SlackGateway gateway = new SlackGateway(router, "xoxb-test", "xapp-test");
+        SlackGateway gateway = new SlackGateway(router, null, "xoxb-test", "xapp-test");
 
         App app = gateway.buildApp();
 
@@ -217,6 +257,18 @@ class SlackGatewayTest {
         Field field = target.getClass().getDeclaredField(name);
         field.setAccessible(true);
         return field.get(target);
+    }
+
+    // start()의 auth.test가 채우는 botUserId를 네트워크 없이 세팅한다 — 테스트 seam을 프로덕션에 두지 않기 위해
+    // 리플렉션으로 private 필드에 직접 주입한다(위 readField와 동일 관례).
+    private static void seedBotUserId(SlackGateway gateway, String botUserId) {
+        try {
+            Field field = SlackGateway.class.getDeclaredField("botUserId");
+            field.setAccessible(true);
+            field.set(gateway, botUserId);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     @Test
