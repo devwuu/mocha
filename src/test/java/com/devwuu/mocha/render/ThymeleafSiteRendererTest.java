@@ -95,6 +95,43 @@ class ThymeleafSiteRendererTest {
     }
 
     @Test
+    @DisplayName("T5-2/FR-7/AC-13: 노트 상세가 official_notes·my_taste 2단과 날짜 엔트리 타임라인(시간순)·출처 링크를 표시한다")
+    void notePageShowsTwoSectionsAndEntryTimeline(@TempDir Path dataDir, @TempDir Path siteDir) {
+        NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create());
+        OffsetDateTime now = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
+        NoteMeta meta = new NoteMeta(
+                "예가체프 G1 워시드",
+                Sourced.user("커피베라"),
+                Sourced.search("에티오피아 예가체프"),
+                Sourced.user("워시드"),
+                Sourced.search("라이트"),
+                Sourced.search(List.of("자몽", "베르가못", "홍차")),
+                List.of("https://coffeevera.example/yirgacheffe"));
+        // 같은 노트(slug)에 다른 날짜 엔트리 2건 — 저장 순서는 뒤죽박죽이지만 렌더는 시간순이어야 한다(AC-13).
+        repo.upsertEntry("2026-07-04", meta,
+                new Entry(LocalDate.parse("2026-07-10"), "둘째 날: 물 온도를 낮추니 부드럽다.", Rating.PERFECT, List.of(), now));
+        repo.upsertEntry("2026-07-04", meta,
+                new Entry(LocalDate.parse("2026-07-04"), "첫날: 새콤하고 좋았다.", Rating.GOOD, List.of(), now));
+
+        new ThymeleafSiteRenderer(repo, engine, siteDir, Theme.TYPE_B).renderAll();
+        String noteHtml = read(siteDir.resolve("notes/2026-07-04.html"));
+
+        // FR-7: 두 영역이 모두 있다.
+        assertTrue(noteHtml.contains("로스터리가 말하길"), "official_notes 영역");
+        assertTrue(noteHtml.contains("내가 느끼길"), "my_taste 영역");
+
+        // AC-13: 두 엔트리가 모두 나오고, 앞선 날짜(07-04)가 뒤 날짜(07-10)보다 먼저 나타난다(시간순).
+        assertTrue(noteHtml.contains("첫날: 새콤하고 좋았다."), "첫 엔트리 감상");
+        assertTrue(noteHtml.contains("둘째 날: 물 온도를 낮추니 부드럽다."), "둘째 엔트리 감상");
+        assertTrue(noteHtml.indexOf("첫날") < noteHtml.indexOf("둘째 날"), "엔트리 시간순(오래된 것 먼저)");
+        // 각 엔트리가 제 날짜·rating을 표시한다(4범주, FR-11).
+        assertTrue(noteHtml.contains("맛있다") && noteHtml.contains("완전 내스타일"), "엔트리별 rating 표시");
+
+        // FR-12: 검색 참조 링크(sources)가 출처로 노출된다.
+        assertTrue(noteHtml.contains("https://coffeevera.example/yirgacheffe"), "출처 링크");
+    }
+
+    @Test
     @DisplayName("AC-6: site/ 삭제 후 재렌더하면 동일 산출이 복원된다")
     void reRenderIsReproducible(@TempDir Path dataDir, @TempDir Path siteDir) {
         NoteRepository repo = seedRepository(dataDir);

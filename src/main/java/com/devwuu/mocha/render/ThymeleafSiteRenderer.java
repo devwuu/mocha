@@ -32,8 +32,8 @@ import java.util.Locale;
  * <p>POLICY: 렌더러는 JSON 외 어떤 상태도 읽지 않는다 — {@link NoteRepository#findAll()}만이 입력이고
  * HTML은 언제든 전체 재생성 가능한 파생물이다(ref: plan.md#ADR-1, AC-6).
  * <p>POLICY: HTML의 모든 링크·이미지는 상대 경로만 쓴다 — {@code file://} 직접 열람 보장(ref: plan.md, AC-11).
- * <p>골격(T5-1)은 노트당 <b>가장 최근 엔트리 1건</b>만 표시한다. 날짜 엔트리 타임라인·print CSS·갤러리는
- * 후속(T5-2/T5-3/T5-4)이 채운다.
+ * <p>노트 상세는 날짜 엔트리 전체를 시간순 타임라인으로 나열하고 출처 링크를 노출한다(T5-2, AC-13/FR-12).
+ * 인덱스 카드는 최근 엔트리 1건만 요약한다. print CSS는 후속(T5-3)이 채운다.
  */
 public class ThymeleafSiteRenderer implements SiteRenderer {
 
@@ -107,8 +107,9 @@ public class ThymeleafSiteRenderer implements SiteRenderer {
     // --- 노트 상세 ---
 
     private void writeNote(Note note) {
-        Entry latest = latestEntry(note);
-        List<String> photos = latest == null ? List.of() : thumbs(latest, "../" + THUMBS_PREFIX); // notes/ 하위 → ../thumbs/…
+        // entries는 날짜 오름차순 유지(ADR-4) → 그대로 시간순 타임라인이 된다(AC-13).
+        List<Entry> entries = note.entries() == null ? List.of() : note.entries();
+        List<SiteView.EntryView> timeline = entries.stream().map(this::toEntryView).toList();
         SiteView.NotePage page = new SiteView.NotePage(
                 note.slug(),
                 note.coffeeName(),
@@ -118,16 +119,22 @@ public class ThymeleafSiteRenderer implements SiteRenderer {
                 note.roastLevel(),
                 note.officialNotes() == null ? List.of() : note.officialNotes().value(),
                 note.sources() == null ? List.of() : note.sources(),
-                latest == null ? null : latest.date(),
-                latest == null ? null : latest.myTaste(),
-                latest == null ? null : latest.rating(),
-                photos);
+                timeline);
 
         Context ctx = baseContext();
         ctx.setVariable("note", page);
         ctx.setVariable("indexHref", "../index.html");
         ctx.setVariable("mascotHref", "../" + MASCOT_NAME);
         writeHtml(siteDir.resolve("notes").resolve(note.slug() + ".html"), render("note", ctx));
+    }
+
+    // 노트 상세는 notes/ 하위이므로 썸네일은 ../thumbs/… 로 참조한다(상대 경로, AC-11).
+    private SiteView.EntryView toEntryView(Entry entry) {
+        return new SiteView.EntryView(
+                entry.date(),
+                entry.myTaste(),
+                entry.rating(),
+                thumbs(entry, "../" + THUMBS_PREFIX));
     }
 
     // --- 공통 ---
