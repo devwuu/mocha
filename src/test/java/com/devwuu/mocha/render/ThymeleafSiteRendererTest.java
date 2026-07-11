@@ -179,6 +179,32 @@ class ThymeleafSiteRendererTest {
     }
 
     @Test
+    @DisplayName("TΔ1/AC-Δ1,AC-Δ2: 갤러리 페이지는 안 생기고 노트 사진 영역은 상대 썸네일로 보존된다")
+    void dropsGalleryButKeepsNotePhotos(@TempDir Path dataDir, @TempDir Path siteDir) {
+        NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create());
+        OffsetDateTime now = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
+        NoteMeta meta = new NoteMeta(
+                "예가체프 G1 워시드",
+                Sourced.user("커피베라"), Sourced.search("에티오피아"),
+                null, null, Sourced.search(List.of()), List.of());
+        // 사진 경로를 가진 엔트리 — 노트 상세(FR-7)의 사진 영역이 렌더 대상.
+        repo.upsertEntry("2026-07-10", meta,
+                new Entry(LocalDate.parse("2026-07-10"), "새콤하다.", Rating.GOOD,
+                        List.of("photos/2026-07-10/2026-07-10/a.jpg"), now));
+
+        new ThymeleafSiteRenderer(repo, engine, siteDir, Theme.TYPE_B).renderAll();
+
+        // AC-Δ1: 독립 갤러리 페이지는 생성되지 않는다(갤러리 폐기, delta 0001).
+        assertFalse(Files.exists(siteDir.resolve("gallery.html")), "site/gallery.html 미생성");
+
+        // AC-Δ2: 노트 상세의 사진 영역은 그대로 — entries[].photos가 상대 썸네일 경로(../thumbs/…)로 표시된다(AC-11).
+        String noteHtml = read(siteDir.resolve("notes/2026-07-10.html"));
+        assertTrue(noteHtml.contains("../thumbs/2026-07-10/2026-07-10/a.jpg"), "노트 사진 썸네일 상대 경로");
+        assertFalse(noteHtml.contains("file:"), "file:// 없음");
+        assertFalse(noteHtml.contains(siteDir.toString()), "절대 경로 유출 없음");
+    }
+
+    @Test
     @DisplayName("AC-6: site/ 삭제 후 재렌더하면 동일 산출이 복원된다")
     void reRenderIsReproducible(@TempDir Path dataDir, @TempDir Path siteDir) {
         NoteRepository repo = seedRepository(dataDir);
