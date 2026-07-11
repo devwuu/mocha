@@ -16,6 +16,9 @@ import com.devwuu.mocha.llm.SearchClient;
 import com.devwuu.mocha.llm.SearchQuery;
 import com.devwuu.mocha.llm.SearchResult;
 import com.devwuu.mocha.pipeline.ExtractionResult;
+import com.devwuu.mocha.pipeline.IntentClassifier;
+import com.devwuu.mocha.pipeline.IntentResult;
+import com.devwuu.mocha.pipeline.MessageIntent;
 import com.devwuu.mocha.pipeline.NoteEnricher;
 import com.devwuu.mocha.pipeline.NoteExtractor;
 import com.devwuu.mocha.pipeline.NoteMatcher;
@@ -127,19 +130,30 @@ class DefaultConfirmationFlowTest {
     }
 
     /**
-     * 추출/수정 응답을 미리 지정하는 fake LLM — 계약(구조)만 검증, 생성 자체는 대체(CLAUDE.md §5.3).
-     * 요청의 responseType으로 추출({@link ExtractionResult})과 수정({@link RevisionResult}) 응답을 분기한다.
+     * 추출/수정/의도 응답을 미리 지정하는 fake LLM — 계약(구조)만 검증, 생성 자체는 대체(CLAUDE.md §5.3).
+     * 요청의 responseType으로 추출({@link ExtractionResult})·수정({@link RevisionResult})·의도({@link IntentResult}) 응답을 분기한다.
      */
     private static final class FakeLlmClient implements LlmClient {
         ExtractionResult canned;
         RevisionResult cannedRevision;
-        RuntimeException failure;
+        // 의도 게이트 기본은 record — 게이트 도입 전 startNewNote 테스트가 불변으로 통과하게 한다(AC-Δ5).
+        IntentResult cannedIntent = new IntentResult(MessageIntent.RECORD);
+        RuntimeException failure;         // 모든 요청 공통 실패
+        RuntimeException intentFailure;   // 의도 게이트 요청만 실패(fail-open 검증, AC-Δ4)
+        int intentCalls = 0;
 
         @SuppressWarnings("unchecked")
         @Override
         public <T> T complete(LlmRequest<T> request) {
             if (failure != null) {
                 throw failure;
+            }
+            if (request.responseType() == IntentResult.class) {
+                intentCalls++;
+                if (intentFailure != null) {
+                    throw intentFailure;
+                }
+                return (T) cannedIntent;
             }
             if (request.responseType() == RevisionResult.class) {
                 return (T) cannedRevision;
@@ -266,6 +280,7 @@ class DefaultConfirmationFlowTest {
     private final FakePhotoBufferStore photoBufferStore = new FakePhotoBufferStore();
     private static final Duration BUFFER_WINDOW = Duration.ofMinutes(10);
 
+    private final IntentClassifier intentClassifier = new IntentClassifier(llmClient, MochaObjectMapper.create());
     private final NoteExtractor extractor = new NoteExtractor(llmClient, MochaObjectMapper.create());
     private final NoteMatcher matcher = new NoteMatcher();
     private final NoteEnricher enricher = new NoteEnricher(searchClient);
@@ -277,7 +292,7 @@ class DefaultConfirmationFlowTest {
 
     private DefaultConfirmationFlow flow(NoteRepository repo) {
         return new DefaultConfirmationFlow(
-                pendingStore, repo, noteRenderer, responder,
+                pendingStore, repo, noteRenderer, responder, intentClassifier,
                 extractor, matcher, enricher, reviser, previewMessenger,
                 photoDownloader, photoStore, photoBufferStore, BUFFER_WINDOW, clock);
     }
@@ -407,6 +422,44 @@ class DefaultConfirmationFlowTest {
         assertEquals(List.of(DefaultConfirmationFlow.NEW_NOTE_FAILED), responder.messages);
     }
 
+    // --- TΔ3: 입구 의도 게이트([1.5], ADR-18/FR-17, changes/0007) ---
+
+    @Test
+    @DisplayName("AC-Δ3: pending 없음 + 비기록 텍스트(other) → 추출·보강·pending·미리보기 없이 짧은 안내만")
+    void startNewNoteGateBlocksNonRecord() {
+        NoteRepository repo = noteRepository();
+        llmClient.cannedIntent = new IntentResult(MessageIntent.OTHER);
+        // canned 추출 응답을 일부러 두지 않는다 — 파이프라인에 진입하면 아래 안내 단언이 깨져 드러난다.
+        // 윈도우 내 버퍼가 있어도 게이트에서 막히면 건드리지 않아야 한다(AC-Δ3).
+        photoBufferStore.setBuffer(new PhotoBuffer(OffsetDateTime.now(clock), List.of("a.jpg")));
+
+        flow(repo).startNewNote(message("안녕! 뭐하는 봇이야?"));
+
+        assertEquals(1, llmClient.intentCalls, "입구 의도 게이트가 판정한다");
+        assertTrue(pendingStore.puts.isEmpty(), "other면 pending을 만들지 않는다");
+        assertNull(previewMessenger.published, "other면 미리보기가 없다");
+        assertTrue(repo.findAll().isEmpty(), "other면 노트 JSON도 없다");
+        assertEquals(List.of(DefaultConfirmationFlow.NOT_A_RECORD), responder.messages, "짧은 안내로 응답한다");
+        // 버퍼는 소비·폐기되지 않고 그대로 남는다.
+        assertEquals(0, photoBufferStore.clearCount, "게이트 차단은 버퍼를 건드리지 않는다");
+        assertEquals(0, photoStore.discardCount, "게이트 차단은 스테이징을 폐기하지 않는다");
+    }
+
+    @Test
+    @DisplayName("AC-Δ4: 게이트 판정 실패(LLM/스키마 오류) → record로 간주하고 종전 파이프라인 진행(fail-open)")
+    void startNewNoteGateFailsOpen() {
+        NoteRepository repo = noteRepository();
+        llmClient.intentFailure = new LlmException("의도 게이트 호출 실패");
+        llmClient.canned = extraction("커피베라 예가체프", "커피베라", null, "새콤함", Rating.GOOD);
+
+        flow(repo).startNewNote(message("커피베라 예가체프 마셨어"));
+
+        // 게이트가 실패해도 기록은 유실되지 않는다 — 미리보기가 정상 도착한다(AC-Δ4/AC-21).
+        assertNotNull(previewMessenger.published, "게이트 실패 시 record로 간주해 미리보기가 도착한다");
+        assertEquals("커피베라 예가체프", previewMessenger.published.draft().coffeeName());
+        assertTrue(responder.messages.isEmpty(), "fail-open은 오류 안내로 수렴하지 않는다");
+    }
+
     // --- T3-7: pending 수정 오케스트레이션(revisePending) ---
 
     @Test
@@ -435,6 +488,23 @@ class DefaultConfirmationFlowTest {
         // 미리보기 단계이므로 노트 JSON은 손대지 않는다(AC-4).
         assertTrue(repo.findAll().isEmpty(), "수정 반영은 노트 JSON을 만들지 않는다");
         assertTrue(responder.messages.isEmpty(), "정상 수정이면 오류 안내가 없다");
+    }
+
+    @Test
+    @DisplayName("AC-Δ5: pending 중 텍스트=수정 경로에는 의도 게이트를 적용하지 않는다(other여도 정상 수정)")
+    void revisePendingSkipsIntentGate() {
+        NoteRepository repo = noteRepository();
+        PendingNote pending = pendingWith("coffeevera-yirgacheffe");
+        pendingStore.setPending(pending);
+        // 게이트가 other로 기울어도 수정 경로는 그와 무관하게 진행되어야 한다.
+        llmClient.cannedIntent = new IntentResult(MessageIntent.OTHER);
+        llmClient.cannedRevision = new RevisionResult(null, null, null, null, null, null, "산미가 낮아 부드러웠다", null);
+
+        flow(repo).revisePending(message("산미는 낮음으로"), pending);
+
+        assertEquals(0, llmClient.intentCalls, "수정 경로는 의도 게이트를 호출하지 않는다(FR-5/AC-5 불변)");
+        assertNotNull(previewMessenger.published, "게이트와 무관하게 수정 미리보기가 갱신된다");
+        assertEquals("산미가 낮아 부드러웠다", previewMessenger.published.draft().entries().get(0).myTaste());
     }
 
     @Test

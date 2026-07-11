@@ -8,7 +8,9 @@ import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.domain.PhotoBuffer;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.pipeline.ExtractionResult;
+import com.devwuu.mocha.pipeline.IntentClassifier;
 import com.devwuu.mocha.pipeline.MatchResult;
+import com.devwuu.mocha.pipeline.MessageIntent;
 import com.devwuu.mocha.pipeline.NoteCandidate;
 import com.devwuu.mocha.pipeline.NoteEnricher;
 import com.devwuu.mocha.pipeline.NoteExtractor;
@@ -39,7 +41,8 @@ import java.util.Optional;
  * 확인 상태 머신의 오케스트레이터 — {@link ConversationRouter}가 정한 분기의 실제 파이프라인 일을 맡는다
  * (ref: plan.md §1 [2]~[7], ADR-3). T3-2 임시 스텁(LoggingConfirmationFlow)을 대체한다.
  * <ul>
- *   <li>{@link #startNewNote} — 신규 파이프라인 배선: 후보 조회 → {@link NoteExtractor 추출} →
+ *   <li>{@link #startNewNote} — 입구 의도 게이트([1.5], ADR-18)로 기록 요청만 들인 뒤 신규 파이프라인 배선:
+ *       후보 조회 → {@link NoteExtractor 추출} →
  *       {@link NoteMatcher 매칭} → draft 조립(source=user 마킹) → {@link NoteEnricher 보강} → slug 확정 →
  *       {@link PendingStore#put} → {@link PreviewMessenger#publish} → preview_ts 반영 재저장. (tasks T3-6)</li>
  *   <li>{@link #confirmSave} — pending 로드·TTL 판정(V-7) → {@link NoteRepository#upsertEntry}로 커밋 →
@@ -72,11 +75,13 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
     static final String NEW_NOTE_FAILED = "기록을 정리하다 문제가 생겼어요 멍… 잠시 뒤 다시 보내주시겠어요? 🐾"; // 추출/검색/전송 실패(plan §7)
     static final String REVISE_FAILED = "수정을 반영하다 문제가 생겼어요 멍… 다시 말씀해 주시겠어요? 🐾"; // 수정 병합/전송 실패(plan §7). 기존 pending은 보존
     static final String PHOTO_FAILED = "사진을 받다 문제가 생겼어요 멍… 다시 올려주시겠어요? 🐾"; // 다운로드/스테이징/전송 실패(plan §7)
+    static final String NOT_A_RECORD = "저는 커피 감상을 기록하는 강아지예요 멍! 마신 커피 이야기를 들려주세요 🐾"; // 의도 게이트 other 판정 안내(AC-Δ3)
 
     private final PendingStore pendingStore;
     private final NoteRepository noteRepository;
     private final NoteRenderer noteRenderer;
     private final SlackResponder responder;
+    private final IntentClassifier intentClassifier;
     private final NoteExtractor noteExtractor;
     private final NoteMatcher noteMatcher;
     private final NoteEnricher noteEnricher;
@@ -94,6 +99,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
             NoteRepository noteRepository,
             NoteRenderer noteRenderer,
             SlackResponder responder,
+            IntentClassifier intentClassifier,
             NoteExtractor noteExtractor,
             NoteMatcher noteMatcher,
             NoteEnricher noteEnricher,
@@ -103,7 +109,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
             PhotoStore photoStore,
             PhotoBufferStore photoBufferStore,
             @Value("${mocha.photo.buffer-window}") Duration bufferWindow) {
-        this(pendingStore, noteRepository, noteRenderer, responder,
+        this(pendingStore, noteRepository, noteRenderer, responder, intentClassifier,
                 noteExtractor, noteMatcher, noteEnricher, pendingReviser, previewMessenger,
                 photoDownloader, photoStore, photoBufferStore, bufferWindow, Clock.system(SEOUL));
     }
@@ -114,6 +120,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
             NoteRepository noteRepository,
             NoteRenderer noteRenderer,
             SlackResponder responder,
+            IntentClassifier intentClassifier,
             NoteExtractor noteExtractor,
             NoteMatcher noteMatcher,
             NoteEnricher noteEnricher,
@@ -128,6 +135,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         this.noteRepository = noteRepository;
         this.noteRenderer = noteRenderer;
         this.responder = responder;
+        this.intentClassifier = intentClassifier;
         this.noteExtractor = noteExtractor;
         this.noteMatcher = noteMatcher;
         this.noteEnricher = noteEnricher;
@@ -144,6 +152,17 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
     public void startNewNote(IncomingMessage message) {
         String userId = message.userId();
         String channelId = message.channelId();
+
+        // [1.5] 입구 의도 게이트 — 파이프라인 진입 전(버퍼 처리보다도 앞)에서 기록 요청만 들인다.
+        // POLICY: 입구 의도 게이트는 진입 분기만 — 저장/취소 커밋은 버튼(action_id)만(ADR-3 불변).
+        //         게이트 실패·애매함은 record로 진행(fail-open, 기록 유실 방지) (ref: plan.md#ADR-18, spec FR-17).
+        if (!isRecordRequest(message.text(), userId)) {
+            // other 판정 — 추출·보강·pending·미리보기 없이 짧은 안내로 종료한다. 버퍼는 건드리지 않는다(AC-Δ3).
+            log.info("입구 의도 게이트 other — 파이프라인 미진입: user={}", userId);
+            responder.post(channelId, NOT_A_RECORD);
+            return;
+        }
+
         try {
             LocalDate today = LocalDate.now(clock);
             OffsetDateTime now = OffsetDateTime.now(clock);
@@ -205,6 +224,20 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
             // 추출·검색·전송 등 어느 단계 실패든 오류 응답으로 수렴하고 pending은 남기지 않는다(plan §7).
             log.warn("신규 파이프라인 실패(pending 미생성): user={}", userId, e);
             responder.post(channelId, NEW_NOTE_FAILED);
+        }
+    }
+
+    // [1.5] 입구 의도 게이트 판정 — record면 파이프라인 진입, other면 미진입(안내). 게이트 실패는 fail-open(record)으로 흡수한다.
+    private boolean isRecordRequest(String text, String userId) {
+        try {
+            MessageIntent intent = intentClassifier.classify(text).intent();
+            // 관측(plan §6): 판정 분포(record/other)를 로깅해 오분류 프록시로 삼는다.
+            log.info("입구 의도 게이트 판정: user={} intent={}", userId, intent.value());
+            return intent == MessageIntent.RECORD;
+        } catch (Exception e) {
+            // fail-open: 게이트 호출/스키마 실패 시 record로 간주해 진행한다 — 기록 유실 방지(AC-Δ4, plan §7).
+            log.warn("입구 의도 게이트 실패 — record로 진행(fail-open): user={}", userId, e);
+            return true;
         }
     }
 
