@@ -5,6 +5,7 @@ import com.slack.api.bolt.App;
 import com.slack.api.bolt.AppConfig;
 import com.slack.api.bolt.socket_mode.SocketModeApp;
 import com.slack.api.model.File;
+import com.slack.api.model.event.MessageChangedEvent;
 import com.slack.api.model.event.MessageEvent;
 import com.slack.api.model.event.MessageFileShareEvent;
 import com.slack.api.socket_mode.SocketModeClient;
@@ -163,7 +164,8 @@ public class SlackGateway implements SmartLifecycle {
     }
 
     // Bolt App에 핸들러를 배선한다. 각 핸들러는 파싱을 handle*로 위임하고 즉시 ack로 응답한다.
-    private App buildApp() {
+    // (package-private: 네트워크 없이 핸들러 배선을 단위 테스트로 검증하기 위함)
+    App buildApp() {
         App app = new App(AppConfig.builder().singleTeamBotToken(botToken).build());
         app.event(MessageEvent.class, (payload, ctx) -> {
             handleMessageEvent(payload.getEvent());
@@ -177,6 +179,12 @@ public class SlackGateway implements SmartLifecycle {
             handleBlockAction(req.getPayload());
             return ctx.ack();
         });
+        // POLICY: 봇 활동(미리보기 갱신 chat.update 등)이 되돌려보내는 message_changed subtype 이벤트는
+        // 라우터 위임 없이 no-op ack로 소비한다. 미처리 시 Bolt가 404 no handler found로 반려해 로그 잡음이
+        // 되고(AC-Δ1), 위임하면 봇 자신의 편집이 파이프라인에 유입돼 에코 루프가 된다(AC-Δ3, 기존 getBotId 무시와 동일 정신).
+        // 대상은 봇 활동 유발분(message_changed)으로 한정 — bot_message/message_deleted는 실제 404 관측 시 추가.
+        // (ref: specs/coffee-note-agent/changes/0003-socket-mode-noop-handlers/delta.md#ADR-12, AC-Δ1/AC-Δ3)
+        app.event(MessageChangedEvent.class, (payload, ctx) -> ctx.ack());
         return app;
     }
 
