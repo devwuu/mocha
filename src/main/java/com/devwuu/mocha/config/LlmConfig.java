@@ -4,7 +4,9 @@ import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.llm.LlmClient;
 import com.devwuu.mocha.llm.OpenAiLlmClient;
 import com.devwuu.mocha.llm.OpenAiSearchClient;
+import com.devwuu.mocha.llm.OpenAiVisionClient;
 import com.devwuu.mocha.llm.SearchClient;
+import com.devwuu.mocha.llm.VisionClient;
 import com.openai.client.OpenAIClient;
 import com.openai.client.okhttp.OpenAIOkHttpClient;
 import org.springframework.beans.factory.annotation.Value;
@@ -42,5 +44,14 @@ public class LlmConfig {
             @Value("${mocha.search.model:gpt-4o}") String model,
             @Value("${mocha.search.max-results:3}") int maxResults) {
         return new OpenAiSearchClient(openAiClient, model, maxResults, MochaObjectMapper.create());
+    }
+
+    // 공식 페이지 상세 이미지 OCR(검색 2단계, ADR-15). vision 모델은 검색 보강과 공용(mocha.search.model) —
+    // 새 설정 키를 늘리지 않는다(plan §5). 재사용 경계이므로 SearchClient가 아닌 별도 빈으로 노출한다(NFR-4).
+    @Bean
+    public VisionClient visionClient(
+            OpenAIClient openAiClient,
+            @Value("${mocha.search.model:gpt-4o}") String model) {
+        return new OpenAiVisionClient(openAiClient, model, MochaObjectMapper.create());
     }
 }
