@@ -26,14 +26,14 @@ class ThumbnailatorThumbnailGeneratorTest {
     private static final int THUMB_WIDTH = 50;
 
     private Path dataDir;
-    private Path siteDir;
+    private Path artifactDir;
     private ThumbnailatorThumbnailGenerator generator;
 
     @BeforeEach
     void setUp(@TempDir Path root) {
         this.dataDir = root.resolve("data");
-        this.siteDir = root.resolve("site");
-        this.generator = new ThumbnailatorThumbnailGenerator(dataDir, siteDir, THUMB_WIDTH);
+        this.artifactDir = root.resolve("artifact");
+        this.generator = new ThumbnailatorThumbnailGenerator(dataDir, artifactDir, THUMB_WIDTH);
     }
 
     @Test
@@ -44,13 +44,13 @@ class ThumbnailatorThumbnailGeneratorTest {
 
         String thumbRel = generator.makeThumbnail("photos/coffeevera/2026-07-11/cup.jpg");
 
-        BufferedImage thumb = ImageIO.read(siteDir.resolve(thumbRel).toFile());
+        BufferedImage thumb = ImageIO.read(artifactDir.resolve(thumbRel).toFile());
         // 보정됐다면 세로(높이>너비). 미보정이면 가로(너비>높이)가 됐을 것.
         assertThat(thumb.getHeight()).isGreaterThan(thumb.getWidth());
     }
 
     @Test
-    @DisplayName("T4-3: photos/ 원본 트리를 thumbs/로 미러링하고 site 아래에 쓴다(상대 경로만, AC-11)")
+    @DisplayName("T4-3: photos/ 원본 트리를 thumbs/로 미러링하고 artifact 아래에 쓴다(상대 경로만, AC-11)")
     void mirrorsPhotosTreeUnderThumbs() throws IOException {
         writePhoto("photos/note-a/2026-07-11/a.jpg", plainJpeg(200, 100));
 
@@ -58,7 +58,7 @@ class ThumbnailatorThumbnailGeneratorTest {
 
         assertThat(thumbRel).isEqualTo("thumbs/note-a/2026-07-11/a.jpg");
         assertThat(Path.of(thumbRel).isAbsolute()).isFalse();
-        assertThat(siteDir.resolve(thumbRel)).exists();
+        assertThat(artifactDir.resolve(thumbRel)).exists();
         // 파생물만 쓴다 — 원본 트리(data/photos)는 건드리지 않는다.
         assertThat(dataDir.resolve("thumbs")).doesNotExist();
     }
@@ -70,7 +70,7 @@ class ThumbnailatorThumbnailGeneratorTest {
 
         String thumbRel = generator.makeThumbnail("photos/note-b/2026-07-11/b.jpg");
 
-        BufferedImage thumb = ImageIO.read(siteDir.resolve(thumbRel).toFile());
+        BufferedImage thumb = ImageIO.read(artifactDir.resolve(thumbRel).toFile());
         assertThat(thumb.getWidth()).isEqualTo(THUMB_WIDTH);
     }
 

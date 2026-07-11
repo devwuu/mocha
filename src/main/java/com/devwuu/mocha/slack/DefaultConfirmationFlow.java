@@ -14,7 +14,7 @@ import com.devwuu.mocha.pipeline.NoteEnricher;
 import com.devwuu.mocha.pipeline.NoteExtractor;
 import com.devwuu.mocha.pipeline.NoteMatcher;
 import com.devwuu.mocha.pipeline.PendingReviser;
-import com.devwuu.mocha.render.SiteRenderer;
+import com.devwuu.mocha.render.NoteRenderer;
 import com.devwuu.mocha.repository.NoteRepository;
 import com.devwuu.mocha.repository.PendingStore;
 import com.devwuu.mocha.repository.PhotoBufferStore;
@@ -43,7 +43,7 @@ import java.util.Optional;
  *       {@link NoteMatcher 매칭} → draft 조립(source=user 마킹) → {@link NoteEnricher 보강} → slug 확정 →
  *       {@link PendingStore#put} → {@link PreviewMessenger#publish} → preview_ts 반영 재저장. (tasks T3-6)</li>
  *   <li>{@link #confirmSave} — pending 로드·TTL 판정(V-7) → {@link NoteRepository#upsertEntry}로 커밋 →
- *       pending clear → {@link SiteRenderer#renderAll} 트리거 → 완료 안내(노트 경로). (tasks T3-5)</li>
+ *       pending clear → {@link NoteRenderer#renderAll} 트리거 → 완료 안내(노트 경로). (tasks T3-5)</li>
  *   <li>{@link #revisePending} — pending 수정 반영 배선: {@link PendingReviser#revise}로 draft에 수정 병합 →
  *       {@link PendingStore#put} → {@link PreviewMessenger#publish}로 같은 미리보기 메시지 edit(preview_ts 보존).
  *       엔트리 개수는 불변이다(AC-5). (tasks T3-7)</li>
@@ -73,7 +73,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
 
     private final PendingStore pendingStore;
     private final NoteRepository noteRepository;
-    private final SiteRenderer siteRenderer;
+    private final NoteRenderer noteRenderer;
     private final SlackResponder responder;
     private final NoteExtractor noteExtractor;
     private final NoteMatcher noteMatcher;
@@ -84,14 +84,14 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
     private final PhotoStore photoStore;
     private final PhotoBufferStore photoBufferStore;
     private final Duration bufferWindow;
-    private final String siteDir;
+    private final String artifactDir;
     private final Clock clock;
 
     @Autowired
     public DefaultConfirmationFlow(
             PendingStore pendingStore,
             NoteRepository noteRepository,
-            SiteRenderer siteRenderer,
+            NoteRenderer noteRenderer,
             SlackResponder responder,
             NoteExtractor noteExtractor,
             NoteMatcher noteMatcher,
@@ -102,17 +102,17 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
             PhotoStore photoStore,
             PhotoBufferStore photoBufferStore,
             @Value("${mocha.photo.buffer-window}") Duration bufferWindow,
-            @Value("${mocha.site.dir}") String siteDir) {
-        this(pendingStore, noteRepository, siteRenderer, responder,
+            @Value("${mocha.artifact.dir}") String artifactDir) {
+        this(pendingStore, noteRepository, noteRenderer, responder,
                 noteExtractor, noteMatcher, noteEnricher, pendingReviser, previewMessenger,
-                photoDownloader, photoStore, photoBufferStore, bufferWindow, siteDir, Clock.system(SEOUL));
+                photoDownloader, photoStore, photoBufferStore, bufferWindow, artifactDir, Clock.system(SEOUL));
     }
 
     // 테스트에서 시간을 고정하기 위한 생성자(NoteRepository·PendingStore와 동일 패턴).
     DefaultConfirmationFlow(
             PendingStore pendingStore,
             NoteRepository noteRepository,
-            SiteRenderer siteRenderer,
+            NoteRenderer noteRenderer,
             SlackResponder responder,
             NoteExtractor noteExtractor,
             NoteMatcher noteMatcher,
@@ -123,11 +123,11 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
             PhotoStore photoStore,
             PhotoBufferStore photoBufferStore,
             Duration bufferWindow,
-            String siteDir,
+            String artifactDir,
             Clock clock) {
         this.pendingStore = pendingStore;
         this.noteRepository = noteRepository;
-        this.siteRenderer = siteRenderer;
+        this.noteRenderer = noteRenderer;
         this.responder = responder;
         this.noteExtractor = noteExtractor;
         this.noteMatcher = noteMatcher;
@@ -138,7 +138,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         this.photoStore = photoStore;
         this.photoBufferStore = photoBufferStore;
         this.bufferWindow = bufferWindow;
-        this.siteDir = siteDir;
+        this.artifactDir = artifactDir;
         this.clock = clock;
     }
 
@@ -311,7 +311,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
 
         // 저장은 이미 커밋됨 — 렌더 실패는 데이터 손실이 아니므로 로그만 남기고 계속한다(plan.md §7, ADR-1).
         try {
-            siteRenderer.renderAll();
+            noteRenderer.renderAll();
         } catch (RuntimeException e) {
             log.warn("리렌더 실패(노트는 저장됨, 수동 리렌더로 복구 가능): slug={}", saved.slug(), e);
         }
@@ -445,8 +445,8 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         return entries.get(entries.size() - 1);
     }
 
-    // 사용자가 file://로 열 노트 상세 경로 안내 — 파생물 site/notes/<slug>.html.
+    // 사용자가 file://로 열 노트 상세 경로 안내 — 파생물 artifact/notes/<slug>.html.
     private String notePath(String slug) {
-        return Path.of(siteDir, "notes", slug + ".html").toString();
+        return Path.of(artifactDir, "notes", slug + ".html").toString();
     }
 }

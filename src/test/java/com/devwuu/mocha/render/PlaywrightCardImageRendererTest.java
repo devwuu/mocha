@@ -58,7 +58,7 @@ class PlaywrightCardImageRendererTest {
         @DisplayName("TΔ2: fake 더블이 (html, baseDir, out) 계약을 캡처하고 유효 JPEG 스텁을 쓴다")
         void fakeCapturesBoundaryContract(@TempDir Path work) throws Exception {
             FakeCardImageRenderer fake = new FakeCardImageRenderer();
-            Path baseDir = work.resolve("site");
+            Path baseDir = work.resolve("artifact");
             Path out = baseDir.resolve("cards/ethiopia-yirg/2026-07-11.jpg");
 
             fake.render("<html>entry</html>", baseDir, out);

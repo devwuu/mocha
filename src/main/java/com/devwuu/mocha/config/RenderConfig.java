@@ -1,8 +1,9 @@
 package com.devwuu.mocha.config;
 
-import com.devwuu.mocha.render.SiteRenderer;
+import com.devwuu.mocha.render.CardImageRenderer;
+import com.devwuu.mocha.render.NoteRenderer;
 import com.devwuu.mocha.render.Theme;
-import com.devwuu.mocha.render.ThymeleafSiteRenderer;
+import com.devwuu.mocha.render.ThymeleafNoteRenderer;
 import com.devwuu.mocha.repository.NoteRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -17,8 +18,8 @@ import java.nio.file.Path;
 /**
  * 렌더 계층 빈 배선 (ref: plan.md#ADR-7, tasks T5-1).
  * <p>Thymeleaf를 <b>오프라인 정적 생성기</b>로 쓴다 — starter-web 없이 클래스패스 템플릿을 직접 처리한다.
- * 템플릿은 {@code templates/<theme>/{index,note}.html}에 있고 테마({@code mocha.site.theme})가 폴더를 고른다.
- * <p>{@link ThymeleafSiteRenderer}는 프레임워크 의존이 없는 순수 렌더러라 {@code @Component} 스캔 대신 여기서
+ * 템플릿은 {@code templates/<theme>/{index,note}.html}에 있고 테마({@code mocha.artifact.theme})가 폴더를 고른다.
+ * <p>{@link ThymeleafNoteRenderer}는 프레임워크 의존이 없는 순수 렌더러라 {@code @Component} 스캔 대신 여기서
  * 명시적으로 조립한다(RepositoryConfig·PipelineConfig와 동일 방침).
  */
 @Configuration
@@ -38,16 +39,18 @@ public class RenderConfig {
     }
 
     @Bean
-    public SpringTemplateEngine siteTemplateEngine() {
+    public SpringTemplateEngine noteTemplateEngine() {
         return offlineTemplateEngine();
     }
 
     @Bean
-    public SiteRenderer siteRenderer(
+    public NoteRenderer noteRenderer(
             NoteRepository noteRepository,
-            SpringTemplateEngine siteTemplateEngine,
-            @Value("${mocha.site.dir}") String siteDir,
-            @Value("${mocha.site.theme}") String theme) {
-        return new ThymeleafSiteRenderer(noteRepository, siteTemplateEngine, Path.of(siteDir), Theme.from(theme));
+            SpringTemplateEngine noteTemplateEngine,
+            CardImageRenderer cardImageRenderer,
+            @Value("${mocha.artifact.dir}") String artifactDir,
+            @Value("${mocha.artifact.theme}") String theme) {
+        return new ThymeleafNoteRenderer(
+                noteRepository, noteTemplateEngine, Path.of(artifactDir), Theme.from(theme), cardImageRenderer);
     }
 }

@@ -21,7 +21,7 @@ import com.devwuu.mocha.pipeline.NoteExtractor;
 import com.devwuu.mocha.pipeline.NoteMatcher;
 import com.devwuu.mocha.pipeline.PendingReviser;
 import com.devwuu.mocha.pipeline.RevisionResult;
-import com.devwuu.mocha.render.SiteRenderer;
+import com.devwuu.mocha.render.NoteRenderer;
 import com.devwuu.mocha.repository.JsonFileNoteRepository;
 import com.devwuu.mocha.repository.NoteRepository;
 import com.devwuu.mocha.repository.PendingStore;
@@ -84,12 +84,18 @@ class DefaultConfirmationFlowTest {
     }
 
     /** renderAll 호출 횟수를 캡처하는 fake. */
-    private static final class FakeSiteRenderer implements SiteRenderer {
+    private static final class FakeNoteRenderer implements NoteRenderer {
         int renderCount = 0;
 
         @Override
         public void renderAll() {
             renderCount++;
+        }
+
+        // TΔ5에서 confirmSave가 renderEntryCard로 전환되면 이 fake도 그에 맞춰 개정한다(현재는 컴파일용 스텁).
+        @Override
+        public java.nio.file.Path renderEntryCard(String slug, java.time.LocalDate date) {
+            return java.nio.file.Path.of("cards", slug, date + ".jpg");
         }
     }
 
@@ -233,7 +239,7 @@ class DefaultConfirmationFlowTest {
     private final Clock clock = Clock.fixed(Instant.parse("2026-07-11T02:00:00Z"), SEOUL);
 
     private final FakePendingStore pendingStore = new FakePendingStore();
-    private final FakeSiteRenderer siteRenderer = new FakeSiteRenderer();
+    private final FakeNoteRenderer noteRenderer = new FakeNoteRenderer();
     private final FakeSlackResponder responder = new FakeSlackResponder();
     private final FakeLlmClient llmClient = new FakeLlmClient();
     private final FakeSearchClient searchClient = new FakeSearchClient();
@@ -254,9 +260,9 @@ class DefaultConfirmationFlowTest {
 
     private DefaultConfirmationFlow flow(NoteRepository repo) {
         return new DefaultConfirmationFlow(
-                pendingStore, repo, siteRenderer, responder,
+                pendingStore, repo, noteRenderer, responder,
                 extractor, matcher, enricher, reviser, previewMessenger,
-                photoDownloader, photoStore, photoBufferStore, BUFFER_WINDOW, "./site", clock);
+                photoDownloader, photoStore, photoBufferStore, BUFFER_WINDOW, "./artifact", clock);
     }
 
     private static ExtractionResult extraction(
@@ -463,9 +469,9 @@ class DefaultConfirmationFlowTest {
         assertTrue(dataDir.resolve("notes/coffeevera-yirgacheffe.json").toFile().isFile());
 
         assertEquals(1, pendingStore.clearCount, "커밋 후 pending을 폐기한다");
-        assertEquals(1, siteRenderer.renderCount, "커밋 후 전체 리렌더를 트리거한다");
+        assertEquals(1, noteRenderer.renderCount, "커밋 후 전체 리렌더를 트리거한다");
         assertEquals(1, responder.messages.size());
-        // 완료 안내는 노트 경로(site/notes/<slug>.html)를 담는다.
+        // 완료 안내는 노트 경로(artifact/notes/<slug>.html)를 담는다.
         assertTrue(responder.messages.get(0).contains("coffeevera-yirgacheffe.html"),
                 "완료 안내에 노트 경로가 담겨야 한다: " + responder.messages.get(0));
     }
@@ -480,7 +486,7 @@ class DefaultConfirmationFlowTest {
         flow(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
 
         assertTrue(repo.findAll().isEmpty(), "만료/부재 시 어떤 노트도 저장되지 않는다");
-        assertEquals(0, siteRenderer.renderCount, "커밋이 없으면 리렌더도 없다");
+        assertEquals(0, noteRenderer.renderCount, "커밋이 없으면 리렌더도 없다");
         assertEquals(List.of(DefaultConfirmationFlow.NOTHING_TO_SAVE), responder.messages);
     }
 
@@ -494,7 +500,7 @@ class DefaultConfirmationFlowTest {
 
         assertEquals(1, pendingStore.clearCount, "취소는 pending을 폐기한다");
         assertTrue(repo.findAll().isEmpty(), "취소 시 저장은 일어나지 않는다(AC-4)");
-        assertEquals(0, siteRenderer.renderCount);
+        assertEquals(0, noteRenderer.renderCount);
         assertEquals(List.of(DefaultConfirmationFlow.CANCELED), responder.messages);
     }
 
@@ -507,7 +513,7 @@ class DefaultConfirmationFlowTest {
         flow(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
 
         assertTrue(repo.findAll().isEmpty(), "slug 없는 draft는 저장하지 않는다");
-        assertEquals(0, siteRenderer.renderCount);
+        assertEquals(0, noteRenderer.renderCount);
         assertEquals(0, pendingStore.clearCount, "손상 pending은 커밋 clear 대상이 아니다");
         assertEquals(List.of(DefaultConfirmationFlow.BROKEN_PENDING), responder.messages);
         assertFalse(responder.messages.isEmpty());

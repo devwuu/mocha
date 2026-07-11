@@ -4,9 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>나의 커피 기록 · 모카</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&display=swap" rel="stylesheet">
 <style>
+  /* 로컬 번들 폰트(ADR-11) — CDN 미의존. 로컬 열람 시에도 네트워크 없이 표시. artifact/fonts/는 렌더러가 채운다. */
+  @font-face{font-family:'Gowun Batang';src:url('fonts/GowunBatang-Regular.ttf') format('truetype');font-weight:400;font-display:swap}
+  @font-face{font-family:'Gowun Batang';src:url('fonts/GowunBatang-Bold.ttf') format('truetype');font-weight:700;font-display:swap}
   body{margin:0;background:#efe9e2;font-family:'Gowun Batang',serif}
   a{color:#6f4e37}a:hover{color:#4a3423}
   .wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px;box-sizing:border-box}
@@ -35,7 +36,7 @@
           <div style="flex:1;min-width:0">
             <div style="font-size:15.5px;font-weight:700;color:#3d2e21" th:text="${row.coffeeName}">커피</div>
             <div style="font-size:12px;color:#8a6f57;margin-top:4px"
-                 th:text="(${row.roastery} != null ? ${row.roastery} + ' · ' : '') + (${row.origin} != null ? ${row.origin} + ' · ' : '') + '기록 ' + ${row.recordCount} + '번'">로스터리 · 기록</div>
+                 th:text="(${row.roastery} != null ? ${row.roastery} + ' · ' : '') + (${row.origin} != null ? ${row.origin} : '')">로스터리 · 원산지</div>
           </div>
           <div th:if="${row.rating != null and row.rating.name() == 'PERFECT'}" style="font-size:10.5px;color:#f8f3ea;background:#6f5138;border:1px solid #6f5138;border-radius:999px;padding:3px 10px;flex:none;white-space:nowrap" th:text="${row.rating.label()}">완전 내스타일</div>
           <div th:if="${row.rating != null and row.rating.name() != 'PERFECT'}" style="font-size:10.5px;color:#8a6f57;border:1px solid #c9b59a;border-radius:999px;padding:3px 10px;flex:none;white-space:nowrap" th:text="${row.rating.label()}">맛있다</div>
