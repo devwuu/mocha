@@ -83,29 +83,46 @@ class DefaultConfirmationFlowTest {
         }
     }
 
-    /** renderAll 호출 횟수를 캡처하는 fake. */
+    /** renderAll 호출과 증분 renderEntryCard 호출(slug/date)을 캡처하고, 렌더 실패를 주입하는 fake. */
     private static final class FakeNoteRenderer implements NoteRenderer {
-        int renderCount = 0;
+        int renderAllCount = 0;
+        final List<String> entryCards = new ArrayList<>(); // "slug/date" 캡처
+        RuntimeException renderFailure;
 
         @Override
         public void renderAll() {
-            renderCount++;
+            renderAllCount++;
         }
 
-        // TΔ5에서 confirmSave가 renderEntryCard로 전환되면 이 fake도 그에 맞춰 개정한다(현재는 컴파일용 스텁).
         @Override
-        public java.nio.file.Path renderEntryCard(String slug, java.time.LocalDate date) {
-            return java.nio.file.Path.of("cards", slug, date + ".jpg");
+        public Path renderEntryCard(String slug, LocalDate date) {
+            if (renderFailure != null) {
+                throw renderFailure;
+            }
+            entryCards.add(slug + "/" + date);
+            return Path.of("cards", slug, date + ".jpg");
         }
     }
 
-    /** 전송된 안내 메시지를 캡처하는 fake. */
+    /** 전송된 안내 메시지·배달된 카드 이미지를 캡처하고, 업로드 실패를 주입하는 fake. */
     private static final class FakeSlackResponder implements SlackResponder {
         final List<String> messages = new ArrayList<>();
+        final List<Path> images = new ArrayList<>();
+        final List<String> captions = new ArrayList<>();
+        RuntimeException imageFailure;
 
         @Override
         public void post(String channelId, String text) {
             messages.add(text);
+        }
+
+        @Override
+        public void postImage(String channelId, Path imagePath, String caption) {
+            if (imageFailure != null) {
+                throw imageFailure; // 실 files.uploadV2 실패를 흉내낸다 — confirmSave가 폴백으로 수렴하는지 본다(AC-Δ6)
+            }
+            images.add(imagePath);
+            captions.add(caption);
         }
     }
 
@@ -262,7 +279,7 @@ class DefaultConfirmationFlowTest {
         return new DefaultConfirmationFlow(
                 pendingStore, repo, noteRenderer, responder,
                 extractor, matcher, enricher, reviser, previewMessenger,
-                photoDownloader, photoStore, photoBufferStore, BUFFER_WINDOW, "./artifact", clock);
+                photoDownloader, photoStore, photoBufferStore, BUFFER_WINDOW, clock);
     }
 
     private static ExtractionResult extraction(
@@ -455,8 +472,8 @@ class DefaultConfirmationFlowTest {
     // --- T3-5: [저장]/[취소] 커밋 ---
 
     @Test
-    @DisplayName("[저장]: upsertEntry 커밋 → pending clear → renderAll 트리거 → 완료 안내")
-    void confirmSaveCommitsClearsAndRenders() {
+    @DisplayName("AC-Δ1: [저장] 커밋 → pending clear → 방금 엔트리 카드 증분 렌더 → 카드 JPG 배달(file:// 경로 텍스트 아님)")
+    void confirmSaveCommitsClearsAndDeliversCard() {
         NoteRepository repo = noteRepository();
         pendingStore.setPending(pendingWith("coffeevera-yirgacheffe"));
 
@@ -469,11 +486,44 @@ class DefaultConfirmationFlowTest {
         assertTrue(dataDir.resolve("notes/coffeevera-yirgacheffe.json").toFile().isFile());
 
         assertEquals(1, pendingStore.clearCount, "커밋 후 pending을 폐기한다");
-        assertEquals(1, noteRenderer.renderCount, "커밋 후 전체 리렌더를 트리거한다");
-        assertEquals(1, responder.messages.size());
-        // 완료 안내는 노트 경로(artifact/notes/<slug>.html)를 담는다.
-        assertTrue(responder.messages.get(0).contains("coffeevera-yirgacheffe.html"),
-                "완료 안내에 노트 경로가 담겨야 한다: " + responder.messages.get(0));
+        // AC-Δ7 증분: 방금 그 (slug,date) 엔트리 카드 1장만 굽는다(전체 재래스터화 없음).
+        assertEquals(List.of("coffeevera-yirgacheffe/2026-07-11"), noteRenderer.entryCards,
+                "커밋 후 방금 엔트리 카드만 증분 렌더한다");
+        assertEquals(0, noteRenderer.renderAllCount, "저장 시점은 전체 리렌더를 트리거하지 않는다");
+        // AC-Δ1: 카드 JPG를 파일로 채널에 배달한다 — file:// 경로 텍스트 응답이 아니다.
+        assertEquals(1, responder.images.size(), "방금 엔트리 카드 JPG를 채널에 올린다");
+        assertEquals(Path.of("cards", "coffeevera-yirgacheffe", "2026-07-11.jpg"), responder.images.get(0));
+        assertEquals(List.of(DefaultConfirmationFlow.SAVE_DONE_CAPTION), responder.captions);
+        assertTrue(responder.messages.isEmpty(), "정상 배달이면 폴백 텍스트가 없다");
+    }
+
+    @Test
+    @DisplayName("AC-Δ6: 카드 렌더 실패 → 노트 JSON 저장은 유지되고 안내 텍스트로 폴백한다")
+    void confirmSaveKeepsCommitWhenRenderFails() {
+        NoteRepository repo = noteRepository();
+        pendingStore.setPending(pendingWith("coffeevera-yirgacheffe"));
+        noteRenderer.renderFailure = new IllegalStateException("Chromium 미기동");
+
+        flow(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
+
+        assertTrue(repo.findBySlug("coffeevera-yirgacheffe").isPresent(), "렌더 실패해도 저장은 유지된다(AC-18)");
+        assertEquals(1, pendingStore.clearCount, "커밋은 완료됐다");
+        assertTrue(responder.images.isEmpty(), "카드는 배달되지 못했다");
+        assertEquals(List.of(DefaultConfirmationFlow.SAVE_DONE_NO_IMAGE), responder.messages, "안내 텍스트로 폴백한다");
+    }
+
+    @Test
+    @DisplayName("AC-Δ6: 카드 전송(files.upload) 실패 → 저장은 유지되고 안내 텍스트로 폴백한다")
+    void confirmSaveKeepsCommitWhenUploadFails() {
+        NoteRepository repo = noteRepository();
+        pendingStore.setPending(pendingWith("coffeevera-yirgacheffe"));
+        responder.imageFailure = new IllegalStateException("files.upload 실패");
+
+        flow(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
+
+        assertTrue(repo.findBySlug("coffeevera-yirgacheffe").isPresent(), "업로드 실패해도 저장은 유지된다(AC-18)");
+        assertEquals(1, noteRenderer.entryCards.size(), "카드는 렌더됐다(전송에서 실패)");
+        assertEquals(List.of(DefaultConfirmationFlow.SAVE_DONE_NO_IMAGE), responder.messages, "안내 텍스트로 폴백한다");
     }
 
     @Test
@@ -486,7 +536,8 @@ class DefaultConfirmationFlowTest {
         flow(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
 
         assertTrue(repo.findAll().isEmpty(), "만료/부재 시 어떤 노트도 저장되지 않는다");
-        assertEquals(0, noteRenderer.renderCount, "커밋이 없으면 리렌더도 없다");
+        assertTrue(noteRenderer.entryCards.isEmpty(), "커밋이 없으면 카드 렌더·배달도 없다");
+        assertTrue(responder.images.isEmpty());
         assertEquals(List.of(DefaultConfirmationFlow.NOTHING_TO_SAVE), responder.messages);
     }
 
@@ -500,7 +551,7 @@ class DefaultConfirmationFlowTest {
 
         assertEquals(1, pendingStore.clearCount, "취소는 pending을 폐기한다");
         assertTrue(repo.findAll().isEmpty(), "취소 시 저장은 일어나지 않는다(AC-4)");
-        assertEquals(0, noteRenderer.renderCount);
+        assertTrue(noteRenderer.entryCards.isEmpty());
         assertEquals(List.of(DefaultConfirmationFlow.CANCELED), responder.messages);
     }
 
@@ -513,7 +564,7 @@ class DefaultConfirmationFlowTest {
         flow(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
 
         assertTrue(repo.findAll().isEmpty(), "slug 없는 draft는 저장하지 않는다");
-        assertEquals(0, noteRenderer.renderCount);
+        assertTrue(noteRenderer.entryCards.isEmpty());
         assertEquals(0, pendingStore.clearCount, "손상 pending은 커밋 clear 대상이 아니다");
         assertEquals(List.of(DefaultConfirmationFlow.BROKEN_PENDING), responder.messages);
         assertFalse(responder.messages.isEmpty());

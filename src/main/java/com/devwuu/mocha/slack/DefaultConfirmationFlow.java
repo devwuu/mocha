@@ -43,7 +43,8 @@ import java.util.Optional;
  *       {@link NoteMatcher 매칭} → draft 조립(source=user 마킹) → {@link NoteEnricher 보강} → slug 확정 →
  *       {@link PendingStore#put} → {@link PreviewMessenger#publish} → preview_ts 반영 재저장. (tasks T3-6)</li>
  *   <li>{@link #confirmSave} — pending 로드·TTL 판정(V-7) → {@link NoteRepository#upsertEntry}로 커밋 →
- *       pending clear → {@link NoteRenderer#renderAll} 트리거 → 완료 안내(노트 경로). (tasks T3-5)</li>
+ *       pending clear → {@link NoteRenderer#renderEntryCard 방금 엔트리 카드 증분 렌더} →
+ *       {@link SlackResponder#postImage 카드 JPG 배달}(실패 시 텍스트 폴백, AC-18). (tasks T3-5 / changes/0002 TΔ5)</li>
  *   <li>{@link #revisePending} — pending 수정 반영 배선: {@link PendingReviser#revise}로 draft에 수정 병합 →
  *       {@link PendingStore#put} → {@link PreviewMessenger#publish}로 같은 미리보기 메시지 edit(preview_ts 보존).
  *       엔트리 개수는 불변이다(AC-5). (tasks T3-7)</li>
@@ -63,7 +64,8 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
     private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
 
     // --- 멘트(모카 톤) 상수 — 구현 디테일, spec 결정 아님. PreviewBlocks와 같은 강아지 말투("멍" + 🐾). ---
-    static final String SAVE_DONE_FMT = "저장했어요 멍! 🐾\n노트는 여기 있어요: `%s`"; // 저장했어요 멍! 🐾 …
+    static final String SAVE_DONE_CAPTION = "저장했어요 멍! 🐾"; // 배달하는 카드 JPG의 캡션(AC-Δ1)
+    static final String SAVE_DONE_NO_IMAGE = "저장했어요 멍! 카드 이미지는 잠시 뒤에 다시 만들어 볼게요 🐾"; // 카드 렌더/전송 실패 폴백(AC-18)
     static final String NOTHING_TO_SAVE = "저장할 기록을 못 찾았어요 멍… 만료됐거나 이미 처리됐나 봐요 🐾"; // 만료/부재 안내(V-7)
     static final String CANCELED = "이번 기록은 지웠어요 멍! 다음에 또 마시면 불러주세요 🐾"; // 취소 안내
     static final String BROKEN_PENDING = "기록이 뭔가 이상해요 멍… 다시 보내주시겠어요? 🐾"; // 방어(엔트리/슬러그 결손)
@@ -84,7 +86,6 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
     private final PhotoStore photoStore;
     private final PhotoBufferStore photoBufferStore;
     private final Duration bufferWindow;
-    private final String artifactDir;
     private final Clock clock;
 
     @Autowired
@@ -101,11 +102,10 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
             PhotoDownloader photoDownloader,
             PhotoStore photoStore,
             PhotoBufferStore photoBufferStore,
-            @Value("${mocha.photo.buffer-window}") Duration bufferWindow,
-            @Value("${mocha.artifact.dir}") String artifactDir) {
+            @Value("${mocha.photo.buffer-window}") Duration bufferWindow) {
         this(pendingStore, noteRepository, noteRenderer, responder,
                 noteExtractor, noteMatcher, noteEnricher, pendingReviser, previewMessenger,
-                photoDownloader, photoStore, photoBufferStore, bufferWindow, artifactDir, Clock.system(SEOUL));
+                photoDownloader, photoStore, photoBufferStore, bufferWindow, Clock.system(SEOUL));
     }
 
     // 테스트에서 시간을 고정하기 위한 생성자(NoteRepository·PendingStore와 동일 패턴).
@@ -123,7 +123,6 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
             PhotoStore photoStore,
             PhotoBufferStore photoBufferStore,
             Duration bufferWindow,
-            String artifactDir,
             Clock clock) {
         this.pendingStore = pendingStore;
         this.noteRepository = noteRepository;
@@ -138,7 +137,6 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         this.photoStore = photoStore;
         this.photoBufferStore = photoBufferStore;
         this.bufferWindow = bufferWindow;
-        this.artifactDir = artifactDir;
         this.clock = clock;
     }
 
@@ -309,14 +307,17 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         log.info("[저장] 커밋 완료: slug={} entries={} photos={}",
                 saved.slug(), saved.entries().size(), committedPhotos.size());
 
-        // 저장은 이미 커밋됨 — 렌더 실패는 데이터 손실이 아니므로 로그만 남기고 계속한다(plan.md §7, ADR-1).
+        // 저장은 이미 커밋됨 — 카드 렌더·전송 실패는 데이터 손실이 아니다. 실패해도 저장은 유지하고 안내 텍스트로 폴백한다.
+        // POLICY: 저장 시점 렌더는 증분 — 방금 그 (slug,date) 엔트리 카드 1장만 굽는다(전체 재래스터화는 --rerender)
+        //         (ref: plan.md#ADR-10, AC-Δ7).
+        // POLICY: 카드 이미지 생성·전송 실패는 저장을 되돌리지 않는다 — 안내 텍스트로 폴백 (ref: plan.md §7, AC-18).
         try {
-            noteRenderer.renderAll();
+            Path card = noteRenderer.renderEntryCard(slug, committedEntry.date());
+            responder.postImage(action.channelId(), card, SAVE_DONE_CAPTION);
         } catch (RuntimeException e) {
-            log.warn("리렌더 실패(노트는 저장됨, 수동 리렌더로 복구 가능): slug={}", saved.slug(), e);
+            log.warn("카드 배달 실패(노트는 저장됨, --rerender로 복구 가능): slug={} date={}", saved.slug(), date, e);
+            responder.post(action.channelId(), SAVE_DONE_NO_IMAGE);
         }
-
-        responder.post(action.channelId(), String.format(SAVE_DONE_FMT, notePath(saved.slug())));
     }
 
     @Override
@@ -443,10 +444,5 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
             return null;
         }
         return entries.get(entries.size() - 1);
-    }
-
-    // 사용자가 file://로 열 노트 상세 경로 안내 — 파생물 artifact/notes/<slug>.html.
-    private String notePath(String slug) {
-        return Path.of(artifactDir, "notes", slug + ".html").toString();
     }
 }
