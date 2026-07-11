@@ -3,8 +3,10 @@ package com.devwuu.mocha.config;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.repository.JsonFileNoteRepository;
 import com.devwuu.mocha.repository.JsonFilePendingStore;
+import com.devwuu.mocha.repository.LocalPhotoStore;
 import com.devwuu.mocha.repository.NoteRepository;
 import com.devwuu.mocha.repository.PendingStore;
+import com.devwuu.mocha.repository.PhotoStore;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -30,5 +32,10 @@ public class RepositoryConfig {
             @Value("${mocha.data.dir}") String dataDir,
             @Value("${mocha.pending.ttl}") Duration ttl) {
         return new JsonFilePendingStore(Path.of(dataDir), MochaObjectMapper.create(), ttl);
+    }
+
+    @Bean
+    public PhotoStore photoStore(@Value("${mocha.data.dir}") String dataDir) {
+        return new LocalPhotoStore(Path.of(dataDir));
     }
 }
