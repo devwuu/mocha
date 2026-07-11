@@ -132,6 +132,53 @@ class ThymeleafSiteRendererTest {
     }
 
     @Test
+    @DisplayName("T5-4/FR-8: 인덱스가 노트 N건→카드 N개, 대표 썸네일·기록 수·노트 상대 링크를 표시한다")
+    void indexRendersThumbnailCards(@TempDir Path dataDir, @TempDir Path siteDir) {
+        NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create());
+        OffsetDateTime now = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
+
+        NoteMeta metaA = new NoteMeta(
+                "예가체프 G1 워시드",
+                Sourced.user("커피베라"), Sourced.search("에티오피아"),
+                null, null, Sourced.search(List.of()), List.of());
+        // 노트 A: 단일 엔트리 + 사진 1장 → 대표 썸네일은 그 사진.
+        repo.upsertEntry("2026-07-10", metaA,
+                new Entry(LocalDate.parse("2026-07-10"), "새콤하다.", Rating.GOOD,
+                        List.of("photos/2026-07-10/2026-07-10/a.jpg"), now));
+
+        NoteMeta metaB = new NoteMeta(
+                "콜롬비아 게이샤 워시드",
+                Sourced.user("프릳츠"), Sourced.search("콜롬비아"),
+                null, null, Sourced.search(List.of()), List.of());
+        // 노트 B: 이전 엔트리에만 사진이 있고 최근 엔트리는 무사진 → 대표 썸네일은 이전 엔트리 사진으로 폴백(FR-8).
+        repo.upsertEntry("2026-07-04", metaB,
+                new Entry(LocalDate.parse("2026-07-04"), "첫날.", Rating.GOOD,
+                        List.of("photos/2026-07-04/2026-07-04/b.jpg"), now));
+        repo.upsertEntry("2026-07-04", metaB,
+                new Entry(LocalDate.parse("2026-07-05"), "둘째 날.", Rating.PERFECT, List.of(), now));
+
+        new ThymeleafSiteRenderer(repo, engine, siteDir, Theme.TYPE_B).renderAll();
+        String indexHtml = read(siteDir.resolve("index.html"));
+
+        // 노트 2건 → 카드 2개.
+        assertEquals(2, countOccurrences(indexHtml, "class=\"row\""), "노트 N건 → 카드 N개");
+
+        // 대표 썸네일: A는 자기 사진, B는 최근 엔트리 무사진이므로 이전 엔트리 사진으로 폴백(썸네일 상대 경로).
+        assertTrue(indexHtml.contains("thumbs/2026-07-10/2026-07-10/a.jpg"), "노트 A 대표 썸네일");
+        assertTrue(indexHtml.contains("thumbs/2026-07-04/2026-07-04/b.jpg"), "노트 B 대표 썸네일 폴백");
+
+        // 기록 수 표시(A=1번, B=2번).
+        assertTrue(indexHtml.contains("기록 1번"), "노트 A 기록 수");
+        assertTrue(indexHtml.contains("기록 2번"), "노트 B 기록 수");
+
+        // 각 카드 → 노트 상대 링크(AC-11).
+        assertTrue(indexHtml.contains("href=\"notes/2026-07-10.html\""), "노트 A 상대 링크");
+        assertTrue(indexHtml.contains("href=\"notes/2026-07-04.html\""), "노트 B 상대 링크");
+        assertFalse(indexHtml.contains("file:"), "file:// 없음");
+        assertFalse(indexHtml.contains(siteDir.toString()), "절대 경로 유출 없음");
+    }
+
+    @Test
     @DisplayName("AC-6: site/ 삭제 후 재렌더하면 동일 산출이 복원된다")
     void reRenderIsReproducible(@TempDir Path dataDir, @TempDir Path siteDir) {
         NoteRepository repo = seedRepository(dataDir);
@@ -163,6 +210,14 @@ class ThymeleafSiteRendererTest {
         // 공통: 두 테마 모두 2단(로스터리가 말하길 / 내가 느끼길)을 표시한다(FR-7).
         assertTrue(serifNote.contains("로스터리가 말하길") && serifNote.contains("내가 느끼길"), "세리프 2단");
         assertTrue(cuteNote.contains("로스터리가 말하길") && cuteNote.contains("내가 느끼길"), "귀여운 2단");
+    }
+
+    private static int countOccurrences(String haystack, String needle) {
+        int count = 0;
+        for (int i = haystack.indexOf(needle); i >= 0; i = haystack.indexOf(needle, i + needle.length())) {
+            count++;
+        }
+        return count;
     }
 
     private static String read(Path p) {

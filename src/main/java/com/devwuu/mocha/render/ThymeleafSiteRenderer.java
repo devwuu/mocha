@@ -92,7 +92,9 @@ public class ThymeleafSiteRenderer implements SiteRenderer {
 
     private SiteView.Row toRow(Note note) {
         Entry latest = latestEntry(note);
-        String thumb = firstThumb(latest, THUMBS_PREFIX); // 인덱스는 site/ 기준 → thumbs/…
+        // 대표 썸네일(FR-8): 카드의 요약 값(날짜·rating)은 최근 엔트리를 쓰되, 대표 사진은 최근 엔트리부터
+        // 거슬러 첫 사진을 고른다 — 최근 기록에 사진이 없어도 노트에 사진이 있으면 카드에 대표 이미지가 뜬다.
+        String thumb = representativeThumb(note, THUMBS_PREFIX); // 인덱스는 site/ 기준 → thumbs/…
         return new SiteView.Row(
                 "notes/" + note.slug() + ".html",
                 note.coffeeName(),
@@ -149,6 +151,21 @@ public class ThymeleafSiteRenderer implements SiteRenderer {
 
     private String render(String templateName, Context ctx) {
         return templateEngine.process(theme.id() + "/" + templateName, ctx);
+    }
+
+    // 노트의 대표 썸네일 — 최근 엔트리부터 거슬러 첫 사진을 고른다(FR-8). 어느 엔트리에도 사진이 없으면 null.
+    private static String representativeThumb(Note note, String prefix) {
+        List<Entry> entries = note.entries();
+        if (entries == null) {
+            return null;
+        }
+        for (int i = entries.size() - 1; i >= 0; i--) {
+            String thumb = firstThumb(entries.get(i), prefix);
+            if (thumb != null) {
+                return thumb;
+            }
+        }
+        return null;
     }
 
     // photos[0]을 썸네일 상대 경로로. photos/<slug>/<date>/name → <prefix><slug>/<date>/name. 없으면 null.
