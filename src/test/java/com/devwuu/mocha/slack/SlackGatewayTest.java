@@ -1,9 +1,16 @@
 package com.devwuu.mocha.slack;
 
+import com.slack.api.app_backend.events.payload.EventsApiPayload;
+import com.slack.api.app_backend.events.payload.MessageFileSharePayload;
+import com.slack.api.app_backend.events.payload.MessagePayload;
 import com.slack.api.app_backend.interactive_components.payload.BlockActionPayload;
 import com.slack.api.bolt.App;
+import com.slack.api.bolt.context.builtin.ActionContext;
 import com.slack.api.bolt.context.builtin.EventContext;
 import com.slack.api.bolt.handler.BoltEventHandler;
+import com.slack.api.bolt.handler.builtin.BlockActionHandler;
+import com.slack.api.bolt.request.RequestHeaders;
+import com.slack.api.bolt.request.builtin.BlockActionRequest;
 import com.slack.api.bolt.response.Response;
 import com.slack.api.bolt.util.EventsApiPayloadParser;
 import com.slack.api.model.File;
@@ -11,6 +18,7 @@ import com.slack.api.model.event.Event;
 import com.slack.api.model.event.MessageChangedEvent;
 import com.slack.api.model.event.MessageEvent;
 import com.slack.api.model.event.MessageFileShareEvent;
+import com.slack.api.util.json.GsonFactory;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -18,6 +26,8 @@ import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executor;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -48,6 +58,45 @@ class SlackGatewayTest {
         @Override
         public void onMedia(IncomingMedia media) {
             this.media.add(media);
+        }
+    }
+
+    /** 넘겨받은 태스크를 실행하지 않고 캡처만 하는 실행기 — ack가 처리 완료를 기다리지 않음을 단언하기 위함(ADR-19). */
+    private static final class RecordingExecutor implements Executor {
+        final List<Runnable> tasks = new ArrayList<>();
+
+        @Override
+        public void execute(Runnable command) {
+            tasks.add(command);
+        }
+
+        void runAll() {
+            for (Runnable r : new ArrayList<>(tasks)) {
+                r.run();
+            }
+        }
+    }
+
+    /** 첫 위임에서 한 번 예외를 던지고 이후엔 정상 기록하는 라우터 — 백그라운드 예외 내성 검증용(AC-Δ6). */
+    private static final class FlakyRouter implements ConversationRouter {
+        final List<IncomingMessage> messages = new ArrayList<>();
+        boolean throwNext = true;
+
+        @Override
+        public void onMessage(IncomingMessage message) {
+            if (throwNext) {
+                throwNext = false;
+                throw new RuntimeException("의도적 실패 — dispatch가 삼켜야 한다");
+            }
+            messages.add(message);
+        }
+
+        @Override
+        public void onAction(IncomingAction action) {
+        }
+
+        @Override
+        public void onMedia(IncomingMedia media) {
         }
     }
 
@@ -269,6 +318,139 @@ class SlackGatewayTest {
         } catch (ReflectiveOperationException e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    // buildApp의 이벤트 핸들러를 네트워크 없이 직접 호출한다 — 실제 Bolt 등록 map에서 꺼내 payload를 먹인다.
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static Response invokeEvent(App app, Class<? extends Event> eventClass,
+                                        EventsApiPayload<?> payload) throws Exception {
+        String key = EventsApiPayloadParser.getEventTypeAndSubtype(eventClass);
+        Map<String, List<BoltEventHandler<Event>>> handlers =
+                (Map<String, List<BoltEventHandler<Event>>>) readField(app, "eventHandlers");
+        BoltEventHandler handler = handlers.get(key).get(0);
+        return handler.apply(payload, new EventContext());
+    }
+
+    // buildApp의 blockAction 핸들러를 직접 호출한다 — payload를 snake_case JSON으로 왕복시켜 실제 Request로 재구성.
+    @SuppressWarnings("unchecked")
+    private static Response invokeBlockAction(App app, BlockActionPayload payload) throws Exception {
+        String json = GsonFactory.createSnakeCase().toJson(payload);
+        BlockActionRequest req = new BlockActionRequest(json, json, new RequestHeaders(Map.of()));
+        Map<Pattern, BlockActionHandler> handlers =
+                (Map<Pattern, BlockActionHandler>) readField(app, "blockActionHandlers");
+        BlockActionHandler handler = handlers.values().iterator().next();
+        return handler.apply(req, new ActionContext());
+    }
+
+    private static MessagePayload messagePayload(String text) {
+        MessageEvent event = new MessageEvent();
+        event.setUser("U1");
+        event.setChannel("C1");
+        event.setText(text);
+        event.setTs("1720000000.000100");
+        MessagePayload payload = new MessagePayload();
+        payload.setEvent(event);
+        return payload;
+    }
+
+    private static SlackGateway wiredGateway(ConversationRouter router, Executor executor) {
+        // buildApp은 AppConfig에 봇 토큰을 요구한다 — 네트워크 없이 배선만 검증하므로 더미 토큰이면 충분.
+        SlackGateway gateway = new SlackGateway(router, null, "xoxb-test", "xapp-test");
+        gateway.seedExecutor(executor);
+        return gateway;
+    }
+
+    @Test
+    @DisplayName("AC-Δ1: 메시지 핸들러는 handle*를 실행기로 넘기고 즉시 ack — 라우터 위임은 태스크 실행 뒤에")
+    void messageHandlerOffloadsThenAcks() throws Exception {
+        CapturingRouter router = new CapturingRouter();
+        RecordingExecutor executor = new RecordingExecutor();
+        App app = wiredGateway(router, executor).buildApp();
+
+        Response ack = invokeEvent(app, MessageEvent.class, messagePayload("예가체프 새콤"));
+
+        assertEquals(Integer.valueOf(200), ack.getStatusCode(), "즉시 ack(200)를 반환한다");
+        assertTrue(router.messages.isEmpty(), "ack 시점엔 아직 라우터에 위임되지 않는다(백그라운드로 오프로드)");
+        assertEquals(1, executor.tasks.size(), "무거운 처리는 실행기 태스크로 넘어간다");
+
+        executor.runAll();
+        assertEquals(1, router.messages.size(), "태스크 실행 시 handle*가 라우터에 위임한다");
+        assertEquals("예가체프 새콤", router.messages.get(0).text());
+    }
+
+    @Test
+    @DisplayName("AC-Δ1: 파일 공유 핸들러도 실행기로 오프로드하고 즉시 ack한다")
+    void fileShareHandlerOffloadsThenAcks() throws Exception {
+        CapturingRouter router = new CapturingRouter();
+        RecordingExecutor executor = new RecordingExecutor();
+        App app = wiredGateway(router, executor).buildApp();
+
+        MessageFileShareEvent event = new MessageFileShareEvent();
+        event.setUser("U1");
+        event.setChannel("C1");
+        event.setTs("1720000000.000400");
+        event.setFiles(List.of(imageFile("a.jpg", "https://slack/a", "image/jpeg")));
+        MessageFileSharePayload payload = new MessageFileSharePayload();
+        payload.setEvent(event);
+
+        Response ack = invokeEvent(app, MessageFileShareEvent.class, payload);
+
+        assertEquals(Integer.valueOf(200), ack.getStatusCode(), "즉시 ack(200)를 반환한다");
+        assertTrue(router.media.isEmpty(), "ack 시점엔 아직 위임되지 않는다");
+        assertEquals(1, executor.tasks.size());
+
+        executor.runAll();
+        assertEquals(1, router.media.size(), "태스크 실행 시 사진이 위임된다");
+    }
+
+    @Test
+    @DisplayName("AC-Δ2: [저장] 등 blockAction도 실행기로 오프로드하고 즉시 ack한다 — 버튼 경고 원인 제거")
+    void blockActionOffloadsThenAcks() throws Exception {
+        CapturingRouter router = new CapturingRouter();
+        RecordingExecutor executor = new RecordingExecutor();
+        App app = wiredGateway(router, executor).buildApp();
+
+        BlockActionPayload payload = new BlockActionPayload();
+        BlockActionPayload.User user = new BlockActionPayload.User();
+        user.setId("U1");
+        payload.setUser(user);
+        BlockActionPayload.Channel channel = new BlockActionPayload.Channel();
+        channel.setId("C1");
+        payload.setChannel(channel);
+        BlockActionPayload.Container container = new BlockActionPayload.Container();
+        container.setMessageTs("1720000000.000999");
+        payload.setContainer(container);
+        BlockActionPayload.Action action = new BlockActionPayload.Action();
+        action.setActionId("save");
+        action.setValue("coffeevera-yirgacheffe-g1");
+        payload.setActions(List.of(action));
+
+        Response ack = invokeBlockAction(app, payload);
+
+        assertEquals(Integer.valueOf(200), ack.getStatusCode(), "즉시 ack(200)를 반환한다");
+        assertTrue(router.actions.isEmpty(), "ack 시점엔 아직 위임되지 않는다(렌더/업로드는 백그라운드)");
+        assertEquals(1, executor.tasks.size());
+
+        executor.runAll();
+        assertEquals(1, router.actions.size(), "태스크 실행 시 액션이 위임된다");
+        assertEquals("save", router.actions.get(0).actionId());
+    }
+
+    @Test
+    @DisplayName("AC-Δ6: 백그라운드 태스크 예외는 로그로 수렴하고 실행기·후속 처리를 죽이지 않는다")
+    void backgroundExceptionDoesNotKillExecutor() throws Exception {
+        FlakyRouter router = new FlakyRouter();
+        App app = wiredGateway(router, Runnable::run).buildApp(); // direct 실행기 — 태스크가 즉시 인라인 실행
+
+        // 첫 태스크에서 라우터가 던져도 dispatch가 Throwable을 삼켜 apply는 정상 ack 반환.
+        Response first = invokeEvent(app, MessageEvent.class, messagePayload("첫째"));
+        assertEquals(Integer.valueOf(200), first.getStatusCode(), "예외가 나도 즉시 ack(200)");
+
+        // 실행기 스레드가 살아 후속 메시지가 계속 처리된다.
+        Response second = invokeEvent(app, MessageEvent.class, messagePayload("둘째"));
+        assertEquals(Integer.valueOf(200), second.getStatusCode());
+        assertEquals(1, router.messages.size(), "둘째 메시지는 정상 위임된다(실행기 생존)");
+        assertEquals("둘째", router.messages.get(0).text());
     }
 
     @Test

@@ -20,6 +20,10 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
 /**
@@ -50,6 +54,11 @@ public class SlackGateway implements SmartLifecycle {
     private volatile String botUserId;
     private SocketModeApp socketModeApp;
 
+    // ADR-19: 무거운 handle* 처리를 넘길 실행기 — 핸들러 스레드는 즉시 ack하고 여기서 순차 백그라운드 처리한다.
+    // start()가 단일 스레드 ExecutorService로 채우고 stop()에서 shutdown한다. 종전 단일 워커의 순차 처리 의미(pending·버퍼 순서)를 보존.
+    // volatile: start()에서 대입한 값을 Bolt 수신 스레드가 확실히 보게 한다(botUserId/running과 동일한 교차 스레드 가시성 관례).
+    private volatile Executor executor;
+
     public SlackGateway(
             ConversationRouter router,
             MethodsClient methods,
@@ -59,6 +68,12 @@ public class SlackGateway implements SmartLifecycle {
         this.methods = methods;
         this.botToken = botToken;
         this.appToken = appToken;
+    }
+
+    // 테스트 seam(패키지-프라이빗): same-thread(direct) 실행기를 주입해 ack/dispatch 배선을 네트워크·스레드 없이
+    // 결정론적으로 검증한다. 주입되면 start()는 실행기를 새로 만들지 않는다(ADR-19).
+    void seedExecutor(Executor executor) {
+        this.executor = executor;
     }
 
     // --- 파싱 + 위임 (얇은 수신 계층의 본체, 네트워크 없이 단위 테스트 대상) ---
@@ -72,6 +87,11 @@ public class SlackGateway implements SmartLifecycle {
      * ({@code MessageEvent.class})에는 도달하지 않는다 — 사진(file_share)은 {@link #handleFileShareEvent}가 받는다.
      */
     void handleMessageEvent(MessageEvent event) {
+        // DIAG(0007): 재질문이 "같은 메시지 재전송"인지 확인용 임시 로그 — 동일 ts가 두 번 찍히면 Slack 재전송이다.
+        // 원인 확정 후 제거. (ref: changes/0007 실사용 검증)
+        log.info("DIAG message: user={} ts={} botId={} textLen={}",
+                event.getUser(), event.getTs(), event.getBotId(),
+                event.getText() != null ? event.getText().length() : 0);
         // 봇 자신·다른 봇이 보낸 메시지는 무시 — 미리보기 응답을 다시 입력으로 먹는 에코 루프 방지.
         if (event.getBotId() != null) {
             return;
@@ -107,7 +127,13 @@ public class SlackGateway implements SmartLifecycle {
         // POLICY: 봇 자신이 유발한 file_share는 라우터에 위임하지 않는다 — 카드 배달 에코 루프 차단 (ADR-17, FR-1).
         // MessageFileShareEvent에는 bot_id 필드가 없어(SDK 실측) getBotId 무시를 복사할 수 없다 — 봇 user ID 비교가 유일한 신뢰 경로.
         // (ref: specs/coffee-note-agent/changes/0007-bot-echo-and-intent-gate/delta.md#ADR-17, AC-Δ1)
-        if (botUserId != null && botUserId.equals(event.getUser())) {
+        // DIAG(0007): 봇 필터가 실제 이벤트를 못 거르는 원인 규명용 임시 로그 — user vs botUserId 및 보조 플래그.
+        // 원인 확정 후 제거한다. (ref: changes/0007 실사용 검증)
+        boolean selfFiltered = botUserId != null && botUserId.equals(event.getUser());
+        log.info("DIAG file_share: user={} botUserId={} upload={} displayAsBot={} hasText={} selfFiltered={}",
+                event.getUser(), botUserId, event.getUpload(), event.getDisplayAsBot(),
+                event.getText() != null && !event.getText().isBlank(), selfFiltered);
+        if (selfFiltered) {
             return;
         }
         List<IncomingPhoto> photos = imagePhotos(event.getFiles());
@@ -148,6 +174,15 @@ public class SlackGateway implements SmartLifecycle {
             return;
         }
         try {
+            // ADR-19: ack와 처리를 분리할 단일 스레드 실행기를 준비한다(테스트가 seedExecutor로 주입했으면 그대로 사용).
+            // 명명·데몬 스레드로 두어 로그 추적을 돕고 JVM 종료를 막지 않는다.
+            if (executor == null) {
+                executor = Executors.newSingleThreadExecutor(r -> {
+                    Thread t = new Thread(r, "mocha-slack-worker");
+                    t.setDaemon(true);
+                    return t;
+                });
+            }
             // 봇 자신의 user ID를 확보해 file_share 에코 필터의 기준으로 둔다(ADR-17). auth.test 실패는 소켓 시작
             // 실패로 취급한다 — bot token이 불량이면 어차피 송신(카드 배달)도 불가하므로 조용히 넘기지 않는다.
             AuthTestResponse auth = methods.authTest(r -> r);
@@ -156,6 +191,8 @@ public class SlackGateway implements SmartLifecycle {
                         + (auth != null ? auth.getError() : "null 응답"));
             }
             botUserId = auth.getUserId();
+            // DIAG(0007): 확보된 봇 user ID 확인용 임시 로그 — file_share의 event.user와 대조. 원인 확정 후 제거.
+            log.info("DIAG auth.test: botUserId={} botId={}", botUserId, auth.getBotId());
             // 기본 Tyrus 백엔드는 javax.websocket 구현을 요구 → 단일 jar인 JavaWebSocket 백엔드로 구동(build.gradle).
             socketModeApp = new SocketModeApp(appToken, SocketModeClient.Backend.JavaWebSocket, buildApp());
             socketModeApp.startAsync(); // 논블로킹 — 단절 시 SDK가 자동 재연결(plan.md §7)
@@ -176,6 +213,18 @@ public class SlackGateway implements SmartLifecycle {
                 log.warn("Slack Socket Mode 종료 중 오류", e);
             }
         }
+        // ADR-19: 백그라운드 실행기 정리 — 진행 중 태스크를 잠시 기다린 뒤 강제 종료한다. 주입된 direct 실행기는 대상 아님.
+        if (executor instanceof ExecutorService worker) {
+            worker.shutdown();
+            try {
+                if (!worker.awaitTermination(5, TimeUnit.SECONDS)) {
+                    worker.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                worker.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
+        }
         running = false;
     }
 
@@ -184,20 +233,33 @@ public class SlackGateway implements SmartLifecycle {
         return running;
     }
 
-    // Bolt App에 핸들러를 배선한다. 각 핸들러는 파싱을 handle*로 위임하고 즉시 ack로 응답한다.
+    // POLICY: Slack 핸들러는 3초 내 ack, 무거운 처리(파이프라인·렌더·업로드)는 단일 스레드 백그라운드로 —
+    // 핸들러 스레드 동기 실행 금지(ack 타임아웃 재전송 차단) (ref: plan.md#ADR-19).
+    // 백그라운드 태스크의 Throwable은 로그로 삼켜 실행기 스레드 생존을 보장한다(AC-Δ6) — 실패 처리는 각 handle* 내부에 그대로 남는다.
+    private void dispatch(Runnable task) {
+        executor.execute(() -> {
+            try {
+                task.run();
+            } catch (Throwable t) {
+                log.error("Slack 이벤트 백그라운드 처리 실패 — 실행기 스레드는 유지된다.", t);
+            }
+        });
+    }
+
+    // Bolt App에 핸들러를 배선한다. 각 핸들러는 무거운 파싱·처리를 실행기로 넘기고(ADR-19) 즉시 ack로 응답한다.
     // (package-private: 네트워크 없이 핸들러 배선을 단위 테스트로 검증하기 위함)
     App buildApp() {
         App app = new App(AppConfig.builder().singleTeamBotToken(botToken).build());
         app.event(MessageEvent.class, (payload, ctx) -> {
-            handleMessageEvent(payload.getEvent());
+            dispatch(() -> handleMessageEvent(payload.getEvent()));
             return ctx.ack();
         });
         app.event(MessageFileShareEvent.class, (payload, ctx) -> {
-            handleFileShareEvent(payload.getEvent());
+            dispatch(() -> handleFileShareEvent(payload.getEvent()));
             return ctx.ack();
         });
         app.blockAction(ALL_ACTIONS, (req, ctx) -> {
-            handleBlockAction(req.getPayload());
+            dispatch(() -> handleBlockAction(req.getPayload()));
             return ctx.ack();
         });
         // POLICY: 봇 활동(미리보기 갱신 chat.update 등)이 되돌려보내는 message_changed subtype 이벤트는
