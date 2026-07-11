@@ -9,6 +9,7 @@ import com.openai.models.responses.ResponseCreateParams;
 import com.openai.models.responses.ResponseFormatTextJsonSchemaConfig;
 import com.openai.models.responses.Tool;
 import com.openai.models.responses.ToolChoiceTypes;
+import com.openai.models.responses.WebSearchPreviewTool;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -88,12 +89,39 @@ class OpenAiSearchClientTest {
         assertThat(params.toolChoice()).get().satisfies(choice ->
                 assertThat(choice.asTypes().type()).isEqualTo(ToolChoiceTypes.Type.WEB_SEARCH_PREVIEW));
 
-        // AC-Δ1(P1): text.format에 strict JSON schema가 붙고, 스키마가 SearchPayload 6필드를 요구한다.
+        // AC-Δ1(P1): text.format에 strict JSON schema가 붙고, 스키마가 SearchPayload 필드를 요구한다.
         ResponseFormatTextJsonSchemaConfig format =
                 params.text().orElseThrow().format().orElseThrow().asJsonSchema();
         assertThat(format.strict()).contains(true);
         assertThat(format.schema()._additionalProperties())
                 .containsKeys("type", "properties", "required", "additionalProperties");
+        // AC-Δ5(ADR-15): strict schema에 official_page_url 필드가 properties·required에 추가된다(2단계 입력).
+        assertThat(format.schema()._additionalProperties().get("properties").toString())
+                .contains("official_page_url");
+        assertThat(format.schema()._additionalProperties().get("required").toString())
+                .contains("official_page_url");
+    }
+
+    @Test
+    @DisplayName("AC-Δ5: buildParams가 web_search에 userLocation(KR)·searchContextSize(high)를 배선한다")
+    void buildsParamsWithKrLocalizationAndHighContextSize() {
+        OpenAiSearchClient client =
+                new OpenAiSearchClient(null, "gpt-4o", 3, MochaObjectMapper.create());
+
+        ResponseCreateParams params = client.buildParams(query());
+
+        WebSearchPreviewTool webSearch = params.tools().orElseThrow().stream()
+                .filter(Tool::isWebSearchPreview)
+                .map(Tool::asWebSearchPreview)
+                .findFirst()
+                .orElseThrow();
+
+        // ADR-16: KR 지역화 — 영어권 기본 착지(→영어 기록) 방지.
+        assertThat(webSearch.userLocation()).get().satisfies(loc ->
+                assertThat(loc.country()).contains("KR"));
+        // ADR-16: search_context_size=high로 텍스트 컨텍스트를 넓힌다.
+        assertThat(webSearch.searchContextSize())
+                .contains(WebSearchPreviewTool.SearchContextSize.HIGH);
     }
 
     @Test
@@ -117,7 +145,27 @@ class OpenAiSearchClientTest {
     }
 
     @Test
-    @DisplayName("AC-Δ4: buildInput 검색 앵커에 필드 라벨이 없고 로스터리명+커피명이 자연 검색어로 담긴다")
+    @DisplayName("AC-Δ4/AC-Δ5(ADR-15·16): INSTRUCTIONS에 공식 페이지 URL 반환·한국어 기록·동일성 가드 규칙이 있다")
+    void instructionsCarryOfficialUrlKoreanAndIdentityGuard() {
+        OpenAiSearchClient client =
+                new OpenAiSearchClient(null, "gpt-4o", 3, MochaObjectMapper.create());
+
+        String instructions = client.buildParams(query()).instructions().orElseThrow();
+
+        // AC-Δ5(ADR-15): 공식 도메인 탐색 유도 + 공식 페이지 URL 반환 규칙(2단계 입력).
+        assertThat(instructions).contains("official_page_url");
+        assertThat(instructions).contains("공식 도메인");
+        // 환각 URL 가드: 검색 결과에 실제로 나타난 URL만.
+        assertThat(instructions).contains("검색 결과에 실제로 나타난 URL");
+        // AC-Δ4(ADR-16): 한국어 기록 규칙(영문 출처는 번역).
+        assertThat(instructions).contains("한국어로 기록한다");
+        // AC-Δ5(ADR-16): 동일성 가드 — 로스터리명+원두명 동시 확인, 미확인 시 공란.
+        assertThat(instructions).contains("동일성 가드");
+        assertThat(instructions).contains("로스터리명과 원두명이 함께 확인되는 출처만");
+    }
+
+    @Test
+    @DisplayName("AC-Δ4/AC-Δ5: buildInput 검색 앵커에 필드 라벨이 없고 로스터리명+커피명+'원두' 키워드가 자연 검색어로 담긴다")
     void buildInputHasNoFieldLabels() {
         OpenAiSearchClient client =
                 new OpenAiSearchClient(null, "gpt-4o", 3, MochaObjectMapper.create());
@@ -128,18 +176,20 @@ class OpenAiSearchClientTest {
         assertThat(input).doesNotContain("커피 이름:").doesNotContain("로스터리:");
         // 로스터리명·커피명 토큰이 자연 검색어로 함께 담긴다.
         assertThat(input).contains("모모스 커피").contains("와이키키");
+        // AC-Δ5(ADR-16): 도메인 키워드 '원두'가 커피 문맥 고정용으로 담긴다.
+        assertThat(input).contains("원두");
     }
 
     @Test
-    @DisplayName("AC-Δ4: 로스터리가 null/blank면 검색 앵커는 커피명만 담는다")
+    @DisplayName("AC-Δ4/AC-Δ5: 로스터리가 null/blank면 검색 앵커는 커피명+'원두'만 담는다")
     void buildInputCoffeeNameOnlyWhenRoasteryBlank() {
         OpenAiSearchClient client =
                 new OpenAiSearchClient(null, "gpt-4o", 3, MochaObjectMapper.create());
 
         assertThat(client.buildInput(new SearchQuery("예가체프 G1", null)))
-                .isEqualTo("예가체프 G1");
+                .isEqualTo("예가체프 G1 원두");
         assertThat(client.buildInput(new SearchQuery("예가체프 G1", "  ")))
-                .isEqualTo("예가체프 G1")
+                .isEqualTo("예가체프 G1 원두")
                 .doesNotContain("로스터리:");
     }
 

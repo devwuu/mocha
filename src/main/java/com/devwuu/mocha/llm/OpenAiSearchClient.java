@@ -40,18 +40,29 @@ public class OpenAiSearchClient implements SearchClient {
     // POLICY: official_notes는 로스터리 출처 한정(fallback 없음), origin/process/roast_level은 단일·블렌드 공통으로
     //         로스터리 공식 우선 + 신뢰할 일반 출처 fallback 보강, 블렌드 여러 원산지는 origin에 쉼표 나열, 추측 금지
     //         (ref: spec FR-3/AC-16, plan#ADR-14 보강 fallback POLICY)
+    // POLICY: 공식 페이지 URL 반환(2단계 이미지 OCR의 입력)·한국어 기록·동일성 가드(로스터리명+원두명 동시 확인)를
+    //         지침에 인코딩한다. 공식 도메인 탐색은 유도하되(findings-TΔ0: 유도 없으면 official_page_url 일관 null),
+    //         환각 URL은 "검색 결과에 실제로 나타난 URL만" 규칙 + 2단계 페이지 동일성 가드로 받는다
+    //         (ref: delta 0006 ADR-16, spec FR-3, plan#ADR-15/16, findings-TΔ0).
     private static final String INSTRUCTIONS = """
             너는 커피 원두 정보를 웹 검색으로 보강하는 도우미다. 주어진 커피에 대해 웹을 검색하고 아래 규칙을 반드시 지켜라.
+            - 반드시 그 로스터리의 공식 웹사이트(공식 온라인 쇼핑몰)에서 이 원두의 상품 상세 페이지를 찾아라.
+              블로그·리뷰 페이지가 먼저 나오면 거기서 멈추지 말고, '로스터리명 + 공식' '로스터리명 + 스토어' 등으로 추가 검색해 공식 도메인을 찾아라.
+            - official_page_url에는 그 공식 도메인의 이 원두 상품 상세 페이지 URL만 담는다. 검색 결과에 실제로 나타난 URL을
+              그대로 담고, 기억이나 추측으로 URL을 만들거나 일부를 생략·변형하지 마라. 끝내 확인 못 하면 null로 둔다.
+            - 로스터리명과 원두명이 함께 확인되는 출처만 사용한다(동일성 가드). 지명·동명의 다른 상품으로 새지 않도록,
+              같은 대상인지 확신할 수 없는 값은 채우지 말고 공란으로 둔다.
             - official_notes(로스터리 공식 테이스팅 노트)는 그 로스터리의 공식 웹/판매 페이지에서 확인된 경우에만 채운다.
               제3자 블로그·리뷰의 감상은 official_notes에 넣지 않는다. 공식 출처를 못 찾으면 official_notes는 빈 배열로 둔다.
             - origin/process/roast_level 같은 원두 일반 사실은 단일 원산지든 블렌드든 로스터리 공식 페이지를 우선으로,
               없으면 신뢰할 만한 일반 출처(나무위키·판매몰 등)에서 찾으면 채운다.
             - 블렌드(여러 원산지 구성)의 origin은 구성 원산지를 origin 한 문자열에 쉼표로 나열한다(예: "에티오피아, 콜롬비아, 브라질").
+            - 모든 문자열 값은 한국어로 기록한다(영문 출처는 한국어로 옮겨 적는다). 영어 원문을 그대로 저장하지 않는다.
             - 확인되지 않은 값은 추측하지 말고 null(문자열 필드)·빈 배열(리스트)로 둔다.
             - sources에는 실제로 참고한 출처 URL만 담는다. 최대 %d개.
             - 출력은 아래 JSON 객체 하나만, 다른 설명 없이 반환한다:
               {"roastery": string|null, "origin": string|null, "process": string|null, "roast_level": string|null,
-               "official_notes": string[], "sources": string[]}
+               "official_notes": string[], "official_page_url": string|null, "sources": string[]}
             """;
 
     private final OpenAIClient client;
@@ -127,6 +138,14 @@ public class OpenAiSearchClient implements SearchClient {
                 .model(model)
                 .addTool(WebSearchPreviewTool.builder()
                         .type(WebSearchPreviewTool.Type.WEB_SEARCH_PREVIEW)
+                        // ADR-16: 검색을 KR로 지역화해 영어권 기본 착지(→영어 기록)를 막는다. search_context_size=high로
+                        // 텍스트 컨텍스트를 넓힌다(findings-TΔ0 ②: 파라미터 수용·정상 동작 확인).
+                        .userLocation(WebSearchPreviewTool.UserLocation.builder()
+                                .type(JsonValue.from("approximate"))
+                                .country("KR")
+                                .timezone("Asia/Seoul")
+                                .build())
+                        .searchContextSize(WebSearchPreviewTool.SearchContextSize.HIGH)
                         .build())
                 // P3: web_search를 강제해 모델이 검색을 건너뛰지 못하게 한다(AC-Δ2).
                 .toolChoice(ToolChoiceTypes.builder()
@@ -141,8 +160,8 @@ public class OpenAiSearchClient implements SearchClient {
                 .build();
     }
 
-    // SearchPayload 6필드(roastery/origin/process/roast_level/official_notes/sources)의 strict JSON schema.
-    // roastery류는 미확인 시 null 허용(["string","null"]), notes/sources는 문자열 배열. 전 필드 required·additionalProperties=false.
+    // SearchPayload 7필드(roastery/origin/process/roast_level/official_notes/official_page_url/sources)의 strict JSON schema.
+    // roastery류·official_page_url은 미확인 시 null 허용(["string","null"]), notes/sources는 문자열 배열. 전 필드 required·additionalProperties=false.
     private static ResponseFormatTextJsonSchemaConfig searchSchemaFormat() {
         return ResponseFormatTextJsonSchemaConfig.builder()
                 .name("coffee_enrichment")
@@ -161,13 +180,15 @@ public class OpenAiSearchClient implements SearchClient {
         properties.put("process", nullableString);
         properties.put("roast_level", nullableString);
         properties.put("official_notes", stringArray);
+        // ADR-15: 공식 상품 페이지 URL — 2단계 이미지 OCR의 입력(미확인 시 null → 2단계 미발동).
+        properties.put("official_page_url", nullableString);
         properties.put("sources", stringArray);
 
         Map<String, Object> schema = new LinkedHashMap<>();
         schema.put("type", "object");
         schema.put("properties", properties);
         schema.put("required", List.of(
-                "roastery", "origin", "process", "roast_level", "official_notes", "sources"));
+                "roastery", "origin", "process", "roast_level", "official_notes", "official_page_url", "sources"));
         schema.put("additionalProperties", false);
 
         ResponseFormatTextJsonSchemaConfig.Schema.Builder builder =
@@ -178,11 +199,16 @@ public class OpenAiSearchClient implements SearchClient {
 
     // POLICY: web_search 검색 앵커는 "커피 이름:"/"로스터리:" 필드 라벨 없이 로스터리명+커피명을 자연
     //         검색어로 넘긴다 — 라벨 통짜가 쿼리로 나가 공식 페이지 착지를 막던 회귀를 제거(ref: delta 0005 D4/AC-Δ4, plan#ADR-14).
+    // POLICY: 도메인 키워드 '원두'를 앵커에 더해 커피 문맥을 고정한다 — 문맥 없는 원두명이 지명·동명 상품으로
+    //         새던 문제를 막는다. 필드 라벨이 아니라 자연 검색어라 ADR-14와 양립한다(ref: delta 0006 ADR-16).
     String buildInput(SearchQuery query) {
+        String anchor;
         if (query.roastery() != null && !query.roastery().isBlank()) {
-            return query.roastery().strip() + " " + query.coffeeName().strip();
+            anchor = query.roastery().strip() + " " + query.coffeeName().strip();
+        } else {
+            anchor = query.coffeeName().strip();
         }
-        return query.coffeeName().strip();
+        return anchor + " 원두";
     }
 
     // Responses 출력 아이템 중 메시지 텍스트만 이어붙인다(web search 호출 아이템 등은 건너뜀).
