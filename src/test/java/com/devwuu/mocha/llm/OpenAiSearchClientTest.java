@@ -97,6 +97,26 @@ class OpenAiSearchClientTest {
     }
 
     @Test
+    @DisplayName("AC-Δ1/AC-Δ2/AC-Δ3: INSTRUCTIONS가 블렌드 공란 강제를 폐지하고 official_notes 로스터리 한정은 유지한다")
+    void instructionsDropBlendBlankRuleKeepOfficialNotesRoasteryOnly() {
+        OpenAiSearchClient client =
+                new OpenAiSearchClient(null, "gpt-4o", 3, MochaObjectMapper.create());
+
+        String instructions = client.buildParams(query()).instructions().orElseThrow();
+
+        // AC-Δ1/AC-Δ2: 블렌드 origin/process 공란 강제 문구가 더 이상 없다.
+        assertThat(instructions).doesNotContain("빈 값(null)으로 둔다");
+        // AC-Δ2: 단일/블렌드 공통 보강 지침이 있다.
+        assertThat(instructions).contains("단일 원산지든 블렌드든");
+        // AC-Δ1(D2): 블렌드 여러 원산지를 origin에 쉼표로 나열하라는 지침이 있다.
+        assertThat(instructions).contains("쉼표로 나열");
+        // AC-Δ3: official_notes 로스터리 공식 출처 한정은 불변으로 유지된다.
+        assertThat(instructions).contains("공식 웹/판매 페이지에서 확인된 경우에만 채운다");
+        // 추측 금지 유지.
+        assertThat(instructions).contains("추측하지 말고");
+    }
+
+    @Test
     @DisplayName("AC-Δ4: buildInput 검색 앵커에 필드 라벨이 없고 로스터리명+커피명이 자연 검색어로 담긴다")
     void buildInputHasNoFieldLabels() {
         OpenAiSearchClient client =

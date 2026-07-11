@@ -22,9 +22,10 @@ import java.util.Map;
 /**
  * OpenAI web search(Responses API) 기반 {@link SearchClient} 구현 (ref: plan.md#ADR-5, spec FR-3).
  * <p>OpenAI SDK 타입은 이 클래스 안에만 존재한다(plan §4 POLICY, NFR-4). 검색 지침(instructions)에
- * fallback 규칙을 인코딩한다 — official_notes는 <b>로스터리 공식 출처 한정</b>이고, 공식 페이지를 못
- * 찾으면 단일 원산지 커피만 원두 일반 사실(origin 등)을 일반 출처에서 보강하고 블렌드는 공란으로 둔다
- * (FR-3/AC-16, ADR-5 보강 fallback POLICY). "추측 금지"는 유지한다.
+ * fallback 규칙을 인코딩한다 — official_notes는 <b>로스터리 공식 출처 한정</b>이고, origin/process/roast_level은
+ * 단일 원산지든 블렌드든 로스터리 공식 우선 + 신뢰할 일반 출처 fallback으로 찾으면 채운다(블렌드의 여러
+ * 구성 원산지는 origin 한 문자열에 쉼표로 나열). "추측 금지"(못 찾으면 공란)는 유지한다
+ * (FR-3/AC-16, ADR-14 보강 fallback POLICY).
  * <p>보강은 Responses API 한 콜로 (a) {@code web_search_preview} 도구를 {@code tool_choice}로 강제 실행하고,
  * (b) {@code text.format}에 strict JSON schema를 붙여 <b>스키마 보장 JSON</b>으로 받는다 — 응답에 산문·인용이
  * 섞여도 형식 때문에 검색 결과가 버려지지 않게(P1), 경량 모델이 검색을 건너뛰지 못하게(P3) 한다(ADR-13).
@@ -36,14 +37,16 @@ public class OpenAiSearchClient implements SearchClient {
 
     private static final Logger log = LoggerFactory.getLogger(OpenAiSearchClient.class);
 
-    // POLICY: official_notes는 로스터리 출처 한정(fallback 없음), 단일 원산지만 일반 출처 fallback,
-    //         블렌드는 공란, 추측 금지 (ref: spec FR-3/AC-16, plan#ADR-5 보강 fallback POLICY)
+    // POLICY: official_notes는 로스터리 출처 한정(fallback 없음), origin/process/roast_level은 단일·블렌드 공통으로
+    //         로스터리 공식 우선 + 신뢰할 일반 출처 fallback 보강, 블렌드 여러 원산지는 origin에 쉼표 나열, 추측 금지
+    //         (ref: spec FR-3/AC-16, plan#ADR-14 보강 fallback POLICY)
     private static final String INSTRUCTIONS = """
             너는 커피 원두 정보를 웹 검색으로 보강하는 도우미다. 주어진 커피에 대해 웹을 검색하고 아래 규칙을 반드시 지켜라.
             - official_notes(로스터리 공식 테이스팅 노트)는 그 로스터리의 공식 웹/판매 페이지에서 확인된 경우에만 채운다.
               제3자 블로그·리뷰의 감상은 official_notes에 넣지 않는다. 공식 출처를 못 찾으면 official_notes는 빈 배열로 둔다.
-            - 로스터리 공식 페이지를 못 찾은 경우: 단일 원산지 커피면 origin/process/roast_level 같은 원두 일반 사실만
-              신뢰할 만한 일반 출처에서 보강한다. 블렌드(여러 원산지 구성)면 origin/process 등을 빈 값(null)으로 둔다.
+            - origin/process/roast_level 같은 원두 일반 사실은 단일 원산지든 블렌드든 로스터리 공식 페이지를 우선으로,
+              없으면 신뢰할 만한 일반 출처(나무위키·판매몰 등)에서 찾으면 채운다.
+            - 블렌드(여러 원산지 구성)의 origin은 구성 원산지를 origin 한 문자열에 쉼표로 나열한다(예: "에티오피아, 콜롬비아, 브라질").
             - 확인되지 않은 값은 추측하지 말고 null(문자열 필드)·빈 배열(리스트)로 둔다.
             - sources에는 실제로 참고한 출처 URL만 담는다. 최대 %d개.
             - 출력은 아래 JSON 객체 하나만, 다른 설명 없이 반환한다:
