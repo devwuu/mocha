@@ -173,12 +173,13 @@ public class OpenAiSearchClient implements SearchClient {
         return builder.build();
     }
 
-    private String buildInput(SearchQuery query) {
-        StringBuilder sb = new StringBuilder("커피 이름: ").append(query.coffeeName());
+    // POLICY: web_search 검색 앵커는 "커피 이름:"/"로스터리:" 필드 라벨 없이 로스터리명+커피명을 자연
+    //         검색어로 넘긴다 — 라벨 통짜가 쿼리로 나가 공식 페이지 착지를 막던 회귀를 제거(ref: delta 0005 D4/AC-Δ4, plan#ADR-14).
+    String buildInput(SearchQuery query) {
         if (query.roastery() != null && !query.roastery().isBlank()) {
-            sb.append("\n로스터리: ").append(query.roastery());
+            return query.roastery().strip() + " " + query.coffeeName().strip();
         }
-        return sb.toString();
+        return query.coffeeName().strip();
     }
 
     // Responses 출력 아이템 중 메시지 텍스트만 이어붙인다(web search 호출 아이템 등은 건너뜀).

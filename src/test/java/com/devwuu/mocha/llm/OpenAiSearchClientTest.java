@@ -97,6 +97,33 @@ class OpenAiSearchClientTest {
     }
 
     @Test
+    @DisplayName("AC-Δ4: buildInput 검색 앵커에 필드 라벨이 없고 로스터리명+커피명이 자연 검색어로 담긴다")
+    void buildInputHasNoFieldLabels() {
+        OpenAiSearchClient client =
+                new OpenAiSearchClient(null, "gpt-4o", 3, MochaObjectMapper.create());
+
+        String input = client.buildInput(new SearchQuery("와이키키", "모모스 커피"));
+
+        // 라벨 오염 제거: 필드 라벨 문자열이 섞이지 않는다.
+        assertThat(input).doesNotContain("커피 이름:").doesNotContain("로스터리:");
+        // 로스터리명·커피명 토큰이 자연 검색어로 함께 담긴다.
+        assertThat(input).contains("모모스 커피").contains("와이키키");
+    }
+
+    @Test
+    @DisplayName("AC-Δ4: 로스터리가 null/blank면 검색 앵커는 커피명만 담는다")
+    void buildInputCoffeeNameOnlyWhenRoasteryBlank() {
+        OpenAiSearchClient client =
+                new OpenAiSearchClient(null, "gpt-4o", 3, MochaObjectMapper.create());
+
+        assertThat(client.buildInput(new SearchQuery("예가체프 G1", null)))
+                .isEqualTo("예가체프 G1");
+        assertThat(client.buildInput(new SearchQuery("예가체프 G1", "  ")))
+                .isEqualTo("예가체프 G1")
+                .doesNotContain("로스터리:");
+    }
+
+    @Test
     @DisplayName("응답 JSON이 snake_case 필드로 SearchResult에 매핑된다")
     void mapsJsonResponse() {
         String json = """
