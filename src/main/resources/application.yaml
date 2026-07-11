@@ -42,3 +42,10 @@ mocha:
     # 노트/인덱스 디자인 테마 (ref: tasks T5-1). type-a=세리프(명조·액자), type-b=귀여운(고딕·카드·마스코트).
     # 값은 templates/<theme>/ 폴더명이자 렌더 선택자다. 기본은 썸네일 카드 인덱스(FR-8)를 갖춘 type-b.
     theme: type-b
+  card:
+    # 시음 엔트리 카드 이미지(JPG) 뷰포트 (ref: plan.md#ADR-10/ADR-11 §5). 인스타 4:5 = 1080×1350.
+    # 비율(4:5) 자체는 상수 — 설정 키로 바꾸지 않는다. width/height는 고해상도 배수 대응용 크기 파라미터일 뿐.
+    width: 1080
+    height: 1350
+    # 카드 JPG 품질(0~1). 파일 크기/화질 균형, Slack 업로드 용량 통제.
+    jpg-quality: 0.9
