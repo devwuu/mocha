@@ -4,8 +4,6 @@ import com.slack.api.app_backend.interactive_components.payload.BlockActionPaylo
 import com.slack.api.bolt.App;
 import com.slack.api.bolt.AppConfig;
 import com.slack.api.bolt.socket_mode.SocketModeApp;
-import com.slack.api.methods.MethodsClient;
-import com.slack.api.methods.response.auth.AuthTestResponse;
 import com.slack.api.model.File;
 import com.slack.api.model.event.FileSharedEvent;
 import com.slack.api.model.event.MessageChangedEvent;
@@ -46,27 +44,22 @@ public class SlackGateway implements SmartLifecycle {
     private static final Pattern ALL_ACTIONS = Pattern.compile(".+");
 
     private final ConversationRouter router;
-    private final MethodsClient methods;
     private final String botToken;
     private final String appToken;
 
     private volatile boolean running = false;
-    // 봇 자신의 user ID — start()에서 auth.test로 확보. file_share 에코 필터의 유일한 신뢰 경로(ADR-17).
-    private volatile String botUserId;
     private SocketModeApp socketModeApp;
 
     // ADR-19: 무거운 handle* 처리를 넘길 실행기 — 핸들러 스레드는 즉시 ack하고 여기서 순차 백그라운드 처리한다.
     // start()가 단일 스레드 ExecutorService로 채우고 stop()에서 shutdown한다. 종전 단일 워커의 순차 처리 의미(pending·버퍼 순서)를 보존.
-    // volatile: start()에서 대입한 값을 Bolt 수신 스레드가 확실히 보게 한다(botUserId/running과 동일한 교차 스레드 가시성 관례).
+    // volatile: start()에서 대입한 값을 Bolt 수신 스레드가 확실히 보게 한다(running과 동일한 교차 스레드 가시성 관례).
     private volatile Executor executor;
 
     public SlackGateway(
             ConversationRouter router,
-            MethodsClient methods,
             @Value("${mocha.slack.bot-token:}") String botToken,
             @Value("${mocha.slack.app-token:}") String appToken) {
         this.router = router;
-        this.methods = methods;
         this.botToken = botToken;
         this.appToken = appToken;
     }
@@ -125,18 +118,10 @@ public class SlackGateway implements SmartLifecycle {
      * 버퍼 그룹핑이 성립한다(사진 버퍼 위에 텍스트가 얹혀 하나의 노트가 된다).
      */
     void handleFileShareEvent(MessageFileShareEvent event) {
-        // POLICY: 봇 자신이 유발한 file_share는 라우터에 위임하지 않는다 — 카드 배달 에코 루프 차단 (ADR-17, FR-1).
-        // MessageFileShareEvent에는 bot_id 필드가 없어(SDK 실측) getBotId 무시를 복사할 수 없다 — 봇 user ID 비교가 유일한 신뢰 경로.
-        // (ref: specs/coffee-note-agent/changes/0007-bot-echo-and-intent-gate/delta.md#ADR-17, AC-Δ1)
-        // DIAG(0007): 봇 필터가 실제 이벤트를 못 거르는 원인 규명용 임시 로그 — user vs botUserId 및 보조 플래그.
-        // 원인 확정 후 제거한다. (ref: changes/0007 실사용 검증)
-        boolean selfFiltered = botUserId != null && botUserId.equals(event.getUser());
-        log.info("DIAG file_share: user={} botUserId={} upload={} displayAsBot={} hasText={} selfFiltered={}",
-                event.getUser(), botUserId, event.getUpload(), event.getDisplayAsBot(),
-                event.getText() != null && !event.getText().isBlank(), selfFiltered);
-        if (selfFiltered) {
-            return;
-        }
+        // 봇 자신이 배달한 카드는 MessageFileShareEvent를 내지 않으므로(top-level file_shared만 발생) 이 경로엔
+        // 봇 에코가 유입되지 않는다 — 봇 user ID 필터(ADR-17)는 실효 없어 제거했다. 봇 자기 이벤트 차단은
+        // Bolt IgnoringSelfEvents + file_shared no-op(buildApp), 재질문 차단 실효는 즉시 ack(ADR-19)가 담당한다.
+        // (ref: specs/coffee-note-agent/changes/0008-socket-mode-async-ack/delta.md#ADR-19, AC-Δ4)
         List<IncomingPhoto> photos = imagePhotos(event.getFiles());
         if (!photos.isEmpty()) {
             router.onMedia(new IncomingMedia(
@@ -184,16 +169,6 @@ public class SlackGateway implements SmartLifecycle {
                     return t;
                 });
             }
-            // 봇 자신의 user ID를 확보해 file_share 에코 필터의 기준으로 둔다(ADR-17). auth.test 실패는 소켓 시작
-            // 실패로 취급한다 — bot token이 불량이면 어차피 송신(카드 배달)도 불가하므로 조용히 넘기지 않는다.
-            AuthTestResponse auth = methods.authTest(r -> r);
-            if (auth == null || !auth.isOk() || auth.getUserId() == null) {
-                throw new IllegalStateException("auth.test 실패로 봇 user ID 확보 불가: "
-                        + (auth != null ? auth.getError() : "null 응답"));
-            }
-            botUserId = auth.getUserId();
-            // DIAG(0007): 확보된 봇 user ID 확인용 임시 로그 — file_share의 event.user와 대조. 원인 확정 후 제거.
-            log.info("DIAG auth.test: botUserId={} botId={}", botUserId, auth.getBotId());
             // 기본 Tyrus 백엔드는 javax.websocket 구현을 요구 → 단일 jar인 JavaWebSocket 백엔드로 구동(build.gradle).
             socketModeApp = new SocketModeApp(appToken, SocketModeClient.Backend.JavaWebSocket, buildApp());
             socketModeApp.startAsync(); // 논블로킹 — 단절 시 SDK가 자동 재연결(plan.md §7)
