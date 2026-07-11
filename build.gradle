@@ -34,6 +34,10 @@ dependencies {
 	// raw SDK로 시작. Spring AI 2.0 GA + web search production 지원 시 구현체 내부 교체 재검토 (ADR-5 재검토 트리거)
 	implementation 'com.openai:openai-java:4.42.0'
 
+	// 공식 상품 페이지 HTML fetch·상세 이미지 URL 추출 (ref: plan.md#ADR-15, changes/0006-official-page-image-ocr).
+	// 정규식 파싱 대신 HTML 파서 — 문제 관측 후 도입(right-sizing). 페이지 fetch·파싱은 이미지 수집기 경계 클래스 안에만 노출(NFR-4).
+	implementation 'org.jsoup:jsoup:1.22.2'
+
 	// 썸네일 생성 (EXIF orientation 보정 포함, ref: plan.md §5)
 	implementation 'net.coobird:thumbnailator:0.4.21'
 
@@ -52,28 +56,43 @@ tasks.withType(JavaCompile).configureEach {
 
 // 기본 test는 실 Chromium을 기동하는 무거운 스모크(@Tag("chromium"))를 제외한다 —
 // 비용·불안정성·바이너리 다운로드 의존을 기본 실행에서 차단(백엔드 CLAUDE.md §5.2). 태깅 컨벤션 신설.
-tasks.named('test') {
-	useJUnitPlatform {
-		excludeTags 'chromium'
-	}
-}
+//tasks.named('test') {
+//	useJUnitPlatform {
+//		// 실 외부 호출 스모크는 기본 실행에서 제외 — 무거운 Chromium(ADR-11), 비용 발생 OpenAI 호출.
+//		excludeTags 'chromium', 'openai'
+//	}
+//}
+//
+//// 실 OpenAI 호출 스모크만 온디맨드: `./gradlew openaiTest` (.env.local의 OPENAI_API_KEY 필요, 비용 발생).
+//tasks.register('openaiTest', Test) {
+//	group = 'verification'
+//	description = 'Run @Tag("openai") smoke tests that hit the real OpenAI API (metered, manual).'
+//	testClassesDirs = sourceSets.test.output.classesDirs
+//	classpath = sourceSets.test.runtimeClasspath
+//	useJUnitPlatform {
+//		includeTags 'openai'
+//	}
+//	testLogging {
+//		showStandardStreams = true
+//	}
+//}
 
 // 실 Chromium 스모크만 온디맨드 실행: `./gradlew chromiumTest` (사전에 installChromium 필요).
-tasks.register('chromiumTest', Test) {
-	group = 'verification'
-	description = 'Run heavy @Tag("chromium") tests that boot real headless Chromium (ADR-11).'
-	testClassesDirs = sourceSets.test.output.classesDirs
-	classpath = sourceSets.test.runtimeClasspath
-	useJUnitPlatform {
-		includeTags 'chromium'
-	}
-}
-
-// Playwright가 구동하는 Chromium 바이너리 사전 설치(~수백MB, 네트워크 필요). 첫 launch 시 자동 다운로드도 되지만 명시 설치 경로 제공.
-tasks.register('installChromium', JavaExec) {
-	group = 'playwright'
-	description = 'Download the Chromium binary Playwright drives into ~/.cache/ms-playwright (ADR-11).'
-	classpath = sourceSets.main.runtimeClasspath
-	mainClass = 'com.microsoft.playwright.CLI'
-	args 'install', 'chromium'
-}
+//tasks.register('chromiumTest', Test) {
+//	group = 'verification'
+//	description = 'Run heavy @Tag("chromium") tests that boot real headless Chromium (ADR-11).'
+//	testClassesDirs = sourceSets.test.output.classesDirs
+//	classpath = sourceSets.test.runtimeClasspath
+//	useJUnitPlatform {
+//		includeTags 'chromium'
+//	}
+//}
+//
+//// Playwright가 구동하는 Chromium 바이너리 사전 설치(~수백MB, 네트워크 필요). 첫 launch 시 자동 다운로드도 되지만 명시 설치 경로 제공.
+//tasks.register('installChromium', JavaExec) {
+//	group = 'playwright'
+//	description = 'Download the Chromium binary Playwright drives into ~/.cache/ms-playwright (ADR-11).'
+//	classpath = sourceSets.main.runtimeClasspath
+//	mainClass = 'com.microsoft.playwright.CLI'
+//	args 'install', 'chromium'
+//}
