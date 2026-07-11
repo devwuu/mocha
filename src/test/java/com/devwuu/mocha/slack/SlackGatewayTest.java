@@ -161,7 +161,7 @@ class SlackGatewayTest {
 
         gateway(router).handleFileShareEvent(event);
 
-        assertEquals(1, router.media.size(), "사진이 먼저 위임된다(세션 자리잡기)");
+        assertEquals(1, router.media.size(), "사진이 먼저 위임된다(버퍼 자리잡기)");
         assertEquals(1, router.messages.size(), "캡션이 이어 위임된다");
         assertEquals("커피베라 예가체프 새콤했어", router.messages.get(0).text());
     }

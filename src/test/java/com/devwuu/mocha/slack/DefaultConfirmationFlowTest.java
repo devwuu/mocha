@@ -4,7 +4,7 @@ import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.PendingNote;
-import com.devwuu.mocha.domain.PhotoSession;
+import com.devwuu.mocha.domain.PhotoBuffer;
 import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.domain.Sourced;
@@ -25,7 +25,7 @@ import com.devwuu.mocha.render.SiteRenderer;
 import com.devwuu.mocha.repository.JsonFileNoteRepository;
 import com.devwuu.mocha.repository.NoteRepository;
 import com.devwuu.mocha.repository.PendingStore;
-import com.devwuu.mocha.repository.PhotoSessionStore;
+import com.devwuu.mocha.repository.PhotoBufferStore;
 import com.devwuu.mocha.repository.PhotoStore;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -177,31 +177,31 @@ class DefaultConfirmationFlowTest {
         }
     }
 
-    /** 사진 세션을 지정/캡처하는 fake. */
-    private static final class FakePhotoSessionStore implements PhotoSessionStore {
-        Optional<PhotoSession> session = Optional.empty();
-        final List<PhotoSession> puts = new ArrayList<>();
+    /** 사진 버퍼를 지정/캡처하는 fake. */
+    private static final class FakePhotoBufferStore implements PhotoBufferStore {
+        Optional<PhotoBuffer> buffer = Optional.empty();
+        final List<PhotoBuffer> puts = new ArrayList<>();
         int clearCount = 0;
 
-        void setSession(PhotoSession s) {
-            this.session = Optional.ofNullable(s);
+        void setBuffer(PhotoBuffer s) {
+            this.buffer = Optional.ofNullable(s);
         }
 
         @Override
-        public void put(String userId, PhotoSession session) {
-            puts.add(session);
-            this.session = Optional.of(session);
+        public void put(String userId, PhotoBuffer buffer) {
+            puts.add(buffer);
+            this.buffer = Optional.of(buffer);
         }
 
         @Override
-        public Optional<PhotoSession> get(String userId) {
-            return session;
+        public Optional<PhotoBuffer> get(String userId) {
+            return buffer;
         }
 
         @Override
         public void clear(String userId) {
             clearCount++;
-            session = Optional.empty();
+            buffer = Optional.empty();
         }
     }
 
@@ -240,8 +240,8 @@ class DefaultConfirmationFlowTest {
     private final CapturingPreviewMessenger previewMessenger = new CapturingPreviewMessenger();
     private final FakePhotoDownloader photoDownloader = new FakePhotoDownloader();
     private final FakePhotoStore photoStore = new FakePhotoStore();
-    private final FakePhotoSessionStore photoSessionStore = new FakePhotoSessionStore();
-    private static final Duration SESSION_WINDOW = Duration.ofMinutes(10);
+    private final FakePhotoBufferStore photoBufferStore = new FakePhotoBufferStore();
+    private static final Duration BUFFER_WINDOW = Duration.ofMinutes(10);
 
     private final NoteExtractor extractor = new NoteExtractor(llmClient, MochaObjectMapper.create());
     private final NoteMatcher matcher = new NoteMatcher();
@@ -256,7 +256,7 @@ class DefaultConfirmationFlowTest {
         return new DefaultConfirmationFlow(
                 pendingStore, repo, siteRenderer, responder,
                 extractor, matcher, enricher, reviser, previewMessenger,
-                photoDownloader, photoStore, photoSessionStore, SESSION_WINDOW, "./site", clock);
+                photoDownloader, photoStore, photoBufferStore, BUFFER_WINDOW, "./site", clock);
     }
 
     private static ExtractionResult extraction(
@@ -513,15 +513,15 @@ class DefaultConfirmationFlowTest {
         assertFalse(responder.messages.isEmpty());
     }
 
-    // --- T4-2: 사진 세션 그룹핑(FR-10, AC-8) ---
+    // --- T4-2: 사진 버퍼 그룹핑(FR-10, AC-8) ---
 
     @Test
-    @DisplayName("AC-8 전반: 윈도우 내 사진 세션 + 텍스트 → 하나의 pending에 사진 3장이 묶인다")
-    void startNewNoteAbsorbsSessionPhotosWithinWindow() {
+    @DisplayName("AC-8 전반: 윈도우 내 사진 버퍼 + 텍스트 → 하나의 pending에 사진 3장이 묶인다")
+    void startNewNoteAbsorbsBufferPhotosWithinWindow() {
         NoteRepository repo = noteRepository();
         llmClient.canned = extraction("커피베라 예가체프", "커피베라", null, "새콤함", Rating.GOOD);
         // 방금(윈도우 내) 도착해 버퍼링된 사진 3장.
-        photoSessionStore.setSession(new PhotoSession(
+        photoBufferStore.setBuffer(new PhotoBuffer(
                 OffsetDateTime.now(clock), List.of("a.jpg", "b.jpg", "c.jpg")));
 
         flow(repo).startNewNote(message("커피베라 예가체프 마셨어"));
@@ -531,17 +531,17 @@ class DefaultConfirmationFlowTest {
         assertEquals(3, photos.size(), "윈도우 내 사진 3장이 이번 노트로 묶인다(AC-8 전반)");
         assertTrue(photos.get(0).startsWith("photos/" + draft.slug() + "/"),
                 "미리보기 사진 경로는 확정 저장 경로 규칙을 따른다: " + photos.get(0));
-        assertEquals(1, photoSessionStore.clearCount, "사진이 pending으로 이관되면 세션 버퍼를 비운다");
-        assertEquals(0, photoStore.discardCount, "윈도우 내 세션은 폐기하지 않는다(저장 시 commit 대상)");
+        assertEquals(1, photoBufferStore.clearCount, "사진이 pending으로 이관되면 버퍼를 비운다");
+        assertEquals(0, photoStore.discardCount, "윈도우 내 버퍼는 폐기하지 않는다(저장 시 commit 대상)");
     }
 
     @Test
-    @DisplayName("AC-8 후반: 윈도우 밖 사진 세션은 이 텍스트에 묶이지 않고 스테이징이 폐기된다(새 흐름)")
-    void startNewNoteDropsStaleSessionPhotos() {
+    @DisplayName("AC-8 후반: 윈도우 밖 사진 버퍼는 이 텍스트에 묶이지 않고 스테이징이 폐기된다(새 흐름)")
+    void startNewNoteDropsStaleBufferPhotos() {
         NoteRepository repo = noteRepository();
         llmClient.canned = extraction("커피베라 예가체프", "커피베라", null, "새콤함", Rating.GOOD);
         // 20분 전(윈도우 밖) 사진 → 버려진 것.
-        photoSessionStore.setSession(new PhotoSession(
+        photoBufferStore.setBuffer(new PhotoBuffer(
                 OffsetDateTime.now(clock).minusMinutes(20), List.of("old.jpg")));
 
         flow(repo).startNewNote(message("커피베라 예가체프 마셨어"));
@@ -552,7 +552,7 @@ class DefaultConfirmationFlowTest {
     }
 
     @Test
-    @DisplayName("T4-2: pending 없이 사진만 수신 → 세션 버퍼에 쌓고 미리보기는 아직 보내지 않는다")
+    @DisplayName("T4-2: pending 없이 사진만 수신 → 버퍼에 쌓고 미리보기는 아직 보내지 않는다")
     void receiveMediaBuffersWhenNoPending() {
         NoteRepository repo = noteRepository();
 
@@ -560,8 +560,8 @@ class DefaultConfirmationFlowTest {
 
         assertEquals(3, photoDownloader.downloaded.size(), "3장 모두 내려받는다");
         assertEquals(3, photoStore.staged.size(), "3장 모두 스테이징된다");
-        assertEquals(1, photoSessionStore.puts.size(), "세션 버퍼에 저장된다");
-        assertEquals(3, photoSessionStore.puts.get(0).stagedNames().size());
+        assertEquals(1, photoBufferStore.puts.size(), "버퍼에 저장된다");
+        assertEquals(3, photoBufferStore.puts.get(0).stagedNames().size());
         assertNull(previewMessenger.published, "텍스트가 없으니 미리보기는 아직 없다");
         assertTrue(repo.findAll().isEmpty(), "노트 JSON은 만들지 않는다");
     }
@@ -584,17 +584,17 @@ class DefaultConfirmationFlowTest {
     }
 
     @Test
-    @DisplayName("AC-8 후반: 윈도우 밖 이전 세션 위로 사진이 오면 옛 스테이징을 버리고 새 세션으로 시작한다")
-    void receiveMediaStartsFreshSessionAfterWindow() {
+    @DisplayName("AC-8 후반: 윈도우 밖 이전 버퍼 위로 사진이 오면 옛 스테이징을 버리고 새 버퍼로 시작한다")
+    void receiveMediaStartsFreshBufferAfterWindow() {
         NoteRepository repo = noteRepository();
-        photoSessionStore.setSession(new PhotoSession(
+        photoBufferStore.setBuffer(new PhotoBuffer(
                 OffsetDateTime.now(clock).minusMinutes(20), List.of("old.jpg")));
 
         flow(repo).receiveMedia(media("new.jpg"));
 
-        assertEquals(1, photoStore.discardCount, "윈도우 밖 이전 세션의 스테이징을 폐기한다");
-        PhotoSession latest = photoSessionStore.puts.get(photoSessionStore.puts.size() - 1);
-        assertEquals(List.of("new.jpg"), latest.stagedNames(), "새 사진만으로 세션을 다시 시작한다(옛 사진 미포함)");
+        assertEquals(1, photoStore.discardCount, "윈도우 밖 이전 버퍼의 스테이징을 폐기한다");
+        PhotoBuffer latest = photoBufferStore.puts.get(photoBufferStore.puts.size() - 1);
+        assertEquals(List.of("new.jpg"), latest.stagedNames(), "새 사진만으로 버퍼를 다시 시작한다(옛 사진 미포함)");
     }
 
     @Test
@@ -614,7 +614,7 @@ class DefaultConfirmationFlowTest {
     }
 
     @Test
-    @DisplayName("AC-4/FR-10: [취소] 시 대기 중이던 스테이징 사진·세션도 함께 폐기된다")
+    @DisplayName("AC-4/FR-10: [취소] 시 대기 중이던 스테이징 사진·버퍼도 함께 폐기된다")
     void cancelDiscardsStagedPhotos() {
         NoteRepository repo = noteRepository();
         photoStore.staged.add("a.jpg");
@@ -624,6 +624,6 @@ class DefaultConfirmationFlowTest {
 
         assertEquals(1, photoStore.discardCount, "취소는 스테이징 사진을 폐기한다");
         assertTrue(photoStore.staged.isEmpty());
-        assertEquals(1, photoSessionStore.clearCount, "사진 세션도 함께 정리한다");
+        assertEquals(1, photoBufferStore.clearCount, "사진 버퍼도 함께 정리한다");
     }
 }

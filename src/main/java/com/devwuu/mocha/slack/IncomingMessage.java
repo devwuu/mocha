@@ -8,7 +8,7 @@ package com.devwuu.mocha.slack;
  * @param userId    보낸 사용자 id (단일 사용자 전제, NFR-6).
  * @param channelId 수신 채널 id — 미리보기/응답 전송 대상.
  * @param text      메시지 원문. 파이프라인 추출(FR-2)·pending 수정(FR-5) 입력.
- * @param ts        Slack 메시지 timestamp — 세션 그룹핑(FR-10)·스레드 기준.
+ * @param ts        Slack 메시지 timestamp — 버퍼 그룹핑(FR-10)·스레드 기준.
  */
 public record IncomingMessage(String userId, String channelId, String text, String ts) {
 }

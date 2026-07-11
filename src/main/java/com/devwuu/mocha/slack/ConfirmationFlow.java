@@ -35,9 +35,9 @@ public interface ConfirmationFlow {
     void cancel(IncomingAction action);
 
     /**
-     * 사진 수신 → 세션 그룹핑(T4-2, FR-10).
-     * <p>pending이 있으면 진행 중 노트에 사진을 첨부해 미리보기를 갱신하고, 없으면 사진 세션에 버퍼링해 뒤이을
-     * 텍스트를 기다린다. 윈도우(mocha.photo.session-window) 밖의 이전 세션은 새 흐름으로 갈린다(AC-8).
+     * 사진 수신 → 버퍼 그룹핑(T4-2, FR-10).
+     * <p>pending이 있으면 진행 중 노트에 사진을 첨부해 미리보기를 갱신하고, 없으면 사진 버퍼에 담아 뒤이을
+     * 텍스트를 기다린다. 윈도우(mocha.photo.buffer-window) 밖의 이전 버퍼는 새 흐름으로 갈린다(AC-8).
      */
     void receiveMedia(IncomingMedia media);
 }

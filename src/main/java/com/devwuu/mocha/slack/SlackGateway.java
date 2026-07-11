@@ -88,9 +88,9 @@ public class SlackGateway implements SmartLifecycle {
 
     /**
      * 파일 공유 메시지(사진 업로드)를 파싱해 라우터에 넘긴다 (ref: tasks T4-2, FR-10).
-     * <p>이미지 파일만 사진으로 추려 {@link IncomingMedia}로 먼저 위임하고(스테이징이 세션에 자리 잡게),
+     * <p>이미지 파일만 사진으로 추려 {@link IncomingMedia}로 먼저 위임하고(스테이징이 버퍼에 자리 잡게),
      * 같은 이벤트에 캡션 텍스트가 실려 있으면 {@link IncomingMessage}로 이어 위임한다 — 사진→텍스트 순서라야
-     * 세션 그룹핑이 성립한다(사진 세션 위에 텍스트가 얹혀 하나의 노트가 된다).
+     * 버퍼 그룹핑이 성립한다(사진 버퍼 위에 텍스트가 얹혀 하나의 노트가 된다).
      */
     void handleFileShareEvent(MessageFileShareEvent event) {
         List<IncomingPhoto> photos = imagePhotos(event.getFiles());

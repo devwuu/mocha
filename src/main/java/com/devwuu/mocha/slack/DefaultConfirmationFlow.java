@@ -5,7 +5,7 @@ import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
 import com.devwuu.mocha.domain.PendingNote;
-import com.devwuu.mocha.domain.PhotoSession;
+import com.devwuu.mocha.domain.PhotoBuffer;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.pipeline.ExtractionResult;
 import com.devwuu.mocha.pipeline.MatchResult;
@@ -17,7 +17,7 @@ import com.devwuu.mocha.pipeline.PendingReviser;
 import com.devwuu.mocha.render.SiteRenderer;
 import com.devwuu.mocha.repository.NoteRepository;
 import com.devwuu.mocha.repository.PendingStore;
-import com.devwuu.mocha.repository.PhotoSessionStore;
+import com.devwuu.mocha.repository.PhotoBufferStore;
 import com.devwuu.mocha.repository.PhotoStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,7 +48,7 @@ import java.util.Optional;
  *       {@link PendingStore#put} → {@link PreviewMessenger#publish}로 같은 미리보기 메시지 edit(preview_ts 보존).
  *       엔트리 개수는 불변이다(AC-5). (tasks T3-7)</li>
  *   <li>{@link #cancel} — pending 폐기 + 취소 안내. 저장은 일어나지 않는다(AC-4).</li>
- *   <li>{@link #receiveMedia} — 사진 수신 세션 그룹핑: pending 있으면 첨부, 없으면 세션 버퍼링. 윈도우 밖은
+ *   <li>{@link #receiveMedia} — 사진 수신 버퍼 그룹핑: pending 있으면 첨부, 없으면 버퍼링. 윈도우 밖은
  *       새 흐름(FR-10, AC-8). [저장] 시 {@link PhotoStore#commit}으로 스테이징을 노트 트리로 확정한다. (tasks T4-2)</li>
  * </ul>
  * <p>POLICY: 사용자 [저장] 확인 없이 {@link NoteRepository} 쓰기를 호출하지 않는다 (ref: plan.md#ADR-3, AC-4).
@@ -82,8 +82,8 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
     private final PreviewMessenger previewMessenger;
     private final PhotoDownloader photoDownloader;
     private final PhotoStore photoStore;
-    private final PhotoSessionStore photoSessionStore;
-    private final Duration sessionWindow;
+    private final PhotoBufferStore photoBufferStore;
+    private final Duration bufferWindow;
     private final String siteDir;
     private final Clock clock;
 
@@ -100,12 +100,12 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
             PreviewMessenger previewMessenger,
             PhotoDownloader photoDownloader,
             PhotoStore photoStore,
-            PhotoSessionStore photoSessionStore,
-            @Value("${mocha.photo.session-window}") Duration sessionWindow,
+            PhotoBufferStore photoBufferStore,
+            @Value("${mocha.photo.buffer-window}") Duration bufferWindow,
             @Value("${mocha.site.dir}") String siteDir) {
         this(pendingStore, noteRepository, siteRenderer, responder,
                 noteExtractor, noteMatcher, noteEnricher, pendingReviser, previewMessenger,
-                photoDownloader, photoStore, photoSessionStore, sessionWindow, siteDir, Clock.system(SEOUL));
+                photoDownloader, photoStore, photoBufferStore, bufferWindow, siteDir, Clock.system(SEOUL));
     }
 
     // 테스트에서 시간을 고정하기 위한 생성자(NoteRepository·PendingStore와 동일 패턴).
@@ -121,8 +121,8 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
             PreviewMessenger previewMessenger,
             PhotoDownloader photoDownloader,
             PhotoStore photoStore,
-            PhotoSessionStore photoSessionStore,
-            Duration sessionWindow,
+            PhotoBufferStore photoBufferStore,
+            Duration bufferWindow,
             String siteDir,
             Clock clock) {
         this.pendingStore = pendingStore;
@@ -136,8 +136,8 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         this.previewMessenger = previewMessenger;
         this.photoDownloader = photoDownloader;
         this.photoStore = photoStore;
-        this.photoSessionStore = photoSessionStore;
-        this.sessionWindow = sessionWindow;
+        this.photoBufferStore = photoBufferStore;
+        this.bufferWindow = bufferWindow;
         this.siteDir = siteDir;
         this.clock = clock;
     }
@@ -151,19 +151,19 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
             OffsetDateTime now = OffsetDateTime.now(clock);
             List<Note> existingNotes = noteRepository.findAll();
 
-            // FR-10 세션 그룹핑: 텍스트보다 먼저 도착해 버퍼링된 사진이 윈도우 안이면 이 노트로 흡수한다.
-            // 소비(clear)는 pending 전송이 성공한 뒤에만 — 실패 시 사진이 세션에 남아 재시도로 살아남게 한다.
-            // 윈도우 밖 세션은 이 텍스트에 묶이지 않는다: 버려진 스테이징을 정리하고 새 흐름으로 진행한다(AC-8 후반).
-            List<String> sessionNames = List.of();
-            boolean consumeSession = false;
-            Optional<PhotoSession> session = photoSessionStore.get(userId);
-            if (session.isPresent()) {
-                if (withinSessionWindow(session.get().lastMediaAt(), now)) {
-                    sessionNames = session.get().stagedNames();
-                    consumeSession = true;
+            // FR-10 버퍼 그룹핑: 텍스트보다 먼저 도착해 버퍼링된 사진이 윈도우 안이면 이 노트로 흡수한다.
+            // 소비(clear)는 pending 전송이 성공한 뒤에만 — 실패 시 사진이 버퍼에 남아 재시도로 살아남게 한다.
+            // 윈도우 밖 버퍼는 이 텍스트에 묶이지 않는다: 버려진 스테이징을 정리하고 새 흐름으로 진행한다(AC-8 후반).
+            List<String> bufferNames = List.of();
+            boolean consumeBuffer = false;
+            Optional<PhotoBuffer> buffer = photoBufferStore.get(userId);
+            if (buffer.isPresent()) {
+                if (withinBufferWindow(buffer.get().lastMediaAt(), now)) {
+                    bufferNames = buffer.get().stagedNames();
+                    consumeBuffer = true;
                 } else {
                     photoStore.discard(userId);
-                    photoSessionStore.clear(userId);
+                    photoBufferStore.clear(userId);
                 }
             }
 
@@ -180,8 +180,8 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
                     ? noteRepository.nextAvailableSlug(match.targetDate().toString())
                     : match.matchedNote().slug();
 
-            // 흡수한 세션 사진의 임시 미리보기 경로. 실제 저장 경로는 [저장] 시 commit이 확정한다(V-4).
-            List<String> photoPaths = provisionalPhotoPaths(slug, match.targetDate(), sessionNames);
+            // 흡수한 버퍼 사진의 임시 미리보기 경로. 실제 저장 경로는 [저장] 시 commit이 확정한다(V-4).
+            List<String> photoPaths = provisionalPhotoPaths(slug, match.targetDate(), bufferNames);
             Entry entry = new Entry(match.targetDate(), extraction.myTaste(), extraction.rating(), photoPaths, now);
             Note draft = assembleDraft(slug, extraction.coffeeName(), enriched, entry, now);
             MatchInfo matchInfo = match.toMatchInfo();
@@ -197,12 +197,12 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
                 pendingStore.clear(userId);
                 throw publishFailure;
             }
-            // 사진은 pending으로 이관됐다 — 세션 버퍼는 비운다(스테이징 원본은 [저장] 시 commit이 옮긴다).
-            if (consumeSession) {
-                photoSessionStore.clear(userId);
+            // 사진은 pending으로 이관됐다 — 버퍼는 비운다(스테이징 원본은 [저장] 시 commit이 옮긴다).
+            if (consumeBuffer) {
+                photoBufferStore.clear(userId);
             }
             log.info("신규 파이프라인 미리보기 전송: user={} slug={} match={} photos={}",
-                    userId, slug, matchInfo.type(), sessionNames.size());
+                    userId, slug, matchInfo.type(), bufferNames.size());
         } catch (Exception e) {
             // 추출·검색·전송 등 어느 단계 실패든 오류 응답으로 수렴하고 pending은 남기지 않는다(plan §7).
             log.warn("신규 파이프라인 실패(pending 미생성): user={}", userId, e);
@@ -280,7 +280,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
             log.info("[저장] 무효 — pending 부재/만료: user={}", userId);
             // 만료/부재면 대기 중이던 스테이징 사진도 버려진 것 — 노트 트리로 새지 않게 정리한다(FR-10).
             photoStore.discard(userId);
-            photoSessionStore.clear(userId);
+            photoBufferStore.clear(userId);
             responder.post(action.channelId(), NOTHING_TO_SAVE);
             return;
         }
@@ -305,7 +305,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         // POLICY: 사용자 [저장] 확인을 거친 뒤에만 저장한다 (ref: plan.md#ADR-3, AC-4).
         Note saved = noteRepository.upsertEntry(slug, metaOf(draft), committedEntry);
         pendingStore.clear(userId);
-        photoSessionStore.clear(userId);
+        photoBufferStore.clear(userId);
         log.info("[저장] 커밋 완료: slug={} entries={} photos={}",
                 saved.slug(), saved.entries().size(), committedPhotos.size());
 
@@ -321,10 +321,10 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
 
     @Override
     public void cancel(IncomingAction action) {
-        // [취소]는 저장 없이 pending만 폐기한다(AC-4). 대기 중이던 스테이징 사진·세션도 함께 정리한다(FR-10).
+        // [취소]는 저장 없이 pending만 폐기한다(AC-4). 대기 중이던 스테이징 사진·버퍼도 함께 정리한다(FR-10).
         pendingStore.clear(action.userId());
         photoStore.discard(action.userId());
-        photoSessionStore.clear(action.userId());
+        photoBufferStore.clear(action.userId());
         log.info("[취소] pending 폐기: user={}", action.userId());
         responder.post(action.channelId(), CANCELED);
     }
@@ -339,7 +339,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
                 // 진행 중 노트가 있으면 사진은 그 노트에 첨부한다 — pending 중 텍스트=수정(ADR-3)과 같은 정신.
                 attachToPending(userId, channelId, pending.get(), stageAll(userId, media));
             } else {
-                // 담을 노트가 아직 없다 → 세션 버퍼에 쌓아 뒤이을 텍스트를 기다린다(FR-10).
+                // 담을 노트가 아직 없다 → 버퍼에 쌓아 뒤이을 텍스트를 기다린다(FR-10).
                 bufferMedia(userId, media);
             }
         } catch (Exception e) {
@@ -365,7 +365,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         Note draft = pending.draft();
         Entry entry = latestEntry(draft);
         if (entry == null) {
-            // 방어: 엔트리 없는 pending에는 첨부할 자리가 없다 — 세션 버퍼로 흘리지 않고 그냥 로그만.
+            // 방어: 엔트리 없는 pending에는 첨부할 자리가 없다 — 버퍼로 흘리지 않고 그냥 로그만.
             log.warn("사진 첨부 무효 — 엔트리 없는 pending: user={}", userId);
             return;
         }
@@ -380,24 +380,24 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         log.info("pending 사진 첨부: user={} slug={} photos={}", userId, draft.slug(), merged.size());
     }
 
-    // pending 없음: 윈도우 밖 이전 세션은 버리고 새로 시작, 안이면 이어붙여 버퍼링한다(AC-8).
+    // pending 없음: 윈도우 밖 이전 버퍼는 버리고 새로 시작, 안이면 이어붙여 버퍼링한다(AC-8).
     private void bufferMedia(String userId, IncomingMedia media) {
         OffsetDateTime now = OffsetDateTime.now(clock);
         List<String> priorNames = List.of();
-        Optional<PhotoSession> existing = photoSessionStore.get(userId);
+        Optional<PhotoBuffer> existing = photoBufferStore.get(userId);
         if (existing.isPresent()) {
-            if (withinSessionWindow(existing.get().lastMediaAt(), now)) {
+            if (withinBufferWindow(existing.get().lastMediaAt(), now)) {
                 priorNames = existing.get().stagedNames();
             } else {
-                // 윈도우 밖 = 이전 세션은 버려진 것 → 새 흐름. 새 사진을 담기 전에 옛 스테이징을 비운다(AC-8 후반).
+                // 윈도우 밖 = 이전 버퍼는 버려진 것 → 새 흐름. 새 사진을 담기 전에 옛 스테이징을 비운다(AC-8 후반).
                 photoStore.discard(userId);
-                photoSessionStore.clear(userId);
+                photoBufferStore.clear(userId);
             }
         }
         List<String> names = new ArrayList<>(priorNames);
         names.addAll(stageAll(userId, media));
-        photoSessionStore.put(userId, new PhotoSession(now, names));
-        log.info("사진 세션 버퍼링: user={} photos={}", userId, names.size());
+        photoBufferStore.put(userId, new PhotoBuffer(now, names));
+        log.info("사진 버퍼링: user={} photos={}", userId, names.size());
     }
 
     // 스테이징 파일명을 확정 저장 경로 규칙(photos/<slug>/<date>/<name>)에 맞춘 임시 미리보기 경로로 변환한다.
@@ -420,8 +420,8 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
                 entries, draft.createdAt(), draft.updatedAt());
     }
 
-    private boolean withinSessionWindow(OffsetDateTime lastMediaAt, OffsetDateTime now) {
-        return Duration.between(lastMediaAt, now).compareTo(sessionWindow) <= 0;
+    private boolean withinBufferWindow(OffsetDateTime lastMediaAt, OffsetDateTime now) {
+        return Duration.between(lastMediaAt, now).compareTo(bufferWindow) <= 0;
     }
 
     // draft(Note)에서 노트 단위 메타만 뽑는다 — 엔트리·slug·타임스탬프는 upsertEntry가 다룬다.

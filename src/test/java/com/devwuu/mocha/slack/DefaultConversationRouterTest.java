@@ -134,7 +134,7 @@ class DefaultConversationRouterTest {
     }
 
     @Test
-    @DisplayName("T4-2: 사진 수신 → receiveMedia로 위임한다(세션 그룹핑은 flow가 처리)")
+    @DisplayName("T4-2: 사진 수신 → receiveMedia로 위임한다(버퍼 그룹핑은 flow가 처리)")
     void routesMediaToFlow() {
         IncomingMedia media = new IncomingMedia(
                 "U1", "C1", List.of(new IncomingPhoto("https://slack/f1", "a.jpg")), "1720000000.000300");
