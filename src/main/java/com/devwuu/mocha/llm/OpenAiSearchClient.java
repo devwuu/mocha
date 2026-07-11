@@ -94,7 +94,9 @@ public class OpenAiSearchClient implements SearchClient {
     protected String rawSearch(SearchQuery query) {
         ResponseCreateParams params = ResponseCreateParams.builder()
                 .model(model)
-                .addTool(WebSearchPreviewTool.builder().build())
+                .addTool(WebSearchPreviewTool.builder()
+                        .type(WebSearchPreviewTool.Type.WEB_SEARCH_PREVIEW)
+                        .build())
                 .instructions(INSTRUCTIONS.formatted(maxResults))
                 .input(buildInput(query))
                 .build();

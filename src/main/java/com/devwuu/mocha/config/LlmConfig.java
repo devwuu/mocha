@@ -34,10 +34,12 @@ public class LlmConfig {
         return new OpenAiLlmClient(openAiClient, model, maxRetries, MochaObjectMapper.create());
     }
 
+    // 검색 보강은 추출과 별도 모델을 쓴다 — web_search로 공식 페이지를 찾아내는 능력이 필요해 상위 모델을
+    // 붙인다(mocha.search.model). 추출은 경량(mocha.llm.model) 유지로 비용을 통제한다.
     @Bean
     public SearchClient searchClient(
             OpenAIClient openAiClient,
-            @Value("${mocha.llm.model}") String model,
+            @Value("${mocha.search.model:gpt-4o}") String model,
             @Value("${mocha.search.max-results:3}") int maxResults) {
         return new OpenAiSearchClient(openAiClient, model, maxResults, MochaObjectMapper.create());
     }

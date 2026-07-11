@@ -23,6 +23,9 @@ mocha:
     # 구조화 응답 스키마/도메인 위반(V-1) 시 재추출 횟수. 총 시도 = 1 + max-retries.
     max-retries: 1
   search:
+    # 웹 검색 보강 전용 모델 — 추출(llm.model)과 분리. 공식 페이지 탐색 능력이 필요해 상위 모델을 쓴다.
+    # web_search_preview 도구는 Responses API에서 gpt-4o 계열이 지원. 비용 민감 시 하향 조정.
+    model: gpt-4o
     # 보강 검색 상한 — 비용/지연 통제.
     max-results: 3
   pending:
