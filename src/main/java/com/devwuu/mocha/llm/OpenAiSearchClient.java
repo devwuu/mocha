@@ -28,7 +28,8 @@ import java.util.Map;
  * <p>보강은 Responses API 한 콜로 (a) {@code web_search_preview} 도구를 {@code tool_choice}로 강제 실행하고,
  * (b) {@code text.format}에 strict JSON schema를 붙여 <b>스키마 보장 JSON</b>으로 받는다 — 응답에 산문·인용이
  * 섞여도 형식 때문에 검색 결과가 버려지지 않게(P1), 경량 모델이 검색을 건너뛰지 못하게(P3) 한다(ADR-13).
- * <p>검색 실패·무결과·응답 파싱 실패는 예외로 새지 않고 {@link SearchResult#empty()}로 수렴한다 —
+ * <p>호출/형식 실패(예외·비스키마 응답)와 진짜 무결과(정상 응답·채운 값 없음)는 서로 다른 로그로
+ * 구분하되(P2, ADR-13, plan §6 관측), 둘 다 예외로 새지 않고 {@link SearchResult#empty()}로 수렴한다 —
  * 상위(NoteEnricher)가 사용자 입력만으로 진행하게 하기 위함(AC-12, plan §7).
  */
 public class OpenAiSearchClient implements SearchClient {
@@ -71,29 +72,40 @@ public class OpenAiSearchClient implements SearchClient {
         try {
             json = rawSearch(query);
         } catch (RuntimeException e) {
-            // AC-12: 검색 실패/타임아웃 → 빈 결과로 진행(예외를 위로 던지지 않음). plan §7.
-            log.warn("웹 검색 보강 실패 — 빈 결과로 진행: coffee={}", query.coffeeName(), e);
+            // POLICY: 호출 실패는 무결과와 구분해 로깅하되 empty()로 수렴 (ADR-13, AC-12, plan §7).
+            // 호출/타임아웃 실패(a) — 프로그래밍 오류·API 장애가 무결과로 은폐되던 P2 회귀 방지.
+            log.warn("웹 검색 보강 호출 실패 — 빈 결과로 진행: coffee={}", query.coffeeName(), e);
             return SearchResult.empty();
         }
         return parse(json, query);
     }
 
-    // 응답 텍스트(JSON)를 SearchResult로 매핑. 무결과·비어있음·파싱 실패는 모두 empty()로 흡수(AC-12).
+    // 응답(JSON)을 SearchResult로 매핑. 형식 실패(비JSON·파싱 불가, a)와 진짜 무결과(정상 응답·채운 값
+    // 없음, b)를 서로 다른 로그로 구분하되 둘 다 empty()로 수렴한다 (ADR-13, AC-12).
     private SearchResult parse(String json, SearchQuery query) {
         String body = extractJsonObject(json);
         if (body == null) {
-            log.info("웹 검색 보강 무결과/비JSON 응답 — 빈 결과로 진행: coffee={}", query.coffeeName());
+            // 형식 실패(a): structured output이면 스키마 JSON이 와야 하는데 JSON 객체가 없다 — 비스키마 응답.
+            log.warn("웹 검색 보강 형식 실패(비JSON 응답) — 빈 결과로 진행: coffee={}", query.coffeeName());
             return SearchResult.empty();
         }
+        SearchResult result;
         try {
             SearchPayload payload = mapper.readValue(body, SearchPayload.class);
-            return new SearchResult(
+            result = new SearchResult(
                     payload.roastery(), payload.origin(), payload.process(), payload.roastLevel(),
                     payload.officialNotes(), payload.sources());
         } catch (RuntimeException e) {
-            log.warn("웹 검색 응답 파싱 실패 — 빈 결과로 진행: coffee={}", query.coffeeName(), e);
+            // 형식 실패(a): 스키마 위반·파싱 불가.
+            log.warn("웹 검색 보강 형식 실패(파싱 불가) — 빈 결과로 진행: coffee={}", query.coffeeName(), e);
             return SearchResult.empty();
         }
+        if (result.equals(SearchResult.empty())) {
+            // 진짜 무결과(b): 응답·파싱은 정상이나 검색이 채운 값이 없음 — 실패와 구분해 관측(plan §6).
+            log.info("웹 검색 보강 무결과(채운 값 없음) — 빈 결과로 진행: coffee={}", query.coffeeName());
+            return SearchResult.empty();
+        }
+        return result;
     }
 
     /**

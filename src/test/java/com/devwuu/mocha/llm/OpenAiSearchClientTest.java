@@ -1,12 +1,19 @@
 package com.devwuu.mocha.llm;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.openai.models.responses.ResponseCreateParams;
 import com.openai.models.responses.ResponseFormatTextJsonSchemaConfig;
 import com.openai.models.responses.Tool;
 import com.openai.models.responses.ToolChoiceTypes;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 
@@ -46,6 +53,23 @@ class OpenAiSearchClientTest {
 
     private static SearchQuery query() {
         return new SearchQuery("커피베라 예가체프 G1", "커피베라");
+    }
+
+    /** OpenAiSearchClient가 남긴 로그 이벤트를 캡처해 실패/무결과 경로가 구분되는지 단언하기 위한 appender. */
+    private ListAppender<ILoggingEvent> logs;
+    private Logger clientLogger;
+
+    @BeforeEach
+    void attachLogAppender() {
+        clientLogger = (Logger) LoggerFactory.getLogger(OpenAiSearchClient.class);
+        logs = new ListAppender<>();
+        logs.start();
+        clientLogger.addAppender(logs);
+    }
+
+    @AfterEach
+    void detachLogAppender() {
+        clientLogger.detachAppender(logs);
     }
 
     @Test
@@ -129,5 +153,55 @@ class OpenAiSearchClientTest {
         SearchResult result = new StubSearchClient(new RuntimeException("timeout")).search(query());
 
         assertThat(result).isEqualTo(SearchResult.empty());
+    }
+
+    @Test
+    @DisplayName("AC-Δ3: ① 호출 예외 → 호출 실패 로그(WARN), 무결과 로그 아님. empty() 수렴")
+    void callFailureLogsAsFailureNotEmptyResult() {
+        SearchResult result = new StubSearchClient(new RuntimeException("timeout")).search(query());
+
+        assertThat(result).isEqualTo(SearchResult.empty());
+        assertThat(logs.list).anySatisfy(e -> {
+            assertThat(e.getLevel()).isEqualTo(Level.WARN);
+            assertThat(e.getFormattedMessage()).contains("호출 실패");
+        });
+        assertThat(logs.list).noneSatisfy(e ->
+                assertThat(e.getFormattedMessage()).contains("무결과"));
+    }
+
+    @Test
+    @DisplayName("AC-Δ3: ② 스키마 위반(비JSON/파싱 불가) 응답 → 형식 실패 로그(WARN), 무결과 로그 아님. empty() 수렴")
+    void formatFailureLogsAsFailureNotEmptyResult() {
+        // 비JSON 응답(structured output이면 스키마 JSON이 와야 함)
+        SearchResult nonJson = new StubSearchClient("검색 결과를 찾지 못했습니다.").search(query());
+        // 파싱 불가한 깨진 JSON
+        SearchResult broken = new StubSearchClient("{\"origin\": ").search(query());
+
+        assertThat(nonJson).isEqualTo(SearchResult.empty());
+        assertThat(broken).isEqualTo(SearchResult.empty());
+        assertThat(logs.list).filteredOn(e -> e.getFormattedMessage().contains("형식 실패"))
+                .hasSize(2)
+                .allSatisfy(e -> assertThat(e.getLevel()).isEqualTo(Level.WARN));
+        assertThat(logs.list).noneSatisfy(e ->
+                assertThat(e.getFormattedMessage()).contains("무결과"));
+    }
+
+    @Test
+    @DisplayName("AC-Δ3: ③ 채운 값 없는 정상 응답 → 무결과 로그(INFO), 실패 로그 아님. empty() 수렴")
+    void emptyValuesLogAsNoResultNotFailure() {
+        String allEmpty = """
+                {"roastery": null, "origin": null, "process": null, "roast_level": null,
+                 "official_notes": [], "sources": []}
+                """;
+
+        SearchResult result = new StubSearchClient(allEmpty).search(query());
+
+        assertThat(result).isEqualTo(SearchResult.empty());
+        assertThat(logs.list).anySatisfy(e -> {
+            assertThat(e.getLevel()).isEqualTo(Level.INFO);
+            assertThat(e.getFormattedMessage()).contains("무결과");
+        });
+        assertThat(logs.list).noneSatisfy(e ->
+                assertThat(e.getFormattedMessage()).contains("실패"));
     }
 }
