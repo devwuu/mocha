@@ -15,8 +15,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.databind.ObjectMapper;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -69,15 +71,45 @@ public class OpenAiSearchClient implements SearchClient {
     private final String model;
     private final int maxResults;
     private final ObjectMapper mapper;
+    // 2단계 협력자 — 공식 페이지 이미지 수집(Jsoup 경계)과 이미지 OCR(vision 경계). Jsoup/SDK 타입은 각 협력자
+    // 안에만 존재한다(NFR-4). 어떤 2단계 실패도 이 클래스가 삼켜 1단계 결과로 진행한다(ADR-15, AC-Δ2).
+    private final OfficialPageImageCollector imageCollector;
+    private final VisionClient visionClient;
+
+    // 1단계만 수행하는 no-op 협력자 — 2단계 배선 없이 쓰는 4-arg 생성자(테스트·간이)에서 2단계를 안전히 비활성화한다.
+    private static final OfficialPageImageCollector NO_OP_COLLECTOR = new OfficialPageImageCollector() {
+        @Override
+        public OfficialPageContent collect(String url) {
+            return OfficialPageContent.empty();
+        }
+    };
+    private static final VisionClient NO_OP_VISION = (imageUrls, hint) -> VisionExtraction.empty();
 
     /**
+     * 1단계(web_search)만 수행하는 생성자 — 2단계(공식 페이지 이미지 OCR) 협력자를 no-op으로 둔다.
+     * 프로덕션 배선은 6-arg 생성자로 {@link OfficialPageImageCollector}·{@link VisionClient}를 주입한다(ADR-15).
+     *
      * @param maxResults 보강 검색 출처 상한(mocha.search.max-results) — 비용/지연 통제(plan §5).
      */
     public OpenAiSearchClient(OpenAIClient client, String model, int maxResults, ObjectMapper mapper) {
+        this(client, model, maxResults, mapper, NO_OP_COLLECTOR, NO_OP_VISION);
+    }
+
+    /**
+     * 2단계까지 배선하는 생성자 (ADR-15). 1단계 결과의 {@code official_page_url}이 있으면 {@code imageCollector}로
+     * 상세 이미지·페이지 텍스트를 얻고, <b>페이지 동일성 가드</b>(커피명 포함 확인) 후 {@code visionClient}로 OCR해
+     * 공식 페이지 유래 값을 1단계 fallback보다 우선 병합한다.
+     *
+     * @param maxResults 보강 검색 출처 상한(mocha.search.max-results) — 비용/지연 통제(plan §5).
+     */
+    public OpenAiSearchClient(OpenAIClient client, String model, int maxResults, ObjectMapper mapper,
+                              OfficialPageImageCollector imageCollector, VisionClient visionClient) {
         this.client = client;
         this.model = model;
         this.maxResults = maxResults;
         this.mapper = mapper;
+        this.imageCollector = imageCollector;
+        this.visionClient = visionClient;
     }
 
     @Override
@@ -94,8 +126,9 @@ public class OpenAiSearchClient implements SearchClient {
         return parse(json, query);
     }
 
-    // 응답(JSON)을 SearchResult로 매핑. 형식 실패(비JSON·파싱 불가, a)와 진짜 무결과(정상 응답·채운 값
-    // 없음, b)를 서로 다른 로그로 구분하되 둘 다 empty()로 수렴한다 (ADR-13, AC-12).
+    // 응답(JSON)을 SearchResult로 매핑(1단계)하고, official_page_url이 있으면 2단계(이미지 OCR)로 넘긴다.
+    // 형식 실패(비JSON·파싱 불가, a)와 진짜 무결과(정상 응답·채운 값 없음, b)는 서로 다른 로그로 구분하되
+    // 둘 다 empty()로 수렴한다 (ADR-13, AC-12).
     private SearchResult parse(String json, SearchQuery query) {
         String body = extractJsonObject(json);
         if (body == null) {
@@ -103,23 +136,107 @@ public class OpenAiSearchClient implements SearchClient {
             log.warn("웹 검색 보강 형식 실패(비JSON 응답) — 빈 결과로 진행: coffee={}", query.coffeeName());
             return SearchResult.empty();
         }
-        SearchResult result;
+        SearchPayload payload;
         try {
-            SearchPayload payload = mapper.readValue(body, SearchPayload.class);
-            result = new SearchResult(
-                    payload.roastery(), payload.origin(), payload.process(), payload.roastLevel(),
-                    payload.officialNotes(), payload.sources());
+            payload = mapper.readValue(body, SearchPayload.class);
         } catch (RuntimeException e) {
             // 형식 실패(a): 스키마 위반·파싱 불가.
             log.warn("웹 검색 보강 형식 실패(파싱 불가) — 빈 결과로 진행: coffee={}", query.coffeeName(), e);
             return SearchResult.empty();
         }
-        if (result.equals(SearchResult.empty())) {
-            // 진짜 무결과(b): 응답·파싱은 정상이나 검색이 채운 값이 없음 — 실패와 구분해 관측(plan §6).
+        SearchResult firstStage = new SearchResult(
+                payload.roastery(), payload.origin(), payload.process(), payload.roastLevel(),
+                payload.officialNotes(), payload.sources());
+
+        String url = payload.officialPageUrl();
+        boolean hasOfficialUrl = url != null && !url.isBlank();
+
+        if (firstStage.equals(SearchResult.empty()) && !hasOfficialUrl) {
+            // 진짜 무결과(b): 1단계가 채운 값도, 2단계로 넘길 공식 페이지 URL도 없음 — 실패와 구분해 관측(plan §6).
             log.info("웹 검색 보강 무결과(채운 값 없음) — 빈 결과로 진행: coffee={}", query.coffeeName());
             return SearchResult.empty();
         }
-        return result;
+        if (!hasOfficialUrl) {
+            // 공식 페이지 URL 없음 — 2단계 미발동, 1단계 결과로 진행(가장 흔한 2단계 실패 모드, AC-Δ2).
+            return firstStage;
+        }
+        // POLICY: 공식 페이지 상세 이미지 OCR(2단계)은 VisionClient 뒤에만 — 어떤 2단계 실패도 1단계 결과로 진행
+        //         (ref: specs/coffee-note-agent/plan.md#ADR-15, AC-12).
+        return enrichFromOfficialPage(firstStage, url.strip(), query);
+    }
+
+    // 2단계 오케스트레이션: 공식 페이지 fetch → 동일성 가드 → vision OCR → 공식 유래 우선 병합.
+    // 어떤 실패(fetch·동일성 불일치·이미지 0장·vision)도 예외로 새지 않고 1단계 결과로 진행하며, 각 실패는
+    // 1단계와 구분되는 로그로 관측된다(ADR-15, AC-Δ2, plan §6·§7).
+    private SearchResult enrichFromOfficialPage(SearchResult firstStage, String url, SearchQuery query) {
+        try {
+            OfficialPageContent content = imageCollector.collect(url);
+            if (content.imageUrls().isEmpty() && content.pageText().isBlank()) {
+                // fetch 실패 등으로 수집 결과 없음(collector가 원인을 상세 로깅).
+                log.info("2단계 페이지 수집 결과 없음(fetch 실패 등) — 1단계 결과로 진행: url={}", url);
+                return firstStage;
+            }
+            // 동일성 가드: fetch한 페이지 텍스트에 커피명이 있어야 진행 — 오상품 URL 환각을 vision 호출 전에 차단
+            //             (ref: plan.md#ADR-15 동일성 가드, findings-TΔ0).
+            if (!pageMentionsCoffee(content.pageText(), query.coffeeName())) {
+                log.info("2단계 페이지 동일성 불일치(커피명 미확인) — 1단계 결과로 진행: coffee={}, url={}",
+                        query.coffeeName(), url);
+                return firstStage;
+            }
+            if (content.imageUrls().isEmpty()) {
+                log.info("2단계 상세 이미지 0장 — 1단계 결과로 진행: coffee={}, url={}", query.coffeeName(), url);
+                return firstStage;
+            }
+            VisionExtraction vision = visionClient.read(
+                    content.imageUrls(), new VisionHint(query.coffeeName(), query.roastery()));
+            if (vision.equals(VisionExtraction.empty())) {
+                log.info("2단계 vision 무결과/실패 — 1단계 결과로 진행: coffee={}, url={}", query.coffeeName(), url);
+                return firstStage;
+            }
+            log.info("2단계 공식 페이지 OCR 병합(공식 유래 우선) — coffee={}, url={}, images={}",
+                    query.coffeeName(), url, content.imageUrls().size());
+            return mergeOfficial(firstStage, vision, url);
+        } catch (RuntimeException e) {
+            // POLICY: 어떤 2단계 실패도 예외로 새지 않고 1단계 결과로 진행 (ref: plan.md#ADR-15, AC-12, plan §7).
+            log.warn("2단계 이미지 OCR 실패 — 1단계 결과로 진행: coffee={}, url={}", query.coffeeName(), url, e);
+            return firstStage;
+        }
+    }
+
+    // POLICY: 공식 페이지 유래(2단계) 값이 1단계 fallback 값보다 우선 병합 — 로스터리 공식 우선 (ref: plan.md#ADR-15, FR-3).
+    //         official_page_url은 sources에 포함한다.
+    private static SearchResult mergeOfficial(SearchResult first, VisionExtraction vision, String officialPageUrl) {
+        List<String> officialNotes =
+                !vision.officialNotes().isEmpty() ? vision.officialNotes() : first.officialNotes();
+        List<String> sources = new ArrayList<>(first.sources());
+        if (!sources.contains(officialPageUrl)) {
+            sources.add(officialPageUrl);
+        }
+        return new SearchResult(
+                preferOfficial(vision.roastery(), first.roastery()),
+                preferOfficial(vision.origin(), first.origin()),
+                preferOfficial(vision.process(), first.process()),
+                preferOfficial(vision.roastLevel(), first.roastLevel()),
+                officialNotes,
+                sources);
+    }
+
+    private static String preferOfficial(String official, String fallback) {
+        return (official != null && !official.isBlank()) ? official : fallback;
+    }
+
+    // 동일성 가드용 단순 정규화 contains — 공백 제거 + 소문자화 후 페이지 텍스트에 커피명이 있는지 본다(ADR-15).
+    private static boolean pageMentionsCoffee(String pageText, String coffeeName) {
+        String haystack = normalizeForGuard(pageText);
+        String needle = normalizeForGuard(coffeeName);
+        return !needle.isEmpty() && haystack.contains(needle);
+    }
+
+    private static String normalizeForGuard(String s) {
+        if (s == null) {
+            return "";
+        }
+        return s.toLowerCase(Locale.ROOT).replaceAll("\\s+", "");
     }
 
     /**
@@ -248,6 +365,8 @@ public class OpenAiSearchClient implements SearchClient {
             String process,
             String roastLevel,
             List<String> officialNotes,
+            // 2단계 입력 — 공식 상품 페이지 URL(1단계 strict schema에서 추가, ADR-15). 미확인 시 null → 2단계 미발동.
+            String officialPageUrl,
             List<String> sources) {
     }
 }

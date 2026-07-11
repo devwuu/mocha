@@ -2,6 +2,7 @@ package com.devwuu.mocha.config;
 
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.llm.LlmClient;
+import com.devwuu.mocha.llm.OfficialPageImageCollector;
 import com.devwuu.mocha.llm.OpenAiLlmClient;
 import com.devwuu.mocha.llm.OpenAiSearchClient;
 import com.devwuu.mocha.llm.OpenAiVisionClient;
@@ -38,12 +39,15 @@ public class LlmConfig {
 
     // 검색 보강은 추출과 별도 모델을 쓴다 — web_search로 공식 페이지를 찾아내는 능력이 필요해 상위 모델을
     // 붙인다(mocha.search.model). 추출은 경량(mocha.llm.model) 유지로 비용을 통제한다.
+    // 2단계(공식 페이지 이미지 OCR, ADR-15) 협력자를 함께 주입한다 — 이미지 수집기(Jsoup 경계)와 vision 경계.
     @Bean
     public SearchClient searchClient(
             OpenAIClient openAiClient,
+            VisionClient visionClient,
             @Value("${mocha.search.model:gpt-4o}") String model,
             @Value("${mocha.search.max-results:3}") int maxResults) {
-        return new OpenAiSearchClient(openAiClient, model, maxResults, MochaObjectMapper.create());
+        return new OpenAiSearchClient(openAiClient, model, maxResults, MochaObjectMapper.create(),
+                new OfficialPageImageCollector(), visionClient);
     }
 
     // 공식 페이지 상세 이미지 OCR(검색 2단계, ADR-15). vision 모델은 검색 보강과 공용(mocha.search.model) —
