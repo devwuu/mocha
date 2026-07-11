@@ -57,6 +57,24 @@ class NoteEnricherTest {
     }
 
     @Test
+    @DisplayName("AC-Δ1/AC-Δ5(D2): 블렌드 쉼표-문자열 origin이 빈 draft.origin을 Sourced.search로 그대로 채운다")
+    void fillsBlankOriginWithCommaSeparatedBlendString() {
+        FakeSearchClient search = new FakeSearchClient();
+        // 블렌드 보강 — 여러 구성 원산지가 origin 한 String에 쉼표로 온다.
+        search.response = new SearchResult(
+                null, "에티오피아, 콜롬비아, 브라질", null, "미디엄",
+                List.of("패션프루트", "베르가못"), List.of());
+
+        NoteMeta result = new NoteEnricher(search).enrich(
+                draft(Sourced.user("모모스 커피"), null, null));
+
+        // 쉼표 문자열이 분해 없이 그대로 source=search로 채워진다(origin 타입 String 불변).
+        assertThat(result.origin()).isEqualTo(Sourced.search("에티오피아, 콜롬비아, 브라질"));
+        assertThat(result.origin().value()).isEqualTo("에티오피아, 콜롬비아, 브라질");
+        assertThat(result.roastLevel()).isEqualTo(Sourced.search("미디엄"));
+    }
+
+    @Test
     @DisplayName("AC-3: 사용자가 명시한 값은 검색 결과와 충돌해도 덮어쓰이지 않는다 (V-6)")
     void userValueSurvivesConflictingSearch() {
         FakeSearchClient search = new FakeSearchClient();

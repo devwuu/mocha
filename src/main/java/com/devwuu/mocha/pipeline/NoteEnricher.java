@@ -13,9 +13,9 @@ import java.util.List;
  * 파이프라인 [4] — 사용자가 명시하지 않은 고정 필드와 official_notes를 웹 검색으로 보강한다
  * (ref: plan.md §1 [4], §3 enrich(draft): EnrichedDraft; spec FR-3).
  * <p>입력·출력은 "커피 1종의 사실" 묶음인 {@link NoteMeta}다 — slug/entries/타임스탬프가 붙기 전의 draft.
- * 빈 필드만 {@code source=search}로 채우고, 검색 참조 링크를 sources에 병합한다. fallback 규칙(단일 원산지
- * 일반 출처 보강, 블렌드 공란, official_notes 로스터리 출처 한정)은 {@link SearchClient} 구현체의 검색
- * 지침이 이미 적용해 {@link SearchResult}로 넘긴 것을 신뢰한다.
+ * 빈 필드만 {@code source=search}로 채우고, 검색 참조 링크를 sources에 병합한다. 보강 규칙(단일 원산지·
+ * 블렌드 공통 fallback 보강, 블렌드 여러 원산지는 origin 쉼표 문자열, official_notes 로스터리 출처 한정,
+ * ADR-14)은 {@link SearchClient} 구현체의 검색 지침이 이미 적용해 {@link SearchResult}로 넘긴 것을 신뢰한다.
  * <p>POLICY: source=user 필드는 검색 값으로 덮어쓰지 않는다 — 빈 필드만 채운다 (ref: data-model.md#V-6, AC-3).
  * <p>검색 무결과/실패는 {@link SearchClient}가 {@link SearchResult#empty()}로 수렴시키므로, 그 경우
  * draft가 그대로 통과한다(AC-12).

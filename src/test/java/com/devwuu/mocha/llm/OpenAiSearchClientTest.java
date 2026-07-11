@@ -161,6 +161,24 @@ class OpenAiSearchClientTest {
     }
 
     @Test
+    @DisplayName("AC-Δ1/AC-Δ5(D2): 블렌드 여러 원산지가 쉼표 문자열로 온 origin이 String 그대로 매핑된다")
+    void mapsCommaSeparatedBlendOriginAsPlainString() {
+        // 블렌드 보강 응답 — origin에 여러 구성 원산지가 쉼표 나열로 온다(List 구조화 아님, 타입 String 불변).
+        String json = """
+                {"roastery": null, "origin": "에티오피아, 콜롬비아, 브라질", "process": null,
+                 "roast_level": "미디엄", "official_notes": ["패션프루트","베르가못"],
+                 "sources": ["https://momos.co.kr/waikiki"]}
+                """;
+
+        SearchResult result = new StubSearchClient(json).search(query());
+
+        // 쉼표 문자열이 파싱·분해 없이 origin() String에 그대로 실린다.
+        assertThat(result.origin()).isEqualTo("에티오피아, 콜롬비아, 브라질");
+        // origin 데이터 타입은 String 불변 — 배열화하지 않는다(회귀 가드).
+        assertThat((Object) result.origin()).isInstanceOf(String.class);
+    }
+
+    @Test
     @DisplayName("코드펜스·설명이 섞인 응답에서도 JSON 객체 구간만 추출해 매핑한다")
     void extractsJsonFromNoisyResponse() {
         String noisy = """
