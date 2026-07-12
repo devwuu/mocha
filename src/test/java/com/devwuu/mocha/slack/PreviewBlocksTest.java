@@ -5,6 +5,7 @@ import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.domain.Rating;
+import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Sourced;
 import com.slack.api.model.block.ActionsBlock;
 import com.slack.api.model.block.ContextBlock;
@@ -24,6 +25,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -35,7 +37,11 @@ class PreviewBlocksTest {
     private final PreviewBlocks previewBlocks = new PreviewBlocks();
 
     private static Entry entry(String myTaste, Rating rating) {
-        return new Entry(LocalDate.of(2026, 7, 10), myTaste, rating, null, List.of(), OffsetDateTime.now());
+        return entry(myTaste, rating, null);
+    }
+
+    private static Entry entry(String myTaste, Rating rating, Recipe recipe) {
+        return new Entry(LocalDate.of(2026, 7, 10), myTaste, rating, recipe, List.of(), OffsetDateTime.now());
     }
 
     private static String md(TextObject text) {
@@ -176,6 +182,110 @@ class PreviewBlocksTest {
                 && s.getText() instanceof MarkdownTextObject t
                 && t.getText().equals(DefaultConfirmationFlow.FINALIZE_SAVED),
                 "마지막 블록은 상태 문구 섹션이어야 한다");
+    }
+
+    @Test
+    @DisplayName("AC-26/FR-12: 커피명이 source=photo면 (사진) 표기, user면 표기 없음")
+    void coffeeNameSourceTags() {
+        // photo 유래 커피명 — (사진) 표기, photo로 채운 로스터리도 (사진)
+        Note photoDraft = new Note(
+                "coffeevera-yirgacheffe-g1",
+                Sourced.photo("커피베라 예가체프 G1"),
+                Sourced.photo("커피베라"),
+                Sourced.search("에티오피아"),
+                null, null, null,
+                List.of(),
+                List.of(entry("좋았다", Rating.GOOD)),
+                OffsetDateTime.now(),
+                OffsetDateTime.now());
+        SectionBlock photoFields = firstFieldsSection(
+                previewBlocks.build(new PendingNote(photoDraft, MatchInfo.newNote(), null, OffsetDateTime.now())));
+        assertTrue(fieldByLabel(photoFields, "커피").contains("(사진)"),
+                "사진 유래 커피명엔 (사진) 표기");
+        assertFalse(fieldByLabel(photoFields, "커피").contains("(검색)"));
+        assertTrue(fieldByLabel(photoFields, "로스터리").contains("(사진)"), "photo 값엔 (사진) 표기");
+        assertTrue(fieldByLabel(photoFields, "원산지").contains("(검색)"), "search 값엔 (검색) 표기");
+
+        // user 유래 커피명 — 표기 없음
+        Note userDraft = new Note(
+                "coffeevera-yirgacheffe-g1",
+                Sourced.user("커피베라 예가체프 G1"),
+                Sourced.user("커피베라"),
+                null, null, null, null,
+                List.of(),
+                List.of(entry("좋았다", Rating.GOOD)),
+                OffsetDateTime.now(),
+                OffsetDateTime.now());
+        SectionBlock userFields = firstFieldsSection(
+                previewBlocks.build(new PendingNote(userDraft, MatchInfo.newNote(), null, OffsetDateTime.now())));
+        String coffee = fieldByLabel(userFields, "커피");
+        assertFalse(coffee.contains("(사진)"), "사용자 커피명엔 표기 없음: " + coffee);
+        assertFalse(coffee.contains("(검색)"), "사용자 커피명엔 표기 없음: " + coffee);
+    }
+
+    @Test
+    @DisplayName("AC-24: 레시피가 있으면 '이렇게 내렸어요' 영역에 있는 항목이 표시된다")
+    void recipeShownWhenPresent() {
+        Note draft = new Note(
+                "coffeevera-yirgacheffe-g1",
+                Sourced.user("커피베라 예가체프 G1"),
+                Sourced.user("커피베라"),
+                null, null, null, null,
+                List.of(),
+                List.of(entry("좋았다", Rating.GOOD, Recipe.normalize(15.0, 240.0, "중간"))),
+                OffsetDateTime.now(),
+                OffsetDateTime.now());
+
+        List<LayoutBlock> blocks = previewBlocks.build(new PendingNote(draft, MatchInfo.newNote(), null, OffsetDateTime.now()));
+
+        String recipeBlock = blocks.stream()
+                .filter(b -> b instanceof SectionBlock s && s.getText() instanceof MarkdownTextObject t
+                        && t.getText().contains(PreviewBlocks.RECIPE_LABEL))
+                .map(b -> md(((SectionBlock) b).getText()))
+                .findFirst().orElseThrow(() -> new AssertionError("레시피 영역 없음"));
+        assertTrue(recipeBlock.contains("원두 15g"), recipeBlock);
+        assertTrue(recipeBlock.contains("물 240ml"), recipeBlock);
+        assertTrue(recipeBlock.contains("분쇄도 중간"), recipeBlock);
+    }
+
+    @Test
+    @DisplayName("AC-25: 레시피 일부만 있으면 있는 항목만, 전무면 레시피 영역 미출력")
+    void recipePartialAndAbsent() {
+        // 물량만 있는 부분 레시피 — 원두·분쇄도 항목은 표시하지 않음
+        Note partial = new Note(
+                "coffeevera-yirgacheffe-g1",
+                Sourced.user("커피베라 예가체프 G1"),
+                Sourced.user("커피베라"),
+                null, null, null, null, List.of(),
+                List.of(entry("좋았다", Rating.GOOD, Recipe.normalize(null, 240.0, null))),
+                OffsetDateTime.now(), OffsetDateTime.now());
+        String recipeBlock = recipeSectionText(
+                previewBlocks.build(new PendingNote(partial, MatchInfo.newNote(), null, OffsetDateTime.now())));
+        assertNotNull(recipeBlock, "부분 레시피는 영역 출력");
+        assertTrue(recipeBlock.contains("물 240ml"), recipeBlock);
+        assertFalse(recipeBlock.contains("원두"), recipeBlock);
+        assertFalse(recipeBlock.contains("분쇄도"), recipeBlock);
+
+        // 레시피 전무(null) — 영역 자체 미출력
+        Note none = new Note(
+                "coffeevera-yirgacheffe-g1",
+                Sourced.user("커피베라 예가체프 G1"),
+                Sourced.user("커피베라"),
+                null, null, null, null, List.of(),
+                List.of(entry("좋았다", Rating.GOOD, null)),
+                OffsetDateTime.now(), OffsetDateTime.now());
+        assertNull(recipeSectionText(
+                previewBlocks.build(new PendingNote(none, MatchInfo.newNote(), null, OffsetDateTime.now()))),
+                "레시피 전무면 영역 미출력");
+    }
+
+    // "이렇게 내렸어요" 섹션 텍스트 또는 null(영역 없음).
+    private static String recipeSectionText(List<LayoutBlock> blocks) {
+        return blocks.stream()
+                .filter(b -> b instanceof SectionBlock s && s.getText() instanceof MarkdownTextObject t
+                        && t.getText().contains(PreviewBlocks.RECIPE_LABEL))
+                .map(b -> md(((SectionBlock) b).getText()))
+                .findFirst().orElse(null);
     }
 
     private static SectionBlock firstFieldsSection(List<LayoutBlock> blocks) {

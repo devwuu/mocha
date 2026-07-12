@@ -4,6 +4,7 @@ import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.PendingNote;
+import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.domain.Sourced;
 import com.slack.api.model.block.LayoutBlock;
@@ -42,9 +43,11 @@ public class PreviewBlocks {
     static final String MATCH_NEW = "*새 노트*를 만들게요 멍! 🐾"; // *새 노트*를 만들게요 멍! 🐾
     static final String MATCH_EXISTING_FMT = "기존 노트 *%s*의 *%s* 기록이에요 멍! 🐾"; // 기존 노트 *{이름}*의 *{날짜}* 기록이에요 멍! 🐾
     static final String OFFICIAL_NOTES_LABEL = "로스터리가 말하길"; // 로스터리가 말하길
+    static final String RECIPE_LABEL = "이렇게 내렸어요"; // 이렇게 내렸어요 (FR-18, changes/0010)
     static final String MY_TASTE_LABEL = "내가 느끼길"; // 내가 느끼길
     static final String SOURCES_LABEL = "출처"; // 출처
     static final String SEARCH_TAG = " _(검색)_"; // (검색) — 이탤릭 표기
+    static final String PHOTO_TAG = " _(사진)_"; // (사진) — 수신 사진 OCR 유래 표기 (FR-12, changes/0010)
     static final String SAVE_LABEL = "저장"; // 저장
     static final String CANCEL_LABEL = "취소"; // 취소
 
@@ -58,6 +61,12 @@ public class PreviewBlocks {
     private static final String LABEL_PROCESS = "가공"; // 가공
     private static final String LABEL_ROAST = "로스팅"; // 로스팅
     private static final String LABEL_RATING = "평가"; // 평가
+
+    // 레시피 항목 표기(있는 항목만·전무 시 영역 미출력, ADR-22) — 원두 15g · 물 240ml · 분쇄도 중간
+    private static final String RECIPE_DOSE_FMT = "원두 %sg"; // 원두 {dose}g
+    private static final String RECIPE_WATER_FMT = "물 %sml"; // 물 {water}ml
+    private static final String RECIPE_GRIND_FMT = "분쇄도 %s"; // 분쇄도 {grind}
+    private static final String RECIPE_SEP = " · "; // 항목 구분
 
     /**
      * pending을 확인 미리보기 블록 목록으로 조립한다.
@@ -100,9 +109,9 @@ public class PreviewBlocks {
         blocks.add(section(s -> s.text(markdownText(matchLine(pending.match(), value(draft.coffeeName()))))));
         blocks.add(divider());
 
-        // 출처 표시 필드 — 2열 fields. null 값은 생략, source=search면 (검색) 표기(AC-2).
+        // 출처 표시 필드 — 2열 fields. null 값은 생략, source 3값 표기(user 무표기·photo (사진)·search (검색)) (AC-2, AC-26, FR-12).
         List<TextObject> fields = new ArrayList<>();
-        addField(fields, LABEL_COFFEE, value(draft.coffeeName()), null);
+        addSourcedField(fields, LABEL_COFFEE, draft.coffeeName()); // 커피명도 source=photo면 (사진) 표기(AC-26)
         addSourcedField(fields, LABEL_ROASTERY, draft.roastery());
         addSourcedField(fields, LABEL_ORIGIN, draft.origin());
         addSourcedField(fields, LABEL_PROCESS, draft.process());
@@ -118,6 +127,11 @@ public class PreviewBlocks {
         String officialNotes = officialNotesText(draft.officialNotes());
         if (officialNotes != null) {
             blocks.add(section(s -> s.text(markdownText("*" + OFFICIAL_NOTES_LABEL + "*\n" + officialNotes))));
+        }
+        // 이렇게 내렸어요(레시피) — 있는 항목만·전무 시 미출력(FR-18, AC-24/25). 수정 가능하도록 미리보기 포함(FR-12).
+        String recipe = entry == null ? null : recipeText(entry.recipe());
+        if (recipe != null) {
+            blocks.add(section(s -> s.text(markdownText("*" + RECIPE_LABEL + "*\n" + recipe))));
         }
         if (entry != null && entry.myTaste() != null && !entry.myTaste().isBlank()) {
             blocks.add(section(s -> s.text(markdownText("*" + MY_TASTE_LABEL + "*\n" + entry.myTaste()))));
@@ -151,10 +165,20 @@ public class PreviewBlocks {
         addField(fields, label, sourced.value(), sourced.source());
     }
 
-    // source=search면 (검색) 표기, user/무출처면 표기 없음 (AC-2, FR-12).
+    // 출처 3값 표기: photo→(사진)·search→(검색)·user/무출처→표기 없음 (AC-2, AC-26, FR-12).
     private static void addField(List<TextObject> fields, String label, String value, Source source) {
-        String tag = source == Source.SEARCH ? SEARCH_TAG : "";
-        fields.add(markdownText("*" + label + "*\n" + value + tag));
+        fields.add(markdownText("*" + label + "*\n" + value + sourceTag(source)));
+    }
+
+    // 출처별 표기 태그. 우선순위 user > photo > search와 무관한 순수 표기 결정.
+    private static String sourceTag(Source source) {
+        if (source == Source.PHOTO) {
+            return PHOTO_TAG;
+        }
+        if (source == Source.SEARCH) {
+            return SEARCH_TAG;
+        }
+        return "";
     }
 
     private static String officialNotesText(Sourced<List<String>> officialNotes) {
@@ -162,7 +186,30 @@ public class PreviewBlocks {
             return null;
         }
         String joined = String.join(", ", officialNotes.value());
-        return officialNotes.source() == Source.SEARCH ? joined + SEARCH_TAG : joined;
+        return joined + sourceTag(officialNotes.source());
+    }
+
+    // 레시피 표기 — 있는 항목만 " · "로 이어 붙이고, 전무(null)면 null 반환(영역 미출력, ADR-22).
+    private static String recipeText(Recipe recipe) {
+        if (recipe == null) {
+            return null;
+        }
+        List<String> parts = new ArrayList<>();
+        if (recipe.doseG() != null) {
+            parts.add(String.format(RECIPE_DOSE_FMT, number(recipe.doseG())));
+        }
+        if (recipe.waterMl() != null) {
+            parts.add(String.format(RECIPE_WATER_FMT, number(recipe.waterMl())));
+        }
+        if (recipe.grind() != null && !recipe.grind().isBlank()) {
+            parts.add(String.format(RECIPE_GRIND_FMT, recipe.grind()));
+        }
+        return parts.isEmpty() ? null : String.join(RECIPE_SEP, parts);
+    }
+
+    // 정수면 소수점 없이(15.0 → "15"), 아니면 그대로(15.5 → "15.5") 표기.
+    private static String number(double v) {
+        return v == Math.rint(v) ? String.valueOf((long) v) : String.valueOf(v);
     }
 
     private static String sourcesText(List<String> sources) {
