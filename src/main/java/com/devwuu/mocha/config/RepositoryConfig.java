@@ -2,6 +2,7 @@ package com.devwuu.mocha.config;
 
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.repository.InMemorySearchSessionStore;
+import com.devwuu.mocha.repository.InMemoryTransitionSlot;
 import com.devwuu.mocha.repository.JsonFileNoteRepository;
 import com.devwuu.mocha.repository.JsonFilePendingStore;
 import com.devwuu.mocha.repository.JsonFilePhotoBufferStore;
@@ -11,6 +12,7 @@ import com.devwuu.mocha.repository.PendingStore;
 import com.devwuu.mocha.repository.PhotoBufferStore;
 import com.devwuu.mocha.repository.PhotoStore;
 import com.devwuu.mocha.repository.SearchSessionStore;
+import com.devwuu.mocha.repository.TransitionSlot;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -49,8 +51,15 @@ public class RepositoryConfig {
     }
 
     @Bean
-    public SearchSessionStore searchSessionStore() {
-        // 메모리 전용(NFR-2 예외, ADR-25) — 파일 경로가 필요 없다. TTL(mocha.search-session.ttl) 주입은 TΔ4에서.
-        return new InMemorySearchSessionStore();
+    public SearchSessionStore searchSessionStore(
+            @Value("${mocha.search-session.ttl:1h}") Duration ttl) {
+        // 메모리 전용(NFR-2 예외, ADR-25) — 파일 경로가 필요 없다(data/ 미생성은 생성자 시그니처가 보장).
+        return new InMemorySearchSessionStore(ttl);
+    }
+
+    @Bean
+    public TransitionSlot transitionSlot() {
+        // 메모리 전용 단일 슬롯(ADR-26) — TTL 10분은 코드 상수, 설정 키 없음(data-model §2.5).
+        return new InMemoryTransitionSlot();
     }
 }
