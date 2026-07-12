@@ -16,7 +16,9 @@ import java.util.List;
  * 빈 필드만 {@code source=search}로 채우고, 검색 참조 링크를 sources에 병합한다. 보강 규칙(단일 원산지·
  * 블렌드 공통 fallback 보강, 블렌드 여러 원산지는 origin 쉼표 문자열, official_notes 로스터리 출처 한정,
  * ADR-14)은 {@link SearchClient} 구현체의 검색 지침이 이미 적용해 {@link SearchResult}로 넘긴 것을 신뢰한다.
- * <p>POLICY: source=user 필드는 검색 값으로 덮어쓰지 않는다 — 빈 필드만 채운다 (ref: data-model.md#V-6, AC-3).
+ * <p>POLICY: source ∈ {user, photo} 필드는 검색 값으로 덮어쓰지 않는다 — 빈 필드만 채운다
+ * (ref: data-model.md#V-6, AC-3, AC-27; photo 불가침은 changes/0010). coffeeName은 검색 대상이 아니라
+ * 그대로 통과시키고(검색 앵커·정체성, V-5), recipe는 NoteMeta에 없어(Entry 소유) 애초에 이 경로 밖이다.
  * <p>검색 무결과/실패는 {@link SearchClient}가 {@link SearchResult#empty()}로 수렴시키므로, 그 경우
  * draft가 그대로 통과한다(AC-12).
  */
@@ -46,7 +48,8 @@ public class NoteEnricher {
                 mergeSources(draft.sources(), result.sources()));
     }
 
-    // POLICY: 값이 이미 있는 필드(사용자 명시분 포함)는 검색 값으로 덮어쓰지 않는다 — 빈 필드만 채움(V-6/AC-3).
+    // POLICY: 값이 이미 있는 필드(source=user·photo 모두)는 검색 값으로 덮어쓰지 않는다 — 빈 필드만 채움(V-6/AC-3/AC-27).
+    // 출처로 분기하지 않고 값 유무만 본다: user/photo 어느 쪽이 채웠든 이미 값이 있으면 검색은 손대지 않는다.
     private Sourced<String> fill(Sourced<String> current, String searched) {
         if (hasText(current)) {
             return current;
@@ -57,7 +60,7 @@ public class NoteEnricher {
         return Sourced.search(searched);
     }
 
-    // official_notes: 이미 값이 있으면(사용자가 불러준 경우 등) 유지, 없으면 검색 결과로 채움.
+    // official_notes: 이미 값이 있으면(사용자가 불러줬거나 사진 OCR이 읽은 경우 등) 유지, 없으면 검색 결과로 채움(V-6).
     private Sourced<List<String>> fillList(Sourced<List<String>> current, List<String> searched) {
         if (current != null && current.value() != null && !current.value().isEmpty()) {
             return current;

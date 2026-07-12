@@ -121,6 +121,47 @@ class NoteEnricherTest {
     }
 
     @Test
+    @DisplayName("AC-Δ3/V-6: 사진 OCR이 채운 필드(source=photo)는 검색 값과 충돌해도 유지된다 (photo 불가침)")
+    void photoValueSurvivesConflictingSearch() {
+        FakeSearchClient search = new FakeSearchClient();
+        // 사진에서 읽은 process=내추럴 vs 검색은 워시드 → 사진 값이 이겨야 한다(user > photo > search).
+        search.response = new SearchResult(null, "에티오피아", "워시드", "라이트", List.of("검색노트"), List.of());
+
+        NoteMeta input = new NoteMeta(
+                Sourced.user("커피베라 예가체프 G1"),
+                Sourced.photo("커피베라"),          // 사진에서 읽은 로스터리
+                null,                                // 빈 필드 → 검색이 채운다
+                Sourced.photo("내추럴"),            // 사진에서 읽은 가공 방식
+                null,
+                Sourced.photo(List.of("사진노트")), // 사진 속 인쇄 노트
+                List.of());
+        NoteMeta result = new NoteEnricher(search).enrich(input);
+
+        assertThat(result.roastery()).isEqualTo(Sourced.photo("커피베라"));   // photo 유지
+        assertThat(result.process()).isEqualTo(Sourced.photo("내추럴"));     // 덮어쓰기 드롭
+        assertThat(result.officialNotes()).isEqualTo(Sourced.photo(List.of("사진노트"))); // photo 유지
+        assertThat(result.origin()).isEqualTo(Sourced.search("에티오피아"));  // 빈 필드만 보강
+        assertThat(result.roastLevel()).isEqualTo(Sourced.search("라이트"));
+    }
+
+    @Test
+    @DisplayName("AC-Δ3/V-6: coffeeName은 검색 대상이 아니며 그대로 통과한다(user·photo 불변)")
+    void coffeeNameUntouchedBySearch() {
+        FakeSearchClient search = new FakeSearchClient();
+        // 검색이 로스터리 등을 채우더라도 coffeeName에는 손대지 않는다.
+        search.response = new SearchResult(null, "커피베라", "워시드", null, List.of(), List.of());
+
+        NoteMeta userNamed = draft(null, null, null); // coffeeName=Sourced.user(...)
+        assertThat(new NoteEnricher(search).enrich(userNamed).coffeeName())
+                .isEqualTo(Sourced.user("커피베라 예가체프 G1"));
+
+        NoteMeta photoNamed = new NoteMeta(
+                Sourced.photo("게이샤 워시드"), null, null, null, null, null, List.of());
+        assertThat(new NoteEnricher(search).enrich(photoNamed).coffeeName())
+                .isEqualTo(Sourced.photo("게이샤 워시드"));
+    }
+
+    @Test
     @DisplayName("sources는 기존 뒤에 검색 링크를 순서 유지·중복 제거로 병합한다 (FR-12)")
     void mergesSourcesDedup() {
         FakeSearchClient search = new FakeSearchClient();
