@@ -279,6 +279,94 @@ class PreviewBlocksTest {
                 "레시피 전무면 영역 미출력");
     }
 
+    @Test
+    @DisplayName("AC-15/AC-37: edit 모드는 ✏️ 헤더 + '기존 노트 수정' 표기, 충돌 없으면 경고 미출력, [저장]/[취소] 버튼 유지")
+    void editModeHeaderWithoutConflict() {
+        Note draft = editDraft(LocalDate.of(2026, 7, 10));
+        PendingNote pending = new PendingNote(
+                PendingNote.Mode.EDIT, draft,
+                new PendingNote.EditTarget(draft.slug(), LocalDate.of(2026, 7, 10)),
+                null, null, OffsetDateTime.now());
+
+        List<LayoutBlock> blocks = previewBlocks.build(pending);
+
+        assertEquals(PreviewBlocks.HEADER_EDIT, ((HeaderBlock) blocks.get(0)).getText().getText());
+        String matchLine = md(((SectionBlock) blocks.get(1)).getText());
+        assertTrue(matchLine.contains("기존 노트 수정"), matchLine);
+        assertTrue(matchLine.contains("2026-07-10"), matchLine);
+
+        // 충돌 플래그가 없으면 경고 섹션 미출력
+        assertTrue(blocks.stream().noneMatch(b -> b instanceof SectionBlock s
+                && s.getText() instanceof MarkdownTextObject t && t.getText().contains("덮어써")),
+                "충돌 없으면 경고 없음");
+
+        // 수정 세션도 [저장]/[취소] 버튼 계약 동일(pending 재사용, ADR-27)
+        ActionsBlock actions = (ActionsBlock) blocks.get(blocks.size() - 1);
+        assertEquals(2, actions.getElements().size());
+    }
+
+    @Test
+    @DisplayName("AC-39/V-10: edit 모드 날짜 이동 충돌 시 덮어쓰기 경고 필수 표기 + 이동 표기(옛 날짜 → 새 날짜)")
+    void editModeDateConflictWarning() {
+        // 7/10 기록을 7/12로 이동, 7/12에 기존 엔트리가 있어 충돌(dateConflict=true)
+        Note draft = editDraft(LocalDate.of(2026, 7, 12));
+        PendingNote pending = new PendingNote(
+                PendingNote.Mode.EDIT, draft,
+                new PendingNote.EditTarget(draft.slug(), LocalDate.of(2026, 7, 10)),
+                true, null, null, OffsetDateTime.now());
+
+        List<LayoutBlock> blocks = previewBlocks.build(pending);
+
+        // 이동 표기: 대상 날짜와 새 날짜 모두 명시
+        String matchLine = md(((SectionBlock) blocks.get(1)).getText());
+        assertTrue(matchLine.contains("기존 노트 수정"), matchLine);
+        assertTrue(matchLine.contains("2026-07-10"), matchLine);
+        assertTrue(matchLine.contains("2026-07-12"), matchLine);
+
+        // 경고 섹션 필수(경고 없는 덮어쓰기 금지) — 충돌 날짜 명시
+        String warning = blocks.stream()
+                .filter(b -> b instanceof SectionBlock s && s.getText() instanceof MarkdownTextObject t
+                        && t.getText().contains("덮어써"))
+                .map(b -> md(((SectionBlock) b).getText()))
+                .findFirst().orElseThrow(() -> new AssertionError("덮어쓰기 경고 섹션 없음(V-10 위반)"));
+        assertTrue(warning.contains("2026-07-12"), warning);
+
+        // buildFinalized(버튼 소진, 0009 재사용)에서도 본문 공유로 경고·✏️ 헤더 유지
+        List<LayoutBlock> finalized = previewBlocks.buildFinalized(pending, DefaultConfirmationFlow.FINALIZE_SAVED);
+        assertEquals(PreviewBlocks.HEADER_EDIT, ((HeaderBlock) finalized.get(0)).getText().getText());
+        assertTrue(finalized.stream().noneMatch(b -> b instanceof ActionsBlock));
+        assertTrue(finalized.stream().anyMatch(b -> b instanceof SectionBlock s
+                && s.getText() instanceof MarkdownTextObject t && t.getText().contains("덮어써")));
+    }
+
+    @Test
+    @DisplayName("AC-Δ6 회귀: record 모드 미리보기는 ☕ 헤더 그대로, '기존 노트 수정' 표기·경고 없음")
+    void recordModeUnchanged() {
+        Note draft = editDraft(LocalDate.of(2026, 7, 10));
+        PendingNote pending = new PendingNote(draft, MatchInfo.newNote(), null, OffsetDateTime.now());
+
+        List<LayoutBlock> blocks = previewBlocks.build(pending);
+
+        assertEquals(PreviewBlocks.HEADER, ((HeaderBlock) blocks.get(0)).getText().getText());
+        assertTrue(blocks.stream()
+                .filter(b -> b instanceof SectionBlock s && s.getText() instanceof MarkdownTextObject)
+                .map(b -> md(((SectionBlock) b).getText()))
+                .noneMatch(t -> t.contains("기존 노트 수정") || t.contains("덮어써")));
+    }
+
+    // edit 모드 draft — 대상 노트를 로드한 사본 형태(엔트리 1건, 날짜는 인자).
+    private static Note editDraft(LocalDate entryDate) {
+        return new Note(
+                "coffeevera-yirgacheffe-g1",
+                Sourced.user("커피베라 예가체프 G1"),
+                Sourced.user("커피베라"),
+                null, null, null, null,
+                List.of(),
+                List.of(new Entry(entryDate, "산미가 좋았다", Rating.GOOD, null, List.of(), OffsetDateTime.now())),
+                OffsetDateTime.now(),
+                OffsetDateTime.now());
+    }
+
     // "이렇게 내렸어요" 섹션 텍스트 또는 null(영역 없음).
     private static String recipeSectionText(List<LayoutBlock> blocks) {
         return blocks.stream()

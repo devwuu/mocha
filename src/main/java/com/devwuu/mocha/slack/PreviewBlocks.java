@@ -11,6 +11,7 @@ import com.slack.api.model.block.LayoutBlock;
 import com.slack.api.model.block.composition.TextObject;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -31,6 +32,8 @@ import static com.slack.api.model.block.element.BlockElements.button;
  * <ul>
  *   <li>검색으로 채운 출처 필드에는 {@code (검색)} 표기, 사용자 값에는 표기 없음 (AC-2, FR-12).
  *   <li>매칭 표시: "새 노트" 또는 "기존 노트 {이름}의 {날짜} 기록" (AC-15).
+ *   <li>수정 세션(mode=edit)은 ✏️ 헤더 + "기존 노트 수정" 표기, 날짜 이동 충돌 시 덮어쓰기 경고 섹션 필수
+ *       (AC-15/AC-37/AC-39, V-10; changes/0012 TΔ6).
  *   <li>[저장]/[취소] 버튼 — action_id는 {@link DefaultConversationRouter}의 계약을 따른다.
  * </ul>
  * <p>멘트(모카 톤)는 구현 디테일이라 상수로 분리한다 — spec의 비즈니스 결정이 아니다.
@@ -40,8 +43,13 @@ public class PreviewBlocks {
 
     // --- 멘트(모카 톤) 상수 — 구현 디테일, spec 결정 아님. 강아지 말투: 문장 끝에 "멍" + 🐾 ---
     static final String HEADER = "☕ 이렇게 기록할까요 멍? 🐾"; // ☕ 이렇게 기록할까요 멍? 🐾
+    static final String HEADER_EDIT = "✏️ 이렇게 고칠까요 멍? 🐾"; // ✏️ 수정 세션 헤더 (AC-15, changes/0012)
     static final String MATCH_NEW = "*새 노트*를 만들게요 멍! 🐾"; // *새 노트*를 만들게요 멍! 🐾
     static final String MATCH_EXISTING_FMT = "기존 노트 *%s*의 *%s* 기록이에요 멍! 🐾"; // 기존 노트 *{이름}*의 *{날짜}* 기록이에요 멍! 🐾
+    static final String MATCH_EDIT_FMT = "*기존 노트 수정* — *%s*의 *%s* 기록을 고쳐요 멍! 🐾"; // 기존 노트 수정 — *{이름}*의 *{대상 날짜}* (AC-15)
+    static final String MATCH_EDIT_MOVED_FMT = "*기존 노트 수정* — *%s*의 *%s* 기록을 *%s*로 옮겨서 고쳐요 멍! 🐾"; // 날짜 이동 시 {옛 날짜} → {새 날짜} 표기
+    static final String DATE_CONFLICT_WARNING_FMT =
+            "⚠️ *%s*에는 이미 기록이 있어요 멍 — [저장]하면 그 날 기록을 이번 내용으로 덮어써요! 🐾"; // 덮어쓰기 경고 (AC-39, V-10)
     static final String OFFICIAL_NOTES_LABEL = "로스터리가 말하길"; // 로스터리가 말하길
     static final String RECIPE_LABEL = "이렇게 내렸어요"; // 이렇게 내렸어요 (FR-18, changes/0010)
     static final String MY_TASTE_LABEL = "내가 느끼길"; // 내가 느끼길
@@ -104,9 +112,18 @@ public class PreviewBlocks {
         Note draft = pending.draft();
         Entry entry = latestEntry(draft);
 
+        boolean editMode = pending.mode() == PendingNote.Mode.EDIT;
         List<LayoutBlock> blocks = new ArrayList<>();
-        blocks.add(header(h -> h.text(plainText(HEADER))));
-        blocks.add(section(s -> s.text(markdownText(matchLine(pending.match(), value(draft.coffeeName()))))));
+        blocks.add(header(h -> h.text(plainText(editMode ? HEADER_EDIT : HEADER))));
+        blocks.add(section(s -> s.text(markdownText(editMode
+                ? editMatchLine(pending, entry)
+                : matchLine(pending.match(), value(draft.coffeeName()))))));
+        // POLICY: 날짜 이동 덮어쓰기는 미리보기 경고 표기 없이는 금지 — 충돌 플래그가 서 있으면 경고 섹션 필수
+        //         (ref: specs/coffee-note-agent/plan.md#ADR-27, data-model.md#V-10, spec AC-39).
+        if (editMode && pending.dateConflict() && entry != null) {
+            blocks.add(section(s -> s.text(markdownText(
+                    String.format(DATE_CONFLICT_WARNING_FMT, entry.date())))));
+        }
         blocks.add(divider());
 
         // 출처 표시 필드 — 2열 fields. null 값은 생략, source 3값 표기(user 무표기·photo (사진)·search (검색)) (AC-2, AC-26, FR-12).
@@ -152,6 +169,18 @@ public class PreviewBlocks {
         }
         // 갱신/추가 구분은 pending(MatchInfo)에 없다 — "기록"으로 중립 표기(tasks T3-3 라인).
         return String.format(MATCH_EXISTING_FMT, coffeeName, match.date());
+    }
+
+    // edit 모드 매칭 라인 — "기존 노트 수정" 명시(AC-15). 미리보기가 draft(저장될 내용)를 반영해야 하므로(FR-4)
+    // 날짜 이동이 있으면 대상 날짜 → 새 날짜를 함께 표기한다.
+    private static String editMatchLine(PendingNote pending, Entry entry) {
+        String coffeeName = value(pending.draft().coffeeName());
+        LocalDate targetDate = pending.target().date();
+        LocalDate entryDate = entry == null ? null : entry.date();
+        if (entryDate != null && !entryDate.equals(targetDate)) {
+            return String.format(MATCH_EDIT_MOVED_FMT, coffeeName, targetDate, entryDate);
+        }
+        return String.format(MATCH_EDIT_FMT, coffeeName, targetDate);
     }
 
     private static String value(Sourced<String> sourced) {
