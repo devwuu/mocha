@@ -30,7 +30,7 @@ class InMemorySearchSessionStoreTest {
     private static final String USER = "U123";
 
     private static SearchSession sessionCreatedAt(OffsetDateTime createdAt) {
-        return new SearchSession(List.of("예가체프"), List.of(), createdAt);
+        return new SearchSession(List.of("예가체프"), List.of(), 0, createdAt);
     }
 
     @Test
@@ -58,7 +58,7 @@ class InMemorySearchSessionStoreTest {
         InMemorySearchSessionStore store = new InMemorySearchSessionStore(TTL, FIXED);
         store.put(USER, sessionCreatedAt(OffsetDateTime.now(FIXED).minusMinutes(30)));
         SearchSession latest = new SearchSession(
-                List.of("예가체프", "작년 겨울"), List.of("coffeevera-yirgacheffe-g1"), OffsetDateTime.now(FIXED));
+                List.of("예가체프", "작년 겨울"), List.of("coffeevera-yirgacheffe-g1"), 1, OffsetDateTime.now(FIXED));
         store.put(USER, latest);
 
         assertThat(store.get(USER)).contains(latest);

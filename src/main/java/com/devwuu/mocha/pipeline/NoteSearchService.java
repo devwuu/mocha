@@ -1,0 +1,198 @@
+package com.devwuu.mocha.pipeline;
+
+import com.devwuu.mocha.domain.Entry;
+import com.devwuu.mocha.domain.Note;
+import com.devwuu.mocha.domain.SearchSession;
+import com.devwuu.mocha.llm.LlmClient;
+import com.devwuu.mocha.llm.LlmException;
+import com.devwuu.mocha.llm.LlmRequest;
+import tools.jackson.databind.ObjectMapper;
+
+import java.time.Clock;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+
+/**
+ * 검색 세션의 후보 선정·턴 판정 — 전체 노트 메타를 LLM 컨텍스트에 넣어 후보를 고르고(data-model §4.2),
+ * 단일 매치/복수 후보/무후보 재질문/상한 종료를 가른다 (ref: spec FR-20, plan.md §3·#ADR-25, changes/0011 TΔ5).
+ * <p>세션 저장·폐기와 응답 전송(카드 재전송·목록·멘트)은 배선 단(ConfirmationFlow)의 몫이다 — 여기는
+ * 상태 없는 판정만 한다. 추출과 같은 경량 모델(`mocha.llm.model`)을 공용한다(새 모델 키 없음).
+ * <p>POLICY: LLM candidate_slugs는 서버가 실존 노트로 재검증한다 — 실존 slug가 0개면 무후보로 수렴
+ * (환각 필터, FR-14 matched_slug 재검증과 동일 정신) (ref: data-model.md#4.2).
+ * <p>POLICY: 무후보 재질문은 세션당 {@code mocha.search-session.max-requery}(기본 0=무제한)로 상한 —
+ * 도달 시 세션 종료로 판정한다 (ref: spec FR-20/AC-33, plan.md#ADR-25).
+ */
+public class NoteSearchService {
+
+    // 날짜/타임스탬프는 Asia/Seoul 기준 — pending·검색 세션 store와 동일(V-3).
+    private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
+
+    private static final String SCHEMA_NAME = "note_search_candidates";
+
+    // structured output 스키마(data-model.md#4.2). strict — candidate_slugs 단일 필드.
+    private static final String JSON_SCHEMA = """
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["candidate_slugs"],
+              "properties": {
+                "candidate_slugs": {
+                  "type": "array",
+                  "items": {"type": "string"},
+                  "description": "사용자가 찾는 노트의 후보 slug — 관련도순. 확신 있는 단일 매치면 1개만, 들어맞는 노트가 없으면 빈 배열."
+                }
+              }
+            }
+            """;
+
+    private static final String SYSTEM_PROMPT = """
+            너는 사용자의 커피 시음 기록(노트) 중에서 사용자가 찾는 기록의 후보를 고르는 검색기다.
+            입력 JSON: message(이번 텍스트), clues(이 검색 세션의 누적 단서), presented_candidates(직전에 제시한 후보 slug — 제시 순서), notes(전체 노트 메타).
+            - notes에 실제로 있는 slug만 candidate_slugs에 담는다. slug를 지어내지 않는다.
+            - 단서가 하나의 노트를 확신 있게 가리키면 그 slug 1개만 담는다.
+            - 여러 노트가 그럴듯하면 관련도 순으로 모두 담는다.
+            - 들어맞는 노트가 없으면 빈 배열로 둔다. 억지로 고르지 않는다.
+            - "첫 번째", "두 번째" 같은 선택 표현은 presented_candidates의 제시 순서로 해석한다.
+            """;
+
+    private final LlmClient llmClient;
+    private final ObjectMapper mapper;
+    private final int maxRequery; // 0 = 무제한 (mocha.search-session.max-requery)
+    private final Clock clock;
+
+    public NoteSearchService(LlmClient llmClient, ObjectMapper mapper, int maxRequery) {
+        this(llmClient, mapper, maxRequery, Clock.system(SEOUL));
+    }
+
+    // 테스트에서 세션 시작 시각을 고정하기 위한 생성자(store들과 동일 패턴).
+    NoteSearchService(LlmClient llmClient, ObjectMapper mapper, int maxRequery, Clock clock) {
+        this.llmClient = llmClient;
+        this.mapper = mapper;
+        this.maxRequery = maxRequery;
+        this.clock = clock;
+    }
+
+    /**
+     * 검색 세션의 한 턴을 판정한다 — 세션이 없으면 시작(누적 단서·재질문 횟수 0에서 출발)이고,
+     * 있으면 계속(단서 누적·직전 후보를 선택 해석 기준으로 주입)이다.
+     *
+     * @param text            이번 수신 텍스트(최초 질의·추가 단서·"두 번째" 같은 선택 답 전부).
+     * @param existingSession 진행 중 세션(TTL 내). 비어 있으면 새 세션을 시작한다.
+     * @param notes           후보 선정 대상 전체 노트. 비어 있으면 LLM 호출 없이 무후보로 수렴한다.
+     * @throws LlmException 후보 선정 호출/스키마 실패(plan §7 — 호출부는 세션을 유지하고 안내로 수렴).
+     */
+    public SearchOutcome handle(String text, Optional<SearchSession> existingSession, List<Note> notes) {
+        SearchSession base = existingSession.orElseGet(
+                () -> new SearchSession(List.of(), List.of(), 0, OffsetDateTime.now(clock)));
+        List<String> clues = appended(base.clues(), text);
+
+        List<Note> matched = notes.isEmpty()
+                ? List.of()
+                : select(text, clues, base.candidateSlugs(), notes);
+
+        if (matched.isEmpty()) {
+            // POLICY: 재질문 상한 도달 시 세션 종료 판정 — 0=무제한 (spec FR-20/AC-33, ADR-25).
+            if (maxRequery > 0 && base.requeryCount() >= maxRequery) {
+                return new SearchOutcome(SearchOutcome.Type.LIMIT_REACHED, null, List.of());
+            }
+            // 직전 제시 후보는 유지한다 — 재질문 답변이 "두 번째" 같은 선택일 수도 있어 해석 기준을 잃지 않는다.
+            SearchSession next = new SearchSession(
+                    clues, base.candidateSlugs(), base.requeryCount() + 1, base.createdAt());
+            return new SearchOutcome(SearchOutcome.Type.NO_MATCH, next, List.of());
+        }
+
+        List<SearchHit> hits = matched.stream().map(NoteSearchService::hitOf).toList();
+        List<String> slugs = matched.stream().map(Note::slug).toList();
+        SearchSession next = new SearchSession(clues, slugs, base.requeryCount(), base.createdAt());
+        SearchOutcome.Type type = hits.size() == 1
+                ? SearchOutcome.Type.SINGLE_MATCH
+                : SearchOutcome.Type.MULTIPLE_CANDIDATES;
+        return new SearchOutcome(type, next, hits);
+    }
+
+    // data-model §4.2 요청을 조립해 LLM 후보 선정을 호출하고, 실존 slug만 남긴다(환각 필터·순서 보존·중복 제거).
+    private List<Note> select(String text, List<String> clues, List<String> presentedCandidates, List<Note> notes) {
+        String userPrompt = buildUserPrompt(text, clues, presentedCandidates, notes);
+        SearchSelection selection = llmClient.complete(new LlmRequest<>(
+                SCHEMA_NAME, JSON_SCHEMA, SYSTEM_PROMPT, userPrompt, SearchSelection.class));
+
+        Map<String, Note> bySlug = new LinkedHashMap<>();
+        for (Note note : notes) {
+            bySlug.put(note.slug(), note);
+        }
+        return selection.candidateSlugs().stream()
+                .distinct()
+                .map(bySlug::get)
+                .filter(Objects::nonNull)
+                .toList();
+    }
+
+    private String buildUserPrompt(
+            String text, List<String> clues, List<String> presentedCandidates, List<Note> notes) {
+        List<NotePayload> payloads = notes.stream().map(NoteSearchService::payloadOf).toList();
+        try {
+            return mapper.writeValueAsString(new SearchRequest(text, clues, presentedCandidates, payloads));
+        } catch (RuntimeException e) {
+            throw new LlmException("검색 후보 선정 요청 직렬화 실패", e);
+        }
+    }
+
+    private static List<String> appended(List<String> clues, String text) {
+        List<String> merged = new ArrayList<>(clues);
+        merged.add(text);
+        return List.copyOf(merged);
+    }
+
+    private static SearchHit hitOf(Note note) {
+        return new SearchHit(note.slug(), coffeeNameValue(note), roasteryValue(note), latestDate(note));
+    }
+
+    private static String coffeeNameValue(Note note) {
+        return note.coffeeName() == null ? null : note.coffeeName().value();
+    }
+
+    private static String roasteryValue(Note note) {
+        return note.roastery() == null ? null : note.roastery().value();
+    }
+
+    // 카드 재전송 대상 엔트리 = 최신(기본, FR-20). 저장 규칙상 entries는 날짜 오름차순이지만 방어적으로 최댓값을 취한다.
+    private static LocalDate latestDate(Note note) {
+        if (note.entries() == null) {
+            return null;
+        }
+        return note.entries().stream()
+                .map(Entry::date)
+                .filter(Objects::nonNull)
+                .max(Comparator.naturalOrder())
+                .orElse(null);
+    }
+
+    /** data-model.md#4.2 요청 스키마 대응 내부 페이로드(snake_case 직렬화). */
+    private record SearchRequest(
+            String message, List<String> clues, List<String> presentedCandidates, List<NotePayload> notes) {
+    }
+
+    /** 후보 선정 컨텍스트에 싣는 노트 메타 축약 — 커피명·로스터리·원산지·official_notes·최근 시음일(FR-20). */
+    private record NotePayload(
+            String slug, String coffeeName, String roastery, String origin,
+            List<String> officialNotes, LocalDate lastTasted) {
+    }
+
+    private static NotePayload payloadOf(Note note) {
+        return new NotePayload(
+                note.slug(),
+                note.coffeeName() == null ? null : note.coffeeName().value(),
+                note.roastery() == null ? null : note.roastery().value(),
+                note.origin() == null ? null : note.origin().value(),
+                note.officialNotes() == null ? null : note.officialNotes().value(),
+                latestDate(note));
+    }
+}

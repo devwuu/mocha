@@ -10,19 +10,24 @@ import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.llm.VisionExtraction;
 import com.devwuu.mocha.llm.VisionHint;
+import com.devwuu.mocha.domain.SearchSession;
 import com.devwuu.mocha.pipeline.ExtractionResult;
 import com.devwuu.mocha.pipeline.MatchResult;
 import com.devwuu.mocha.pipeline.NoteCandidate;
 import com.devwuu.mocha.pipeline.NoteEnricher;
 import com.devwuu.mocha.pipeline.NoteExtractor;
 import com.devwuu.mocha.pipeline.NoteMatcher;
+import com.devwuu.mocha.pipeline.NoteSearchService;
 import com.devwuu.mocha.pipeline.PendingReviser;
 import com.devwuu.mocha.pipeline.PhotoInfoExtractor;
+import com.devwuu.mocha.pipeline.SearchHit;
+import com.devwuu.mocha.pipeline.SearchOutcome;
 import com.devwuu.mocha.render.NoteRenderer;
 import com.devwuu.mocha.repository.NoteRepository;
 import com.devwuu.mocha.repository.PendingStore;
 import com.devwuu.mocha.repository.PhotoBufferStore;
 import com.devwuu.mocha.repository.PhotoStore;
+import com.devwuu.mocha.repository.SearchSessionStore;
 import com.devwuu.mocha.repository.StagedImage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,6 +35,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
@@ -83,7 +89,14 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
     static final String NOT_A_RECORD = "저는 커피 감상을 기록하는 강아지예요 멍! 마신 커피 이야기를 들려주세요 🐾"; // 의도 게이트 other 판정 안내(AC-20)
     static final String PENDING_EXISTS = "확인을 기다리는 기록이 있어요 멍! 먼저 [저장]이나 [취소]로 마무리해 주세요 🐾"; // record+대기 존재 안내 — 단일 대기 원칙(FR-17, AC-30)
     static final String NOTHING_TO_REVISE = "지금 고칠 대기 기록이 없어요 멍… 새 커피 이야기면 그대로 들려주세요! 🐾"; // revise+대기 없음 안내(FR-17)
-    static final String SEARCH_NOT_READY = "기록 찾기는 아직 배우는 중이에요 멍… 조금만 기다려 주세요! 🐾"; // 임시 — TΔ5(NoteSearchService)가 실검색으로 대체(changes/0011 tasks)
+    // --- 검색 세션 멘트(FR-20, ADR-25, changes/0011 TΔ5) — 시작·종료 안내는 spec AC-34가 요구하는 모카 톤. ---
+    static final String SEARCH_STARTED = "기록을 찾아볼게요 멍! 🐾"; // 검색 세션 시작 안내(AC-34)
+    static final String SEARCH_FOUND_CAPTION = "이 기록이 맞나요 멍? 다 보셨으면 \"됐어\"라고 말해주세요 🐾"; // 단일 매치 카드 캡션(AC-31)
+    static final String SEARCH_CANDIDATES_HEADER = "비슷한 기록이 여러 개예요 멍! 번호나 이름으로 골라주세요 🐾"; // 복수 후보 목록 머리말(AC-32)
+    static final String SEARCH_REQUERY = "딱 맞는 기록을 못 찾았어요 멍… 날짜나 로스터리 같은 단서를 더 알려주시겠어요? 🐾"; // 무후보 재질문(AC-33)
+    static final String SEARCH_LIMIT_REACHED = "이번엔 못 찾겠어요 멍… 찾기를 마칠게요. 다른 단서가 떠오르면 다시 불러주세요! 🐾"; // 재질문 상한 도달 → 세션 종료(FR-20/AC-33)
+    static final String SEARCH_ENDED = "기록 찾기를 마칠게요 멍! 또 궁금하면 언제든 불러주세요 🐾"; // end 의도 종료 안내(AC-34)
+    static final String SEARCH_FAILED = "기록을 찾다 문제가 생겼어요 멍… 다시 한 번 말씀해 주시겠어요? 🐾"; // 후보 선정 실패(plan §7) — 세션은 유지
     // 버튼 1회 소진 상태 문구 — 미리보기 하단 버튼을 대체한다(spec AC-22 문구, changes/0009 ADR-20). 짧은 상태 배지라 강아지 톤은 절제.
     static final String FINALIZE_SAVED = "✅ 저장 완료"; // [저장] 완료 후 버튼 소진 상태 문구(AC-Δ1)
     static final String FINALIZE_CANCELED = "취소됨"; // [취소] 완료 후 버튼 소진 상태 문구(AC-Δ1)
@@ -101,6 +114,9 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
     private final PhotoDownloader photoDownloader;
     private final PhotoStore photoStore;
     private final PhotoBufferStore photoBufferStore;
+    private final SearchSessionStore searchSessionStore;
+    private final NoteSearchService noteSearchService;
+    private final Path artifactDir;
     private final Duration bufferWindow;
     private final Clock clock;
 
@@ -119,10 +135,14 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
             PhotoDownloader photoDownloader,
             PhotoStore photoStore,
             PhotoBufferStore photoBufferStore,
+            SearchSessionStore searchSessionStore,
+            NoteSearchService noteSearchService,
+            @Value("${mocha.artifact.dir}") String artifactDir,
             @Value("${mocha.photo.buffer-window}") Duration bufferWindow) {
         this(pendingStore, noteRepository, noteRenderer, responder,
                 noteExtractor, noteMatcher, noteEnricher, photoInfoExtractor, pendingReviser, previewMessenger,
-                photoDownloader, photoStore, photoBufferStore, bufferWindow, Clock.system(SEOUL));
+                photoDownloader, photoStore, photoBufferStore, searchSessionStore, noteSearchService,
+                Path.of(artifactDir), bufferWindow, Clock.system(SEOUL));
     }
 
     // 테스트에서 시간을 고정하기 위한 생성자(NoteRepository·PendingStore와 동일 패턴).
@@ -140,6 +160,9 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
             PhotoDownloader photoDownloader,
             PhotoStore photoStore,
             PhotoBufferStore photoBufferStore,
+            SearchSessionStore searchSessionStore,
+            NoteSearchService noteSearchService,
+            Path artifactDir,
             Duration bufferWindow,
             Clock clock) {
         this.pendingStore = pendingStore;
@@ -155,6 +178,9 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         this.photoDownloader = photoDownloader;
         this.photoStore = photoStore;
         this.photoBufferStore = photoBufferStore;
+        this.searchSessionStore = searchSessionStore;
+        this.noteSearchService = noteSearchService;
+        this.artifactDir = artifactDir;
         this.bufferWindow = bufferWindow;
         this.clock = clock;
     }
@@ -266,17 +292,83 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
 
     @Override
     public void searchNotes(IncomingMessage message) {
-        // 임시 응답 — 검색 세션 오케스트레이션(NoteSearchService, ADR-25)은 changes/0011 TΔ5가 배선한다.
-        // 라우팅 계약(search 의도 → 이 메서드)만 먼저 세운다.
-        log.info("search 의도 수신 — 검색 세션 미배선(TΔ5 전) 임시 안내: user={}", message.userId());
-        responder.post(message.channelId(), SEARCH_NOT_READY);
+        String userId = message.userId();
+        String channelId = message.channelId();
+
+        // POLICY: 검색 세션은 pending을 읽기만 — 쓰기 금지(격리, AC-29) (ADR-25, FR-20).
+        //         이 경로는 pendingStore를 아예 만지지 않는다.
+        Optional<SearchSession> existing = searchSessionStore.get(userId);
+        if (existing.isEmpty()) {
+            // 세션 시작 안내(AC-34) — 후보 선정(LLM)보다 먼저 보내 즉시 반응한다.
+            responder.post(channelId, SEARCH_STARTED);
+        }
+        try {
+            SearchOutcome outcome = noteSearchService.handle(message.text(), existing, noteRepository.findAll());
+            switch (outcome.type()) {
+                case SINGLE_MATCH -> {
+                    searchSessionStore.put(userId, outcome.session());
+                    SearchHit hit = outcome.hits().get(0);
+                    responder.postImage(channelId, cardOf(hit), SEARCH_FOUND_CAPTION);
+                    // 관측(plan §6): 매치 결과 분포(단일/복수/무후보) — 오답 프록시와 함께 임베딩 전환 트리거 판단 재료.
+                    log.info("검색 단일 매치 — 카드 재전송: user={} slug={} date={}", userId, hit.slug(), hit.latestDate());
+                }
+                case MULTIPLE_CANDIDATES -> {
+                    searchSessionStore.put(userId, outcome.session());
+                    responder.post(channelId, candidateListText(outcome.hits()));
+                    log.info("검색 복수 후보 — 텍스트 선택 대기: user={} count={}", userId, outcome.hits().size());
+                }
+                case NO_MATCH -> {
+                    searchSessionStore.put(userId, outcome.session());
+                    responder.post(channelId, SEARCH_REQUERY);
+                    log.info("검색 무후보 — 재질문: user={} requeryCount={}", userId, outcome.session().requeryCount());
+                }
+                case LIMIT_REACHED -> {
+                    // POLICY: 재질문 상한(mocha.search-session.max-requery) 도달 → 안내 + 세션 폐기 (spec FR-20/AC-33).
+                    searchSessionStore.clear(userId);
+                    responder.post(channelId, SEARCH_LIMIT_REACHED);
+                    log.info("검색 재질문 상한 도달 — 세션 종료: user={}", userId);
+                }
+            }
+        } catch (Exception e) {
+            // plan §7: 후보 선정 실패 → 세션을 잃지 않고 안내만(기존 세션 유지 — 다음 메시지로 계속).
+            log.warn("검색 후보 선정 실패(세션 유지): user={}", userId, e);
+            responder.post(channelId, SEARCH_FAILED);
+        }
     }
 
     @Override
     public void endSearch(IncomingMessage message) {
-        // 임시 응답 — 세션 저장이 아직 배선되지 않아(TΔ4·TΔ5 전) 실도달 불가 경로. 계약만 먼저 세운다.
-        log.info("end 의도 수신 — 검색 세션 미배선(TΔ5 전) 임시 안내: user={}", message.userId());
-        responder.post(message.channelId(), SEARCH_NOT_READY);
+        // end 의도 + 세션 존재는 라우터가 판정했다 — 여기는 세션 폐기와 종료 안내만(FR-17/FR-20, AC-34).
+        searchSessionStore.clear(message.userId());
+        log.info("검색 세션 종료(end 의도): user={}", message.userId());
+        responder.post(message.channelId(), SEARCH_ENDED);
+    }
+
+    // 단일 매치 카드 경로 — POLICY: 검색 응답은 새 파생물을 만들지 않는다. 기존 카드 재사용, 파일 부재 시에만
+    //                     그 엔트리 1장 증분 렌더 (ref: plan.md#ADR-25, spec FR-20/AC-31).
+    private Path cardOf(SearchHit hit) {
+        Path card = artifactDir.resolve("cards").resolve(hit.slug()).resolve(hit.latestDate() + ".jpg");
+        if (Files.exists(card)) {
+            return card;
+        }
+        return noteRenderer.renderEntryCard(hit.slug(), hit.latestDate());
+    }
+
+    // 복수 후보 텍스트 목록(AC-32) — 커피명·로스터리·최근 시음일. 번호는 "두 번째" 선택 해석 기준(세션 candidateSlugs 순서).
+    private static String candidateListText(List<SearchHit> hits) {
+        StringBuilder text = new StringBuilder(SEARCH_CANDIDATES_HEADER);
+        for (int i = 0; i < hits.size(); i++) {
+            SearchHit hit = hits.get(i);
+            text.append("\n").append(i + 1).append(". ")
+                    .append(hit.coffeeName() != null ? hit.coffeeName() : hit.slug());
+            if (hit.roastery() != null) {
+                text.append(" — ").append(hit.roastery());
+            }
+            if (hit.latestDate() != null) {
+                text.append(" (최근 ").append(hit.latestDate()).append(")");
+            }
+        }
+        return text.toString();
     }
 
     // 기존 노트를 추출 요청의 매칭 후보(최소 식별 정보)로 축약 (ref: data-model.md#3 existing_notes).

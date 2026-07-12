@@ -9,7 +9,10 @@ import java.util.List;
  *
  * @param clues          누적 단서(최초 질의·재질문 답변) — 재탐색 시 함께 후보 선정 컨텍스트로 쓴다.
  * @param candidateSlugs 최근 제시한 후보 노트 slug 목록 — "두 번째" 같은 선택 답변의 해석 기준.
+ * @param requeryCount   이 세션에서 보낸 무후보 재질문 횟수 — 상한({@code mocha.search-session.max-requery},
+ *                       기본 0=무제한) 판정 기준(spec FR-20/AC-33).
  * @param createdAt      세션 시작 시각 — TTL(1h, {@code mocha.search-session.ttl}) 만료 판정 기준.
  */
-public record SearchSession(List<String> clues, List<String> candidateSlugs, OffsetDateTime createdAt) {
+public record SearchSession(
+        List<String> clues, List<String> candidateSlugs, int requeryCount, OffsetDateTime createdAt) {
 }

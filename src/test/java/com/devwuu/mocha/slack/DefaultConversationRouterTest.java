@@ -63,7 +63,7 @@ class DefaultConversationRouterTest {
 
         void setActive(boolean active) {
             this.session = active
-                    ? Optional.of(new SearchSession(List.of("예가체프"), List.of(), OffsetDateTime.now()))
+                    ? Optional.of(new SearchSession(List.of("예가체프"), List.of(), 0, OffsetDateTime.now()))
                     : Optional.empty();
         }
 

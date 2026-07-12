@@ -51,6 +51,8 @@ mocha:
   search-session:
     # 검색 세션 TTL (FR-20, ADR-25). 메모리 전용이라 재시작 시엔 TTL 무관 소멸.
     ttl: 1h
+    # 세션당 무후보 재질문 상한 (FR-20, ADR-25). 도달 시 종료 안내 + 세션 폐기. 0/미설정 = 무제한.
+    max-requery: 0
   photo:
     # 텍스트/사진 분리 수신 그룹핑 윈도우 (FR-10).
     buffer-window: 10m

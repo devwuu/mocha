@@ -13,7 +13,7 @@ import com.devwuu.mocha.domain.PendingNote;
  *   <li>{@link #revisePending} — revise + 대기 있음 → pending 수정 반영 후 미리보기 갱신.
  *   <li>{@link #guidePendingExists}/{@link #guideNothingToRevise}/{@link #guideNotARecord} — 의도·상태
  *       불일치/미진입 안내(FR-17).
- *   <li>{@link #searchNotes}/{@link #endSearch} — 검색 세션 시작·계속·종료(FR-20, changes/0011 TΔ5가 실배선).
+ *   <li>{@link #searchNotes}/{@link #endSearch} — 검색 세션 시작·계속·종료(FR-20, ADR-25).
  *   <li>{@link #confirmSave}/{@link #cancel} — [저장]/[취소] 버튼 커밋(ADR-3 불변 — 자연어로 오지 않는다).
  * </ul>
  * <p>구현: {@link DefaultConfirmationFlow}.
@@ -43,10 +43,14 @@ public interface ConfirmationFlow {
     /** other 판정(또는 end인데 검색 세션 없음) → 파이프라인 미진입, 짧은 안내만(FR-17, AC-20). */
     void guideNotARecord(IncomingMessage message);
 
-    /** search 의도 → 검색 세션 시작/계속(FR-20, ADR-25). 실검색 배선은 changes/0011 TΔ5. */
+    /**
+     * search 의도 → 검색 세션 시작/계속(FR-20, ADR-25). 후보 선정 결과에 따라 단일 매치 카드 재전송 /
+     * 복수 후보 텍스트 목록 / 무후보 재질문(상한 도달 시 종료 안내 + 세션 폐기)으로 응답한다(AC-31~33).
+     * <p>POLICY: 검색 세션은 pending을 읽기만 — 쓰기 금지(격리, AC-29) (ADR-25, FR-20).
+     */
     void searchNotes(IncomingMessage message);
 
-    /** end 의도 + 검색 세션 진행 중 → 세션 종료 + 모카 톤 안내(FR-17/FR-20). 실배선은 changes/0011 TΔ5. */
+    /** end 의도 + 검색 세션 진행 중 → 세션 폐기 + 모카 톤 종료 안내(FR-17/FR-20, AC-34). */
     void endSearch(IncomingMessage message);
 
     /** [저장] 버튼 → 커밋 파이프라인(upsert→clear→렌더). pending 로드·TTL 판정은 여기서 한다(V-7). */

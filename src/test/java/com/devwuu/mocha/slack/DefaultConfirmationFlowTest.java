@@ -6,6 +6,7 @@ import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.domain.PhotoBuffer;
 import com.devwuu.mocha.domain.Rating;
+import com.devwuu.mocha.domain.SearchSession;
 import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.json.MochaObjectMapper;
@@ -22,20 +23,24 @@ import com.devwuu.mocha.pipeline.ExtractionResult;
 import com.devwuu.mocha.pipeline.NoteEnricher;
 import com.devwuu.mocha.pipeline.NoteExtractor;
 import com.devwuu.mocha.pipeline.NoteMatcher;
+import com.devwuu.mocha.pipeline.NoteSearchService;
 import com.devwuu.mocha.pipeline.PendingReviser;
 import com.devwuu.mocha.pipeline.PhotoInfoExtractor;
 import com.devwuu.mocha.pipeline.RevisionResult;
+import com.devwuu.mocha.pipeline.SearchSelection;
 import com.devwuu.mocha.render.NoteRenderer;
 import com.devwuu.mocha.repository.JsonFileNoteRepository;
 import com.devwuu.mocha.repository.NoteRepository;
 import com.devwuu.mocha.repository.PendingStore;
 import com.devwuu.mocha.repository.PhotoBufferStore;
 import com.devwuu.mocha.repository.PhotoStore;
+import com.devwuu.mocha.repository.SearchSessionStore;
 import com.devwuu.mocha.repository.StagedImage;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
@@ -155,12 +160,13 @@ class DefaultConfirmationFlowTest {
     }
 
     /**
-     * 추출/수정/의도 응답을 미리 지정하는 fake LLM — 계약(구조)만 검증, 생성 자체는 대체(CLAUDE.md §5.3).
-     * 요청의 responseType으로 추출({@link ExtractionResult})·수정({@link RevisionResult})·의도({@link IntentResult}) 응답을 분기한다.
+     * 추출/수정/검색 후보 선정 응답을 미리 지정하는 fake LLM — 계약(구조)만 검증, 생성 자체는 대체(CLAUDE.md §5.3).
+     * 요청의 responseType으로 추출({@link ExtractionResult})·수정({@link RevisionResult})·검색({@link SearchSelection}) 응답을 분기한다.
      */
     private static final class FakeLlmClient implements LlmClient {
         ExtractionResult canned;
         RevisionResult cannedRevision;
+        SearchSelection cannedSelection = new SearchSelection(List.of());
         RuntimeException failure;         // 모든 요청 공통 실패
 
         @SuppressWarnings("unchecked")
@@ -172,7 +178,38 @@ class DefaultConfirmationFlowTest {
             if (request.responseType() == RevisionResult.class) {
                 return (T) cannedRevision;
             }
+            if (request.responseType() == SearchSelection.class) {
+                return (T) cannedSelection;
+            }
             return (T) canned;
+        }
+    }
+
+    /** 검색 세션 put/clear를 캡처하는 fake — 실 store의 TTL·메모리 규칙은 InMemorySearchSessionStoreTest가 본다. */
+    private static final class FakeSearchSessionStore implements SearchSessionStore {
+        private Optional<SearchSession> session = Optional.empty();
+        final List<SearchSession> puts = new ArrayList<>();
+        int clearCount = 0;
+
+        void setSession(SearchSession s) {
+            this.session = Optional.ofNullable(s);
+        }
+
+        @Override
+        public void put(String userId, SearchSession session) {
+            puts.add(session);
+            this.session = Optional.of(session);
+        }
+
+        @Override
+        public Optional<SearchSession> get(String userId) {
+            return session;
+        }
+
+        @Override
+        public void clear(String userId) {
+            clearCount++;
+            session = Optional.empty();
         }
     }
 
@@ -347,6 +384,9 @@ class DefaultConfirmationFlowTest {
     @TempDir
     Path dataDir;
 
+    @TempDir
+    Path artifactDir; // 검색 카드 재전송(TΔ5)의 기존 카드 존재 판정 대상 — cards/<slug>/<date>.jpg
+
     // 시간 고정 — today/타임스탬프를 결정론적으로(Asia/Seoul 2026-07-11).
     private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
     private final Clock clock = Clock.fixed(Instant.parse("2026-07-11T02:00:00Z"), SEOUL);
@@ -369,16 +409,24 @@ class DefaultConfirmationFlowTest {
     private final NoteEnricher enricher = new NoteEnricher(searchClient);
     private final PhotoInfoExtractor photoInfoExtractor = new PhotoInfoExtractor(visionClient, 4);
     private final PendingReviser reviser = new PendingReviser(llmClient, MochaObjectMapper.create());
+    private final FakeSearchSessionStore searchSessionStore = new FakeSearchSessionStore();
 
     private NoteRepository noteRepository() {
         return new JsonFileNoteRepository(dataDir, MochaObjectMapper.create());
     }
 
     private DefaultConfirmationFlow flow(NoteRepository repo) {
+        return flow(repo, 0); // 재질문 상한 미설정(0) = 무제한(spec FR-20)
+    }
+
+    private DefaultConfirmationFlow flow(NoteRepository repo, int maxRequery) {
+        NoteSearchService noteSearchService =
+                new NoteSearchService(llmClient, MochaObjectMapper.create(), maxRequery);
         return new DefaultConfirmationFlow(
                 pendingStore, repo, noteRenderer, responder,
                 extractor, matcher, enricher, photoInfoExtractor, reviser, previewMessenger,
-                photoDownloader, photoStore, photoBufferStore, BUFFER_WINDOW, clock);
+                photoDownloader, photoStore, photoBufferStore, searchSessionStore, noteSearchService,
+                artifactDir, BUFFER_WINDOW, clock);
     }
 
     private static ExtractionResult extraction(
@@ -961,5 +1009,147 @@ class DefaultConfirmationFlowTest {
         assertEquals(1, photoStore.discardCount, "취소는 스테이징 사진을 폐기한다");
         assertTrue(photoStore.staged.isEmpty());
         assertEquals(1, photoBufferStore.clearCount, "사진 버퍼도 함께 정리한다");
+    }
+
+    // --- TΔ5(changes/0011): 검색 세션 배선(searchNotes/endSearch, FR-20/ADR-25) ---
+
+    private Note savedNote(NoteRepository repo, String slug, String coffeeName, String roastery, LocalDate date) {
+        com.devwuu.mocha.domain.NoteMeta meta = new com.devwuu.mocha.domain.NoteMeta(
+                Sourced.user(coffeeName), Sourced.user(roastery), null, null, null, null, List.of());
+        Entry entry = new Entry(date, "좋았다", Rating.GOOD, null, List.of(), OffsetDateTime.now(clock));
+        return repo.upsertEntry(slug, meta, entry);
+    }
+
+    @Test
+    @DisplayName("AC-34: 세션 없이 search → 시작 모카 톤 안내가 결과보다 먼저 가고 세션이 저장된다")
+    void searchNotesStartsSessionWithGreeting() {
+        NoteRepository repo = noteRepository();
+        savedNote(repo, "coffeevera-yirgacheffe", "커피베라 예가체프", "커피베라", LocalDate.of(2026, 7, 1));
+        llmClient.cannedSelection = new SearchSelection(List.of()); // 무후보 → 재질문
+
+        flow(repo).searchNotes(message("저번에 마신 거 찾아줘"));
+
+        assertEquals(
+                List.of(DefaultConfirmationFlow.SEARCH_STARTED, DefaultConfirmationFlow.SEARCH_REQUERY),
+                responder.messages, "시작 안내 → 결과(재질문) 순서로 응답한다");
+        assertEquals(1, searchSessionStore.puts.size(), "새 검색 세션이 저장된다");
+        assertEquals(1, searchSessionStore.puts.get(0).requeryCount(), "무후보 재질문 횟수가 세션에 반영된다");
+    }
+
+    @Test
+    @DisplayName("AC-31: 단일 매치 + 기존 카드 존재 → 그 카드 JPG를 재전송하고 새 렌더는 없다(파생물 재사용)")
+    void searchNotesResendsExistingCard() throws Exception {
+        NoteRepository repo = noteRepository();
+        savedNote(repo, "coffeevera-yirgacheffe", "커피베라 예가체프", "커피베라", LocalDate.of(2026, 7, 1));
+        Path card = artifactDir.resolve("cards/coffeevera-yirgacheffe/2026-07-01.jpg");
+        Files.createDirectories(card.getParent());
+        Files.write(card, new byte[]{1});
+        llmClient.cannedSelection = new SearchSelection(List.of("coffeevera-yirgacheffe"));
+
+        flow(repo).searchNotes(message("저번에 마신 예가체프 찾아줘"));
+
+        assertEquals(List.of(card), responder.images, "기존 카드 경로를 그대로 재전송한다");
+        assertEquals(List.of(DefaultConfirmationFlow.SEARCH_FOUND_CAPTION), responder.captions);
+        assertTrue(noteRenderer.entryCards.isEmpty(), "카드가 있으면 증분 렌더도 없다(ADR-25 POLICY)");
+        assertEquals(List.of("coffeevera-yirgacheffe"), searchSessionStore.puts.get(0).candidateSlugs(),
+                "매치 대상이 세션 후보로 남는다(후속 선택·수정 세션 진입 재료)");
+    }
+
+    @Test
+    @DisplayName("AC-31/FR-20: 단일 매치인데 카드 파일 부재 → 그 엔트리 1장만 증분 렌더해 전송한다")
+    void searchNotesRendersMissingCardIncrementally() {
+        NoteRepository repo = noteRepository();
+        savedNote(repo, "coffeevera-yirgacheffe", "커피베라 예가체프", "커피베라", LocalDate.of(2026, 7, 1));
+        llmClient.cannedSelection = new SearchSelection(List.of("coffeevera-yirgacheffe"));
+
+        flow(repo).searchNotes(message("저번에 마신 예가체프 찾아줘"));
+
+        assertEquals(List.of("coffeevera-yirgacheffe/2026-07-01"), noteRenderer.entryCards,
+                "부재 시에만 그 엔트리 1장을 증분 렌더한다");
+        assertEquals(List.of(Path.of("cards", "coffeevera-yirgacheffe", "2026-07-01.jpg")), responder.images);
+    }
+
+    @Test
+    @DisplayName("AC-32: 복수 후보 → 커피명·로스터리·최근 시음일이 담긴 번호 목록 텍스트를 제시한다")
+    void searchNotesListsMultipleCandidates() {
+        NoteRepository repo = noteRepository();
+        savedNote(repo, "coffeevera-yirgacheffe", "커피베라 예가체프", "커피베라", LocalDate.of(2026, 7, 1));
+        savedNote(repo, "momos-waikiki", "모모스 와이키키", "모모스", LocalDate.of(2026, 5, 20));
+        llmClient.cannedSelection = new SearchSelection(List.of("coffeevera-yirgacheffe", "momos-waikiki"));
+
+        flow(repo).searchNotes(message("예가체프였나 와이키키였나"));
+
+        String list = responder.messages.get(responder.messages.size() - 1);
+        assertTrue(list.startsWith(DefaultConfirmationFlow.SEARCH_CANDIDATES_HEADER), "목록 머리말(모카 톤)");
+        assertTrue(list.contains("1. 커피베라 예가체프 — 커피베라 (최근 2026-07-01)"), "커피명·로스터리·최근 시음일: " + list);
+        assertTrue(list.contains("2. 모모스 와이키키 — 모모스 (최근 2026-05-20)"), "제시 순서 번호가 붙는다: " + list);
+        assertEquals(List.of("coffeevera-yirgacheffe", "momos-waikiki"),
+                searchSessionStore.puts.get(0).candidateSlugs(), "'두 번째' 선택 해석 기준이 세션에 남는다");
+        assertTrue(responder.images.isEmpty(), "복수 후보는 카드를 보내지 않는다");
+    }
+
+    @Test
+    @DisplayName("AC-33/FR-20: 재질문 상한 도달 → 종료 안내와 함께 세션이 폐기된다(max-requery=1)")
+    void searchNotesEndsSessionAtRequeryLimit() {
+        NoteRepository repo = noteRepository();
+        savedNote(repo, "coffeevera-yirgacheffe", "커피베라 예가체프", "커피베라", LocalDate.of(2026, 7, 1));
+        searchSessionStore.setSession(
+                new SearchSession(List.of("예가체프"), List.of(), 1, OffsetDateTime.now(clock)));
+        llmClient.cannedSelection = new SearchSelection(List.of()); // 또 무후보
+
+        flow(repo, 1).searchNotes(message("몰라, 그냥 찾아봐"));
+
+        assertEquals(List.of(DefaultConfirmationFlow.SEARCH_LIMIT_REACHED), responder.messages,
+                "상한 도달 안내(진행 중 세션이라 시작 안내는 없다)");
+        assertEquals(1, searchSessionStore.clearCount, "세션을 폐기한다");
+        assertTrue(searchSessionStore.get("U1").isEmpty());
+    }
+
+    @Test
+    @DisplayName("AC-34: end 의도(endSearch) → 세션 폐기 + 모카 톤 종료 안내")
+    void endSearchClearsSessionWithFarewell() {
+        NoteRepository repo = noteRepository();
+        searchSessionStore.setSession(
+                new SearchSession(List.of("예가체프"), List.of(), 0, OffsetDateTime.now(clock)));
+
+        flow(repo).endSearch(message("됐어"));
+
+        assertEquals(1, searchSessionStore.clearCount, "end는 세션을 폐기한다");
+        assertTrue(searchSessionStore.get("U1").isEmpty());
+        assertEquals(List.of(DefaultConfirmationFlow.SEARCH_ENDED), responder.messages);
+    }
+
+    @Test
+    @DisplayName("AC-Δ1/AC-29: 검색 전 과정은 pending을 읽지도 쓰지도 않는다 — 대기 기록 불변(격리)")
+    void searchNotesNeverTouchesPending() {
+        NoteRepository repo = noteRepository();
+        PendingNote pending = pendingWith("other-coffee");
+        pendingStore.setPending(pending);
+        savedNote(repo, "coffeevera-yirgacheffe", "커피베라 예가체프", "커피베라", LocalDate.of(2026, 7, 1));
+        llmClient.cannedSelection = new SearchSelection(List.of("coffeevera-yirgacheffe"));
+
+        flow(repo).searchNotes(message("저번에 마신 예가체프 찾아줘"));
+
+        assertTrue(pendingStore.puts.isEmpty(), "검색은 pending을 쓰지 않는다(ADR-25 POLICY)");
+        assertEquals(0, pendingStore.clearCount, "검색은 pending을 폐기하지 않는다");
+        assertTrue(pendingStore.get("U1").isPresent(), "확인 대기 기록이 그대로 남는다(AC-29)");
+        assertEquals(1, responder.images.size(), "대기 중에도 검색 응답(카드)은 정상 배달된다");
+    }
+
+    @Test
+    @DisplayName("plan §7: 후보 선정(LLM) 실패 → 오류 안내만, 진행 중 세션은 유지된다")
+    void searchNotesKeepsSessionOnLlmFailure() {
+        NoteRepository repo = noteRepository();
+        savedNote(repo, "coffeevera-yirgacheffe", "커피베라 예가체프", "커피베라", LocalDate.of(2026, 7, 1));
+        searchSessionStore.setSession(
+                new SearchSession(List.of("예가체프"), List.of(), 0, OffsetDateTime.now(clock)));
+        llmClient.failure = new LlmException("후보 선정 실패");
+
+        flow(repo).searchNotes(message("작년 겨울에 마신 거"));
+
+        assertEquals(List.of(DefaultConfirmationFlow.SEARCH_FAILED), responder.messages);
+        assertEquals(0, searchSessionStore.clearCount, "실패해도 세션을 잃지 않는다(plan §7)");
+        assertTrue(searchSessionStore.get("U1").isPresent(), "다음 메시지로 검색을 계속할 수 있다");
+        assertTrue(searchSessionStore.puts.isEmpty(), "실패 턴은 세션을 갱신하지 않는다");
     }
 }

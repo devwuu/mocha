@@ -8,6 +8,7 @@ import com.devwuu.mocha.pipeline.IntentClassifier;
 import com.devwuu.mocha.pipeline.NoteEnricher;
 import com.devwuu.mocha.pipeline.NoteExtractor;
 import com.devwuu.mocha.pipeline.NoteMatcher;
+import com.devwuu.mocha.pipeline.NoteSearchService;
 import com.devwuu.mocha.pipeline.PendingReviser;
 import com.devwuu.mocha.pipeline.PhotoInfoExtractor;
 import org.springframework.beans.factory.annotation.Value;
@@ -59,5 +60,14 @@ public class PipelineConfig {
     @Bean
     public PendingReviser pendingReviser(LlmClient llmClient) {
         return new PendingReviser(llmClient, MochaObjectMapper.create());
+    }
+
+    // 검색 세션 후보 선정(FR-20, ADR-25) — 추출과 경량 모델 공용(새 모델 키 없음).
+    // 무후보 재질문 상한은 mocha.search-session.max-requery(기본 0=무제한, spec FR-20/AC-33).
+    @Bean
+    public NoteSearchService noteSearchService(
+            LlmClient llmClient,
+            @Value("${mocha.search-session.max-requery:0}") int maxRequery) {
+        return new NoteSearchService(llmClient, MochaObjectMapper.create(), maxRequery);
     }
 }
