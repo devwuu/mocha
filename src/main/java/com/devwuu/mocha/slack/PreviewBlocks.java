@@ -65,6 +65,33 @@ public class PreviewBlocks {
      * @param pending 확인 대기 노트(draft + 매칭). draft.entries는 이번 시음 엔트리 1건을 담은 상태를 전제.
      */
     public List<LayoutBlock> build(PendingNote pending) {
+        List<LayoutBlock> blocks = contentBlocks(pending);
+        blocks.add(divider());
+        Note draft = pending.draft();
+        blocks.add(actions(asElements(
+                button(b -> b.text(plainText(SAVE_LABEL)).style("primary")
+                        .actionId(DefaultConversationRouter.ACTION_SAVE).value(saveValue(draft))),
+                button(b -> b.text(plainText(CANCEL_LABEL)).style("danger")
+                        .actionId(DefaultConversationRouter.ACTION_CANCEL).value(saveValue(draft)))
+        )));
+        return blocks;
+    }
+
+    /**
+     * 버튼 소진용 블록 — 미리보기 필드 내용은 그대로 유지하고 [저장]/[취소] 버튼 대신 상태 문구 섹션을 붙인다
+     * (ref: plan.md#ADR-20, spec AC-22; changes/0009 AC-Δ1). {@link #build}와 본문 블록을 공유한다.
+     *
+     * @param statusText 하단에 표기할 상태 문구(예: "✅ 저장 완료" / "취소됨"). 모카 톤 상수는 호출부가 정한다.
+     */
+    public List<LayoutBlock> buildFinalized(PendingNote pending, String statusText) {
+        List<LayoutBlock> blocks = contentBlocks(pending);
+        blocks.add(divider());
+        blocks.add(section(s -> s.text(markdownText(statusText))));
+        return blocks;
+    }
+
+    // 미리보기 본문(헤더·매칭·필드·노트·출처) — 버튼/상태 문구 앞까지 공통. build/buildFinalized가 공유한다.
+    private List<LayoutBlock> contentBlocks(PendingNote pending) {
         Note draft = pending.draft();
         Entry entry = latestEntry(draft);
 
@@ -102,13 +129,6 @@ public class PreviewBlocks {
             blocks.add(context(c -> c.elements(List.of(markdownText(SOURCES_LABEL + ": " + sources)))));
         }
 
-        blocks.add(divider());
-        blocks.add(actions(asElements(
-                button(b -> b.text(plainText(SAVE_LABEL)).style("primary")
-                        .actionId(DefaultConversationRouter.ACTION_SAVE).value(saveValue(draft))),
-                button(b -> b.text(plainText(CANCEL_LABEL)).style("danger")
-                        .actionId(DefaultConversationRouter.ACTION_CANCEL).value(saveValue(draft)))
-        )));
         return blocks;
     }
 

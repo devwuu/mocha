@@ -137,6 +137,47 @@ class PreviewBlocksTest {
         assertTrue(blocks.stream().noneMatch(b -> b instanceof ContextBlock));
     }
 
+    @Test
+    @DisplayName("AC-22/AC-Δ1: buildFinalized는 [저장]/[취소] 버튼을 없애고 필드 내용은 유지한 채 상태 문구 섹션을 붙인다")
+    void buildFinalizedDropsButtonsKeepsFields() {
+        Note draft = new Note(
+                "coffeevera-yirgacheffe-g1",
+                "커피베라 예가체프 G1",
+                Sourced.user("커피베라"),
+                Sourced.search("에티오피아"),
+                Sourced.search("워시드"),
+                null,
+                Sourced.search(List.of("자몽", "홍차")),
+                List.of("https://roastery.example/yirga"),
+                List.of(entry("새콤하고 좋았다", Rating.GOOD)),
+                OffsetDateTime.now(),
+                OffsetDateTime.now());
+        PendingNote pending = new PendingNote(
+                draft, MatchInfo.existing("coffeevera-yirgacheffe-g1", LocalDate.of(2026, 7, 10)),
+                "1720000000.000999", OffsetDateTime.now());
+
+        List<LayoutBlock> blocks = previewBlocks.buildFinalized(pending, DefaultConfirmationFlow.FINALIZE_SAVED);
+
+        // 버튼 소진: ActionsBlock이 하나도 없어야 재클릭이 불가능하다(AC-22).
+        assertTrue(blocks.stream().noneMatch(b -> b instanceof ActionsBlock), "버튼 블록이 남으면 안 된다");
+
+        // 필드 내용 유지: 필드 섹션이 그대로 있고 (검색) 표기 분기도 보존된다(문맥 보존, D-5-1a).
+        SectionBlock fieldsSection = firstFieldsSection(blocks);
+        assertNotNull(fieldsSection);
+        assertFalse(fieldByLabel(fieldsSection, "로스터리").contains("(검색)"));
+        assertTrue(fieldByLabel(fieldsSection, "원산지").contains("(검색)"));
+        assertTrue(blocks.stream().anyMatch(b -> b instanceof SectionBlock s
+                && s.getText() instanceof MarkdownTextObject t && t.getText().contains("내가 느끼길")),
+                "내가 느끼길 내용이 유지된다");
+
+        // 상태 문구가 마지막 블록으로 붙는다.
+        LayoutBlock last = blocks.get(blocks.size() - 1);
+        assertTrue(last instanceof SectionBlock s
+                && s.getText() instanceof MarkdownTextObject t
+                && t.getText().equals(DefaultConfirmationFlow.FINALIZE_SAVED),
+                "마지막 블록은 상태 문구 섹션이어야 한다");
+    }
+
     private static SectionBlock firstFieldsSection(List<LayoutBlock> blocks) {
         return (SectionBlock) blocks.stream()
                 .filter(b -> b instanceof SectionBlock s && s.getFields() != null && !s.getFields().isEmpty())

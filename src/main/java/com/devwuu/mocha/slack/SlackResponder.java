@@ -1,5 +1,7 @@
 package com.devwuu.mocha.slack;
 
+import com.devwuu.mocha.domain.PendingNote;
+
 import java.nio.file.Path;
 
 /**
@@ -24,4 +26,14 @@ public interface SlackResponder {
      * (AC-18, plan §7). "흐름을 끊지 않는다"의 책임은 폴백을 처리하는 호출부에 있다.
      */
     void postImage(String channelId, Path imagePath, String caption);
+
+    /**
+     * 확인 미리보기 버튼을 1회 소진한다 — 그 미리보기 메시지(대상 {@code pending.previewTs()})를 {@code chat.update}로
+     * 갱신해 [저장]/[취소] 버튼 블록을 제거하고 하단을 {@code statusText}로 교체하되, 미리보기의 필드 내용은 유지한다
+     * (ADR-20, spec AC-22; changes/0009 AC-Δ1). 필드 재조립은 {@link PreviewBlocks}가 담당하므로 draft를 담은
+     * {@code pending}을 받는다(Slack Block 타입은 어댑터에만 — CLAUDE.md §2).
+     * <p>커밋·배달 <b>이후</b>의 표시 갱신이라 실패해도 저장/취소 결과를 되돌리지 않는다 — 구현체는 예외를
+     * 삼키지 말고 로그로 남기되 흐름을 끊지 않는다(ADR-20 POLICY, plan §7). {@code previewTs}가 없으면 no-op.
+     */
+    void finalizePreview(String channelId, PendingNote pending, String statusText);
 }

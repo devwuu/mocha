@@ -107,12 +107,15 @@ class DefaultConfirmationFlowTest {
         }
     }
 
-    /** 전송된 안내 메시지·배달된 카드 이미지를 캡처하고, 업로드 실패를 주입하는 fake. */
+    /** 전송된 안내 메시지·배달된 카드 이미지·버튼 소진 호출을 캡처하고, 업로드/소진 실패를 주입하는 fake. */
     private static final class FakeSlackResponder implements SlackResponder {
         final List<String> messages = new ArrayList<>();
         final List<Path> images = new ArrayList<>();
         final List<String> captions = new ArrayList<>();
+        final List<String> finalizeStatuses = new ArrayList<>();   // 버튼 소진 statusText 캡처
+        final List<PendingNote> finalizePendings = new ArrayList<>(); // 버튼 소진에 넘어온 pending 캡처
         RuntimeException imageFailure;
+        RuntimeException finalizeFailure;
 
         @Override
         public void post(String channelId, String text) {
@@ -126,6 +129,15 @@ class DefaultConfirmationFlowTest {
             }
             images.add(imagePath);
             captions.add(caption);
+        }
+
+        @Override
+        public void finalizePreview(String channelId, PendingNote pending, String statusText) {
+            if (finalizeFailure != null) {
+                throw finalizeFailure; // chat.update 실패 흉내 — 커밋·배달 결과가 불변인지 본다(AC-Δ2)
+            }
+            finalizePendings.add(pending);
+            finalizeStatuses.add(statusText);
         }
     }
 
@@ -638,6 +650,64 @@ class DefaultConfirmationFlowTest {
         assertEquals(0, pendingStore.clearCount, "손상 pending은 커밋 clear 대상이 아니다");
         assertEquals(List.of(DefaultConfirmationFlow.BROKEN_PENDING), responder.messages);
         assertFalse(responder.messages.isEmpty());
+    }
+
+    // --- TΔ2: 확인 버튼 1회 소진(changes/0009, ADR-20, AC-22) ---
+
+    @Test
+    @DisplayName("AC-Δ1: [저장] 완료 시 버튼 소진(finalizePreview) 호출 — '저장 완료' 상태 문구로 교체된다")
+    void confirmSaveFinalizesPreviewButtons() {
+        NoteRepository repo = noteRepository();
+        PendingNote pending = pendingWith("coffeevera-yirgacheffe");
+        pendingStore.setPending(pending);
+
+        flow(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
+
+        // 커밋·배달 이후 버튼 소진이 정확히 1회, "저장 완료" 문구로 호출된다.
+        assertEquals(List.of(DefaultConfirmationFlow.FINALIZE_SAVED), responder.finalizeStatuses);
+        // 필드 재조립 대상 pending(previewTs 보유)이 넘어간다 — 필드 내용 유지의 재료.
+        assertEquals(1, responder.finalizePendings.size());
+        assertEquals(pending.previewTs(), responder.finalizePendings.get(0).previewTs(),
+                "버튼 소진 대상 미리보기 메시지(previewTs)가 넘어가야 한다");
+    }
+
+    @Test
+    @DisplayName("AC-Δ1: [취소] 완료 시 버튼 소진(finalizePreview) 호출 — '취소됨' 상태 문구로 교체된다")
+    void cancelFinalizesPreviewButtons() {
+        NoteRepository repo = noteRepository();
+        pendingStore.setPending(pendingWith("coffeevera-yirgacheffe"));
+
+        flow(repo).cancel(action(DefaultConversationRouter.ACTION_CANCEL));
+
+        assertEquals(List.of(DefaultConfirmationFlow.FINALIZE_CANCELED), responder.finalizeStatuses);
+    }
+
+    @Test
+    @DisplayName("AC-Δ2: 버튼 소진(chat.update) 실패를 주입해도 노트 커밋·카드 배달은 정상 완료된다(로그만)")
+    void confirmSaveKeepsCommitAndDeliveryWhenFinalizeFails() {
+        NoteRepository repo = noteRepository();
+        pendingStore.setPending(pendingWith("coffeevera-yirgacheffe"));
+        responder.finalizeFailure = new IllegalStateException("chat.update 실패");
+
+        flow(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
+
+        // 버튼 소진이 던져도 커밋과 카드 배달은 불변이어야 한다(ADR-20 POLICY).
+        assertTrue(repo.findBySlug("coffeevera-yirgacheffe").isPresent(), "버튼 소진 실패해도 저장은 유지된다");
+        assertEquals(1, pendingStore.clearCount, "커밋은 완료됐다");
+        assertEquals(1, responder.images.size(), "카드 배달도 정상 완료된다");
+        assertTrue(responder.messages.isEmpty(), "정상 배달이면 폴백 텍스트가 없다");
+    }
+
+    @Test
+    @DisplayName("V-7: 만료/부재 pending에 [취소] → 버튼 소진 대상이 없어 finalizePreview를 호출하지 않는다")
+    void cancelSkipsFinalizeWhenNoPending() {
+        NoteRepository repo = noteRepository();
+        pendingStore.setPending(null); // get()이 빈 Optional
+
+        flow(repo).cancel(action(DefaultConversationRouter.ACTION_CANCEL));
+
+        assertTrue(responder.finalizeStatuses.isEmpty(), "갱신할 미리보기가 없으면 버튼 소진을 호출하지 않는다");
+        assertEquals(List.of(DefaultConfirmationFlow.CANCELED), responder.messages);
     }
 
     // --- T4-2: 사진 버퍼 그룹핑(FR-10, AC-8) ---

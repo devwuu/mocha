@@ -76,6 +76,9 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
     static final String REVISE_FAILED = "수정을 반영하다 문제가 생겼어요 멍… 다시 말씀해 주시겠어요? 🐾"; // 수정 병합/전송 실패(plan §7). 기존 pending은 보존
     static final String PHOTO_FAILED = "사진을 받다 문제가 생겼어요 멍… 다시 올려주시겠어요? 🐾"; // 다운로드/스테이징/전송 실패(plan §7)
     static final String NOT_A_RECORD = "저는 커피 감상을 기록하는 강아지예요 멍! 마신 커피 이야기를 들려주세요 🐾"; // 의도 게이트 other 판정 안내(AC-Δ3)
+    // 버튼 1회 소진 상태 문구 — 미리보기 하단 버튼을 대체한다(spec AC-22 문구, changes/0009 ADR-20). 짧은 상태 배지라 강아지 톤은 절제.
+    static final String FINALIZE_SAVED = "✅ 저장 완료"; // [저장] 완료 후 버튼 소진 상태 문구(AC-Δ1)
+    static final String FINALIZE_CANCELED = "취소됨"; // [취소] 완료 후 버튼 소진 상태 문구(AC-Δ1)
 
     private final PendingStore pendingStore;
     private final NoteRepository noteRepository;
@@ -316,7 +319,9 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
             return;
         }
 
-        Note draft = pendingOpt.get().draft();
+        // previewTs는 pending clear 이후엔 다시 못 읽으므로 clear 전에 지역 변수로 확보한다(버튼 소진 대상, findings-TΔ0 §1).
+        PendingNote pending = pendingOpt.get();
+        Note draft = pending.draft();
         String slug = draft.slug();
         Entry entry = latestEntry(draft);
         // 커밋 대상은 draft.slug()(신규는 상위 파이프라인이 할당, 기존은 매칭 slug). 결손이면 저장하지 않는다.
@@ -351,16 +356,35 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
             log.warn("카드 배달 실패(노트는 저장됨, --rerender로 복구 가능): slug={} date={}", saved.slug(), date, e);
             responder.post(action.channelId(), SAVE_DONE_NO_IMAGE);
         }
+
+        // 커밋·배달 이후 미리보기 버튼을 1회 소진한다 — 실패해도 저장·배달 결과는 유지된다(ADR-20, AC-Δ2).
+        finalizePreviewQuietly(action.channelId(), pending, FINALIZE_SAVED);
     }
 
     @Override
     public void cancel(IncomingAction action) {
+        // 버튼 소진에 previewTs가 필요하므로 clear 이전에 pending을 읽어 확보한다(findings-TΔ0 §2).
+        Optional<PendingNote> pendingOpt = pendingStore.get(action.userId());
         // [취소]는 저장 없이 pending만 폐기한다(AC-4). 대기 중이던 스테이징 사진·버퍼도 함께 정리한다(FR-10).
         pendingStore.clear(action.userId());
         photoStore.discard(action.userId());
         photoBufferStore.clear(action.userId());
         log.info("[취소] pending 폐기: user={}", action.userId());
         responder.post(action.channelId(), CANCELED);
+
+        // 취소 안내 이후 미리보기 버튼을 1회 소진한다 — pending이 있었을 때만(만료/부재면 갱신 대상 없음).
+        pendingOpt.ifPresent(pending -> finalizePreviewQuietly(action.channelId(), pending, FINALIZE_CANCELED));
+    }
+
+    // 버튼 1회 소진 — 커밋·배달 이후 미리보기 버튼을 제거하고 상태 문구로 교체한다.
+    // POLICY: 갱신 실패는 저장/취소 결과를 되돌리지 않는다 — 로그만 (ref: plan.md#ADR-20, AC-22). responder도 내부적으로
+    //         삼키지만, 여기서 한 번 더 감싸 어떤 예외도 커밋·배달 이후 흐름을 끊지 않게 한다.
+    private void finalizePreviewQuietly(String channelId, PendingNote pending, String statusText) {
+        try {
+            responder.finalizePreview(channelId, pending, statusText);
+        } catch (Exception e) {
+            log.warn("미리보기 버튼 소진 실패(커밋·배달 결과 유지): channel={}", channelId, e);
+        }
     }
 
     @Override
