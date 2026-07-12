@@ -20,7 +20,12 @@ import com.devwuu.mocha.domain.PendingNote;
  */
 public interface ConfirmationFlow {
 
-    /** record 의도 + 대기 없음 → 신규 파이프라인 진입. 추출·매칭·보강 후 확인 미리보기를 보낸다(AC-1). */
+    /**
+     * record 의도 + 대기 없음 → 신규 파이프라인 진입. 추출·매칭·보강 후 확인 미리보기를 보낸다(AC-1).
+     * <p>과거 참조(references_past) 매치 실패면 미리보기 대신 안내하고 추출 결과를 전환 슬롯에 보관하며(FR-14,
+     * ADR-26), 보관분이 살아 있는 재진입("새로 기록해줘")은 이 텍스트를 추출하지 않고 보관분으로 즉시 미리보기를
+     * 재개한다(AC-36). TTL 폐기 후에는 일반 신규 처리로 흐른다.
+     */
     void startNewNote(IncomingMessage message);
 
     /**
@@ -46,6 +51,7 @@ public interface ConfirmationFlow {
     /**
      * search 의도 → 검색 세션 시작/계속(FR-20, ADR-25). 후보 선정 결과에 따라 단일 매치 카드 재전송 /
      * 복수 후보 텍스트 목록 / 무후보 재질문(상한 도달 시 종료 안내 + 세션 폐기)으로 응답한다(AC-31~33).
+     * 진입 시 전환 슬롯 보관분은 폐기한다(FR-14, ADR-26).
      * <p>POLICY: 검색 세션은 pending을 읽기만 — 쓰기 금지(격리, AC-29) (ADR-25, FR-20).
      */
     void searchNotes(IncomingMessage message);

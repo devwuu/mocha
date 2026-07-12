@@ -29,6 +29,7 @@ import com.devwuu.mocha.repository.PhotoBufferStore;
 import com.devwuu.mocha.repository.PhotoStore;
 import com.devwuu.mocha.repository.SearchSessionStore;
 import com.devwuu.mocha.repository.StagedImage;
+import com.devwuu.mocha.repository.TransitionSlot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -97,6 +98,11 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
     static final String SEARCH_LIMIT_REACHED = "이번엔 못 찾겠어요 멍… 찾기를 마칠게요. 다른 단서가 떠오르면 다시 불러주세요! 🐾"; // 재질문 상한 도달 → 세션 종료(FR-20/AC-33)
     static final String SEARCH_ENDED = "기록 찾기를 마칠게요 멍! 또 궁금하면 언제든 불러주세요 🐾"; // end 의도 종료 안내(AC-34)
     static final String SEARCH_FAILED = "기록을 찾다 문제가 생겼어요 멍… 다시 한 번 말씀해 주시겠어요? 🐾"; // 후보 선정 실패(plan §7) — 세션은 유지
+    // 과거 참조 매치 실패 안내(FR-14, ADR-26, changes/0011 TΔ6) — 다음 의도(새 기록/검색)를 고르게 하고,
+    // 보관이 10분뿐임을 명시해 TTL 폐기 후 일반 신규 처리로 흐르는 것이 놀랍지 않게 한다(AC-36).
+    static final String REFERENCE_NOT_FOUND =
+            "말씀하신 커피를 못 찾았어요 멍… \"새로 기록해줘\"라고 하면 방금 이야기 그대로 기록하고, "
+                    + "\"찾아줘\"라고 하면 같이 찾아볼게요! 10분 동안 기억하고 있을게요 🐾"; // 매치 실패 → 전환 대기 안내
     // 버튼 1회 소진 상태 문구 — 미리보기 하단 버튼을 대체한다(spec AC-22 문구, changes/0009 ADR-20). 짧은 상태 배지라 강아지 톤은 절제.
     static final String FINALIZE_SAVED = "✅ 저장 완료"; // [저장] 완료 후 버튼 소진 상태 문구(AC-Δ1)
     static final String FINALIZE_CANCELED = "취소됨"; // [취소] 완료 후 버튼 소진 상태 문구(AC-Δ1)
@@ -116,6 +122,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
     private final PhotoBufferStore photoBufferStore;
     private final SearchSessionStore searchSessionStore;
     private final NoteSearchService noteSearchService;
+    private final TransitionSlot transitionSlot;
     private final Path artifactDir;
     private final Duration bufferWindow;
     private final Clock clock;
@@ -137,11 +144,12 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
             PhotoBufferStore photoBufferStore,
             SearchSessionStore searchSessionStore,
             NoteSearchService noteSearchService,
+            TransitionSlot transitionSlot,
             @Value("${mocha.artifact.dir}") String artifactDir,
             @Value("${mocha.photo.buffer-window}") Duration bufferWindow) {
         this(pendingStore, noteRepository, noteRenderer, responder,
                 noteExtractor, noteMatcher, noteEnricher, photoInfoExtractor, pendingReviser, previewMessenger,
-                photoDownloader, photoStore, photoBufferStore, searchSessionStore, noteSearchService,
+                photoDownloader, photoStore, photoBufferStore, searchSessionStore, noteSearchService, transitionSlot,
                 Path.of(artifactDir), bufferWindow, Clock.system(SEOUL));
     }
 
@@ -162,6 +170,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
             PhotoBufferStore photoBufferStore,
             SearchSessionStore searchSessionStore,
             NoteSearchService noteSearchService,
+            TransitionSlot transitionSlot,
             Path artifactDir,
             Duration bufferWindow,
             Clock clock) {
@@ -180,6 +189,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         this.photoBufferStore = photoBufferStore;
         this.searchSessionStore = searchSessionStore;
         this.noteSearchService = noteSearchService;
+        this.transitionSlot = transitionSlot;
         this.artifactDir = artifactDir;
         this.bufferWindow = bufferWindow;
         this.clock = clock;
@@ -212,15 +222,37 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
                 }
             }
 
+            // 전환 슬롯 재개(FR-14, ADR-26): 직전 과거 참조 매치 실패의 보관분이 살아 있으면 이 텍스트("새로
+            // 기록해줘")를 추출하지 않고 보관분으로 즉시 미리보기를 재개한다(감상 재전송 불요, AC-36).
+            // TTL 만료·부재는 take()가 빈 Optional로 수렴 → 일반 신규 처리(추출부터).
+            ExtractionResult heldExtraction = transitionSlot.take()
+                    .filter(ExtractionResult.class::isInstance)
+                    .map(ExtractionResult.class::cast)
+                    .orElse(null);
+            boolean resumed = heldExtraction != null;
+
             // [2] 추출 → [2.5] 수신 사진 OCR → [3] 매칭. LLM/스키마 실패는 예외로 던져져 아래 catch로 수렴한다(plan §7, V-1).
-            ExtractionResult extraction =
-                    noteExtractor.extract(message.text(), today, candidatesOf(existingNotes));
+            ExtractionResult extraction = resumed
+                    ? heldExtraction
+                    : noteExtractor.extract(message.text(), today, candidatesOf(existingNotes));
 
             // [2.5] 사진이 묶여 있으면 vision OCR을 1회 시도해 빈 필드를 읽는다 — 추출 뒤·매칭 전(OCR이 읽은
             // 커피명·로스터리가 매칭 이후 draft·검색 쿼리에 기여). 실패·무정보는 첨부로만(흐름 불변, FR-19, ADR-23).
             VisionExtraction photoInfo = readPhotoInfo(userId, consumeBuffer, bufferNames, extraction);
 
             MatchResult match = noteMatcher.match(extraction, existingNotes);
+
+            // POLICY: 과거 참조(references_past) 매치 실패 — pending을 만들지 않고 추출 결과를 전환 슬롯에
+            //         보관한 뒤 다음 의도를 기다린다(record류=보관분 재개, search류=검색 세션+슬롯 폐기, TTL 후
+            //         일반 신규 처리) (ref: spec FR-14/AC-36, plan.md#ADR-26). 재개분은 사용자가 이미 "새로
+            //         기록"을 고른 것이라 이 분기에 다시 들지 않는다. 버퍼 사진은 건드리지 않는다(재개 시 흡수).
+            if (!resumed && extraction.referencesPast() && match.isNew()) {
+                transitionSlot.hold(extraction);
+                responder.post(channelId, REFERENCE_NOT_FOUND);
+                log.info("과거 참조 매치 실패 — 전환 슬롯 보관 + 안내(pending 미생성): user={} targetDate={}",
+                        userId, extraction.targetDate());
+                return;
+            }
 
             // draft 조립: source=user 마킹 → OCR 오버레이(빈 필드만 source=photo, user 불가침 V-6) →
             // [4] 검색 보강(남은 빈 필드만 source=search). 외부 호출은 여기서 끝낸다(CLAUDE.md §3).
@@ -294,6 +326,10 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
     public void searchNotes(IncomingMessage message) {
         String userId = message.userId();
         String channelId = message.channelId();
+
+        // POLICY: search류 전환 — 전환 슬롯 보관분은 검색 세션으로 넘어가며 폐기한다
+        //         (ref: spec FR-14/AC-36, plan.md#ADR-26).
+        transitionSlot.take();
 
         // POLICY: 검색 세션은 pending을 읽기만 — 쓰기 금지(격리, AC-29) (ADR-25, FR-20).
         //         이 경로는 pendingStore를 아예 만지지 않는다.

@@ -36,6 +36,7 @@ import com.devwuu.mocha.repository.PhotoBufferStore;
 import com.devwuu.mocha.repository.PhotoStore;
 import com.devwuu.mocha.repository.SearchSessionStore;
 import com.devwuu.mocha.repository.StagedImage;
+import com.devwuu.mocha.repository.TransitionSlot;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -210,6 +211,31 @@ class DefaultConfirmationFlowTest {
         public void clear(String userId) {
             clearCount++;
             session = Optional.empty();
+        }
+    }
+
+    /**
+     * 전환 슬롯 fake — hold/take 호출을 캡처하고 {@code expired}로 TTL 만료를 흉내낸다(빈 Optional).
+     * 실제 TTL·단일 슬롯 규칙은 InMemoryTransitionSlotTest(TΔ4)가 본다.
+     */
+    private static final class FakeTransitionSlot implements TransitionSlot {
+        Object payload;
+        boolean expired = false;
+        final List<Object> holds = new ArrayList<>();
+        int takeCount = 0;
+
+        @Override
+        public void hold(Object payload) {
+            holds.add(payload);
+            this.payload = payload;
+        }
+
+        @Override
+        public Optional<Object> take() {
+            takeCount++;
+            Object taken = payload;
+            payload = null;
+            return expired ? Optional.empty() : Optional.ofNullable(taken);
         }
     }
 
@@ -410,6 +436,7 @@ class DefaultConfirmationFlowTest {
     private final PhotoInfoExtractor photoInfoExtractor = new PhotoInfoExtractor(visionClient, 4);
     private final PendingReviser reviser = new PendingReviser(llmClient, MochaObjectMapper.create());
     private final FakeSearchSessionStore searchSessionStore = new FakeSearchSessionStore();
+    private final FakeTransitionSlot transitionSlot = new FakeTransitionSlot();
 
     private NoteRepository noteRepository() {
         return new JsonFileNoteRepository(dataDir, MochaObjectMapper.create());
@@ -426,7 +453,7 @@ class DefaultConfirmationFlowTest {
                 pendingStore, repo, noteRenderer, responder,
                 extractor, matcher, enricher, photoInfoExtractor, reviser, previewMessenger,
                 photoDownloader, photoStore, photoBufferStore, searchSessionStore, noteSearchService,
-                artifactDir, BUFFER_WINDOW, clock);
+                transitionSlot, artifactDir, BUFFER_WINDOW, clock);
     }
 
     private static ExtractionResult extraction(
@@ -1151,5 +1178,119 @@ class DefaultConfirmationFlowTest {
         assertEquals(0, searchSessionStore.clearCount, "실패해도 세션을 잃지 않는다(plan §7)");
         assertTrue(searchSessionStore.get("U1").isPresent(), "다음 메시지로 검색을 계속할 수 있다");
         assertTrue(searchSessionStore.puts.isEmpty(), "실패 턴은 세션을 갱신하지 않는다");
+    }
+
+    // --- TΔ6(changes/0011): 과거 참조 매치 실패 → TransitionSlot 보관 + 다음 의도 재개(FR-14, ADR-26) ---
+
+    /** references_past=true인 추출 결과 — matchedSlug가 없거나(무매칭) 존재하지 않으면 매치 실패 분기 대상. */
+    private static ExtractionResult referencingExtraction(String coffeeName, String matchedSlug) {
+        return new ExtractionResult(
+                coffeeName, null, null, null, null, "저번처럼 새콤했다", Rating.GOOD, null, matchedSlug, true, null);
+    }
+
+    @Test
+    @DisplayName("AC-36/FR-14: 과거 참조 매치 실패 → pending 미생성, 추출 결과를 전환 슬롯에 보관하고 안내만")
+    void startNewNoteHoldsExtractionOnPastReferenceMiss() {
+        NoteRepository repo = noteRepository();
+        llmClient.canned = referencingExtraction("그때 그 커피", null); // 참조 신호 + 매칭 실패
+
+        flow(repo).startNewNote(message("저번에 마셨던 그 커피 또 마셨어"));
+
+        assertEquals(List.of(DefaultConfirmationFlow.REFERENCE_NOT_FOUND), responder.messages,
+                "미리보기 대신 못 찾았다 안내가 간다(AC-36)");
+        assertTrue(pendingStore.puts.isEmpty(), "매치 실패 분기는 pending을 만들지 않는다(FR-14)");
+        assertNull(previewMessenger.published, "미리보기도 없다");
+        assertTrue(repo.findAll().isEmpty(), "노트 JSON도 없다");
+        assertEquals(1, transitionSlot.holds.size(), "추출 결과가 전환 슬롯에 보관된다(ADR-26)");
+        ExtractionResult held = (ExtractionResult) transitionSlot.holds.get(0);
+        assertEquals("그때 그 커피", held.coffeeName(), "보관분은 이번 추출 결과 그대로다");
+        assertEquals(LocalDate.of(2026, 7, 11), held.targetDate(), "target_date가 today로 기본화된 상태로 보관된다");
+    }
+
+    @Test
+    @DisplayName("AC-36: 보관분이 살아 있을 때 record(\"새로 기록해줘\") → 감상 재전송 없이 보관분으로 즉시 미리보기 재개")
+    void startNewNoteResumesPreviewFromHeldExtraction() {
+        NoteRepository repo = noteRepository();
+        transitionSlot.payload = new ExtractionResult(
+                "커피베라 예가체프", "커피베라", null, null, null, "저번처럼 새콤했다", Rating.GOOD, null,
+                "ghost-slug", true, LocalDate.of(2026, 7, 10));
+        // 재개 경로는 이 텍스트를 추출하지 않는다 — LLM이 호출되면 실패로 드러나게 한다.
+        llmClient.failure = new LlmException("재개 경로는 추출을 호출하면 안 된다");
+
+        flow(repo).startNewNote(message("새로 기록해줘"));
+
+        assertNotNull(previewMessenger.published, "보관분으로 미리보기가 재개된다(AC-36)");
+        Note draft = previewMessenger.published.draft();
+        assertEquals("커피베라 예가체프", draft.coffeeName().value(), "보관분의 내용 그대로다(감상 재전송 불요)");
+        assertEquals("저번처럼 새콤했다", draft.entries().get(0).myTaste());
+        assertEquals(LocalDate.of(2026, 7, 10), draft.entries().get(0).date(),
+                "원 발화의 target_date가 보존된다(재개 시점 today로 덮이지 않음)");
+        assertEquals(MatchInfo.MatchType.NEW, previewMessenger.published.match().type(),
+                "존재하지 않는 matched_slug는 신규로 폴백(재보관 없이 진행)");
+        assertEquals(2, pendingStore.puts.size(), "재개는 종전 신규 흐름대로 pending을 만든다");
+        assertNull(transitionSlot.payload, "보관분은 소비된다(단일 소비)");
+        assertTrue(transitionSlot.holds.isEmpty(), "재개분을 슬롯에 재보관하지 않는다");
+        assertTrue(responder.messages.isEmpty(), "정상 재개면 오류·안내가 없다");
+    }
+
+    @Test
+    @DisplayName("AC-36: 보관분이 살아 있을 때 search(\"찾아줘\") → 검색 세션으로 넘어가고 슬롯은 폐기된다")
+    void searchNotesDiscardsHeldExtraction() {
+        NoteRepository repo = noteRepository();
+        savedNote(repo, "coffeevera-yirgacheffe", "커피베라 예가체프", "커피베라", LocalDate.of(2026, 7, 1));
+        transitionSlot.payload = referencingExtraction("그때 그 커피", null);
+        llmClient.cannedSelection = new SearchSelection(List.of("coffeevera-yirgacheffe"));
+
+        flow(repo).searchNotes(message("찾아줘"));
+
+        assertNull(transitionSlot.payload, "search류 전환은 보관분을 폐기한다(ADR-26)");
+        assertTrue(transitionSlot.takeCount >= 1, "폐기는 슬롯 소비(take)로 일어난다");
+        assertEquals(1, responder.images.size(), "검색 세션은 정상 진행된다(단일 매치 카드)");
+        assertTrue(pendingStore.puts.isEmpty(), "pending은 여전히 만들지 않는다");
+    }
+
+    @Test
+    @DisplayName("AC-36: 전환 슬롯 TTL 폐기 후 record → 보관분 없이 이번 텍스트의 일반 신규 처리로 흐른다")
+    void startNewNoteFallsBackToNormalAfterSlotTtl() {
+        NoteRepository repo = noteRepository();
+        transitionSlot.payload = referencingExtraction("그때 그 커피", null);
+        transitionSlot.expired = true; // TTL 경과 — take()가 빈 Optional로 수렴(실 TTL은 InMemoryTransitionSlotTest)
+        llmClient.canned = extraction("모모스 와이키키", "모모스", null, "고소했다", Rating.GOOD);
+
+        flow(repo).startNewNote(message("모모스 와이키키 마셨는데 고소했다"));
+
+        assertNotNull(previewMessenger.published, "TTL 폐기 후에는 일반 신규 처리로 미리보기가 진행된다");
+        assertEquals("모모스 와이키키", previewMessenger.published.draft().coffeeName().value(),
+                "만료된 보관분이 아니라 이번 텍스트의 추출 결과가 쓰인다");
+        assertTrue(transitionSlot.holds.isEmpty(), "이번 추출은 참조 신호가 없으니 다시 보관되지 않는다");
+    }
+
+    @Test
+    @DisplayName("AC-Δ8(회귀 가드): references_past=false 새 기록은 종전대로 즉시 미리보기 — 슬롯 보관·안내 없음")
+    void startNewNoteWithoutReferenceKeepsImmediatePreview() {
+        NoteRepository repo = noteRepository();
+        llmClient.canned = extraction("커피베라 예가체프", "커피베라", null, "새콤함", Rating.GOOD); // referencesPast=false
+
+        flow(repo).startNewNote(message("커피베라 예가체프 마셨는데 새콤했다"));
+
+        assertNotNull(previewMessenger.published, "참조 신호 없는 새 기록은 바로 미리보기다(AC-1 마찰 불변)");
+        assertTrue(transitionSlot.holds.isEmpty(), "슬롯에 아무것도 보관하지 않는다");
+        assertTrue(responder.messages.isEmpty(), "못 찾았다 안내도 없다");
+        assertEquals(2, pendingStore.puts.size(), "종전 신규 흐름 그대로 pending이 만들어진다");
+    }
+
+    @Test
+    @DisplayName("FR-14: references_past=true여도 매치에 성공하면 분기 없이 기존 노트 흐름으로 미리보기가 진행된다")
+    void startNewNoteWithReferenceMatchSuccessProceedsNormally() {
+        NoteRepository repo = noteRepository();
+        savedNote(repo, "coffeevera-yirgacheffe", "커피베라 예가체프", "커피베라", LocalDate.of(2026, 7, 1));
+        llmClient.canned = referencingExtraction("커피베라 예가체프", "coffeevera-yirgacheffe"); // 참조 + 매치 성공
+
+        flow(repo).startNewNote(message("저번에 마신 예가체프 또 마셨어"));
+
+        assertNotNull(previewMessenger.published, "매치에 성공한 참조는 종전 기존 노트 흐름이다");
+        assertEquals(MatchInfo.MatchType.EXISTING, previewMessenger.published.match().type());
+        assertTrue(transitionSlot.holds.isEmpty(), "매치 성공이면 슬롯을 쓰지 않는다");
+        assertTrue(responder.messages.isEmpty());
     }
 }
