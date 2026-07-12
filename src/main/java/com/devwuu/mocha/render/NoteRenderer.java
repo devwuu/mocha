@@ -26,4 +26,14 @@ public interface NoteRenderer {
      * @return 구워진 카드 JPG 경로.
      */
     Path renderEntryCard(String slug, LocalDate date);
+
+    /**
+     * 수정 세션 날짜 이동 시 옛 날짜 카드 파생물({@code cards/<slug>/<date>.jpg})을 정리한다(ADR-27, AC-39).
+     * 파일이 없어도 무해(멱등). 삭제 실패로 남은 카드는 {@link #renderAll}({@code --rerender})이 정리하므로
+     * 호출부는 실패를 커밋 롤백 사유로 삼지 않는다(plan §7).
+     *
+     * @param slug 대상 노트 slug.
+     * @param date 삭제할 카드의 엔트리 날짜(이동 전 원본 date).
+     */
+    void removeEntryCard(String slug, LocalDate date);
 }

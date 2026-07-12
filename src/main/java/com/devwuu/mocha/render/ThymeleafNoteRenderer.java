@@ -17,8 +17,11 @@ import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
+import java.util.stream.Stream;
 
 /**
  * 파이프라인 [7] — Thymeleaf를 오프라인 실행해 JSON 원본을 index 목록 HTML + 시음 엔트리 카드 JPG로 굽는다
@@ -77,9 +80,11 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
         copyMascot();
         copyFonts();
         writeIndex(ordered);
+        Set<Path> baked = new HashSet<>();
         for (EntryRef ref : ordered) {
-            bakeCard(ref);
+            baked.add(bakeCard(ref));
         }
+        pruneOrphanCards(baked);
         log.info("전체 리렌더 완료: theme={} entries={} dir={}", theme.id(), ordered.size(), artifactDir);
     }
 
@@ -101,6 +106,50 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
         writeIndex(orderedEntries(notes));
         log.info("엔트리 카드 렌더: slug={} date={} → {}", slug, date, cardPath);
         return cardPath;
+    }
+
+    @Override
+    public void removeEntryCard(String slug, LocalDate date) {
+        // 수정 세션 날짜 이동의 옛 date 카드 정리(AC-39). 파일 부재는 정상(이미 없거나 렌더된 적 없음) — 멱등.
+        Path card = artifactDir.resolve(CARDS_DIR).resolve(slug).resolve(date + ".jpg");
+        try {
+            if (Files.deleteIfExists(card)) {
+                log.info("엔트리 카드 삭제: slug={} date={}", slug, date);
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException("엔트리 카드 삭제 실패: " + card, e);
+        }
+    }
+
+    // POLICY: renderAll은 JSON 기준 산출 집합에 없는 카드 파일을 지운다 — removeEntryCard 실패로 남은
+    //         옛 카드의 최종 정리 지점이자 파생물 재현 동일성의 근거
+    //         (ref: specs/coffee-note-agent/plan.md §7, changes/0012 delta AC-Δ7).
+    private void pruneOrphanCards(Set<Path> expected) {
+        Path cardsDir = artifactDir.resolve(CARDS_DIR);
+        if (!Files.isDirectory(cardsDir)) {
+            return;
+        }
+        try (Stream<Path> walk = Files.walk(cardsDir)) {
+            // 깊은 경로부터(역순) — 고아 파일을 지운 뒤 비게 된 slug 디렉토리까지 정리한다.
+            for (Path path : walk.sorted(Comparator.reverseOrder()).toList()) {
+                if (Files.isRegularFile(path)) {
+                    if (!expected.contains(path)) {
+                        Files.delete(path);
+                        log.info("고아 카드 정리: {}", path);
+                    }
+                } else if (Files.isDirectory(path) && !path.equals(cardsDir) && isEmptyDir(path)) {
+                    Files.delete(path);
+                }
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException("고아 카드 정리 실패: " + cardsDir, e);
+        }
+    }
+
+    private static boolean isEmptyDir(Path dir) throws IOException {
+        try (Stream<Path> entries = Files.list(dir)) {
+            return entries.findAny().isEmpty();
+        }
     }
 
     // --- 인덱스 (엔트리 최신순 목록) ---

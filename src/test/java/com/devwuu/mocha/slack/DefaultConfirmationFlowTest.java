@@ -98,11 +98,13 @@ class DefaultConfirmationFlowTest {
         }
     }
 
-    /** renderAll 호출과 증분 renderEntryCard 호출(slug/date)을 캡처하고, 렌더 실패를 주입하는 fake. */
+    /** renderAll 호출과 증분 renderEntryCard/removeEntryCard 호출(slug/date)을 캡처하고, 실패를 주입하는 fake. */
     private static final class FakeNoteRenderer implements NoteRenderer {
         int renderAllCount = 0;
         final List<String> entryCards = new ArrayList<>(); // "slug/date" 캡처
+        final List<String> removedCards = new ArrayList<>(); // removeEntryCard "slug/date" 캡처(changes/0012 TΔ3)
         RuntimeException renderFailure;
+        RuntimeException removeFailure;
 
         @Override
         public void renderAll() {
@@ -116,6 +118,14 @@ class DefaultConfirmationFlowTest {
             }
             entryCards.add(slug + "/" + date);
             return Path.of("cards", slug, date + ".jpg");
+        }
+
+        @Override
+        public void removeEntryCard(String slug, LocalDate date) {
+            if (removeFailure != null) {
+                throw removeFailure;
+            }
+            removedCards.add(slug + "/" + date);
         }
     }
 
@@ -858,6 +868,150 @@ class DefaultConfirmationFlowTest {
         // 버튼 소진은 커밋·배달을 되돌리지 않는 "이후의 표시 갱신"일 뿐 — 커밋·clear·배달 순서와 조건은 불변이어야 한다(AC-Δ5, ADR-20).
         assertEquals(List.of("commit", "clear", "deliver", "finalize"), order,
                 "저장 커밋 → pending clear → 카드 배달 → 버튼 소진 순서가 유지되어야 한다");
+    }
+
+    // --- TΔ3(changes/0012): edit 커밋 — applyEdit + 파생물 정리(AC-Δ3, plan §7) ---
+
+    // 수정 대상이 될 원본 노트(엔트리 1건)를 실제 파일로 심는다 — edit 커밋의 @TempDir 재료.
+    private void seedEditableNote(NoteRepository repo, String slug, LocalDate date, List<String> photos) {
+        com.devwuu.mocha.domain.NoteMeta meta = new com.devwuu.mocha.domain.NoteMeta(
+                Sourced.user("커피베라 예가체프"), Sourced.user("커피베라"), Sourced.search("에티오피아"),
+                null, null, null, List.of());
+        repo.upsertEntry(slug, meta, new Entry(date, "원래 감상", Rating.GOOD, null, photos, OffsetDateTime.now()));
+    }
+
+    // mode=edit pending — 원본 (slug, targetDate) 엔트리를 newDate·새 감상으로 고치는 단일 엔트리 draft.
+    private static PendingNote editPending(String slug, LocalDate targetDate, LocalDate newDate, String myTaste) {
+        Entry entry = new Entry(newDate, myTaste, Rating.GOOD, null, List.of(), OffsetDateTime.now());
+        Note draft = new Note(
+                slug, Sourced.user("커피베라 예가체프"),
+                Sourced.user("커피베라"), Sourced.search("에티오피아"), null, null,
+                null, List.of(), List.of(entry), OffsetDateTime.now(), OffsetDateTime.now());
+        return new PendingNote(PendingNote.Mode.EDIT, draft, new PendingNote.EditTarget(slug, targetDate),
+                null, "1720000000.000999", OffsetDateTime.now());
+    }
+
+    @Test
+    @DisplayName("AC-Δ3: edit [저장] 날짜 이동 → applyEdit 커밋 후 옛 date 카드 삭제 → 새 date 카드 증분 렌더·배달")
+    void confirmSaveEditMovesDateAndCleansOldCard() {
+        NoteRepository repo = noteRepository();
+        seedEditableNote(repo, "yirga", LocalDate.of(2026, 7, 8), List.of());
+        pendingStore.setPending(editPending("yirga", LocalDate.of(2026, 7, 8), LocalDate.of(2026, 7, 9), "고친 감상"));
+
+        flow(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
+
+        // 커밋: 엔트리가 새 date로 이동하고 원본 date 엔트리는 사라진다(AC-Δ3).
+        Note saved = repo.findBySlug("yirga").orElseThrow();
+        assertEquals(1, saved.entries().size(), "이동이지 복제가 아니다 — 엔트리 총수 불변");
+        assertEquals(LocalDate.of(2026, 7, 9), saved.entries().get(0).date(), "엔트리가 새 date로 이동");
+        assertEquals("고친 감상", saved.entries().get(0).myTaste(), "수정 내용 반영");
+        assertEquals(1, pendingStore.clearCount, "커밋 후 pending 폐기");
+        // 파생물 정리 순서: 옛 date 카드 삭제 → 새 date 카드 증분 렌더(index 갱신은 renderEntryCard가 흡수).
+        assertEquals(List.of("yirga/2026-07-08"), noteRenderer.removedCards, "옛 date 카드 삭제");
+        assertEquals(List.of("yirga/2026-07-09"), noteRenderer.entryCards, "새 date 카드만 증분 렌더");
+        assertEquals(0, noteRenderer.renderAllCount, "edit 저장도 전체 리렌더를 트리거하지 않는다");
+        // 갱신 카드 배달 + 버튼 소진(0009 재사용).
+        assertEquals(List.of(Path.of("cards", "yirga", "2026-07-09.jpg")), responder.images, "갱신 카드 배달");
+        assertEquals(List.of(DefaultConfirmationFlow.FINALIZE_SAVED), responder.finalizeStatuses, "버튼 1회 소진");
+        assertTrue(responder.messages.isEmpty(), "정상 배달이면 폴백 텍스트가 없다");
+    }
+
+    @Test
+    @DisplayName("AC-Δ1: edit [저장] 날짜 유지 → 옛 카드 삭제 없이 해당 date 카드만 다시 굽는다")
+    void confirmSaveEditWithoutDateMoveSkipsCardRemoval() {
+        NoteRepository repo = noteRepository();
+        seedEditableNote(repo, "yirga", LocalDate.of(2026, 7, 8), List.of());
+        pendingStore.setPending(editPending("yirga", LocalDate.of(2026, 7, 8), LocalDate.of(2026, 7, 8), "고친 감상"));
+
+        flow(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
+
+        Note saved = repo.findBySlug("yirga").orElseThrow();
+        assertEquals("고친 감상", saved.entries().get(0).myTaste(), "필드 갱신 반영");
+        assertTrue(noteRenderer.removedCards.isEmpty(), "날짜가 그대로면 카드 삭제가 없다(같은 경로 덮어쓰기)");
+        assertEquals(List.of("yirga/2026-07-08"), noteRenderer.entryCards, "해당 date 카드 재렌더");
+    }
+
+    @Test
+    @DisplayName("plan §7: 옛 카드 삭제 실패 → 커밋 유지, 새 카드 렌더·배달은 그대로 진행된다")
+    void confirmSaveEditKeepsCommitWhenCardRemovalFails() {
+        NoteRepository repo = noteRepository();
+        seedEditableNote(repo, "yirga", LocalDate.of(2026, 7, 8), List.of());
+        pendingStore.setPending(editPending("yirga", LocalDate.of(2026, 7, 8), LocalDate.of(2026, 7, 9), "고친 감상"));
+        noteRenderer.removeFailure = new IllegalStateException("카드 삭제 실패");
+
+        flow(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
+
+        // 삭제 실패는 커밋을 되돌리지 않고(남은 옛 카드는 --rerender가 정리), 새 카드 흐름은 계속된다.
+        Note saved = repo.findBySlug("yirga").orElseThrow();
+        assertEquals(LocalDate.of(2026, 7, 9), saved.entries().get(0).date(), "커밋은 유지된다");
+        assertEquals(List.of("yirga/2026-07-09"), noteRenderer.entryCards, "새 카드 렌더는 그대로 진행");
+        assertEquals(1, responder.images.size(), "카드 배달도 그대로 진행");
+        assertTrue(responder.messages.isEmpty(), "삭제 실패만으로 폴백 텍스트를 보내지 않는다(로그만)");
+    }
+
+    @Test
+    @DisplayName("plan §7: edit 커밋 후 카드 렌더 실패 → 커밋은 유지되고 안내 텍스트로 폴백한다")
+    void confirmSaveEditKeepsCommitWhenRenderFails() {
+        NoteRepository repo = noteRepository();
+        seedEditableNote(repo, "yirga", LocalDate.of(2026, 7, 8), List.of());
+        pendingStore.setPending(editPending("yirga", LocalDate.of(2026, 7, 8), LocalDate.of(2026, 7, 9), "고친 감상"));
+        noteRenderer.renderFailure = new IllegalStateException("Chromium 미기동");
+
+        flow(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
+
+        Note saved = repo.findBySlug("yirga").orElseThrow();
+        assertEquals(LocalDate.of(2026, 7, 9), saved.entries().get(0).date(), "렌더 실패해도 수정 커밋은 유지(AC-18 준용)");
+        assertTrue(responder.images.isEmpty(), "카드는 배달되지 못했다");
+        assertEquals(List.of(DefaultConfirmationFlow.SAVE_DONE_NO_IMAGE), responder.messages, "안내 텍스트로 폴백");
+        assertEquals(List.of(DefaultConfirmationFlow.FINALIZE_SAVED), responder.finalizeStatuses, "버튼 소진은 그대로");
+    }
+
+    @Test
+    @DisplayName("V-7 준용: [저장] 시 수정 대상 소실 → 커밋 없이 만료 안내 + pending·스테이징 정리")
+    void confirmSaveEditRejectsWhenTargetGone() {
+        NoteRepository repo = noteRepository(); // 대상 노트를 심지 않는다 — 소실 상황
+        pendingStore.setPending(editPending("ghost", LocalDate.of(2026, 7, 8), LocalDate.of(2026, 7, 9), "고친 감상"));
+
+        flow(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
+
+        assertTrue(repo.findAll().isEmpty(), "대상 소실 시 어떤 노트도 저장·생성되지 않는다");
+        assertTrue(noteRenderer.entryCards.isEmpty() && noteRenderer.removedCards.isEmpty(), "파생물 접촉 없음");
+        assertEquals(1, pendingStore.clearCount, "죽은 edit pending은 폐기한다");
+        assertEquals(1, photoStore.discardCount, "스테이징 사진도 만료 경로처럼 정리한다");
+        assertEquals(List.of(DefaultConfirmationFlow.NOTHING_TO_SAVE), responder.messages, "만료 안내로 수렴(V-7 준용)");
+    }
+
+    @Test
+    @DisplayName("AC-41 재료: edit [저장] 시 기존 사진 경로는 보존되고 스테이징된 새 사진만 뒤에 붙는다")
+    void confirmSaveEditPreservesExistingPhotosAndAppendsStaged() {
+        NoteRepository repo = noteRepository();
+        seedEditableNote(repo, "yirga", LocalDate.of(2026, 7, 8), List.of("photos/yirga/2026-07-08/a.jpg"));
+        photoStore.stage("U1", "b.jpg", new byte[]{1});
+        pendingStore.setPending(editPending("yirga", LocalDate.of(2026, 7, 8), LocalDate.of(2026, 7, 9), "고친 감상"));
+
+        flow(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
+
+        Note saved = repo.findBySlug("yirga").orElseThrow();
+        // 기존 사진은 옛 date 경로 문자열 그대로(파일 이동 없음) + 새 사진은 새 date 경로로 커밋되어 뒤에 붙는다.
+        assertEquals(List.of("photos/yirga/2026-07-08/a.jpg", "photos/yirga/2026-07-09/b.jpg"),
+                saved.entries().get(0).photos(), "기존 보존 + 신규 추가(삭제 없음)");
+    }
+
+    @Test
+    @DisplayName("손상 edit pending(target 결손)에 [저장] → 저장하지 않고 방어 안내한다")
+    void confirmSaveRejectsEditPendingWithoutTarget() {
+        NoteRepository repo = noteRepository();
+        seedEditableNote(repo, "yirga", LocalDate.of(2026, 7, 8), List.of());
+        PendingNote broken = new PendingNote(PendingNote.Mode.EDIT,
+                editPending("yirga", LocalDate.of(2026, 7, 8), LocalDate.of(2026, 7, 9), "고친 감상").draft(),
+                null, null, "1720000000.000999", OffsetDateTime.now()); // target 결손
+        pendingStore.setPending(broken);
+
+        flow(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
+
+        assertEquals("원래 감상", repo.findBySlug("yirga").orElseThrow().entries().get(0).myTaste(), "원본 무변화");
+        assertEquals(0, pendingStore.clearCount, "손상 pending은 커밋 clear 대상이 아니다");
+        assertEquals(List.of(DefaultConfirmationFlow.BROKEN_PENDING), responder.messages);
     }
 
     @Test

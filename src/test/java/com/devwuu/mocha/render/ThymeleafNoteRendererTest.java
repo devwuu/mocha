@@ -2,6 +2,7 @@ package com.devwuu.mocha.render;
 
 import com.devwuu.mocha.config.RenderConfig;
 import com.devwuu.mocha.domain.Entry;
+import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
 import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Recipe;
@@ -325,6 +326,86 @@ class ThymeleafNoteRendererTest {
             String card = bakeCardHtml(repo, theme, theme == Theme.TYPE_A ? artA : artB);
             assertTrue(card.contains("게이샤 내추럴"), theme + ": 제목에 커피명 값");
             assertFalse(card.contains("(사진)"), theme + ": 제목=정체성 → (사진) 무표기");
+        }
+    }
+
+    // --- TΔ3(changes/0012): removeEntryCard + renderAll 고아 카드 정리(AC-Δ3·Δ7) ---
+
+    // 원본 노트의 단일 엔트리를 newDate로 옮긴 edit draft(엔트리 1건) — applyEdit 입력.
+    private static Note moveDateDraft(Note origin, LocalDate newDate) {
+        Entry e = origin.entries().get(0);
+        Entry moved = new Entry(newDate, e.myTaste(), e.rating(), e.recipe(), e.photos(), e.updatedAt());
+        return new Note(origin.slug(), origin.coffeeName(), origin.roastery(), origin.origin(),
+                origin.process(), origin.roastLevel(), origin.officialNotes(), origin.sources(),
+                List.of(moved), origin.createdAt(), origin.updatedAt());
+    }
+
+    @Test
+    @DisplayName("AC-Δ3: 날짜 이동 커밋 후 옛 카드 삭제→새 카드 증분 렌더 → 옛 카드 부재·새 카드 존재·index 링크 갱신")
+    void dateMoveCleansOldCardAndRefreshesIndex(@TempDir Path dataDir, @TempDir Path artifactDir) {
+        NoteRepository repo = seedRepository(dataDir);
+        ThymeleafNoteRenderer renderer =
+                new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_B, new FakeCardImageRenderer());
+        renderer.renderAll();
+        assertTrue(Files.isRegularFile(artifactDir.resolve("cards/2026-07-10/2026-07-10.jpg")), "이동 전 카드 존재");
+
+        // edit 커밋(07-10 → 07-11) 후 파생물 정리 순서: 옛 카드 삭제 → 새 카드 증분 렌더(index 갱신 흡수).
+        Note origin = repo.findBySlug("2026-07-10").orElseThrow();
+        repo.applyEdit("2026-07-10", LocalDate.parse("2026-07-10"), moveDateDraft(origin, LocalDate.parse("2026-07-11")));
+        renderer.removeEntryCard("2026-07-10", LocalDate.parse("2026-07-10"));
+        renderer.renderEntryCard("2026-07-10", LocalDate.parse("2026-07-11"));
+
+        assertFalse(Files.exists(artifactDir.resolve("cards/2026-07-10/2026-07-10.jpg")), "옛 date 카드 부재");
+        assertTrue(Files.isRegularFile(artifactDir.resolve("cards/2026-07-10/2026-07-11.jpg")), "새 date 카드 존재");
+        String indexHtml = read(artifactDir.resolve("index.html"));
+        assertTrue(indexHtml.contains("href=\"cards/2026-07-10/2026-07-11.jpg\""), "index가 새 카드로 링크");
+        assertFalse(indexHtml.contains("cards/2026-07-10/2026-07-10.jpg"), "index에서 옛 카드 링크 제거");
+        assertTrue(indexHtml.contains("href=\"cards/2026-07-04/2026-07-04.jpg\""), "다른 엔트리 링크는 유지");
+    }
+
+    @Test
+    @DisplayName("removeEntryCard: 대상 카드 파일이 없어도 예외 없이 지나간다(멱등)")
+    void removeEntryCardIsHarmlessWhenAbsent(@TempDir Path dataDir, @TempDir Path artifactDir) {
+        ThymeleafNoteRenderer renderer = new ThymeleafNoteRenderer(
+                seedRepository(dataDir), engine, artifactDir, Theme.TYPE_B, new FakeCardImageRenderer());
+        // 산출 전(cards/ 자체가 없음)에도, 같은 호출을 반복해도 무해해야 한다.
+        renderer.removeEntryCard("2026-07-10", LocalDate.parse("2026-07-10"));
+        renderer.removeEntryCard("2026-07-10", LocalDate.parse("2026-07-10"));
+        assertFalse(Files.exists(artifactDir.resolve("cards/2026-07-10/2026-07-10.jpg")));
+    }
+
+    @Test
+    @DisplayName("AC-Δ7: 옛 카드 삭제 실패로 남은 고아 카드는 renderAll이 정리해 산출이 신규 렌더와 동일해진다")
+    void renderAllPrunesOrphanCardsForReproducibility(@TempDir Path dataDir, @TempDir Path artifactDir, @TempDir Path freshDir) {
+        NoteRepository repo = seedRepository(dataDir);
+        ThymeleafNoteRenderer renderer =
+                new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_B, new FakeCardImageRenderer());
+        renderer.renderAll();
+
+        // 날짜 이동 커밋 후 removeEntryCard가 실패했다고 치자 — 옛 카드가 고아로 남는다(plan §7 실패 모드).
+        Note origin = repo.findBySlug("2026-07-10").orElseThrow();
+        repo.applyEdit("2026-07-10", LocalDate.parse("2026-07-10"), moveDateDraft(origin, LocalDate.parse("2026-07-11")));
+        renderer.renderEntryCard("2026-07-10", LocalDate.parse("2026-07-11"));
+        assertTrue(Files.isRegularFile(artifactDir.resolve("cards/2026-07-10/2026-07-10.jpg")), "고아 카드가 남아 있다");
+
+        renderer.renderAll(); // --rerender
+
+        assertFalse(Files.exists(artifactDir.resolve("cards/2026-07-10/2026-07-10.jpg")), "renderAll이 고아 카드를 정리(plan §7)");
+        // 재현 동일성(AC-Δ7): 같은 JSON을 빈 디렉토리에 새로 렌더한 산출과 카드 집합·index가 동일하다.
+        new ThymeleafNoteRenderer(repo, engine, freshDir, Theme.TYPE_B, new FakeCardImageRenderer()).renderAll();
+        assertEquals(cardFiles(freshDir), cardFiles(artifactDir), "카드 파일 집합 동일");
+        assertEquals(read(freshDir.resolve("index.html")), read(artifactDir.resolve("index.html")), "index 동일");
+    }
+
+    // artifact/cards 하위 실제 카드 파일들의 상대 경로 집합.
+    private static java.util.Set<String> cardFiles(Path artifactDir) {
+        Path cardsDir = artifactDir.resolve("cards");
+        try (Stream<Path> walk = Files.walk(cardsDir)) {
+            return walk.filter(Files::isRegularFile)
+                    .map(p -> cardsDir.relativize(p).toString().replace(java.io.File.separatorChar, '/'))
+                    .collect(java.util.stream.Collectors.toSet());
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
         }
     }
 

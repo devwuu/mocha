@@ -59,7 +59,9 @@ import java.util.Optional;
  *       {@link PendingStore#put} → {@link PreviewMessenger#publish} → preview_ts 반영 재저장. (tasks T3-6)</li>
  *   <li>{@link #confirmSave} — pending 로드·TTL 판정(V-7) → {@link NoteRepository#upsertEntry}로 커밋 →
  *       pending clear → {@link NoteRenderer#renderEntryCard 방금 엔트리 카드 증분 렌더} →
- *       {@link SlackResponder#postImage 카드 JPG 배달}(실패 시 텍스트 폴백, AC-18). (tasks T3-5 / changes/0002 TΔ5)</li>
+ *       {@link SlackResponder#postImage 카드 JPG 배달}(실패 시 텍스트 폴백, AC-18). (tasks T3-5 / changes/0002 TΔ5)
+ *       mode=edit이면 {@link NoteRepository#applyEdit} 커밋 + 날짜 이동 시
+ *       {@link NoteRenderer#removeEntryCard 옛 카드 정리}로 갈린다(FR-21, changes/0012 TΔ3).</li>
  *   <li>{@link #revisePending} — pending 수정 반영 배선: {@link PendingReviser#revise}로 draft에 수정 병합 →
  *       {@link PendingStore#put} → {@link PreviewMessenger#publish}로 같은 미리보기 메시지 edit(preview_ts 보존).
  *       엔트리 개수는 불변이다(AC-5). (tasks T3-7)</li>
@@ -542,10 +544,18 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         Note draft = pending.draft();
         String slug = draft.slug();
         Entry entry = latestEntry(draft);
+        boolean editMode = pending.mode() == PendingNote.Mode.EDIT;
         // 커밋 대상은 draft.slug()(신규는 상위 파이프라인이 할당, 기존은 매칭 slug). 결손이면 저장하지 않는다.
-        if (slug == null || slug.isBlank() || entry == null) {
-            log.warn("[저장] 무효 — 손상된 pending(slug/entry 결손): user={} slug={}", userId, slug);
+        // edit 모드는 갱신 대상 참조(target)도 필수다(data-model §2.3).
+        if (slug == null || slug.isBlank() || entry == null || (editMode && pending.target() == null)) {
+            log.warn("[저장] 무효 — 손상된 pending(slug/entry/target 결손): user={} slug={}", userId, slug);
             responder.post(action.channelId(), BROKEN_PENDING);
+            return;
+        }
+
+        // edit 커밋은 별도 경로 — 신규 기록(record) 흐름은 mode 도입 전과 동일하게 유지한다(delta AC-Δ6).
+        if (editMode) {
+            commitEdit(action, pending, entry);
             return;
         }
 
@@ -576,6 +586,66 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         }
 
         // 커밋·배달 이후 미리보기 버튼을 1회 소진한다 — 실패해도 저장·배달 결과는 유지된다(ADR-20, AC-Δ2).
+        finalizePreviewQuietly(action.channelId(), pending, FINALIZE_SAVED);
+    }
+
+    // edit 커밋(FR-21, AC-37·39, changes/0012 TΔ3) — [저장] 확답 시 대상 노트를 draft로 갱신하고 파생물을 정리한다.
+    private void commitEdit(IncomingAction action, PendingNote pending, Entry entry) {
+        String userId = action.userId();
+        PendingNote.EditTarget target = pending.target();
+        String slug = target.slug();
+
+        // V-7 준용: [저장] 시점에 수정 대상(노트/엔트리)이 소실됐으면 커밋 없이 만료 안내로 수렴한다(plan §7).
+        // 죽은 세션이므로 만료 경로와 동일하게 pending·스테이징 사진을 정리한다.
+        Optional<Entry> origin = noteRepository.findBySlug(slug)
+                .flatMap(note -> note.entries().stream()
+                        .filter(e -> e.date().equals(target.date())).findFirst());
+        if (origin.isEmpty()) {
+            log.warn("[저장] 무효 — 수정 대상 소실: user={} slug={} date={}", userId, slug, target.date());
+            pendingStore.clear(userId);
+            photoStore.discard(userId);
+            photoBufferStore.clear(userId);
+            responder.post(action.channelId(), NOTHING_TO_SAVE);
+            return;
+        }
+
+        // 사진은 추가만 가능(delta 비범위: 삭제 없음) — 기존 사진은 원본 엔트리의 경로 문자열을 그대로 보존하고
+        // (날짜가 이동해도 파일은 옮기지 않는다, findings-TΔ0 §3), 수정 중 스테이징된 새 사진만 뒤에 붙인다(AC-41).
+        String date = entry.date().toString();
+        List<String> photos = new ArrayList<>(origin.get().photos() == null ? List.of() : origin.get().photos());
+        photos.addAll(photoStore.commit(userId, slug, date));
+        Entry committedEntry = new Entry(
+                entry.date(), entry.myTaste(), entry.rating(), entry.recipe(), photos, entry.updatedAt());
+
+        // POLICY: 사용자 [저장] 확인을 거친 뒤에만 저장한다 (ref: plan.md#ADR-3, AC-37).
+        Note saved = noteRepository.applyEdit(slug, target.date(), withLatestEntry(pending.draft(), committedEntry));
+        pendingStore.clear(userId);
+        photoBufferStore.clear(userId);
+        boolean dateMoved = !target.date().equals(entry.date());
+        log.info("[저장] 수정 커밋 완료: slug={} {} → {} entries={}",
+                slug, target.date(), entry.date(), saved.entries().size());
+
+        // 파생물 정리: 날짜 이동이면 옛 date 카드부터 지운다. 삭제 실패는 커밋을 되돌리지 않고 새 카드 렌더로
+        // 계속 진행한다 — 남은 옛 카드는 renderAll(--rerender)이 정리한다(plan §7, AC-39).
+        if (dateMoved) {
+            try {
+                noteRenderer.removeEntryCard(slug, target.date());
+            } catch (RuntimeException e) {
+                log.warn("옛 카드 삭제 실패(수정은 저장됨, --rerender로 정리 가능): slug={} date={}",
+                        slug, target.date(), e);
+            }
+        }
+        // 새 date 카드 증분 렌더(+index 갱신) → 갱신 카드 배달(AC-37).
+        // POLICY: 카드 이미지 생성·전송 실패는 저장을 되돌리지 않는다 — 안내 텍스트로 폴백 (ref: plan.md §7, AC-18 준용).
+        try {
+            Path card = noteRenderer.renderEntryCard(slug, committedEntry.date());
+            responder.postImage(action.channelId(), card, SAVE_DONE_CAPTION);
+        } catch (RuntimeException e) {
+            log.warn("카드 배달 실패(수정은 저장됨, --rerender로 복구 가능): slug={} date={}", slug, date, e);
+            responder.post(action.channelId(), SAVE_DONE_NO_IMAGE);
+        }
+
+        // 커밋·배달 이후 미리보기 버튼을 1회 소진한다(0009 재사용) — 실패해도 저장·배달 결과는 유지된다(ADR-20).
         finalizePreviewQuietly(action.channelId(), pending, FINALIZE_SAVED);
     }
 

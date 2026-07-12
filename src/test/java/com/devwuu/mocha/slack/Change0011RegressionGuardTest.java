@@ -161,6 +161,10 @@ class Change0011RegressionGuardTest {
         public Path renderEntryCard(String slug, LocalDate date) {
             return Path.of("cards", slug, date + ".jpg");
         }
+
+        @Override
+        public void removeEntryCard(String slug, LocalDate date) {
+        }
     }
 
     /** 사진 경로는 이 가드에서 비활성 — 빈 동작 fake. */
