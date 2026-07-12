@@ -189,7 +189,10 @@ public class OpenAiSearchClient implements SearchClient {
             }
             VisionExtraction vision = visionClient.read(
                     content.imageUrls(), new VisionHint(query.coffeeName(), query.roastery()));
-            if (vision.equals(VisionExtraction.empty())) {
+            // POLICY: 검색 2단계는 VisionExtraction.coffeeName을 쓰지 않는다 — 병합(mergeOfficial) 대상인 공식
+            //         5필드가 전무하면 1단계로 진행한다. coffee_name은 changes/0010의 수신 사진 OCR 전용이라
+            //         검색 시엔 이미 아는 값이며, 이 필드 유무가 검색 동작을 바꾸지 않는다(ADR-15/23, AC-Δ7).
+            if (hasNoOfficialInfo(vision)) {
                 log.info("2단계 vision 무결과/실패 — 1단계 결과로 진행: coffee={}, url={}", query.coffeeName(), url);
                 return firstStage;
             }
@@ -201,6 +204,17 @@ public class OpenAiSearchClient implements SearchClient {
             log.warn("2단계 이미지 OCR 실패 — 1단계 결과로 진행: coffee={}, url={}", query.coffeeName(), url, e);
             return firstStage;
         }
+    }
+
+    // 검색 2단계 병합 대상인 공식 5필드(roastery/origin/process/roast_level/official_notes)가 전무한지 본다.
+    // coffee_name은 검색이 쓰지 않으므로 검사에서 제외한다 — 이 필드가 채워져도 검색 동작은 불변(AC-Δ7).
+    private static boolean hasNoOfficialInfo(VisionExtraction vision) {
+        return isBlank(vision.roastery()) && isBlank(vision.origin()) && isBlank(vision.process())
+                && isBlank(vision.roastLevel()) && vision.officialNotes().isEmpty();
+    }
+
+    private static boolean isBlank(String s) {
+        return s == null || s.isBlank();
     }
 
     // POLICY: 공식 페이지 유래(2단계) 값이 1단계 fallback 값보다 우선 병합 — 로스터리 공식 우선 (ref: plan.md#ADR-15, FR-3).

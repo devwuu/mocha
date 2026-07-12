@@ -15,6 +15,9 @@ import com.devwuu.mocha.llm.LlmRequest;
 import com.devwuu.mocha.llm.SearchClient;
 import com.devwuu.mocha.llm.SearchQuery;
 import com.devwuu.mocha.llm.SearchResult;
+import com.devwuu.mocha.llm.VisionClient;
+import com.devwuu.mocha.llm.VisionExtraction;
+import com.devwuu.mocha.llm.VisionHint;
 import com.devwuu.mocha.pipeline.ExtractionResult;
 import com.devwuu.mocha.pipeline.IntentClassifier;
 import com.devwuu.mocha.pipeline.IntentResult;
@@ -23,6 +26,7 @@ import com.devwuu.mocha.pipeline.NoteEnricher;
 import com.devwuu.mocha.pipeline.NoteExtractor;
 import com.devwuu.mocha.pipeline.NoteMatcher;
 import com.devwuu.mocha.pipeline.PendingReviser;
+import com.devwuu.mocha.pipeline.PhotoInfoExtractor;
 import com.devwuu.mocha.pipeline.RevisionResult;
 import com.devwuu.mocha.render.NoteRenderer;
 import com.devwuu.mocha.repository.JsonFileNoteRepository;
@@ -30,6 +34,7 @@ import com.devwuu.mocha.repository.NoteRepository;
 import com.devwuu.mocha.repository.PendingStore;
 import com.devwuu.mocha.repository.PhotoBufferStore;
 import com.devwuu.mocha.repository.PhotoStore;
+import com.devwuu.mocha.repository.StagedImage;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -213,13 +218,24 @@ class DefaultConfirmationFlowTest {
     /** 스테이징/커밋을 인메모리로 흉내내는 fake — 파일 규칙은 LocalPhotoStore 테스트가 따로 본다. */
     private static final class FakePhotoStore implements PhotoStore {
         final List<String> staged = new ArrayList<>();
+        final List<byte[]> stagedBytes = new ArrayList<>();
         final List<String> committed = new ArrayList<>();
         int discardCount = 0;
 
         @Override
         public String stage(String userId, String filename, byte[] bytes) {
             staged.add(filename);
+            stagedBytes.add(bytes);
             return filename;
+        }
+
+        @Override
+        public List<StagedImage> readStaged(String userId) {
+            List<StagedImage> images = new ArrayList<>();
+            for (int i = 0; i < staged.size(); i++) {
+                images.add(new StagedImage(staged.get(i), stagedBytes.get(i)));
+            }
+            return images;
         }
 
         @Override
@@ -227,13 +243,33 @@ class DefaultConfirmationFlowTest {
             List<String> paths = staged.stream().map(n -> "photos/" + slug + "/" + date + "/" + n).toList();
             committed.addAll(paths);
             staged.clear();
+            stagedBytes.clear();
             return paths;
         }
 
         @Override
         public void discard(String userId) {
             staged.clear();
+            stagedBytes.clear();
             discardCount++;
+        }
+    }
+
+    /** 수신 사진 OCR([2.5])용 fake — 호출 여부·전달 이미지 수를 기록하고 canned 결과를 돌려준다. */
+    private static final class FakeVisionClient implements VisionClient {
+        VisionExtraction canned = VisionExtraction.empty();
+        RuntimeException toThrow = null;
+        int calls = 0;
+        List<String> lastImageUrls = List.of();
+
+        @Override
+        public VisionExtraction read(List<String> imageUrls, VisionHint hint) {
+            calls++;
+            lastImageUrls = imageUrls;
+            if (toThrow != null) {
+                throw toThrow;
+            }
+            return canned;
         }
     }
 
@@ -340,10 +376,13 @@ class DefaultConfirmationFlowTest {
     private final FakePhotoBufferStore photoBufferStore = new FakePhotoBufferStore();
     private static final Duration BUFFER_WINDOW = Duration.ofMinutes(10);
 
+    private final FakeVisionClient visionClient = new FakeVisionClient();
+
     private final IntentClassifier intentClassifier = new IntentClassifier(llmClient, MochaObjectMapper.create());
     private final NoteExtractor extractor = new NoteExtractor(llmClient, MochaObjectMapper.create());
     private final NoteMatcher matcher = new NoteMatcher();
     private final NoteEnricher enricher = new NoteEnricher(searchClient);
+    private final PhotoInfoExtractor photoInfoExtractor = new PhotoInfoExtractor(visionClient, 4);
     private final PendingReviser reviser = new PendingReviser(llmClient, MochaObjectMapper.create());
 
     private NoteRepository noteRepository() {
@@ -353,7 +392,7 @@ class DefaultConfirmationFlowTest {
     private DefaultConfirmationFlow flow(NoteRepository repo) {
         return new DefaultConfirmationFlow(
                 pendingStore, repo, noteRenderer, responder, intentClassifier,
-                extractor, matcher, enricher, reviser, previewMessenger,
+                extractor, matcher, enricher, photoInfoExtractor, reviser, previewMessenger,
                 photoDownloader, photoStore, photoBufferStore, BUFFER_WINDOW, clock);
     }
 
@@ -794,6 +833,65 @@ class DefaultConfirmationFlowTest {
                 "미리보기 사진 경로는 확정 저장 경로 규칙을 따른다: " + photos.get(0));
         assertEquals(1, photoBufferStore.clearCount, "사진이 pending으로 이관되면 버퍼를 비운다");
         assertEquals(0, photoStore.discardCount, "윈도우 내 버퍼는 폐기하지 않는다(저장 시 commit 대상)");
+    }
+
+    // --- TΔ3: 수신 사진 OCR([2.5], FR-19/ADR-23) ---
+
+    @Test
+    @DisplayName("AC-Δ4: 원두 봉투 사진 → 빈 커피명·필드를 (사진) source=photo로 채운다(1콜)")
+    void startNewNoteFillsEmptyFieldsFromPhotoOcr() {
+        NoteRepository repo = noteRepository();
+        // 텍스트엔 커피명·원산지 없음 — 사진에서 읽어야 한다.
+        llmClient.canned = extraction(null, null, null, "달큰하고 좋았다", Rating.GOOD);
+        photoStore.stage("U1", "bag.jpg", new byte[]{1, 2, 3});
+        photoBufferStore.setBuffer(new PhotoBuffer(OffsetDateTime.now(clock), List.of("bag.jpg")));
+        visionClient.canned = new VisionExtraction(
+                "커피베라 예가체프", "커피베라", "에티오피아", null, null, List.of("자스민"));
+
+        flow(repo).startNewNote(message("이거 달큰하고 좋았어"));
+
+        assertEquals(1, visionClient.calls, "묶인 사진은 vision 1콜로 전달된다(ADR-23)");
+        Note draft = previewMessenger.published.draft();
+        assertEquals(Sourced.photo("커피베라 예가체프"), draft.coffeeName(), "빈 커피명은 사진 값으로 채운다(AC-Δ4)");
+        assertEquals(Sourced.photo("커피베라"), draft.roastery());
+        assertEquals(Sourced.photo("에티오피아"), draft.origin());
+        assertEquals(Source.PHOTO, draft.officialNotes().source(), "공식 노트도 사진 유래(source=photo)");
+    }
+
+    @Test
+    @DisplayName("AC-Δ4/V-6: 사용자가 말한 커피명·필드는 사진 값과 충돌해도 사용자 값이 유지된다(불가침)")
+    void startNewNoteKeepsUserFieldsOverPhoto() {
+        NoteRepository repo = noteRepository();
+        llmClient.canned = extraction("커피베라 예가체프", null, null, "새콤함", Rating.GOOD);
+        photoStore.stage("U1", "bag.jpg", new byte[]{1});
+        photoBufferStore.setBuffer(new PhotoBuffer(OffsetDateTime.now(clock), List.of("bag.jpg")));
+        // 사진은 다른 커피명·로스터리를 읽었다 — 사용자 값이 이겨야 한다(V-6).
+        visionClient.canned = new VisionExtraction(
+                "모모스 와이키키", "모모스", "브라질", null, null, List.of());
+
+        flow(repo).startNewNote(message("커피베라 예가체프 새콤했어"));
+
+        Note draft = previewMessenger.published.draft();
+        assertEquals(Sourced.user("커피베라 예가체프"), draft.coffeeName(), "사용자 커피명 불가침(V-6)");
+        assertEquals(Sourced.photo("모모스"), draft.roastery(), "user 미언급 로스터리는 사진 값으로 채움");
+        assertEquals(Sourced.photo("브라질"), draft.origin());
+    }
+
+    @Test
+    @DisplayName("AC-Δ5: 사진 OCR 실패(vision 예외)여도 오류 없이 파이프라인이 정상 진행된다(첨부로만)")
+    void startNewNoteProceedsWhenPhotoOcrFails() {
+        NoteRepository repo = noteRepository();
+        llmClient.canned = extraction("커피베라 예가체프", "커피베라", null, "새콤함", Rating.GOOD);
+        photoStore.stage("U1", "bag.jpg", new byte[]{1});
+        photoBufferStore.setBuffer(new PhotoBuffer(OffsetDateTime.now(clock), List.of("bag.jpg")));
+        visionClient.toThrow = new RuntimeException("vision timeout");
+
+        flow(repo).startNewNote(message("커피베라 예가체프 새콤했어"));
+
+        assertNotNull(previewMessenger.published, "OCR 실패여도 미리보기는 정상 전송된다(AC-Δ5)");
+        Note draft = previewMessenger.published.draft();
+        assertEquals(1, draft.entries().get(0).photos().size(), "사진은 첨부로만 유지된다(흐름 불변)");
+        assertEquals(Sourced.user("커피베라 예가체프"), draft.coffeeName());
     }
 
     @Test

@@ -41,6 +41,10 @@ mocha:
     model: gpt-4o
     # 보강 검색 상한 — 비용/지연 통제.
     max-results: 3
+  vision:
+    # 수신 사진 OCR(FR-19) 1콜당 이미지 상한 — 초과분은 vision 호출 제외(첨부로만) (ADR-23).
+    # vision 모델은 search.model 공용(새 모델 키 없음).
+    max-images: 4
   pending:
     # 확인 대기 노트 TTL. 초과 시 자동 폐기 + 안내 (ADR-3).
     ttl: 24h

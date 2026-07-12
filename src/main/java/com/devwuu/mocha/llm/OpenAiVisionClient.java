@@ -42,14 +42,15 @@ public class OpenAiVisionClient implements VisionClient {
     // POLICY: vision 추출도 "추측 금지" — 이미지에서 확인 안 되는 값은 공란(ADR-15). 보강 값은 한국어로
     //         기록(영문 표기는 번역), official_notes는 로스터리 공식 출처(=공식 페이지 이미지) 한정(FR-3, ADR-16).
     private static final String INSTRUCTIONS = """
-            너는 커피 상품 상세 이미지에서 원두 정보를 읽어 구조화하는 도우미다. 아래 규칙을 반드시 지켜라.
+            너는 원두 봉투·카페가 제공하는 커피 노트(카드)·상품 상세 이미지 등 커피 관련 이미지에서 원두 정보를 읽어 구조화하는 도우미다. 아래 규칙을 반드시 지켜라.
             - 이미지에 실제로 적힌 내용만 채운다. 확인되지 않은 값은 추측하지 말고 null(문자열 필드)·빈 배열(리스트)로 둔다.
             - 모든 문자열 값은 한국어로 기록한다(영문 표기는 한국어로 옮겨 적는다).
+            - coffee_name에는 이미지에 표시된 상품(커피) 이름을 담는다. 이름이 보이지 않으면 null로 둔다.
             - origin이 여러 원산지로 구성된 블렌드면 구성 원산지를 origin 한 문자열에 쉼표로 나열한다(예: "에티오피아, 콜롬비아").
             - official_notes에는 이미지에 표시된 공식 테이스팅 노트만 담고, 없으면 빈 배열로 둔다.
             - 출력은 아래 JSON 객체 하나만, 다른 설명 없이 반환한다:
-              {"roastery": string|null, "origin": string|null, "process": string|null, "roast_level": string|null,
-               "official_notes": string[]}
+              {"coffee_name": string|null, "roastery": string|null, "origin": string|null, "process": string|null,
+               "roast_level": string|null, "official_notes": string[]}
             """;
 
     private final OpenAIClient client;
@@ -93,7 +94,7 @@ public class OpenAiVisionClient implements VisionClient {
         try {
             VisionPayload payload = mapper.readValue(body, VisionPayload.class);
             return new VisionExtraction(
-                    payload.roastery(), payload.origin(), payload.process(),
+                    payload.coffeeName(), payload.roastery(), payload.origin(), payload.process(),
                     payload.roastLevel(), payload.officialNotes());
         } catch (RuntimeException e) {
             log.warn("vision OCR 형식 실패(파싱 불가) — 빈 결과로 진행: coffee={}", hint.coffeeName(), e);
@@ -138,23 +139,31 @@ public class OpenAiVisionClient implements VisionClient {
     }
 
     // 이미지가 어떤 로스터리·커피의 상세인지 알려 오독을 줄인다 — 잘린 이미지엔 이름이 없을 수 있어서다(findings-TΔ0).
+    // 사진-only 흐름(수신 사진 OCR, ADR-23)은 커피명을 모른 채 호출하므로 hint가 비어 있을 수 있다 — 그땐 이름까지 읽으라 지시한다.
+    // 이미지 종류를 원두 봉투로 좁히지 않는다 — 카페 제공 커피 노트·상품 상세 등 무엇이든 정보를 읽는다(delta 동기, ADR-23).
     String buildContextText(VisionHint hint) {
         StringBuilder sb = new StringBuilder();
         if (hint.roastery() != null && !hint.roastery().isBlank()) {
             sb.append("로스터리 '").append(hint.roastery().strip()).append("'의 ");
         }
-        sb.append("커피 '").append(hint.coffeeName().strip()).append("' 공식 상품 상세 이미지다. ");
-        sb.append("원산지·가공방식·로스팅 정도·공식 테이스팅 노트를 읽어라.");
+        if (hint.coffeeName() != null && !hint.coffeeName().isBlank()) {
+            sb.append("커피 '").append(hint.coffeeName().strip()).append("'에 대한 이미지다. ");
+            sb.append("원산지·가공방식·로스팅 정도·공식 테이스팅 노트를 읽어라.");
+        } else {
+            sb.append("원두 봉투·카페가 제공하는 커피 노트·상품 상세 등 커피 관련 이미지다. ");
+            sb.append("커피 이름·원산지·가공방식·로스팅 정도·공식 테이스팅 노트를 읽어라.");
+        }
         return sb.toString();
     }
 
-    // VisionExtraction 5필드(roastery/origin/process/roast_level/official_notes)의 strict JSON schema.
-    // roastery류는 미확인 시 null 허용(["string","null"]), official_notes는 문자열 배열. 전 필드 required·additionalProperties=false.
+    // VisionExtraction 6필드(coffee_name/roastery/origin/process/roast_level/official_notes)의 strict JSON schema.
+    // 문자열류는 미확인 시 null 허용(["string","null"]), official_notes는 문자열 배열. 전 필드 required·additionalProperties=false.
     private static ResponseFormatTextJsonSchemaConfig visionSchemaFormat() {
         Map<String, Object> nullableString = Map.of("type", List.of("string", "null"));
         Map<String, Object> stringArray = Map.of("type", "array", "items", Map.of("type", "string"));
 
         Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("coffee_name", nullableString);
         properties.put("roastery", nullableString);
         properties.put("origin", nullableString);
         properties.put("process", nullableString);
@@ -164,7 +173,7 @@ public class OpenAiVisionClient implements VisionClient {
         Map<String, Object> schema = new LinkedHashMap<>();
         schema.put("type", "object");
         schema.put("properties", properties);
-        schema.put("required", List.of("roastery", "origin", "process", "roast_level", "official_notes"));
+        schema.put("required", List.of("coffee_name", "roastery", "origin", "process", "roast_level", "official_notes"));
         schema.put("additionalProperties", false);
 
         ResponseFormatTextJsonSchemaConfig.Schema.Builder builder =
@@ -209,6 +218,7 @@ public class OpenAiVisionClient implements VisionClient {
     /** vision 응답 매핑용 관대한 DTO — 알 수 없는 필드는 무시. */
     @JsonIgnoreProperties(ignoreUnknown = true)
     private record VisionPayload(
+            String coffeeName,
             String roastery,
             String origin,
             String process,

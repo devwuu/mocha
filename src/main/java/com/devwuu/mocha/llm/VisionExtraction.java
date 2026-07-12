@@ -10,7 +10,11 @@ import java.util.List;
  * 생성"도 같은 경계를 재사용한다(NFR-4). "추측 금지" — 이미지에서 확인 안 되는 값은 null(문자열)·빈 리스트로 온다.
  * <p>{@link SearchResult}와 달리 {@code sources}가 없다 — vision 입력은 공식 상품 페이지 이미지로 출처가
  * 고정이라 출처 URL은 상위(2단계 오케스트레이션)가 {@code official_page_url}로 넣는다.
+ * <p>수신 사진 OCR(FR-19, changes/0010)이 같은 경계를 재사용하며 사진에서 <b>커피명</b>도 읽는다 —
+ * 그래서 {@code coffeeName}이 추가됐다. 검색 2단계 병합({@code mergeOfficial})은 이 필드를 쓰지 않아
+ * 검색 동작은 불변이다(ADR-15/23, AC-Δ7).
  *
+ * @param coffeeName    커피 이름 — 수신 사진 OCR이 읽은 값(검색 2단계는 미사용). 확인 안 되면 null.
  * @param roastery      로스터리(이미지에서 확인된 값, 보통 null — 이미 문맥으로 주어짐).
  * @param origin        원산지(블렌드는 여러 원산지를 쉼표 문자열로 나열, ADR-14와 일관).
  * @param process       가공 방식.
@@ -18,6 +22,7 @@ import java.util.List;
  * @param officialNotes 로스터리 공식 테이스팅 노트 — 이미지에서 확인 안 되면 빈 리스트.
  */
 public record VisionExtraction(
+        String coffeeName,
         String roastery,
         String origin,
         String process,
@@ -30,6 +35,6 @@ public record VisionExtraction(
 
     /** 이미지에서 아무것도 못 읽은 경우(호출/형식 실패 포함, AC-Δ2) — 모든 필드 공란. */
     public static VisionExtraction empty() {
-        return new VisionExtraction(null, null, null, null, List.of());
+        return new VisionExtraction(null, null, null, null, null, List.of());
     }
 }

@@ -138,19 +138,46 @@ class OpenAiVisionClientTest {
     }
 
     @Test
-    @DisplayName("응답 JSON이 snake_case 필드로 VisionExtraction에 매핑된다")
+    @DisplayName("응답 JSON이 snake_case 필드로 VisionExtraction에 매핑된다(coffee_name 포함)")
     void mapsJsonResponse() {
         String json = """
-                {"roastery": null, "origin": "에티오피아, 에콰도르", "process": null,
+                {"coffee_name": "와이키키", "roastery": null, "origin": "에티오피아, 에콰도르", "process": null,
                  "roast_level": "미디엄 라이트", "official_notes": ["패션프루트","베르가못"]}
                 """;
 
         VisionExtraction result = new StubVisionClient(json).read(images(), hint());
 
+        assertThat(result.coffeeName()).isEqualTo("와이키키");
         assertThat(result.origin()).isEqualTo("에티오피아, 에콰도르");
         assertThat(result.process()).isNull();
         assertThat(result.roastLevel()).isEqualTo("미디엄 라이트");
         assertThat(result.officialNotes()).containsExactly("패션프루트", "베르가못");
+    }
+
+    @Test
+    @DisplayName("changes/0010: strict schema에 coffee_name 필드가 required로 포함된다")
+    void schemaIncludesCoffeeName() {
+        OpenAiVisionClient client =
+                new OpenAiVisionClient(null, "gpt-4o", MochaObjectMapper.create());
+
+        ResponseFormatTextJsonSchemaConfig format =
+                client.buildParams(images(), hint()).text().orElseThrow().format().orElseThrow().asJsonSchema();
+
+        Object properties = format.schema()._additionalProperties().get("properties");
+        assertThat(properties.toString()).contains("coffee_name");
+        assertThat(format.schema()._additionalProperties().get("required").toString()).contains("coffee_name");
+    }
+
+    @Test
+    @DisplayName("ADR-23: 커피명 힌트가 없으면(사진-only) 이름까지 읽으라 지시한다")
+    void contextTextReadsCoffeeNameWhenHintMissing() {
+        OpenAiVisionClient client =
+                new OpenAiVisionClient(null, "gpt-4o", MochaObjectMapper.create());
+
+        String text = client.buildContextText(new VisionHint(null, null));
+
+        assertThat(text).contains("커피 이름");
+        assertThat(text).doesNotContain("커피 '");
     }
 
     @Test

@@ -3,11 +3,14 @@ package com.devwuu.mocha.config;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.llm.LlmClient;
 import com.devwuu.mocha.llm.SearchClient;
+import com.devwuu.mocha.llm.VisionClient;
 import com.devwuu.mocha.pipeline.IntentClassifier;
 import com.devwuu.mocha.pipeline.NoteEnricher;
 import com.devwuu.mocha.pipeline.NoteExtractor;
 import com.devwuu.mocha.pipeline.NoteMatcher;
 import com.devwuu.mocha.pipeline.PendingReviser;
+import com.devwuu.mocha.pipeline.PhotoInfoExtractor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -42,6 +45,15 @@ public class PipelineConfig {
     @Bean
     public NoteEnricher noteEnricher(SearchClient searchClient) {
         return new NoteEnricher(searchClient);
+    }
+
+    // 수신 사진 OCR([2.5], FR-19/ADR-23) — VisionClient(LlmConfig, mocha.search.model 공용) 재사용.
+    // 1콜당 이미지 상한만 새 설정 키(mocha.vision.max-images, 기본 4)로 둔다(plan §5).
+    @Bean
+    public PhotoInfoExtractor photoInfoExtractor(
+            VisionClient visionClient,
+            @Value("${mocha.vision.max-images:4}") int maxImages) {
+        return new PhotoInfoExtractor(visionClient, maxImages);
     }
 
     @Bean

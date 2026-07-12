@@ -100,7 +100,7 @@ class ChangeD6RegressionGuardTest {
             }
         };
         VisionClient vision = (imageUrls, hint) -> new VisionExtraction(
-                null, "에티오피아, 콜롬비아", "펄프드 내추럴", "라이트", List.of("패션프루트", "베르가못"));
+                null, null, "에티오피아, 콜롬비아", "펄프드 내추럴", "라이트", List.of("패션프루트", "베르가못"));
 
         SearchClient search = new StubTwoStageSearch(firstStageJson, collector, vision);
         NoteMeta result = new NoteEnricher(search).enrich(draft());

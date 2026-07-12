@@ -48,6 +48,23 @@ public class LocalPhotoStore implements PhotoStore {
     }
 
     @Override
+    public List<StagedImage> readStaged(String userId) {
+        Path staging = stagingDir(userId);
+        if (!Files.isDirectory(staging)) {
+            return List.of();
+        }
+        List<StagedImage> images = new ArrayList<>();
+        try {
+            for (Path src : listSorted(staging)) {
+                images.add(new StagedImage(src.getFileName().toString(), Files.readAllBytes(src)));
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException("사진 스테이징 읽기 실패: " + staging, e);
+        }
+        return images;
+    }
+
+    @Override
     public List<String> commit(String userId, String slug, String date) {
         Path staging = stagingDir(userId);
         if (!Files.isDirectory(staging)) {

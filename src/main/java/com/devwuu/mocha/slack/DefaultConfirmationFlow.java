@@ -8,6 +8,8 @@ import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.domain.PhotoBuffer;
 import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Sourced;
+import com.devwuu.mocha.llm.VisionExtraction;
+import com.devwuu.mocha.llm.VisionHint;
 import com.devwuu.mocha.pipeline.ExtractionResult;
 import com.devwuu.mocha.pipeline.IntentClassifier;
 import com.devwuu.mocha.pipeline.MatchResult;
@@ -17,11 +19,13 @@ import com.devwuu.mocha.pipeline.NoteEnricher;
 import com.devwuu.mocha.pipeline.NoteExtractor;
 import com.devwuu.mocha.pipeline.NoteMatcher;
 import com.devwuu.mocha.pipeline.PendingReviser;
+import com.devwuu.mocha.pipeline.PhotoInfoExtractor;
 import com.devwuu.mocha.render.NoteRenderer;
 import com.devwuu.mocha.repository.NoteRepository;
 import com.devwuu.mocha.repository.PendingStore;
 import com.devwuu.mocha.repository.PhotoBufferStore;
 import com.devwuu.mocha.repository.PhotoStore;
+import com.devwuu.mocha.repository.StagedImage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -89,6 +93,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
     private final NoteExtractor noteExtractor;
     private final NoteMatcher noteMatcher;
     private final NoteEnricher noteEnricher;
+    private final PhotoInfoExtractor photoInfoExtractor;
     private final PendingReviser pendingReviser;
     private final PreviewMessenger previewMessenger;
     private final PhotoDownloader photoDownloader;
@@ -107,6 +112,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
             NoteExtractor noteExtractor,
             NoteMatcher noteMatcher,
             NoteEnricher noteEnricher,
+            PhotoInfoExtractor photoInfoExtractor,
             PendingReviser pendingReviser,
             PreviewMessenger previewMessenger,
             PhotoDownloader photoDownloader,
@@ -114,7 +120,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
             PhotoBufferStore photoBufferStore,
             @Value("${mocha.photo.buffer-window}") Duration bufferWindow) {
         this(pendingStore, noteRepository, noteRenderer, responder, intentClassifier,
-                noteExtractor, noteMatcher, noteEnricher, pendingReviser, previewMessenger,
+                noteExtractor, noteMatcher, noteEnricher, photoInfoExtractor, pendingReviser, previewMessenger,
                 photoDownloader, photoStore, photoBufferStore, bufferWindow, Clock.system(SEOUL));
     }
 
@@ -128,6 +134,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
             NoteExtractor noteExtractor,
             NoteMatcher noteMatcher,
             NoteEnricher noteEnricher,
+            PhotoInfoExtractor photoInfoExtractor,
             PendingReviser pendingReviser,
             PreviewMessenger previewMessenger,
             PhotoDownloader photoDownloader,
@@ -143,6 +150,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         this.noteExtractor = noteExtractor;
         this.noteMatcher = noteMatcher;
         this.noteEnricher = noteEnricher;
+        this.photoInfoExtractor = photoInfoExtractor;
         this.pendingReviser = pendingReviser;
         this.previewMessenger = previewMessenger;
         this.photoDownloader = photoDownloader;
@@ -188,13 +196,20 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
                 }
             }
 
-            // [2] 추출 → [3] 매칭. LLM/스키마 실패는 여기서 예외로 던져져 아래 catch로 수렴한다(plan §7, V-1).
+            // [2] 추출 → [2.5] 수신 사진 OCR → [3] 매칭. LLM/스키마 실패는 예외로 던져져 아래 catch로 수렴한다(plan §7, V-1).
             ExtractionResult extraction =
                     noteExtractor.extract(message.text(), today, candidatesOf(existingNotes));
+
+            // [2.5] 사진이 묶여 있으면 vision OCR을 1회 시도해 빈 필드를 읽는다 — 추출 뒤·매칭 전(OCR이 읽은
+            // 커피명·로스터리가 매칭 이후 draft·검색 쿼리에 기여). 실패·무정보는 첨부로만(흐름 불변, FR-19, ADR-23).
+            VisionExtraction photoInfo = readPhotoInfo(userId, consumeBuffer, bufferNames, extraction);
+
             MatchResult match = noteMatcher.match(extraction, existingNotes);
 
-            // draft 조립(source=user 마킹) → [4] 보강(빈 필드만 source=search, V-6). 외부 호출은 여기서 끝낸다(CLAUDE.md §3).
-            NoteMeta enriched = noteEnricher.enrich(userDraftMeta(extraction));
+            // draft 조립: source=user 마킹 → OCR 오버레이(빈 필드만 source=photo, user 불가침 V-6) →
+            // [4] 검색 보강(남은 빈 필드만 source=search). 외부 호출은 여기서 끝낸다(CLAUDE.md §3).
+            NoteMeta withPhoto = fillFromPhoto(userDraftMeta(extraction), photoInfo);
+            NoteMeta enriched = noteEnricher.enrich(withPhoto);
 
             // slug 확정: 기존=매칭 노트 slug, 신규=최초 기록일 기반 대체키(V-2, data-model §2.1).
             String slug = match.isNew()
@@ -209,7 +224,8 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
                     : Recipe.normalize(
                             extraction.recipe().doseG(), extraction.recipe().waterMl(), extraction.recipe().grind());
             Entry entry = new Entry(match.targetDate(), extraction.myTaste(), extraction.rating(), recipe, photoPaths, now);
-            Note draft = assembleDraft(slug, userSourced(extraction.coffeeName()), enriched, entry, now);
+            // coffeeName은 user 우선, 없으면 photo(OCR)로 채워진 값을 쓴다 — enriched가 그대로 실어 나른다(검색 미채움, V-5).
+            Note draft = assembleDraft(slug, enriched.coffeeName(), enriched, entry, now);
             MatchInfo matchInfo = match.toMatchInfo();
 
             // POLICY: 노트 JSON은 건드리지 않는다 — 미리보기 단계는 pending에만 기록한다(AC-4).
@@ -258,6 +274,60 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
                         note.coffeeName() == null ? null : note.coffeeName().value(),
                         note.roastery() == null ? null : note.roastery().value()))
                 .toList();
+    }
+
+    // [2.5] 수신 사진 OCR — 사진이 묶여 있을 때만 1콜 시도한다. 없으면 빈 결과(호출 없음).
+    // hint.coffeeName은 nullable — 사진-only 흐름은 커피명을 사진에서 읽는다(ADR-23).
+    private VisionExtraction readPhotoInfo(
+            String userId, boolean consumeBuffer, List<String> bufferNames, ExtractionResult extraction) {
+        if (!consumeBuffer || bufferNames.isEmpty()) {
+            return VisionExtraction.empty();
+        }
+        List<StagedImage> images = photoStore.readStaged(userId);
+        if (images.isEmpty()) {
+            return VisionExtraction.empty();
+        }
+        VisionExtraction result = photoInfoExtractor.extract(
+                images, new VisionHint(extraction.coffeeName(), extraction.roastery()));
+        log.info("수신 사진 OCR 시도: user={} images={} coffeeName={}",
+                userId, images.size(), result.coffeeName() != null);
+        return result;
+    }
+
+    // OCR로 읽은 값을 사용자 draft 위에 오버레이한다 — 빈 필드만 source=photo로 채우고 사용자 값은 불가침(V-6).
+    // POLICY: 우선순위 user > photo — 사진 OCR은 source=user 필드를 덮지 않는다(coffee_name 포함) (ADR-23, V-6).
+    private static NoteMeta fillFromPhoto(NoteMeta user, VisionExtraction photo) {
+        if (photo == null) {
+            return user;
+        }
+        return new NoteMeta(
+                fillPhoto(user.coffeeName(), photo.coffeeName()),
+                fillPhoto(user.roastery(), photo.roastery()),
+                fillPhoto(user.origin(), photo.origin()),
+                fillPhoto(user.process(), photo.process()),
+                fillPhoto(user.roastLevel(), photo.roastLevel()),
+                fillPhotoList(user.officialNotes(), photo.officialNotes()),
+                user.sources());
+    }
+
+    private static Sourced<String> fillPhoto(Sourced<String> current, String photoValue) {
+        if (current != null && current.value() != null && !current.value().isBlank()) {
+            return current; // 사용자 값 불가침(V-6)
+        }
+        if (photoValue == null || photoValue.isBlank()) {
+            return current; // 사진에서 못 읽음 — 원래 상태(보통 null) 유지, 검색 보강 대상으로 넘김
+        }
+        return Sourced.photo(photoValue);
+    }
+
+    private static Sourced<List<String>> fillPhotoList(Sourced<List<String>> current, List<String> photoValue) {
+        if (current != null && current.value() != null && !current.value().isEmpty()) {
+            return current;
+        }
+        if (photoValue == null || photoValue.isEmpty()) {
+            return current;
+        }
+        return Sourced.photo(List.copyOf(photoValue));
     }
 
     // 추출 결과를 "사용자가 말한 것"만 담은 NoteMeta로 조립 — 언급한 필드만 source=user, 나머지는 null(보강 대상).

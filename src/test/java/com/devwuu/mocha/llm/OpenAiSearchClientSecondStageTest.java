@@ -148,7 +148,7 @@ class OpenAiSearchClientSecondStageTest {
                 List.of("https://momos.co.kr/img/geisha.jpg"), "모모스 게이샤 상세 페이지 원산지 에티오피아");
         RecordingCollector collector = new RecordingCollector(otherProduct);
         RecordingVision vision = new RecordingVision(
-                new VisionExtraction(null, "에티오피아", null, null, List.of()));
+                new VisionExtraction(null, null, "에티오피아", null, null, List.of()));
 
         SearchResult result = new StubFirstStage(firstStageJson(OFFICIAL_URL), collector, vision).search(query());
 
@@ -204,7 +204,7 @@ class OpenAiSearchClientSecondStageTest {
         RecordingCollector collector = new RecordingCollector(page);
         // 공식 페이지 OCR 결과 — origin/process/roast_level/official_notes를 공식값으로 채운다(roastery는 null).
         RecordingVision vision = new RecordingVision(new VisionExtraction(
-                null, "에티오피아, 콜롬비아", "워시드", "라이트", List.of("패션프루트", "베르가못")));
+                null, null, "에티오피아, 콜롬비아", "워시드", "라이트", List.of("패션프루트", "베르가못")));
 
         SearchResult result = new StubFirstStage(firstStageJson(OFFICIAL_URL), collector, vision).search(query());
 

@@ -24,6 +24,15 @@ public interface PhotoStore {
     String stage(String userId, String filename, byte[] bytes);
 
     /**
+     * pending 이전 단계: 사용자 스테이징에 쌓인 사진 원본을 파일명 오름차순으로 읽어 돌려준다.
+     * <p>수신 사진 OCR([2.5], FR-19)이 vision 입력으로 소비한다 — 스테이징이 없거나 비면 빈 목록.
+     * 읽기만 하며 스테이징을 비우지 않는다(소비/폐기는 [저장]/[취소]/TTL이 정한다).
+     *
+     * @return 스테이징된 사진(name·bytes), 파일명 오름차순. commit 순서와 동일 정렬.
+     */
+    List<StagedImage> readStaged(String userId);
+
+    /**
      * [저장] 확정: 스테이징된 사진들을 {@code photos/<slug>/<date>/}로 이동하고 스테이징을 비운다.
      * <p>외부 I/O 없는 로컬 move라 저장 커밋 경계 안에서 수행한다(CLAUDE.md §3).
      *
