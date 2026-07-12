@@ -63,6 +63,7 @@ class DefaultConfirmationFlowTest {
         private Optional<PendingNote> pending = Optional.empty();
         final List<PendingNote> puts = new ArrayList<>();
         int clearCount = 0;
+        List<String> order; // 커밋 흐름 순서 회귀 가드(TΔ3)에서 여러 fake에 걸친 호출 순서를 캡처하는 공용 로그(비면 무시).
 
         void setPending(PendingNote p) {
             this.pending = Optional.ofNullable(p);
@@ -82,6 +83,9 @@ class DefaultConfirmationFlowTest {
         @Override
         public void clear(String userId) {
             clearCount++;
+            if (order != null) {
+                order.add("clear");
+            }
             pending = Optional.empty();
         }
     }
@@ -116,6 +120,7 @@ class DefaultConfirmationFlowTest {
         final List<PendingNote> finalizePendings = new ArrayList<>(); // 버튼 소진에 넘어온 pending 캡처
         RuntimeException imageFailure;
         RuntimeException finalizeFailure;
+        List<String> order; // 커밋 흐름 순서 회귀 가드(TΔ3)용 공용 로그(비면 무시).
 
         @Override
         public void post(String channelId, String text) {
@@ -129,6 +134,9 @@ class DefaultConfirmationFlowTest {
             }
             images.add(imagePath);
             captions.add(caption);
+            if (order != null) {
+                order.add("deliver");
+            }
         }
 
         @Override
@@ -138,6 +146,9 @@ class DefaultConfirmationFlowTest {
             }
             finalizePendings.add(pending);
             finalizeStatuses.add(statusText);
+            if (order != null) {
+                order.add("finalize");
+            }
         }
     }
 
@@ -271,6 +282,43 @@ class DefaultConfirmationFlowTest {
             }
             this.published = pending;
             return ts;
+        }
+    }
+
+    /**
+     * 실제 파일 I/O({@link JsonFileNoteRepository})에 위임하되 커밋(upsertEntry) 시점을 공용 순서 로그에 기록하는 래퍼.
+     * TΔ3 회귀 가드에서 "저장 커밋 → clear → 배달 → 버튼 소진" 순서를 여러 fake에 걸쳐 단언하기 위한 것 — 저장소 자체의
+     * 파일 규칙 검증(§5.2)은 그대로 실제 구현이 담당한다.
+     */
+    private static final class RecordingNoteRepository implements NoteRepository {
+        private final NoteRepository delegate;
+        private final List<String> order;
+
+        RecordingNoteRepository(NoteRepository delegate, List<String> order) {
+            this.delegate = delegate;
+            this.order = order;
+        }
+
+        @Override
+        public List<Note> findAll() {
+            return delegate.findAll();
+        }
+
+        @Override
+        public Optional<Note> findBySlug(String slug) {
+            return delegate.findBySlug(slug);
+        }
+
+        @Override
+        public String nextAvailableSlug(String base) {
+            return delegate.nextAvailableSlug(base);
+        }
+
+        @Override
+        public Note upsertEntry(String slug, com.devwuu.mocha.domain.NoteMeta meta, Entry entry) {
+            Note saved = delegate.upsertEntry(slug, meta, entry);
+            order.add("commit"); // 파일 쓰기가 실제로 끝난 뒤 기록 — clear보다 앞섬을 단언(AC-Δ5)
+            return saved;
         }
     }
 
@@ -696,6 +744,22 @@ class DefaultConfirmationFlowTest {
         assertEquals(1, pendingStore.clearCount, "커밋은 완료됐다");
         assertEquals(1, responder.images.size(), "카드 배달도 정상 완료된다");
         assertTrue(responder.messages.isEmpty(), "정상 배달이면 폴백 텍스트가 없다");
+    }
+
+    @Test
+    @DisplayName("AC-Δ5(회귀 가드): [저장] 커밋 → pending clear → 카드 배달 → 버튼 소진 순서가 종전과 동일하다")
+    void confirmSavePreservesCommitFlowOrder() {
+        List<String> order = new ArrayList<>();
+        NoteRepository repo = new RecordingNoteRepository(noteRepository(), order);
+        pendingStore.order = order;
+        responder.order = order;
+        pendingStore.setPending(pendingWith("coffeevera-yirgacheffe"));
+
+        flow(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
+
+        // 버튼 소진은 커밋·배달을 되돌리지 않는 "이후의 표시 갱신"일 뿐 — 커밋·clear·배달 순서와 조건은 불변이어야 한다(AC-Δ5, ADR-20).
+        assertEquals(List.of("commit", "clear", "deliver", "finalize"), order,
+                "저장 커밋 → pending clear → 카드 배달 → 버튼 소진 순서가 유지되어야 한다");
     }
 
     @Test
