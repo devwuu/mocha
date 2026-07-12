@@ -4,6 +4,7 @@ import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -39,4 +40,26 @@ public interface NoteRepository {
      * @return 저장된 최종 노트.
      */
     Note upsertEntry(String slug, NoteMeta meta, Entry entry);
+
+    /**
+     * 수정 세션([저장]) 커밋 — 대상 엔트리를 draft 내용으로 갱신하고, 필요 시 날짜를 이동한다
+     * (ref: plan.md#ADR-27, changes/0012).
+     * <ul>
+     *   <li>{@code draft}는 대상 엔트리 1건만 실은 Note 사본(data-model §2.3).
+     *       노트 단위 필드(로스터리 등)도 draft 값으로 갱신한다 — 커피명 제외 전부가 수정 범위.</li>
+     *   <li>coffee_name은 노트 생성 후 불변 — draft 값이 원본과 다르면 커밋을 거부한다 (V-9).</li>
+     *   <li>draft 엔트리의 date가 {@code targetDate}와 다르면 날짜 이동 — 이동처 date에 기존 엔트리가
+     *       있으면 그 엔트리를 덮어쓰고 원본 {@code targetDate} 엔트리는 제거한다(엔트리 총수 1 감소, V-10).
+     *       날짜 오름차순 정렬은 유지된다.</li>
+     * </ul>
+     *
+     * @param slug       수정 대상 노트 slug ({@code PendingNote.target.slug})
+     * @param targetDate 수정 대상 원본 엔트리 date ({@code PendingNote.target.date})
+     * @param draft      수정 반영이 끝난 draft — 대상 엔트리 1건 포함
+     * @return 저장된 최종 노트.
+     * @throws IllegalArgumentException coffee_name 변경 시도(V-9), 또는 draft 엔트리가 1건이 아니면.
+     * @throws IllegalStateException    대상 노트 또는 {@code targetDate} 엔트리 소실 시
+     *                                  (호출부가 만료 안내로 수렴, plan §7).
+     */
+    Note applyEdit(String slug, LocalDate targetDate, Note draft);
 }

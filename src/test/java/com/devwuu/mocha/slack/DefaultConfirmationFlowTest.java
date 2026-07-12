@@ -405,6 +405,13 @@ class DefaultConfirmationFlowTest {
             order.add("commit"); // 파일 쓰기가 실제로 끝난 뒤 기록 — clear보다 앞섬을 단언(AC-Δ5)
             return saved;
         }
+
+        @Override
+        public Note applyEdit(String slug, java.time.LocalDate targetDate, Note draft) {
+            Note saved = delegate.applyEdit(slug, targetDate, draft);
+            order.add("commit"); // upsertEntry와 동일 기준 — edit 커밋도 clear보다 앞섬(changes/0012)
+            return saved;
+        }
     }
 
     @TempDir

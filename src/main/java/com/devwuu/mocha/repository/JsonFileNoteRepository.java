@@ -12,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Clock;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -125,6 +126,49 @@ public class JsonFileNoteRepository implements NoteRepository {
                 existing.createdAt(),
                 OffsetDateTime.now(clock)
         );
+    }
+
+    @Override
+    public Note applyEdit(String slug, LocalDate targetDate, Note draft) {
+        Note existing = findBySlug(slug)
+                .orElseThrow(() -> new IllegalStateException("수정 대상 노트 소실: " + slug));
+        // POLICY: coffee_name은 노트 생성 후 불변 — 수정 세션에서도 변경 불가, 다른 값이면 커밋 거부
+        //         (ref: specs/coffee-note-agent/data-model.md#V-9).
+        if (!existing.coffeeName().value().equals(draft.coffeeName().value())) {
+            throw new IllegalArgumentException(
+                    "coffee_name은 노트 생성 후 불변(V-9): " + slug);
+        }
+        if (draft.entries().size() != 1) {
+            throw new IllegalArgumentException(
+                    "edit draft는 대상 엔트리 1건만 담는다(data-model §2.3): " + draft.entries().size() + "건");
+        }
+        if (existing.entries().stream().noneMatch(e -> e.date().equals(targetDate))) {
+            throw new IllegalStateException("수정 대상 엔트리 소실: " + slug + " " + targetDate);
+        }
+        Entry edited = draft.entries().getFirst();
+        // POLICY: 날짜 이동으로 이동처 date에 기존 엔트리가 있으면 덮어쓰고 원본 date는 제거 —
+        //         엔트리 총수 1 감소. 경고 표기는 미리보기(V-10 전반부)의 몫
+        //         (ref: specs/coffee-note-agent/data-model.md#V-10).
+        List<Entry> entries = new ArrayList<>(existing.entries().stream()
+                .filter(e -> !e.date().equals(targetDate) && !e.date().equals(edited.date()))
+                .toList());
+        entries.add(edited);
+        entries.sort(Comparator.comparing(Entry::date));
+        Note updated = new Note(
+                existing.slug(),
+                existing.coffeeName(), // V-9 이중 방어: draft 값이 아니라 원본을 쓴다
+                draft.roastery(),
+                draft.origin(),
+                draft.process(),
+                draft.roastLevel(),
+                draft.officialNotes(),
+                draft.sources(),
+                List.copyOf(entries),
+                existing.createdAt(),
+                OffsetDateTime.now(clock)
+        );
+        write(updated);
+        return updated;
     }
 
     private Note createNote(String slug, NoteMeta meta, Entry entry) {

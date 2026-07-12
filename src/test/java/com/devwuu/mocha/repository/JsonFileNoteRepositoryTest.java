@@ -116,4 +116,97 @@ class JsonFileNoteRepositoryTest {
         assertThat(repo.findAll()).isEmpty();
         assertThat(repo.findBySlug("nope")).isEmpty();
     }
+
+    // ── applyEdit — 수정 세션 커밋 (changes/0012 TΔ2, ADR-27) ──────────────────
+
+    /** 저장된 노트에서 대상 엔트리 1건만 실은 edit draft를 만든다(data-model §2.3). */
+    private static Note editDraft(Note base, Entry edited) {
+        return new Note(
+                base.slug(), base.coffeeName(), base.roastery(), base.origin(), base.process(),
+                base.roastLevel(), base.officialNotes(), base.sources(),
+                List.of(edited), base.createdAt(), base.updatedAt()
+        );
+    }
+
+    @Test
+    @DisplayName("AC-Δ2(일부): applyEdit 필드 갱신 — 같은 date의 엔트리·노트 필드가 draft로 갱신")
+    void applyEditUpdatesFields() {
+        String slug = "coffeevera-yirgacheffe-g1";
+        LocalDate target = LocalDate.of(2026, 7, 10);
+        Note saved = repo.upsertEntry(slug, sampleMeta(), entry(target, "새콤하고 좋았다"));
+
+        Note draft = new Note(
+                saved.slug(), saved.coffeeName(),
+                Sourced.user("커피베라 성수점"), // 노트 단위 필드도 수정 범위(커피명 제외 전부)
+                saved.origin(), saved.process(), saved.roastLevel(), saved.officialNotes(),
+                saved.sources(), List.of(entry(target, "다시 보니 복숭아향")),
+                saved.createdAt(), saved.updatedAt()
+        );
+        Note updated = repo.applyEdit(slug, target, draft);
+
+        assertThat(updated.entries()).hasSize(1);
+        assertThat(updated.entries().getFirst().myTaste()).isEqualTo("다시 보니 복숭아향");
+        assertThat(updated.roastery().value()).isEqualTo("커피베라 성수점");
+        // 파일에서도 동일 복원(원자적 쓰기 왕복)
+        assertThat(repo.findBySlug(slug)).contains(updated);
+    }
+
+    @Test
+    @DisplayName("AC-Δ3(일부): applyEdit 무충돌 날짜 이동 — 옛 date 제거·새 date 추가·정렬 유지, 총수 불변")
+    void applyEditMovesDateWithoutConflict() {
+        String slug = "coffeevera-yirgacheffe-g1";
+        repo.upsertEntry(slug, sampleMeta(), entry(LocalDate.of(2026, 7, 9), "9일"));
+        Note saved = repo.upsertEntry(slug, sampleMeta(), entry(LocalDate.of(2026, 7, 10), "10일"));
+
+        // 7/10 엔트리를 7/11로 이동
+        Note draft = editDraft(saved, entry(LocalDate.of(2026, 7, 11), "사실 11일에 마심"));
+        Note updated = repo.applyEdit(slug, LocalDate.of(2026, 7, 10), draft);
+
+        assertThat(updated.entries())
+                .extracting(Entry::date)
+                .containsExactly(LocalDate.of(2026, 7, 9), LocalDate.of(2026, 7, 11));
+        assertThat(updated.entries().getLast().myTaste()).isEqualTo("사실 11일에 마심");
+        assertThat(repo.findBySlug(slug)).contains(updated);
+    }
+
+    @Test
+    @DisplayName("V-10: applyEdit 날짜 이동 충돌 시 대상 덮어쓰기 + 원본 date 제거 — 엔트리 총수 1 감소")
+    void applyEditOverwritesOnDateConflict() {
+        String slug = "coffeevera-yirgacheffe-g1";
+        repo.upsertEntry(slug, sampleMeta(), entry(LocalDate.of(2026, 7, 9), "9일 원본"));
+        Note saved = repo.upsertEntry(slug, sampleMeta(), entry(LocalDate.of(2026, 7, 10), "10일 원본"));
+        assertThat(saved.entries()).hasSize(2);
+
+        // 7/9 엔트리를 7/10으로 이동 — 기존 7/10 엔트리와 충돌 → 덮어쓰기
+        Note draft = editDraft(saved, entry(LocalDate.of(2026, 7, 10), "이동해 온 9일 기록"));
+        Note updated = repo.applyEdit(slug, LocalDate.of(2026, 7, 9), draft);
+
+        assertThat(updated.entries()).hasSize(1); // 총수 2 → 1
+        assertThat(updated.entries().getFirst().date()).isEqualTo(LocalDate.of(2026, 7, 10));
+        assertThat(updated.entries().getFirst().myTaste()).isEqualTo("이동해 온 9일 기록");
+        assertThat(repo.findBySlug(slug)).get()
+                .extracting(n -> n.entries().size()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("V-9: applyEdit coffee_name 변경 시도 거부 — 커밋 없음, 원본 무변화")
+    void applyEditRejectsCoffeeNameChange() {
+        String slug = "coffeevera-yirgacheffe-g1";
+        LocalDate target = LocalDate.of(2026, 7, 10);
+        Note saved = repo.upsertEntry(slug, sampleMeta(), entry(target, "원본 감상"));
+
+        Note draft = new Note(
+                saved.slug(),
+                Sourced.user("커피베라 예가체프 G2"), // 오타 정정 포함 예외 없이 거부(V-9)
+                saved.roastery(), saved.origin(), saved.process(), saved.roastLevel(),
+                saved.officialNotes(), saved.sources(),
+                List.of(entry(target, "감상 수정")),
+                saved.createdAt(), saved.updatedAt()
+        );
+
+        assertThatThrownBy(() -> repo.applyEdit(slug, target, draft))
+                .isInstanceOf(IllegalArgumentException.class);
+        // 거부 시 원본 노트 무변화
+        assertThat(repo.findBySlug(slug)).contains(saved);
+    }
 }
