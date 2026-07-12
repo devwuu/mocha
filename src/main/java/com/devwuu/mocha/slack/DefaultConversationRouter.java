@@ -20,7 +20,8 @@ import java.util.Optional;
  * 일과 안내 문구·전송은 {@link ConfirmationFlow} 소유다(라우터는 responder를 직접 부르지 않는다 — ADR-24 구현 배치).
  * <ul>
  *   <li>record — 대기 없으면 신규 파이프라인, 있으면 대기 불변 + "먼저 저장/취소" 안내(단일 대기 원칙, AC-30).
- *   <li>revise — 대기 있으면 수정(AC-5), 없으면 안내.
+ *   <li>revise — 대기 있으면 수정(AC-5), 없는데 검색 세션 진행 중이면 search로 폴백(수정 전환이 막히지 않게,
+ *       FR-21/changes-0012), 둘 다 아니면 안내.
  *   <li>search — 검색 세션 시작/계속(FR-20). end — 세션 있으면 종료, 없으면 other 취급(FR-17).
  *   <li>other — 파이프라인 미진입, 짧은 안내(AC-20).
  *   <li>버튼 액션 → {@code action_id}로만 저장/취소 분기.
@@ -77,6 +78,11 @@ public class DefaultConversationRouter implements ConversationRouter {
             case REVISE -> {
                 if (pending.isPresent()) {
                     flow.revisePending(message, pending.get());
+                } else if (searchSessionActive) {
+                    // POLICY: 검색 세션 활성 + REVISE + 대기 없음 → 검색 세션이 문맥의 주인 — "그거 수정할래"가
+                    //         게이트에서 revise로 분류돼도 수정 전환(FR-21)이 라우터 층에서 막히지 않게 search로
+                    //         흘린다(게이트 폴백 ①검색 세션 중→search와 같은 정신) (ref: plan.md#ADR-27, changes/0012).
+                    flow.searchNotes(message);
                 } else {
                     flow.guideNothingToRevise(message);
                 }

@@ -100,6 +100,9 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
     static final String SEARCH_LIMIT_REACHED = "이번엔 못 찾겠어요 멍… 찾기를 마칠게요. 다른 단서가 떠오르면 다시 불러주세요! 🐾"; // 재질문 상한 도달 → 세션 종료(FR-20/AC-33)
     static final String SEARCH_ENDED = "기록 찾기를 마칠게요 멍! 또 궁금하면 언제든 불러주세요 🐾"; // end 의도 종료 안내(AC-34)
     static final String SEARCH_FAILED = "기록을 찾다 문제가 생겼어요 멍… 다시 한 번 말씀해 주시겠어요? 🐾"; // 후보 선정 실패(plan §7) — 세션은 유지
+    // --- 수정 세션 전환 멘트(FR-21, ADR-27, changes/0012 TΔ4) ---
+    static final String EDIT_DATE_PROMPT_HEADER = "이 노트엔 기록이 여러 날 있어요 멍! 어느 날짜 기록을 고칠까요? 🐾"; // 엔트리 복수 → 날짜 목록 선택(AC-42)
+    static final String EDIT_TARGET_GONE = "고치려던 기록을 못 찾았어요 멍… 사라졌나 봐요. 다시 찾아볼까요? 🐾"; // 대상 노트/엔트리 소실 → 수정 세션 미시작(plan §7)
     // 과거 참조 매치 실패 안내(FR-14, ADR-26, changes/0011 TΔ6) — 다음 의도(새 기록/검색)를 고르게 하고,
     // 보관이 10분뿐임을 명시해 TTL 폐기 후 일반 신규 처리로 흐르는 것이 놀랍지 않게 한다(AC-36).
     static final String REFERENCE_NOT_FOUND =
@@ -334,7 +337,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         transitionSlot.take();
 
         // POLICY: 검색 세션은 pending을 읽기만 — 쓰기 금지(격리, AC-29) (ADR-25, FR-20).
-        //         이 경로는 pendingStore를 아예 만지지 않는다.
+        //         예외는 수정 전환(EDIT_TARGET_CONFIRMED, FR-21)뿐 — 그때만 edit pending을 새로 만든다(ADR-27).
         Optional<SearchSession> existing = searchSessionStore.get(userId);
         if (existing.isEmpty()) {
             // 세션 시작 안내(AC-34) — 후보 선정(LLM)보다 먼저 보내 즉시 반응한다.
@@ -366,6 +369,15 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
                     responder.post(channelId, SEARCH_LIMIT_REACHED);
                     log.info("검색 재질문 상한 도달 — 세션 종료: user={}", userId);
                 }
+                case EDIT_DATE_CHOICES -> {
+                    // 수정 대상 노트 확정 + 엔트리 복수 → 날짜 목록 텍스트 선택(FR-21/AC-42). 선택 대기 상태는
+                    // 세션(pendingEditSlug)이 든다 — 다음 텍스트가 같은 검색 턴에서 선택으로 해석된다.
+                    searchSessionStore.put(userId, outcome.session());
+                    responder.post(channelId, editDateListText(outcome.editDateChoices()));
+                    log.info("수정 대상 엔트리 복수 — 날짜 선택 대기: user={} slug={} dates={}",
+                            userId, outcome.hits().get(0).slug(), outcome.editDateChoices().size());
+                }
+                case EDIT_TARGET_CONFIRMED -> enterEditSession(userId, channelId, outcome);
             }
         } catch (Exception e) {
             // plan §7: 후보 선정 실패 → 세션을 잃지 않고 안내만(기존 세션 유지 — 다음 메시지로 계속).
@@ -390,6 +402,72 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
             return card;
         }
         return noteRenderer.renderEntryCard(hit.slug(), hit.latestDate());
+    }
+
+    // 검색 세션 → 수정 세션 전환(FR-21, ADR-27, changes/0012 TΔ4) — 대상 노트+엔트리를 draft로 로드해
+    // mode=edit pending을 만들고 ✏️ 미리보기를 보낸다. 미리보기 전송 실패는 pending을 남기지 않고 밖의
+    // catch(SEARCH_FAILED — 검색 세션 유지)로 수렴한다.
+    private void enterEditSession(String userId, String channelId, SearchOutcome outcome) throws Exception {
+        SearchHit hit = outcome.hits().get(0);
+        LocalDate targetDate = outcome.editDate();
+
+        // POLICY: 단일 대기 원칙(FR-17/AC-30) 준용 — record든 edit든 확인 대기가 있으면 수정 세션 진입을
+        //         거부하고 "먼저 저장/취소" 안내만 한다. 대기 임의 폐기는 [저장] 확답 원칙과 어긋난다
+        //         (ref: plan.md#ADR-27, changes/0012 findings-TΔ0 Q2).
+        if (pendingStore.get(userId).isPresent()) {
+            searchSessionStore.put(userId, outcome.session()); // 단서·대상은 세션에 남긴다 — 대기 정리 후 이어서 진입 가능
+            responder.post(channelId, PENDING_EXISTS);
+            log.info("수정 세션 진입 거부 — 확인 대기 존재(단일 대기 원칙): user={} slug={}", userId, hit.slug());
+            return;
+        }
+
+        // plan §7: 수정 세션 draft 로드 실패(대상 노트/엔트리 소실) → 수정 세션 미시작 + 안내. 검색 세션은
+        // 유지한다 — 사용자가 이어서 다른 기록을 찾을 수 있다.
+        Optional<Note> noteOpt = noteRepository.findBySlug(hit.slug());
+        Optional<Entry> target = noteOpt
+                .flatMap(note -> note.entries().stream()
+                        .filter(e -> targetDate.equals(e.date())).findFirst());
+        if (target.isEmpty()) {
+            searchSessionStore.put(userId, outcome.session());
+            responder.post(channelId, EDIT_TARGET_GONE);
+            log.warn("수정 세션 미시작 — 대상 소실: user={} slug={} date={}", userId, hit.slug(), targetDate);
+            return;
+        }
+
+        // 대상 노트+엔트리를 draft로 로드한 사본(data-model §2.3) — 원본 참조는 target{slug,date}에 남는다.
+        Note note = noteOpt.orElseThrow();
+        Note draft = new Note(
+                note.slug(), note.coffeeName(), note.roastery(), note.origin(), note.process(),
+                note.roastLevel(), note.officialNotes(), note.sources(),
+                List.of(target.get()), note.createdAt(), note.updatedAt());
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        PendingNote.EditTarget editTarget = new PendingNote.EditTarget(hit.slug(), targetDate);
+
+        // put을 먼저 해 재시작 생존(NFR-2/AC-40)을 확보하고, 전송 후 확정된 preview_ts로 재저장한다 —
+        // startNewNote와 동일하게 "미리보기 없으면 pending 없음" 불변을 지킨다.
+        pendingStore.put(userId, new PendingNote(PendingNote.Mode.EDIT, draft, editTarget, null, null, now));
+        try {
+            String previewTs = previewMessenger.publish(
+                    channelId, new PendingNote(PendingNote.Mode.EDIT, draft, editTarget, null, null, now));
+            pendingStore.put(userId, new PendingNote(PendingNote.Mode.EDIT, draft, editTarget, null, previewTs, now));
+        } catch (Exception publishFailure) {
+            pendingStore.clear(userId);
+            throw publishFailure;
+        }
+
+        // 전환 완료 — 검색 세션의 역할(대상 찾기)은 끝났다. 남기면 수정 중 텍스트가 검색으로 샐 표면만
+        // 넓어진다(전환 슬롯이 search류 전환 시 폐기되는 것과 같은 정신, ADR-26 · findings-TΔ0 Q2).
+        searchSessionStore.clear(userId);
+        log.info("수정 세션 진입: user={} slug={} date={}", userId, hit.slug(), targetDate);
+    }
+
+    // 수정 대상 엔트리 날짜 목록(AC-42) — 번호는 "두 번째" 선택 해석 기준과 같은 순서(SearchOutcome.editDateChoices).
+    private static String editDateListText(List<LocalDate> dates) {
+        StringBuilder text = new StringBuilder(EDIT_DATE_PROMPT_HEADER);
+        for (int i = 0; i < dates.size(); i++) {
+            text.append("\n").append(i + 1).append(". ").append(dates.get(i));
+        }
+        return text.toString();
     }
 
     // 복수 후보 텍스트 목록(AC-32) — 커피명·로스터리·최근 시음일. 번호는 "두 번째" 선택 해석 기준(세션 candidateSlugs 순서).

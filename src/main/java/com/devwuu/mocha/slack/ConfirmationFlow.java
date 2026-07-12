@@ -52,7 +52,10 @@ public interface ConfirmationFlow {
      * search 의도 → 검색 세션 시작/계속(FR-20, ADR-25). 후보 선정 결과에 따라 단일 매치 카드 재전송 /
      * 복수 후보 텍스트 목록 / 무후보 재질문(상한 도달 시 종료 안내 + 세션 폐기)으로 응답한다(AC-31~33).
      * 진입 시 전환 슬롯 보관분은 폐기한다(FR-14, ADR-26).
-     * <p>POLICY: 검색 세션은 pending을 읽기만 — 쓰기 금지(격리, AC-29) (ADR-25, FR-20).
+     * <p>수정 의도(FR-21)가 감지되면 대상 노트·엔트리를 확정해 수정 세션(mode=edit pending)으로 전환한다 —
+     * 엔트리 복수면 날짜 목록 텍스트 선택(AC-42), 확인 대기가 있으면 진입 거부 + 안내(단일 대기 원칙 준용),
+     * 진입 성공 시 검색 세션 폐기(ADR-27, changes/0012).
+     * <p>POLICY: 검색 세션은 pending을 읽기만 — 쓰기 금지(격리, AC-29) (ADR-25, FR-20). 예외는 수정 전환뿐.
      */
     void searchNotes(IncomingMessage message);
 

@@ -191,11 +191,12 @@ class DefaultConversationRouterTest {
                 arguments(MessageIntent.RECORD, false, true, "startNewNote"),
                 arguments(MessageIntent.RECORD, true, false, "guidePendingExists"),
                 arguments(MessageIntent.RECORD, true, true, "guidePendingExists"),
-                // revise: 대기 있으면 수정(FR-5/AC-5), 없으면 안내(FR-17)
+                // revise: 대기 있으면 수정(FR-5/AC-5), 없는데 검색 세션 진행 중이면 search 폴백 — "그거 수정할래"가
+                // revise로 분류돼도 수정 전환(FR-21)이 라우터 층에서 막히지 않는다(changes/0012 TΔ4). 둘 다 없으면 안내(FR-17)
                 arguments(MessageIntent.REVISE, true, false, "revisePending"),
                 arguments(MessageIntent.REVISE, true, true, "revisePending"),
                 arguments(MessageIntent.REVISE, false, false, "guideNothingToRevise"),
-                arguments(MessageIntent.REVISE, false, true, "guideNothingToRevise"),
+                arguments(MessageIntent.REVISE, false, true, "searchNotes"),
                 // search: 상태 무관 검색 세션 시작/계속(FR-20) — 대기 중에도 검색 가능(AC-29 재료)
                 arguments(MessageIntent.SEARCH, false, false, "searchNotes"),
                 arguments(MessageIntent.SEARCH, true, false, "searchNotes"),

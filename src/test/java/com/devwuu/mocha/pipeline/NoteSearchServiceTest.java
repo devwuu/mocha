@@ -89,6 +89,7 @@ class NoteSearchServiceTest {
         assertThat(userPrompt).contains("\"message\":\"두 번째\"");
         assertThat(userPrompt).contains("저번에 마신 예가체프"); // 기존 단서 누적
         assertThat(userPrompt).contains("\"presented_candidates\":[\"coffeevera-yirgacheffe-g1\",\"momos-waikiki\"]");
+        assertThat(userPrompt).contains("\"edit_date_options\":[]"); // 날짜 선택 대기 아님 → 빈 목록(changes/0012)
         assertThat(userPrompt).contains("\"coffee_name\":\"커피베라 예가체프 G1\"");
         assertThat(userPrompt).contains("\"roastery\":\"커피베라\"");
         assertThat(userPrompt).contains("\"official_notes\":[\"자스민\"]");
@@ -96,7 +97,7 @@ class NoteSearchServiceTest {
     }
 
     @Test
-    @DisplayName("스키마: candidate_slugs 배열 단일 필드를 strict로 강제한다 (data-model §4.2)")
+    @DisplayName("스키마: candidate_slugs + 수정 신호(edit_requested·edit_target_date)를 strict로 강제한다 (data-model §4.2, changes/0012)")
     void enforcesSelectionSchema() {
         llm.response = new SearchSelection(List.of());
 
@@ -104,6 +105,8 @@ class NoteSearchServiceTest {
 
         String schema = llm.captured.jsonSchema();
         assertThat(schema).contains("\"candidate_slugs\"");
+        assertThat(schema).contains("\"edit_requested\"");
+        assertThat(schema).contains("\"edit_target_date\"");
         assertThat(schema).contains("\"additionalProperties\": false");
     }
 
@@ -217,6 +220,95 @@ class NoteSearchServiceTest {
 
         assertThat(outcome.type()).isEqualTo(SearchOutcome.Type.NO_MATCH);
         assertThat(outcome.session().requeryCount()).isEqualTo(100);
+    }
+
+    // --- TΔ4(changes/0012): 수정 전환 판정 (FR-21, ADR-27) ---
+
+    @Test
+    @DisplayName("FR-21: 수정 의도 + 단일 확정 + 엔트리 1건 → EDIT_TARGET_CONFIRMED(그 엔트리 date)")
+    void editRequestWithSingleEntryConfirmsTarget() {
+        SearchSession session = new SearchSession(
+                List.of("모모스 와이키키 찾아줘"), List.of("momos-waikiki"), 0, SESSION_STARTED);
+        llm.response = new SearchSelection(List.of("momos-waikiki"), true, null);
+
+        SearchOutcome outcome = service(0).handle("그거 수정할래", Optional.of(session), NOTES);
+
+        assertThat(outcome.type()).isEqualTo(SearchOutcome.Type.EDIT_TARGET_CONFIRMED);
+        assertThat(outcome.hits()).extracting(SearchHit::slug).containsExactly("momos-waikiki");
+        assertThat(outcome.editDate()).isEqualTo(LocalDate.of(2026, 5, 20));
+        assertThat(outcome.session().pendingEditSlug()).isEqualTo("momos-waikiki");
+    }
+
+    @Test
+    @DisplayName("AC-42 재료: 수정 의도 + 단일 확정 + 엔트리 복수 → EDIT_DATE_CHOICES(오름차순 날짜 목록 + 선택 대기 세션)")
+    void editRequestWithMultipleEntriesPresentsDateChoices() {
+        llm.response = new SearchSelection(List.of("coffeevera-yirgacheffe-g1"), true, null);
+
+        SearchOutcome outcome = service(0).handle("예가체프 기록 고쳐줘", Optional.empty(), NOTES);
+
+        assertThat(outcome.type()).isEqualTo(SearchOutcome.Type.EDIT_DATE_CHOICES);
+        assertThat(outcome.editDateChoices())
+                .containsExactly(LocalDate.of(2026, 6, 1), LocalDate.of(2026, 7, 1)); // 제시 순서 = 선택 해석 기준
+        assertThat(outcome.session().pendingEditSlug()).isEqualTo("coffeevera-yirgacheffe-g1");
+        assertThat(outcome.session().candidateSlugs()).containsExactly("coffeevera-yirgacheffe-g1");
+    }
+
+    @Test
+    @DisplayName("AC-42: 날짜 선택 대기 세션에서 목록 안 날짜가 해석되면 EDIT_TARGET_CONFIRMED — 요청에 edit_date_options가 실린다")
+    void dateSelectionConfirmsEditTarget() {
+        SearchSession session = new SearchSession(
+                List.of("예가체프 고쳐줘"), List.of("coffeevera-yirgacheffe-g1"), 0, SESSION_STARTED,
+                "coffeevera-yirgacheffe-g1");
+        llm.response = new SearchSelection(List.of(), false, "2026-06-01");
+
+        SearchOutcome outcome = service(0).handle("첫 번째 거", Optional.of(session), NOTES);
+
+        assertThat(llm.captured.userPrompt())
+                .contains("\"edit_date_options\":[\"2026-06-01\",\"2026-07-01\"]"); // 제시 순서 그대로 컨텍스트 주입
+        assertThat(outcome.type()).isEqualTo(SearchOutcome.Type.EDIT_TARGET_CONFIRMED);
+        assertThat(outcome.editDate()).isEqualTo(LocalDate.of(2026, 6, 1));
+        assertThat(outcome.hits()).extracting(SearchHit::slug).containsExactly("coffeevera-yirgacheffe-g1");
+    }
+
+    @Test
+    @DisplayName("환각 필터 준용: 날짜 선택 답이 제시 목록 밖 날짜면 확정하지 않고 날짜 목록을 다시 제시한다")
+    void rejectsDateOutsidePresentedOptions() {
+        SearchSession session = new SearchSession(
+                List.of("예가체프 고쳐줘"), List.of("coffeevera-yirgacheffe-g1"), 0, SESSION_STARTED,
+                "coffeevera-yirgacheffe-g1");
+        llm.response = new SearchSelection(List.of(), false, "2026-01-01"); // 목록에 없는 날짜(환각)
+
+        SearchOutcome outcome = service(0).handle("1월 1일 거", Optional.of(session), NOTES);
+
+        assertThat(outcome.type()).isEqualTo(SearchOutcome.Type.EDIT_DATE_CHOICES);
+        assertThat(outcome.editDateChoices())
+                .containsExactly(LocalDate.of(2026, 6, 1), LocalDate.of(2026, 7, 1));
+        assertThat(outcome.session().pendingEditSlug()).isEqualTo("coffeevera-yirgacheffe-g1"); // 선택 대기 유지
+    }
+
+    @Test
+    @DisplayName("FR-21: 수정 의도라도 후보가 복수면 MULTIPLE_CANDIDATES — 대상 확정(단일)이 먼저다")
+    void editRequestWithMultipleCandidatesKeepsListFlow() {
+        llm.response = new SearchSelection(
+                List.of("coffeevera-yirgacheffe-g1", "momos-waikiki"), true, null);
+
+        SearchOutcome outcome = service(0).handle("저번에 마신 거 고치고 싶어", Optional.empty(), NOTES);
+
+        assertThat(outcome.type()).isEqualTo(SearchOutcome.Type.MULTIPLE_CANDIDATES);
+        assertThat(outcome.session().pendingEditSlug()).isNull();
+    }
+
+    @Test
+    @DisplayName("방어: 선택 대기 대상 slug가 소실(비실존)이면 일반 검색 턴으로 복귀한다")
+    void fallsBackToNormalSearchWhenPendingEditSlugVanished() {
+        SearchSession session = new SearchSession(
+                List.of("예가체프 고쳐줘"), List.of("ghost-coffee"), 0, SESSION_STARTED, "ghost-coffee");
+        llm.response = new SearchSelection(List.of());
+
+        SearchOutcome outcome = service(0).handle("음", Optional.of(session), NOTES);
+
+        assertThat(outcome.type()).isEqualTo(SearchOutcome.Type.NO_MATCH); // 날짜 재제시가 아니라 일반 재질문
+        assertThat(outcome.session().pendingEditSlug()).isNull();
     }
 
     // --- 경계 ---

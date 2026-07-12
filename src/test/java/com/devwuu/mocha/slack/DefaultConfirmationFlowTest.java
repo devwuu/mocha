@@ -57,6 +57,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -1339,6 +1340,129 @@ class DefaultConfirmationFlowTest {
         assertEquals(0, searchSessionStore.clearCount, "실패해도 세션을 잃지 않는다(plan §7)");
         assertTrue(searchSessionStore.get("U1").isPresent(), "다음 메시지로 검색을 계속할 수 있다");
         assertTrue(searchSessionStore.puts.isEmpty(), "실패 턴은 세션을 갱신하지 않는다");
+    }
+
+    // --- TΔ4(changes/0012): 검색 결과 → 수정 세션 진입(FR-21, ADR-27) ---
+
+    @Test
+    @DisplayName("AC-37 진입/AC-40 재료: 수정 의도 + 단일 엔트리 노트 → mode=edit pending 생성·미리보기 전송·검색 세션 폐기, 원본 무저장")
+    void searchNotesEntersEditSessionForSingleEntryNote() {
+        NoteRepository repo = noteRepository();
+        Note original = savedNote(repo, "momos-waikiki", "모모스 와이키키", "모모스", LocalDate.of(2026, 5, 20));
+        searchSessionStore.setSession(
+                new SearchSession(List.of("와이키키"), List.of("momos-waikiki"), 0, OffsetDateTime.now(clock)));
+        llmClient.cannedSelection = new SearchSelection(List.of("momos-waikiki"), true, null);
+
+        flow(repo).searchNotes(message("그거 수정할래"));
+
+        // put 2회: 전송 전(preview_ts=null, 재시작 생존 확보) → 전송 후 확정 ts 재저장(startNewNote와 동일 불변).
+        assertEquals(2, pendingStore.puts.size(), "edit pending이 생성된다");
+        PendingNote pending = pendingStore.puts.get(1);
+        assertEquals(PendingNote.Mode.EDIT, pending.mode());
+        assertEquals("momos-waikiki", pending.target().slug(), "원본 노트 참조가 target에 남는다");
+        assertEquals(LocalDate.of(2026, 5, 20), pending.target().date());
+        assertEquals(1, pending.draft().entries().size(), "대상 엔트리 1건이 draft로 로드된다");
+        assertEquals("모모스 와이키키", pending.draft().coffeeName().value(), "노트 메타도 draft 사본에 실린다");
+        assertEquals(previewMessenger.ts, pending.previewTs(), "확정된 preview_ts가 pending에 반영된다");
+        assertEquals(PendingNote.Mode.EDIT, previewMessenger.published.mode(), "미리보기도 edit pending으로 발행된다");
+        assertEquals(1, searchSessionStore.clearCount, "전환 완료 시 검색 세션은 폐기된다(findings-TΔ0 Q2)");
+        assertEquals(original, repo.findBySlug("momos-waikiki").orElseThrow(), "진입은 원본 노트를 저장하지 않는다(AC-37)");
+    }
+
+    @Test
+    @DisplayName("AC-42: 엔트리 복수 노트 → 날짜 목록 텍스트 제시(선택 대기 세션 저장) 후, 선택 턴에 edit pending으로 진입한다")
+    void searchNotesPresentsDateChoicesThenEntersEditSession() {
+        NoteRepository repo = noteRepository();
+        savedNote(repo, "coffeevera-yirgacheffe", "커피베라 예가체프", "커피베라", LocalDate.of(2026, 6, 1));
+        savedNote(repo, "coffeevera-yirgacheffe", "커피베라 예가체프", "커피베라", LocalDate.of(2026, 7, 1));
+        searchSessionStore.setSession(
+                new SearchSession(List.of("예가체프"), List.of("coffeevera-yirgacheffe"), 0, OffsetDateTime.now(clock)));
+        llmClient.cannedSelection = new SearchSelection(List.of("coffeevera-yirgacheffe"), true, null);
+
+        flow(repo).searchNotes(message("그 기록 고쳐줘"));
+
+        String list = responder.messages.get(responder.messages.size() - 1);
+        assertTrue(list.startsWith(DefaultConfirmationFlow.EDIT_DATE_PROMPT_HEADER), "날짜 선택 안내(모카 톤): " + list);
+        assertTrue(list.contains("1. 2026-06-01") && list.contains("2. 2026-07-01"), "제시 순서 번호 목록: " + list);
+        assertTrue(pendingStore.puts.isEmpty(), "날짜 확정 전에는 pending을 만들지 않는다");
+        assertEquals("coffeevera-yirgacheffe", searchSessionStore.puts.get(0).pendingEditSlug(),
+                "선택 대기 상태가 세션에 남는다");
+
+        // 선택 턴: 같은 검색 턴 스키마의 edit_target_date로 날짜가 확정되면 진입한다.
+        llmClient.cannedSelection = new SearchSelection(List.of(), false, "2026-06-01");
+        flow(repo).searchNotes(message("첫 번째 거"));
+
+        assertEquals(2, pendingStore.puts.size(), "선택 확정 턴에 edit pending이 생성된다");
+        PendingNote pending = pendingStore.puts.get(1);
+        assertEquals(PendingNote.Mode.EDIT, pending.mode());
+        assertEquals(LocalDate.of(2026, 6, 1), pending.target().date(), "고른 날짜의 엔트리가 대상이 된다");
+        assertEquals(LocalDate.of(2026, 6, 1), pending.draft().entries().get(0).date());
+        assertEquals(1, searchSessionStore.clearCount, "진입 성공 시 검색 세션 폐기");
+    }
+
+    @Test
+    @DisplayName("FR-17 준용: 확인 대기가 있으면 수정 세션 진입을 거부하고 '먼저 저장/취소' 안내만 한다(대기·검색 세션 불변)")
+    void searchNotesRefusesEditSessionWhenPendingExists() {
+        NoteRepository repo = noteRepository();
+        savedNote(repo, "momos-waikiki", "모모스 와이키키", "모모스", LocalDate.of(2026, 5, 20));
+        PendingNote existing = pendingWith("other-coffee");
+        pendingStore.setPending(existing);
+        searchSessionStore.setSession(
+                new SearchSession(List.of("와이키키"), List.of("momos-waikiki"), 0, OffsetDateTime.now(clock)));
+        llmClient.cannedSelection = new SearchSelection(List.of("momos-waikiki"), true, null);
+
+        flow(repo).searchNotes(message("그거 수정할래"));
+
+        assertEquals(List.of(DefaultConfirmationFlow.PENDING_EXISTS), responder.messages,
+                "단일 대기 원칙 안내(findings-TΔ0 Q2 — 대기 임의 폐기 금지)");
+        assertTrue(pendingStore.puts.isEmpty(), "기존 대기를 덮지 않는다");
+        assertEquals(0, pendingStore.clearCount, "기존 대기를 폐기하지 않는다");
+        assertSame(existing, pendingStore.get("U1").orElseThrow(), "확인 대기 기록이 그대로 남는다");
+        assertEquals(0, searchSessionStore.clearCount, "검색 세션은 남는다 — 대기 정리 후 이어서 진입 가능");
+        assertEquals(1, searchSessionStore.puts.size(), "이번 턴 단서가 세션에 반영된다");
+    }
+
+    @Test
+    @DisplayName("plan §7: 전환 시점에 대상 노트/엔트리 소실 → 수정 세션 미시작 + 안내, 검색 세션은 유지된다")
+    void searchNotesGuidesWhenEditTargetVanished() {
+        NoteRepository repo = noteRepository();
+        savedNote(repo, "momos-waikiki", "모모스 와이키키", "모모스", LocalDate.of(2026, 5, 20));
+        // 검색(findAll)까지는 보이지만 draft 로드(findBySlug) 직전에 소실된 노트를 흉내낸다.
+        NoteRepository vanishing = new NoteRepository() {
+            @Override
+            public List<Note> findAll() {
+                return repo.findAll();
+            }
+
+            @Override
+            public Optional<Note> findBySlug(String slug) {
+                return Optional.empty(); // 대상 소실
+            }
+
+            @Override
+            public String nextAvailableSlug(String base) {
+                return repo.nextAvailableSlug(base);
+            }
+
+            @Override
+            public Note upsertEntry(String slug, com.devwuu.mocha.domain.NoteMeta meta, Entry entry) {
+                return repo.upsertEntry(slug, meta, entry);
+            }
+
+            @Override
+            public Note applyEdit(String slug, LocalDate targetDate, Note draft) {
+                return repo.applyEdit(slug, targetDate, draft);
+            }
+        };
+        searchSessionStore.setSession(
+                new SearchSession(List.of("와이키키"), List.of("momos-waikiki"), 0, OffsetDateTime.now(clock)));
+        llmClient.cannedSelection = new SearchSelection(List.of("momos-waikiki"), true, null);
+
+        flow(vanishing).searchNotes(message("그거 수정할래"));
+
+        assertEquals(List.of(DefaultConfirmationFlow.EDIT_TARGET_GONE), responder.messages);
+        assertTrue(pendingStore.puts.isEmpty(), "수정 세션은 시작되지 않는다(plan §7)");
+        assertEquals(0, searchSessionStore.clearCount, "검색 세션은 유지 — 이어서 다른 기록을 찾을 수 있다");
     }
 
     // --- TΔ6(changes/0011): 과거 참조 매치 실패 → TransitionSlot 보관 + 다음 의도 재개(FR-14, ADR-26) ---
