@@ -10,6 +10,7 @@ import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.llm.VisionExtraction;
 import com.devwuu.mocha.llm.VisionHint;
+import com.devwuu.mocha.pipeline.ContextHint;
 import com.devwuu.mocha.pipeline.ExtractionResult;
 import com.devwuu.mocha.pipeline.IntentClassifier;
 import com.devwuu.mocha.pipeline.MatchResult;
@@ -255,7 +256,8 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
     // [1.5] 입구 의도 게이트 판정 — record면 파이프라인 진입, other면 미진입(안내). 게이트 실패는 fail-open(record)으로 흡수한다.
     private boolean isRecordRequest(String text, String userId) {
         try {
-            MessageIntent intent = intentClassifier.classify(text).intent();
+            // pending 없음 분기 한정 호출이라 힌트는 (false, false) — 게이트의 라우터 층 상향은 TΔ3(ADR-24 구현 배치).
+            MessageIntent intent = intentClassifier.classify(text, new ContextHint(false, false)).intent();
             // 관측(plan §6): 판정 분포(record/other)를 로깅해 오분류 프록시로 삼는다.
             log.info("입구 의도 게이트 판정: user={} intent={}", userId, intent.value());
             return intent == MessageIntent.RECORD;

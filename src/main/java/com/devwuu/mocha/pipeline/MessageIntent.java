@@ -6,14 +6,17 @@ import com.fasterxml.jackson.annotation.JsonValue;
 import java.util.Arrays;
 
 /**
- * 입구 의도 게이트 분류 — record/other 2값 enum
- * (ref: specs/coffee-note-agent/data-model.md#4.1, plan.md#ADR-18, changes/0007 delta.md).
- * <p>{@code record}=기록 파이프라인 진입, {@code other}=미진입 + 안내 응답.
+ * 입구 의도 게이트 분류 — record/revise/search/end/other 5값 enum
+ * (ref: specs/coffee-note-agent/data-model.md#4.1, plan.md#ADR-24, changes/0011 delta.md).
+ * <p>{@code record}=새 기록 파이프라인 진입, {@code revise}=확인 대기 기록 수정,
+ * {@code search}=노트 검색 세션(FR-20), {@code end}=검색 세션 종료, {@code other}=미진입 + 안내 응답.
  * <p>POLICY: 정의 외 값은 역직렬화에서 거부 (V-1과 동일 정신 — data-model §4.1).
- * 미래 의도(조회 등)는 enum 값 추가로 확장한다(선제 일반화 금지, right-sizing).
  */
 public enum MessageIntent {
     RECORD("record"),
+    REVISE("revise"),
+    SEARCH("search"),
+    END("end"),
     OTHER("other");
 
     private final String value;
@@ -27,7 +30,7 @@ public enum MessageIntent {
         return value;
     }
 
-    // 정의 외 값은 거부(예외) → 상위(IntentClassifier)에서 fail-open(record) 경로로 수렴.
+    // 정의 외 값은 거부(예외) → 상위(라우팅 층)에서 폴백 우선순위 경로로 수렴(ADR-24).
     @JsonCreator
     public static MessageIntent from(String value) {
         return Arrays.stream(values())
