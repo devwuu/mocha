@@ -655,7 +655,7 @@ class DefaultConfirmationFlowTest {
         PendingNote pending = pendingWith("coffeevera-yirgacheffe");
         pendingStore.setPending(pending);
         // 사용자가 감상만 바꿈 → my_taste 패치만 실린다.
-        llmClient.cannedRevision = new RevisionResult(null, null, null, null, null, null, "산미가 낮아 부드러웠다", null);
+        llmClient.cannedRevision = new RevisionResult(null, null, null, null, null, null, "산미가 낮아 부드러웠다", null, null);
 
         flow(repo).revisePending(message("산미는 낮음으로"), pending);
 
@@ -682,7 +682,7 @@ class DefaultConfirmationFlowTest {
         NoteRepository repo = noteRepository();
         PendingNote pending = pendingWith("coffeevera-yirgacheffe"); // origin=Sourced.search("에티오피아")
         pendingStore.setPending(pending);
-        llmClient.cannedRevision = new RevisionResult(null, null, "콜롬비아", null, null, null, null, null);
+        llmClient.cannedRevision = new RevisionResult(null, null, "콜롬비아", null, null, null, null, null, null);
 
         flow(repo).revisePending(message("원산지는 콜롬비아야"), pending);
 
@@ -706,6 +706,86 @@ class DefaultConfirmationFlowTest {
         assertTrue(pendingStore.get("U1").isPresent(), "기존 확인 대기 노트가 그대로 남는다");
         assertNull(previewMessenger.published, "수정 실패 시 미리보기 갱신도 없다");
         assertEquals(List.of(DefaultConfirmationFlow.REVISE_FAILED), responder.messages);
+    }
+
+    // --- TΔ5(changes/0012): edit 모드 revise — 커피명 거부(V-9)·날짜 이동 충돌 경고(V-10)·사진 첨부(AC-41) ---
+
+    @Test
+    @DisplayName("AC-38/V-9: edit revise 커피명 변경 → 거부 안내 전송 + draft 커피명 불변, 미리보기는 갱신된다")
+    void revisePendingEditRejectsCoffeeNameChange() {
+        NoteRepository repo = noteRepository();
+        seedEditableNote(repo, "yirga", LocalDate.of(2026, 7, 8), List.of());
+        PendingNote pending = editPending("yirga", LocalDate.of(2026, 7, 8), LocalDate.of(2026, 7, 8), "원래 감상");
+        pendingStore.setPending(pending);
+        llmClient.cannedRevision = new RevisionResult("다른 커피", null, null, null, null, null, null, null, null);
+
+        flow(repo).revisePending(message("커피 이름을 다른 커피로 바꿔줘"), pending);
+
+        assertEquals(List.of(DefaultConfirmationFlow.EDIT_COFFEE_NAME_REJECTED), responder.messages,
+                "거부 + \"새로 등록\" 안내를 보낸다(V-9)");
+        assertNotNull(previewMessenger.published, "거부여도 미리보기 갱신은 진행된다");
+        assertEquals("커피베라 예가체프", previewMessenger.published.draft().coffeeName().value(),
+                "커피명은 draft에 반영되지 않는다(AC-38)");
+        assertEquals(1, pendingStore.puts.size(), "갱신본은 정상 영속된다");
+    }
+
+    @Test
+    @DisplayName("AC-Δ3/V-10: edit revise 날짜 이동이 기존 엔트리와 충돌 → date_conflict 플래그가 pending에 영속된다")
+    void revisePendingEditFlagsDateConflict() {
+        NoteRepository repo = noteRepository();
+        seedEditableNote(repo, "yirga", LocalDate.of(2026, 7, 8), List.of());
+        seedEditableNote(repo, "yirga", LocalDate.of(2026, 7, 9), List.of()); // 이동처에 기존 엔트리 존재
+        PendingNote pending = editPending("yirga", LocalDate.of(2026, 7, 8), LocalDate.of(2026, 7, 8), "원래 감상");
+        pendingStore.setPending(pending);
+        llmClient.cannedRevision =
+                new RevisionResult(null, null, null, null, null, null, null, null, LocalDate.of(2026, 7, 9));
+
+        flow(repo).revisePending(message("이 기록 9일로 옮겨줘"), pending);
+
+        assertEquals(1, pendingStore.puts.size());
+        PendingNote stored = pendingStore.puts.get(0);
+        assertEquals(LocalDate.of(2026, 7, 9), stored.draft().entries().get(0).date(), "draft에 날짜 이동 반영");
+        assertTrue(stored.dateConflict(), "충돌 경고 플래그가 pending에 실려 영속된다(V-10 — 재시작에도 유지)");
+        assertTrue(previewMessenger.published.dateConflict(), "미리보기 조립도 같은 플래그를 받는다(TΔ6 경고 표기 재료)");
+        assertTrue(responder.messages.isEmpty(), "경고는 미리보기 표기로 — 별도 텍스트 안내는 없다");
+        assertEquals(2, repo.findBySlug("yirga").orElseThrow().entries().size(),
+                "revise는 원본 노트를 건드리지 않는다(AC-37 확답 전 무변화)");
+    }
+
+    @Test
+    @DisplayName("V-10: 무충돌 날짜 이동은 경고 플래그 없이 반영된다")
+    void revisePendingEditWithoutConflictLeavesFlagOff() {
+        NoteRepository repo = noteRepository();
+        seedEditableNote(repo, "yirga", LocalDate.of(2026, 7, 8), List.of());
+        PendingNote pending = editPending("yirga", LocalDate.of(2026, 7, 8), LocalDate.of(2026, 7, 8), "원래 감상");
+        pendingStore.setPending(pending);
+        llmClient.cannedRevision =
+                new RevisionResult(null, null, null, null, null, null, null, null, LocalDate.of(2026, 7, 10));
+
+        flow(repo).revisePending(message("이 기록 10일로 옮겨줘"), pending);
+
+        PendingNote stored = pendingStore.puts.get(0);
+        assertEquals(LocalDate.of(2026, 7, 10), stored.draft().entries().get(0).date(), "무충돌 이동 반영");
+        assertFalse(stored.dateConflict(), "이동처에 기존 엔트리가 없으면 경고 플래그도 없다");
+    }
+
+    @Test
+    @DisplayName("AC-41/AC-Δ5: edit 세션 중 사진 수신 → 대상 엔트리에 추가되고 같은 미리보기를 edit로 갱신한다")
+    void receiveMediaAttachesToEditPending() {
+        NoteRepository repo = noteRepository();
+        seedEditableNote(repo, "yirga", LocalDate.of(2026, 7, 8), List.of());
+        PendingNote pending = editPending("yirga", LocalDate.of(2026, 7, 8), LocalDate.of(2026, 7, 8), "원래 감상");
+        pendingStore.setPending(pending);
+
+        flow(repo).receiveMedia(media("a.jpg"));
+
+        assertEquals(PendingNote.Mode.EDIT, previewMessenger.published.mode(), "edit 세션이 유지된다");
+        assertEquals(List.of("photos/yirga/2026-07-08/a.jpg"),
+                previewMessenger.published.draft().entries().get(0).photos(), "대상 엔트리에 사진 추가(AC-41)");
+        assertEquals(pending.previewTs(), previewMessenger.published.previewTs(),
+                "preview_ts 보존 → 재전송이 아닌 edit로 갱신한다");
+        assertTrue(repo.findBySlug("yirga").orElseThrow().entries().get(0).photos().isEmpty(),
+                "첨부는 원본 노트를 건드리지 않는다(AC-37 확답 전 무변화)");
     }
 
     // --- T3-5: [저장]/[취소] 커밋 ---

@@ -103,7 +103,7 @@ class Change0011RegressionGuardTest {
     private static final class FakeLlmClient implements LlmClient {
         ExtractionResult canned;
         // 기본은 아무것도 바꾸지 않는 패치(null=미변경) — 어떤 텍스트가 revise로 흘러도 병합이 no-op으로 성립한다.
-        RevisionResult cannedRevision = new RevisionResult(null, null, null, null, null, null, null, null);
+        RevisionResult cannedRevision = new RevisionResult(null, null, null, null, null, null, null, null, null);
         SearchSelection cannedSelection = new SearchSelection(List.of());
 
         @SuppressWarnings("unchecked")
@@ -371,7 +371,7 @@ class Change0011RegressionGuardTest {
     void reviseStillMergesAndEditsPreview() {
         pendingStore.put("U1", pendingWith("coffeevera-yirgacheffe"));
         intentClassifier.canned = MessageIntent.REVISE;
-        llmClient.cannedRevision = new RevisionResult(null, null, null, null, null, null, "산미가 낮아 부드러웠다", null);
+        llmClient.cannedRevision = new RevisionResult(null, null, null, null, null, null, "산미가 낮아 부드러웠다", null, null);
 
         router.onMessage(message("산미는 낮음으로 바꿔줘"));
 

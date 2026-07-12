@@ -2,6 +2,7 @@ package com.devwuu.mocha.pipeline;
 
 import com.devwuu.mocha.domain.Rating;
 
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -20,6 +21,8 @@ import java.util.List;
  * @param officialNotes 로스터리 노트 새 값(변경 없으면 null). 사용자가 직접 불러주면 source=user 허용(data-model §2.1).
  * @param myTaste       내가 느낀 맛 새 값(변경 없으면 null) — 엔트리 필드.
  * @param rating        4범주 평가 새 값(변경 없으면 null) — 엔트리 필드. 4범주 외 값은 역직렬화에서 거부(V-1).
+ * @param date          시음 날짜 새 값(변경 없으면 null) — 엔트리 필드. edit 모드의 날짜 이동(FR-21/AC-39,
+ *                      changes/0012 TΔ5) 전용이며 record 모드에서는 무시한다(AC-Δ6 신규 기록 경로 불변).
  */
 public record RevisionResult(
         String coffeeName,
@@ -29,6 +32,7 @@ public record RevisionResult(
         String roastLevel,
         List<String> officialNotes,
         String myTaste,
-        Rating rating
+        Rating rating,
+        LocalDate date
 ) {
 }

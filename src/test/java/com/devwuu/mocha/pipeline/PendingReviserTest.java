@@ -62,8 +62,17 @@ class PendingReviserTest {
         return new PendingNote(draft, MatchInfo.newNote(), "1720000000.000999", TS);
     }
 
+    /** mode=edit 확인 대기 노트 — 저장된 (slug, DATE) 엔트리를 고치는 수정 세션(changes/0012 TΔ5). */
+    private static PendingNote editPending() {
+        PendingNote base = pendingWithSearchOrigin();
+        return new PendingNote(
+                PendingNote.Mode.EDIT, base.draft(),
+                new PendingNote.EditTarget(base.draft().slug(), DATE),
+                null, base.previewTs(), base.createdAt());
+    }
+
     private static RevisionResult noChange() {
-        return new RevisionResult(null, null, null, null, null, null, null, null);
+        return new RevisionResult(null, null, null, null, null, null, null, null, null);
     }
 
     @Test
@@ -72,7 +81,7 @@ class PendingReviserTest {
         CapturingLlmClient llm = new CapturingLlmClient();
         llm.response = noChange();
 
-        reviser(llm).revise(pendingWithSearchOrigin(), "원산지는 콜롬비아야");
+        reviser(llm).revise(pendingWithSearchOrigin(), "원산지는 콜롬비아야").pending();
 
         String prompt = llm.captured.userPrompt();
         assertThat(prompt).contains("커피베라 예가체프 G1"); // 현재 커피명
@@ -86,9 +95,9 @@ class PendingReviserTest {
     void promotesRevisedSearchFieldToUser() {
         CapturingLlmClient llm = new CapturingLlmClient();
         // 사용자가 원산지를 직접 지정 → 패치에 origin만 실린다.
-        llm.response = new RevisionResult(null, null, "콜롬비아", null, null, null, null, null);
+        llm.response = new RevisionResult(null, null, "콜롬비아", null, null, null, null, null, null);
 
-        PendingNote revised = reviser(llm).revise(pendingWithSearchOrigin(), "원산지는 콜롬비아야");
+        PendingNote revised = reviser(llm).revise(pendingWithSearchOrigin(), "원산지는 콜롬비아야").pending();
 
         assertThat(revised.draft().origin().value()).isEqualTo("콜롬비아");
         assertThat(revised.draft().origin().source()).isEqualTo(Source.USER); // 승격
@@ -98,9 +107,9 @@ class PendingReviserTest {
     @DisplayName("AC-5: 수정은 엔트리를 새로 만들지 않는다 — 기존 엔트리 1건을 제자리 갱신")
     void keepsEntryCountUnchanged() {
         CapturingLlmClient llm = new CapturingLlmClient();
-        llm.response = new RevisionResult(null, null, null, null, null, null, "산미가 낮아 부드러웠다", null);
+        llm.response = new RevisionResult(null, null, null, null, null, null, "산미가 낮아 부드러웠다", null, null);
 
-        PendingNote revised = reviser(llm).revise(pendingWithSearchOrigin(), "산미는 낮음으로");
+        PendingNote revised = reviser(llm).revise(pendingWithSearchOrigin(), "산미는 낮음으로").pending();
 
         List<Entry> entries = revised.draft().entries();
         assertThat(entries).hasSize(1);                       // 엔트리 미생성(AC-5)
@@ -112,9 +121,9 @@ class PendingReviserTest {
     @DisplayName("수정 요청과 무관한 필드는 그대로 유지된다 (null=변경 없음)")
     void keepsUnmentionedFieldsUnchanged() {
         CapturingLlmClient llm = new CapturingLlmClient();
-        llm.response = new RevisionResult(null, null, "콜롬비아", null, null, null, null, null);
+        llm.response = new RevisionResult(null, null, "콜롬비아", null, null, null, null, null, null);
 
-        PendingNote revised = reviser(llm).revise(pendingWithSearchOrigin(), "원산지는 콜롬비아야");
+        PendingNote revised = reviser(llm).revise(pendingWithSearchOrigin(), "원산지는 콜롬비아야").pending();
 
         Note draft = revised.draft();
         assertThat(draft.coffeeName().value()).isEqualTo("커피베라 예가체프 G1"); // 미변경
@@ -132,9 +141,9 @@ class PendingReviserTest {
     @DisplayName("AC-2: 수정으로 user 승격된 필드는 미리보기에서 (검색) 표기가 사라진다")
     void removesSearchTagAfterRevisionInPreview() {
         CapturingLlmClient llm = new CapturingLlmClient();
-        llm.response = new RevisionResult(null, null, "콜롬비아", null, null, null, null, null);
+        llm.response = new RevisionResult(null, null, "콜롬비아", null, null, null, null, null, null);
 
-        PendingNote revised = reviser(llm).revise(pendingWithSearchOrigin(), "원산지는 콜롬비아야");
+        PendingNote revised = reviser(llm).revise(pendingWithSearchOrigin(), "원산지는 콜롬비아야").pending();
 
         // 수정된 pending을 그대로 미리보기 블록으로 조립 → origin 필드에 (검색) 표기가 없어야 한다.
         List<LayoutBlock> blocks = new PreviewBlocks().build(revised);
@@ -142,6 +151,63 @@ class PendingReviserTest {
         assertThat(originField).isNotNull();
         assertThat(originField).contains("콜롬비아");
         assertThat(originField).doesNotContain("검색"); // (검색) 표기 제거(AC-2)
+    }
+
+    // --- changes/0012 TΔ5: edit 모드 — 커피명 거부(V-9)·날짜 이동(AC-39)·record 경로 불변(AC-Δ6) ---
+
+    @Test
+    @DisplayName("V-9/AC-38: edit 모드 커피명 변경 패치는 draft에 반영되지 않고 거부로 보고된다")
+    void editModeRejectsCoffeeNameChange() {
+        CapturingLlmClient llm = new CapturingLlmClient();
+        llm.response = new RevisionResult("커피베라 예가체프 G2", null, null, null, null, null, null, null, null);
+
+        PendingReviser.ReviseOutcome outcome = reviser(llm).revise(editPending(), "커피 이름 G2로 바꿔줘");
+
+        assertThat(outcome.coffeeNameRejected()).isTrue(); // 그 턴의 거부 안내 재료(V-9)
+        assertThat(outcome.pending().draft().coffeeName().value())
+                .isEqualTo("커피베라 예가체프 G1"); // 오타 정정 포함 예외 없음 — draft 불변(AC-38)
+        assertThat(outcome.pending().mode()).isEqualTo(PendingNote.Mode.EDIT); // 세션 종류 보존
+    }
+
+    @Test
+    @DisplayName("V-9: edit 모드에서 같은 커피명 그대로는 변경이 아니다 — 거부로 치지 않는다")
+    void editModeDoesNotRejectSameCoffeeNameEcho() {
+        CapturingLlmClient llm = new CapturingLlmClient();
+        llm.response = new RevisionResult("커피베라 예가체프 G1", null, null, null, null, null, null, null, null);
+
+        PendingReviser.ReviseOutcome outcome = reviser(llm).revise(editPending(), "커피베라 예가체프 G1 맞아");
+
+        assertThat(outcome.coffeeNameRejected()).isFalse();
+        assertThat(outcome.pending().draft().coffeeName().value()).isEqualTo("커피베라 예가체프 G1");
+    }
+
+    @Test
+    @DisplayName("AC-39 재료: edit 모드 date 패치는 이번 엔트리의 날짜 이동으로 반영된다(엔트리 개수 불변)")
+    void editModeMovesEntryDate() {
+        CapturingLlmClient llm = new CapturingLlmClient();
+        llm.response = new RevisionResult(null, null, null, null, null, null, null, null, LocalDate.of(2026, 7, 12));
+
+        PendingReviser.ReviseOutcome outcome = reviser(llm).revise(editPending(), "이 기록 12일로 옮겨줘");
+
+        List<Entry> entries = outcome.pending().draft().entries();
+        assertThat(entries).hasSize(1); // 이동이지 복제가 아니다
+        assertThat(entries.get(0).date()).isEqualTo(LocalDate.of(2026, 7, 12));
+        assertThat(entries.get(0).myTaste()).isEqualTo("새콤함"); // 날짜만 이동 — 나머지 필드 보존
+    }
+
+    @Test
+    @DisplayName("AC-Δ6(회귀 가드): record 모드는 종전과 동일 — 커피명 패치 반영, date 패치 무시")
+    void recordModeKeepsLegacyBehavior() {
+        CapturingLlmClient llm = new CapturingLlmClient();
+        llm.response = new RevisionResult(
+                "커피베라 예가체프 G2", null, null, null, null, null, null, null, LocalDate.of(2026, 7, 12));
+
+        PendingReviser.ReviseOutcome outcome = reviser(llm).revise(pendingWithSearchOrigin(), "이름은 G2야");
+
+        assertThat(outcome.coffeeNameRejected()).isFalse(); // 거부는 edit 모드 한정(V-9)
+        assertThat(outcome.pending().draft().coffeeName().value()).isEqualTo("커피베라 예가체프 G2"); // 종전대로 반영
+        assertThat(outcome.pending().draft().entries().get(0).date())
+                .isEqualTo(DATE); // 신규 기록 경로의 날짜는 수정 대상이 아니다(AC-Δ6)
     }
 
     // section fields 중 특정 값을 포함한 필드 텍스트를 찾는다.

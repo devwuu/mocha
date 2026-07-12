@@ -103,6 +103,8 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
     // --- 수정 세션 전환 멘트(FR-21, ADR-27, changes/0012 TΔ4) ---
     static final String EDIT_DATE_PROMPT_HEADER = "이 노트엔 기록이 여러 날 있어요 멍! 어느 날짜 기록을 고칠까요? 🐾"; // 엔트리 복수 → 날짜 목록 선택(AC-42)
     static final String EDIT_TARGET_GONE = "고치려던 기록을 못 찾았어요 멍… 사라졌나 봐요. 다시 찾아볼까요? 🐾"; // 대상 노트/엔트리 소실 → 수정 세션 미시작(plan §7)
+    static final String EDIT_COFFEE_NAME_REJECTED =
+            "커피 이름은 못 바꿔요 멍… 이름이 다르면 다른 커피예요! 그 커피는 새로 기록해 주세요 🐾"; // 커피명 변경 거부 + 새 등록 안내(V-9, AC-38)
     // 과거 참조 매치 실패 안내(FR-14, ADR-26, changes/0011 TΔ6) — 다음 의도(새 기록/검색)를 고르게 하고,
     // 보관이 10분뿐임을 명시해 TTL 폐기 후 일반 신규 처리로 흐르는 것이 놀랍지 않게 한다(AC-36).
     static final String REFERENCE_NOT_FOUND =
@@ -590,17 +592,42 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         try {
             // [1] 수정 분기: 수정 텍스트를 LLM 패치로 받아 기존 draft에 병합한다 — 엔트리 개수 불변, 새 노트 미생성(AC-5).
             // match·preview_ts·created_at은 PendingReviser가 보존하므로 같은 미리보기 메시지를 edit로 갱신하게 된다.
-            PendingNote revised = pendingReviser.revise(pending, message.text());
+            PendingReviser.ReviseOutcome outcome = pendingReviser.revise(pending, message.text());
+            PendingNote revised = outcome.pending();
+
+            // POLICY: 날짜 이동 덮어쓰기는 미리보기 경고 표기 + [저장] 확답 없이는 금지 (ref: plan.md#ADR-27, V-10).
+            // 충돌 여부는 revise마다 현 draft 기준으로 재계산해 pending에 영속한다 — 되돌리면 경고도 사라진다.
+            if (revised.mode() == PendingNote.Mode.EDIT) {
+                revised = revised.withDateConflict(hasDateConflict(revised));
+            }
 
             // 갱신본을 먼저 영속화(재시작 생존, NFR-2) → preview_ts가 살아 있어 publish는 재전송이 아닌 edit로 갱신한다.
             pendingStore.put(userId, revised);
             previewMessenger.publish(channelId, revised);
-            log.info("pending 수정 반영: user={} slug={}", userId, revised.draft().slug());
+            // 커피명 변경 거부(V-9/AC-38)는 그 턴의 1회성 안내 — 갱신된 미리보기와 별도로 텍스트로 알린다.
+            if (outcome.coffeeNameRejected()) {
+                responder.post(channelId, EDIT_COFFEE_NAME_REJECTED);
+            }
+            log.info("pending 수정 반영: user={} slug={} coffeeNameRejected={} dateConflict={}",
+                    userId, revised.draft().slug(), outcome.coffeeNameRejected(), revised.dateConflict());
         } catch (Exception e) {
             // 수정 병합·전송 실패 — 신규와 달리 기존 pending은 폐기하지 않는다(이전 미리보기가 여전히 유효). 오류만 안내한다(plan §7).
             log.warn("pending 수정 실패(기존 pending 보존): user={}", userId, e);
             responder.post(channelId, REVISE_FAILED);
         }
+    }
+
+    // edit 모드 날짜 이동 충돌 판정(V-10, changes/0012 TΔ5) — 대상 노트에 이동처 date 엔트리가 이미 있으면 충돌.
+    // 대상 자신의 date로는 이동이 아니므로 충돌 아님. 노트/엔트리 소실은 [저장] 시점 방어(commitEdit)가 맡는다.
+    private boolean hasDateConflict(PendingNote pending) {
+        Entry entry = latestEntry(pending.draft());
+        if (entry == null || pending.target() == null || entry.date().equals(pending.target().date())) {
+            return false;
+        }
+        LocalDate movedTo = entry.date();
+        return noteRepository.findBySlug(pending.target().slug())
+                .map(note -> note.entries().stream().anyMatch(e -> movedTo.equals(e.date())))
+                .orElse(false);
     }
 
     @Override

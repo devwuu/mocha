@@ -3,7 +3,6 @@ package com.devwuu.mocha.domain;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
-import tools.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -176,6 +175,7 @@ class DomainSerializationTest {
                 PendingNote.Mode.EDIT,
                 sampleNote(),
                 new PendingNote.EditTarget("coffeevera-yirgacheffe-g1", LocalDate.of(2026, 7, 9)),
+                true,   // 날짜 이동 충돌 경고 — 재시작 후에도 [저장]/[취소]까지 유지돼야 한다(V-10, TΔ5)
                 null,   // match는 record 모드 한정(data-model §2.3)
                 "1720000000.000300",
                 ts
@@ -184,28 +184,14 @@ class DomainSerializationTest {
         String json = mapper.writeValueAsString(editPending);
         PendingNote restored = mapper.readValue(json, PendingNote.class);
 
-        assertThat(json).contains("\"mode\":\"edit\"");
+        assertThat(json).contains("\"mode\":\"edit\"").contains("\"date_conflict\":true");
         assertThat(restored).isEqualTo(editPending);
+        assertThat(restored.dateConflict()).isTrue();
         assertThat(restored.target()).isEqualTo(
                 new PendingNote.EditTarget("coffeevera-yirgacheffe-g1", LocalDate.of(2026, 7, 9)));
     }
 
-    @Test
-    @DisplayName("0012-TΔ1/AC-Δ6: mode·target 없는 기존 pending JSON은 record 모드로 역직렬화(하위 호환)")
-    void legacyPendingJsonDefaultsToRecordMode() throws Exception {
-        OffsetDateTime ts = OffsetDateTime.of(2026, 7, 10, 9, 30, 0, 0, ZoneOffset.ofHours(9));
-        PendingNote original = new PendingNote(sampleNote(), MatchInfo.newNote(), "1720000000.000100", ts);
-
-        // 0012 이전 pending.json 흉내 — mode·target 필드를 제거한 JSON.
-        ObjectNode legacy = (ObjectNode) mapper.readTree(mapper.writeValueAsString(original));
-        legacy.remove("mode");
-        legacy.remove("target");
-        PendingNote restored = mapper.readValue(legacy.toString(), PendingNote.class);
-
-        assertThat(restored.mode()).isEqualTo(PendingNote.Mode.RECORD);
-        assertThat(restored.target()).isNull();
-        assertThat(restored).isEqualTo(original);
-    }
+    // (0012 이전 pending.json 하위 호환 테스트는 제거 — 기존 데이터는 배포 전 수동 삭제로 결정, delta 비범위.)
 
     @Test
     @DisplayName("0012-TΔ1: 알 수 없는 mode 값은 역직렬화 거부")
