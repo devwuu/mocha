@@ -97,12 +97,12 @@ public class PreviewBlocks {
 
         List<LayoutBlock> blocks = new ArrayList<>();
         blocks.add(header(h -> h.text(plainText(HEADER))));
-        blocks.add(section(s -> s.text(markdownText(matchLine(pending.match(), draft.coffeeName())))));
+        blocks.add(section(s -> s.text(markdownText(matchLine(pending.match(), value(draft.coffeeName()))))));
         blocks.add(divider());
 
         // 출처 표시 필드 — 2열 fields. null 값은 생략, source=search면 (검색) 표기(AC-2).
         List<TextObject> fields = new ArrayList<>();
-        addField(fields, LABEL_COFFEE, draft.coffeeName(), null);
+        addField(fields, LABEL_COFFEE, value(draft.coffeeName()), null);
         addSourcedField(fields, LABEL_ROASTERY, draft.roastery());
         addSourcedField(fields, LABEL_ORIGIN, draft.origin());
         addSourcedField(fields, LABEL_PROCESS, draft.process());
@@ -138,6 +138,10 @@ public class PreviewBlocks {
         }
         // 갱신/추가 구분은 pending(MatchInfo)에 없다 — "기록"으로 중립 표기(tasks T3-3 라인).
         return String.format(MATCH_EXISTING_FMT, coffeeName, match.date());
+    }
+
+    private static String value(Sourced<String> sourced) {
+        return sourced == null ? null : sourced.value();
     }
 
     private static void addSourcedField(List<TextObject> fields, String label, Sourced<String> sourced) {

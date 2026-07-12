@@ -39,7 +39,7 @@ class JsonFileNoteRepositoryTest {
 
     private static NoteMeta sampleMeta() {
         return new NoteMeta(
-                "커피베라 예가체프 G1",
+                Sourced.user("커피베라 예가체프 G1"),
                 Sourced.user("커피베라"),
                 Sourced.search("에티오피아 예가체프"),
                 Sourced.search("워시드"),
@@ -50,7 +50,7 @@ class JsonFileNoteRepositoryTest {
     }
 
     private static Entry entry(LocalDate date, String taste) {
-        return new Entry(date, taste, Rating.GOOD, List.of(), OffsetDateTime.now(FIXED));
+        return new Entry(date, taste, Rating.GOOD, null, List.of(), OffsetDateTime.now(FIXED));
     }
 
     @Test

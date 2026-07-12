@@ -7,7 +7,7 @@ import java.util.List;
  * <p>{@link com.devwuu.mocha.repository.NoteRepository#upsertEntry}가 신규 노트를 만들 때 쓴다
  * (ref: plan.md §3 upsertEntry(slug, noteMeta, entry)).
  *
- * @param coffeeName    표시용 커피 이름.
+ * @param coffeeName    표시용 커피 이름 — 출처 표시 필드(source ∈ {user, photo}, 검색 미채움, V-5).
  * @param roastery      로스터리 — 출처 표시 필드.
  * @param origin        원산지 — 출처 표시 필드.
  * @param process       가공 방식 — 출처 표시 필드.
@@ -16,7 +16,7 @@ import java.util.List;
  * @param sources       검색 참조 링크 (FR-12).
  */
 public record NoteMeta(
-        String coffeeName,
+        Sourced<String> coffeeName,
         Sourced<String> roastery,
         Sourced<String> origin,
         Sourced<String> process,

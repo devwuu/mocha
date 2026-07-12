@@ -87,7 +87,7 @@ public class PendingReviser {
     private String buildUserPrompt(Note draft, String revisionText) {
         Entry entry = latestEntry(draft);
         CurrentDraft current = new CurrentDraft(
-                draft.coffeeName(),
+                valueOf(draft.coffeeName()),
                 valueOf(draft.roastery()),
                 valueOf(draft.origin()),
                 valueOf(draft.process()),
@@ -108,7 +108,7 @@ public class PendingReviser {
 
         Note revisedDraft = new Note(
                 draft.slug(),
-                patch.coffeeName() != null ? patch.coffeeName() : draft.coffeeName(),
+                promote(draft.coffeeName(), patch.coffeeName()),
                 promote(draft.roastery(), patch.roastery()),
                 promote(draft.origin(), patch.origin()),
                 promote(draft.process(), patch.process()),
@@ -144,6 +144,7 @@ public class PendingReviser {
                 entry.date(),
                 patch.myTaste() != null ? patch.myTaste() : entry.myTaste(),
                 patch.rating() != null ? patch.rating() : entry.rating(),
+                entry.recipe(),  // 레시피는 사용자 발화 전용 — 수정 스키마에 없어 보존(ADR-22)
                 entry.photos(),
                 entry.updatedAt()));
         return List.copyOf(revised);

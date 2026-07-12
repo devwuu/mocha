@@ -34,7 +34,7 @@ public class NoteEnricher {
      * @param draft 사용자 언급분이 {@code source=user}로 마킹된 상태를 전제. 미언급 필드는 null.
      */
     public NoteMeta enrich(NoteMeta draft) {
-        SearchResult result = searchClient.search(new SearchQuery(draft.coffeeName(), valueOf(draft.roastery())));
+        SearchResult result = searchClient.search(new SearchQuery(valueOf(draft.coffeeName()), valueOf(draft.roastery())));
 
         return new NoteMeta(
                 draft.coffeeName(),

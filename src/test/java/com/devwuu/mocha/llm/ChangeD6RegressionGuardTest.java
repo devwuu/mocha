@@ -74,7 +74,7 @@ class ChangeD6RegressionGuardTest {
     private static NoteMeta draft() {
         // origin/roastLevel/officialNotes는 빈 draft(보강 대상), roastery·process는 사용자 명시(불가침).
         return new NoteMeta(
-                "와이키키",
+                Sourced.user("와이키키"),
                 Sourced.user("모모스 커피"),
                 null,
                 Sourced.user("내추럴"),

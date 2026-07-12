@@ -28,12 +28,13 @@ class DomainSerializationTest {
                 LocalDate.of(2026, 7, 10),
                 "새콤하고 좋았다",
                 Rating.GOOD,
+                new Recipe(15.0, 240.0, "중간"),   // 레시피 포함 — Note 왕복에 recipe도 실린다(FR-18)
                 List.of("photos/coffeevera-yirgacheffe-g1/2026-07-10/a.jpg"),
                 ts
         );
         return new Note(
                 "coffeevera-yirgacheffe-g1",
-                "커피베라 예가체프 G1",
+                Sourced.user("커피베라 예가체프 G1"),
                 Sourced.user("커피베라"),
                 Sourced.search("에티오피아 예가체프"),
                 Sourced.search("워시드"),
@@ -85,7 +86,9 @@ class DomainSerializationTest {
                 .contains("\"roast_level\"")
                 .contains("\"official_notes\"")
                 .contains("\"my_taste\"")
-                .contains("\"created_at\"");
+                .contains("\"created_at\"")
+                .contains("\"dose_g\"")     // recipe 필드 snake_case(FR-18)
+                .contains("\"water_ml\"");
 
         String matchJson = mapper.writeValueAsString(MatchInfo.newNote());
         assertThat(matchJson).isEqualTo("{\"type\":\"new\"}");
@@ -104,12 +107,79 @@ class DomainSerializationTest {
     @Test
     @DisplayName("V-1: rating null 허용(미언급)")
     void nullRatingAllowed() throws Exception {
-        Entry entry = new Entry(LocalDate.of(2026, 7, 10), "무난", null, List.of(), null);
+        Entry entry = new Entry(LocalDate.of(2026, 7, 10), "무난", null, null, List.of(), null);
 
         String json = mapper.writeValueAsString(entry);
         Entry restored = mapper.readValue(json, Entry.class);
 
         assertThat(restored.rating()).isNull();
         assertThat(restored).isEqualTo(entry);
+    }
+
+    // --- TΔ1: recipe (FR-18, V-8, changes/0010) ---
+
+    @Test
+    @DisplayName("TΔ1/FR-18: recipe 직렬화 왕복(dose_g·water_ml·grind)")
+    void recipeRoundTrip() throws Exception {
+        Entry entry = new Entry(
+                LocalDate.of(2026, 7, 10), "새콤", Rating.GOOD,
+                new Recipe(15.0, 240.0, "중간"), List.of(), null);
+
+        String json = mapper.writeValueAsString(entry);
+        Entry restored = mapper.readValue(json, Entry.class);
+
+        assertThat(json).contains("\"dose_g\":15").contains("\"water_ml\":240").contains("\"grind\":\"중간\"");
+        assertThat(restored).isEqualTo(entry);
+        assertThat(restored.recipe()).isEqualTo(new Recipe(15.0, 240.0, "중간"));
+    }
+
+    @Test
+    @DisplayName("TΔ1/AC-Δ8: recipe 미언급 엔트리는 recipe=null로 직렬화·왕복된다")
+    void recipeNullRoundTrip() throws Exception {
+        Entry entry = new Entry(LocalDate.of(2026, 7, 10), "무난", Rating.GOOD, null, List.of(), null);
+
+        String json = mapper.writeValueAsString(entry);
+        Entry restored = mapper.readValue(json, Entry.class);
+
+        assertThat(json).contains("\"recipe\":null");
+        assertThat(restored.recipe()).isNull();
+        assertThat(restored).isEqualTo(entry);
+    }
+
+    @Test
+    @DisplayName("TΔ1/V-8: recipe 3항목 전무면 normalize가 null로 정규화한다")
+    void recipeNormalizeAllNull() {
+        assertThat(Recipe.normalize(null, null, null)).isNull();
+        assertThat(Recipe.normalize(null, null, "  ")).isNull();  // 공백 grind도 전무로 간주
+    }
+
+    @Test
+    @DisplayName("TΔ1/V-8: 위반 값(음수·0·공백)은 해당 항목만 null로 드롭한다")
+    void recipeNormalizeDropsInvalid() {
+        // dose 음수·water 0 → 각 null 드롭, grind만 살아 Recipe는 유지(부속 정보라 저장 거부 아님).
+        Recipe dropped = Recipe.normalize(-15.0, 0.0, "굵게");
+        assertThat(dropped).isEqualTo(new Recipe(null, null, "굵게"));
+
+        // 정상 양수는 보존, 공백 grind만 드롭.
+        Recipe partial = Recipe.normalize(15.0, 240.0, "   ");
+        assertThat(partial).isEqualTo(new Recipe(15.0, 240.0, null));
+    }
+
+    // --- TΔ1: coffee_name Sourced 승격 (V-5, changes/0010) ---
+
+    @Test
+    @DisplayName("TΔ1/V-5: coffee_name은 {value, source} 객체로 왕복된다(user·photo)")
+    void coffeeNameSourcedRoundTrip() throws Exception {
+        for (Source src : List.of(Source.USER, Source.PHOTO)) {
+            Sourced<String> coffeeName = new Sourced<>("커피베라 예가체프 G1", src);
+            String json = mapper.writeValueAsString(coffeeName);
+            @SuppressWarnings("unchecked")
+            Sourced<String> restored = mapper.readValue(json, Sourced.class);
+
+            assertThat(json)
+                    .contains("\"value\":\"커피베라 예가체프 G1\"")
+                    .contains("\"source\":\"" + src.json() + "\"");
+            assertThat(restored).isEqualTo(coffeeName);
+        }
     }
 }

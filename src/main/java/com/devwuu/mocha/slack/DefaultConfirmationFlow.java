@@ -202,8 +202,9 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
 
             // 흡수한 버퍼 사진의 임시 미리보기 경로. 실제 저장 경로는 [저장] 시 commit이 확정한다(V-4).
             List<String> photoPaths = provisionalPhotoPaths(slug, match.targetDate(), bufferNames);
-            Entry entry = new Entry(match.targetDate(), extraction.myTaste(), extraction.rating(), photoPaths, now);
-            Note draft = assembleDraft(slug, extraction.coffeeName(), enriched, entry, now);
+            // recipe는 추출 스키마 연결(TΔ2) 전까지 null — 사용자 발화 전용이라 검색·OCR이 채우지 않는다(ADR-22).
+            Entry entry = new Entry(match.targetDate(), extraction.myTaste(), extraction.rating(), null, photoPaths, now);
+            Note draft = assembleDraft(slug, userSourced(extraction.coffeeName()), enriched, entry, now);
             MatchInfo matchInfo = match.toMatchInfo();
 
             // POLICY: 노트 JSON은 건드리지 않는다 — 미리보기 단계는 pending에만 기록한다(AC-4).
@@ -248,7 +249,8 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
     private static List<NoteCandidate> candidatesOf(List<Note> existingNotes) {
         return existingNotes.stream()
                 .map(note -> new NoteCandidate(
-                        note.slug(), note.coffeeName(),
+                        note.slug(),
+                        note.coffeeName() == null ? null : note.coffeeName().value(),
                         note.roastery() == null ? null : note.roastery().value()))
                 .toList();
     }
@@ -256,7 +258,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
     // 추출 결과를 "사용자가 말한 것"만 담은 NoteMeta로 조립 — 언급한 필드만 source=user, 나머지는 null(보강 대상).
     private static NoteMeta userDraftMeta(ExtractionResult extraction) {
         return new NoteMeta(
-                extraction.coffeeName(),
+                userSourced(extraction.coffeeName()),
                 userSourced(extraction.roastery()),
                 userSourced(extraction.origin()),
                 userSourced(extraction.process()),
@@ -266,7 +268,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
     }
 
     // 보강 완료된 메타 + 이번 시음 엔트리 1건으로 확인용 draft Note를 만든다.
-    private static Note assembleDraft(String slug, String coffeeName, NoteMeta meta, Entry entry, OffsetDateTime now) {
+    private static Note assembleDraft(String slug, Sourced<String> coffeeName, NoteMeta meta, Entry entry, OffsetDateTime now) {
         return new Note(
                 slug,
                 coffeeName,
@@ -336,7 +338,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         String date = entry.date().toString();
         List<String> committedPhotos = photoStore.commit(userId, slug, date);
         Entry committedEntry = new Entry(
-                entry.date(), entry.myTaste(), entry.rating(), committedPhotos, entry.updatedAt());
+                entry.date(), entry.myTaste(), entry.rating(), entry.recipe(), committedPhotos, entry.updatedAt());
 
         // POLICY: 사용자 [저장] 확인을 거친 뒤에만 저장한다 (ref: plan.md#ADR-3, AC-4).
         Note saved = noteRepository.upsertEntry(slug, metaOf(draft), committedEntry);
@@ -429,7 +431,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         }
         List<String> merged = new ArrayList<>(entry.photos());
         merged.addAll(provisionalPhotoPaths(draft.slug(), entry.date(), newNames));
-        Entry withPhotos = new Entry(entry.date(), entry.myTaste(), entry.rating(), merged, entry.updatedAt());
+        Entry withPhotos = new Entry(entry.date(), entry.myTaste(), entry.rating(), entry.recipe(), merged, entry.updatedAt());
         PendingNote updated = new PendingNote(
                 withLatestEntry(draft, withPhotos), pending.match(), pending.previewTs(), pending.createdAt());
 

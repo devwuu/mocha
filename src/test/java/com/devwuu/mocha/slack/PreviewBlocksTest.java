@@ -35,7 +35,7 @@ class PreviewBlocksTest {
     private final PreviewBlocks previewBlocks = new PreviewBlocks();
 
     private static Entry entry(String myTaste, Rating rating) {
-        return new Entry(LocalDate.of(2026, 7, 10), myTaste, rating, List.of(), OffsetDateTime.now());
+        return new Entry(LocalDate.of(2026, 7, 10), myTaste, rating, null, List.of(), OffsetDateTime.now());
     }
 
     private static String md(TextObject text) {
@@ -47,7 +47,7 @@ class PreviewBlocksTest {
     void existingMatchAndSearchTags() {
         Note draft = new Note(
                 "coffeevera-yirgacheffe-g1",
-                "커피베라 예가체프 G1",
+                Sourced.user("커피베라 예가체프 G1"),
                 Sourced.user("커피베라"),          // 사용자 값 — (검색) 없음
                 Sourced.search("에티오피아"),        // 검색 보강 — (검색)
                 Sourced.search("워시드"),
@@ -113,7 +113,7 @@ class PreviewBlocksTest {
     void newMatchWithoutSearch() {
         Note draft = new Note(
                 "coffeevera-yirgacheffe-g1",
-                "커피베라 예가체프 G1",
+                Sourced.user("커피베라 예가체프 G1"),
                 Sourced.user("커피베라"),
                 null, null, null,
                 null,
@@ -142,7 +142,7 @@ class PreviewBlocksTest {
     void buildFinalizedDropsButtonsKeepsFields() {
         Note draft = new Note(
                 "coffeevera-yirgacheffe-g1",
-                "커피베라 예가체프 G1",
+                Sourced.user("커피베라 예가체프 G1"),
                 Sourced.user("커피베라"),
                 Sourced.search("에티오피아"),
                 Sourced.search("워시드"),

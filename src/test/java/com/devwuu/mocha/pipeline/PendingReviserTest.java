@@ -53,11 +53,11 @@ class PendingReviserTest {
     /** origin=검색보강, 엔트리 1건을 담은 확인 대기 노트. */
     private static PendingNote pendingWithSearchOrigin() {
         Note draft = new Note(
-                "coffeevera-yirgacheffe-g1", "커피베라 예가체프 G1",
+                "coffeevera-yirgacheffe-g1", Sourced.user("커피베라 예가체프 G1"),
                 Sourced.user("커피베라"),
                 Sourced.search("에티오피아"),   // 검색 보강값 — 수정으로 user 승격 대상
                 null, null, null, List.of(),
-                List.of(new Entry(DATE, "새콤함", Rating.GOOD, List.of(), TS)),
+                List.of(new Entry(DATE, "새콤함", Rating.GOOD, null, List.of(), TS)),
                 TS, TS);
         return new PendingNote(draft, MatchInfo.newNote(), "1720000000.000999", TS);
     }
@@ -117,7 +117,7 @@ class PendingReviserTest {
         PendingNote revised = reviser(llm).revise(pendingWithSearchOrigin(), "원산지는 콜롬비아야");
 
         Note draft = revised.draft();
-        assertThat(draft.coffeeName()).isEqualTo("커피베라 예가체프 G1"); // 미변경
+        assertThat(draft.coffeeName().value()).isEqualTo("커피베라 예가체프 G1"); // 미변경
         assertThat(draft.roastery().value()).isEqualTo("커피베라");
         assertThat(draft.roastery().source()).isEqualTo(Source.USER);
         assertThat(draft.entries().get(0).myTaste()).isEqualTo("새콤함"); // 미변경

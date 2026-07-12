@@ -10,6 +10,7 @@ import java.util.List;
  * @param date      YYYY-MM-DD, Asia/Seoul 기준. entries 내 유일 키 (V-3).
  * @param myTaste   내가 느낀 맛. 자유 텍스트, 키워드화하지 않음 (US-3).
  * @param rating    4범주 평가 또는 null(미언급).
+ * @param recipe    추출 레시피 또는 null(3항목 전무·미언급). 사용자 발화 전용 (FR-18, changes/0010).
  * @param photos    상대 경로(photos/&lt;slug&gt;/&lt;date&gt;/ 하위)만 (V-4).
  * @param updatedAt 같은 날 덮어쓰기 추적용 최종 시각(이력 아님).
  */
@@ -17,6 +18,7 @@ public record Entry(
         LocalDate date,
         String myTaste,
         Rating rating,
+        Recipe recipe,
         List<String> photos,
         OffsetDateTime updatedAt
 ) {

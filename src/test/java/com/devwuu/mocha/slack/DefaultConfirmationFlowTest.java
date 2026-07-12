@@ -365,9 +365,9 @@ class DefaultConfirmationFlowTest {
 
     private static PendingNote pendingWith(String slug) {
         Entry entry = new Entry(
-                LocalDate.of(2026, 7, 11), "새콤하고 좋았다", Rating.GOOD, List.of(), OffsetDateTime.now());
+                LocalDate.of(2026, 7, 11), "새콤하고 좋았다", Rating.GOOD, null, List.of(), OffsetDateTime.now());
         Note draft = new Note(
-                slug, "커피베라 예가체프",
+                slug, Sourced.user("커피베라 예가체프"),
                 Sourced.user("커피베라"), Sourced.search("에티오피아"), null, null,
                 null, List.of("https://example.com/coffee"),
                 List.of(entry), OffsetDateTime.now(), OffsetDateTime.now());
@@ -403,7 +403,7 @@ class DefaultConfirmationFlowTest {
         // 미리보기가 실제로 발행됐다(AC-1).
         assertNotNull(previewMessenger.published, "미리보기가 전송되어야 한다");
         Note draft = previewMessenger.published.draft();
-        assertEquals("커피베라 예가체프", draft.coffeeName());
+        assertEquals("커피베라 예가체프", draft.coffeeName().value());
         assertEquals(1, draft.entries().size(), "이번 시음 엔트리 1건이 조립된다");
         assertEquals(LocalDate.of(2026, 7, 11), draft.entries().get(0).date(), "target_date가 today로 기본화된다");
         assertEquals(MatchInfo.MatchType.NEW, previewMessenger.published.match().type(), "후보 없음 → 신규 판정");
@@ -516,7 +516,7 @@ class DefaultConfirmationFlowTest {
 
         // 게이트가 실패해도 기록은 유실되지 않는다 — 미리보기가 정상 도착한다(AC-Δ4/AC-21).
         assertNotNull(previewMessenger.published, "게이트 실패 시 record로 간주해 미리보기가 도착한다");
-        assertEquals("커피베라 예가체프", previewMessenger.published.draft().coffeeName());
+        assertEquals("커피베라 예가체프", previewMessenger.published.draft().coffeeName().value());
         assertTrue(responder.messages.isEmpty(), "fail-open은 오류 안내로 수렴하지 않는다");
     }
 

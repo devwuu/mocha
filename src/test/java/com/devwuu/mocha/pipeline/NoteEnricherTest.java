@@ -32,7 +32,7 @@ class NoteEnricherTest {
     }
 
     private static NoteMeta draft(Sourced<String> roastery, Sourced<String> origin, Sourced<String> process) {
-        return new NoteMeta("커피베라 예가체프 G1", roastery, origin, process, null, null, List.of());
+        return new NoteMeta(Sourced.user("커피베라 예가체프 G1"), roastery, origin, process, null, null, List.of());
     }
 
     @Test
@@ -113,7 +113,7 @@ class NoteEnricherTest {
         search.response = new SearchResult(null, null, null, null, List.of("검색노트"), List.of());
 
         NoteMeta input = new NoteMeta(
-                "커피베라 예가체프 G1", Sourced.user("커피베라"), null, null, null,
+                Sourced.user("커피베라 예가체프 G1"), Sourced.user("커피베라"), null, null, null,
                 Sourced.user(List.of("내가부른노트")), List.of());
         NoteMeta result = new NoteEnricher(search).enrich(input);
 
@@ -128,7 +128,7 @@ class NoteEnricherTest {
                 null, null, null, null, List.of(), List.of("https://a.example", "https://b.example"));
 
         NoteMeta input = new NoteMeta(
-                "커피", Sourced.user("로스터리"), null, null, null, null,
+                Sourced.user("커피"), Sourced.user("로스터리"), null, null, null, null,
                 List.of("https://a.example"));
         NoteMeta result = new NoteEnricher(search).enrich(input);
 

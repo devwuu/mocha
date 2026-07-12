@@ -119,7 +119,7 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
         Entry entry = ref.entry();
         return new NoteView.Row(
                 cardHref(ref.note().slug(), entry.date()),
-                ref.note().coffeeName(),
+                value(ref.note().coffeeName()),
                 value(ref.note().roastery()),
                 value(ref.note().origin()),
                 entry.date(),
@@ -135,7 +135,7 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
         Entry entry = ref.entry();
         NoteView.EntryCard card = new NoteView.EntryCard(
                 note.slug(),
-                note.coffeeName(),
+                value(note.coffeeName()),
                 note.roastery(),
                 note.origin(),
                 note.process(),

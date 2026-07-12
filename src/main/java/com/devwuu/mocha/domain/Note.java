@@ -8,7 +8,7 @@ import java.util.List;
  * <p>파생 값(엔트리 수 등)은 저장하지 않고 렌더 시 계산(POLICY, ADR-1).
  *
  * @param slug          kebab-case 식별자이자 파일명. 유일성 보장 (V-2).
- * @param coffeeName    표시용 커피 이름.
+ * @param coffeeName    표시용 커피 이름 — 출처 표시 필드(source ∈ {user, photo}, 검색 미채움, V-5).
  * @param roastery      로스터리 — 출처 표시 필드.
  * @param origin        원산지 — 출처 표시 필드(단일 원산지 fallback은 source=search, FR-3/AC-16).
  * @param process       가공 방식 — 출처 표시 필드.
@@ -21,7 +21,7 @@ import java.util.List;
  */
 public record Note(
         String slug,
-        String coffeeName,
+        Sourced<String> coffeeName,
         Sourced<String> roastery,
         Sourced<String> origin,
         Sourced<String> process,
