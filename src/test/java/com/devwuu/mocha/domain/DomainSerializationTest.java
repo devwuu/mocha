@@ -3,6 +3,7 @@ package com.devwuu.mocha.domain;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -163,6 +164,55 @@ class DomainSerializationTest {
         // 정상 양수는 보존, 공백 grind만 드롭.
         Recipe partial = Recipe.normalize(15.0, 240.0, "   ");
         assertThat(partial).isEqualTo(new Recipe(15.0, 240.0, null));
+    }
+
+    // --- 0012 TΔ1: PendingNote mode·target (FR-21, changes/0012) ---
+
+    @Test
+    @DisplayName("0012-TΔ1: edit 모드 PendingNote(mode+target) 직렬화 왕복 동일성")
+    void editModePendingNoteRoundTrip() throws Exception {
+        OffsetDateTime ts = OffsetDateTime.of(2026, 7, 10, 9, 30, 0, 0, ZoneOffset.ofHours(9));
+        PendingNote editPending = new PendingNote(
+                PendingNote.Mode.EDIT,
+                sampleNote(),
+                new PendingNote.EditTarget("coffeevera-yirgacheffe-g1", LocalDate.of(2026, 7, 9)),
+                null,   // match는 record 모드 한정(data-model §2.3)
+                "1720000000.000300",
+                ts
+        );
+
+        String json = mapper.writeValueAsString(editPending);
+        PendingNote restored = mapper.readValue(json, PendingNote.class);
+
+        assertThat(json).contains("\"mode\":\"edit\"");
+        assertThat(restored).isEqualTo(editPending);
+        assertThat(restored.target()).isEqualTo(
+                new PendingNote.EditTarget("coffeevera-yirgacheffe-g1", LocalDate.of(2026, 7, 9)));
+    }
+
+    @Test
+    @DisplayName("0012-TΔ1/AC-Δ6: mode·target 없는 기존 pending JSON은 record 모드로 역직렬화(하위 호환)")
+    void legacyPendingJsonDefaultsToRecordMode() throws Exception {
+        OffsetDateTime ts = OffsetDateTime.of(2026, 7, 10, 9, 30, 0, 0, ZoneOffset.ofHours(9));
+        PendingNote original = new PendingNote(sampleNote(), MatchInfo.newNote(), "1720000000.000100", ts);
+
+        // 0012 이전 pending.json 흉내 — mode·target 필드를 제거한 JSON.
+        ObjectNode legacy = (ObjectNode) mapper.readTree(mapper.writeValueAsString(original));
+        legacy.remove("mode");
+        legacy.remove("target");
+        PendingNote restored = mapper.readValue(legacy.toString(), PendingNote.class);
+
+        assertThat(restored.mode()).isEqualTo(PendingNote.Mode.RECORD);
+        assertThat(restored.target()).isNull();
+        assertThat(restored).isEqualTo(original);
+    }
+
+    @Test
+    @DisplayName("0012-TΔ1: 알 수 없는 mode 값은 역직렬화 거부")
+    void invalidPendingModeRejected() {
+        assertThatThrownBy(() -> mapper.readValue("\"delete\"", PendingNote.Mode.class))
+                .isInstanceOf(JacksonException.class)
+                .hasMessageContaining("unknown pending mode");
     }
 
     // --- TΔ1: coffee_name Sourced 승격 (V-5, changes/0010) ---

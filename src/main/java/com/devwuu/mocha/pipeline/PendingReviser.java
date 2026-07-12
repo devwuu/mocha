@@ -119,8 +119,8 @@ public class PendingReviser {
                 draft.createdAt(),
                 draft.updatedAt());
 
-        // match·preview_ts·created_at 보존 — 필드 수정은 매칭·TTL·미리보기 대상 메시지를 바꾸지 않는다.
-        return new PendingNote(revisedDraft, pending.match(), pending.previewTs(), pending.createdAt());
+        // mode·target·match·preview_ts·created_at 보존 — 필드 수정은 세션 종류·매칭·TTL·미리보기 대상을 바꾸지 않는다.
+        return pending.withDraft(revisedDraft);
     }
 
     // 수정된 값이 있으면 source=user로 승격, 없으면 기존 필드(출처 포함) 유지.

@@ -11,7 +11,10 @@ import com.devwuu.mocha.json.MochaObjectMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
@@ -85,6 +88,50 @@ class JsonFilePendingStoreTest {
         store.put(USER, pending);
 
         assertThat(store.get(USER)).contains(pending);
+    }
+
+    // --- 0012 TΔ1: edit 모드 pending (FR-21) ---
+
+    @Test
+    @DisplayName("0012-TΔ1/AC-Δ5: edit 모드 pending은 재시작 후에도 mode·target이 보존된다")
+    void editModePendingSurvivesRestart() {
+        OffsetDateTime createdAt = OffsetDateTime.now(FIXED);
+        PendingNote record = sampleDraft(createdAt);
+        PendingNote editPending = new PendingNote(
+                PendingNote.Mode.EDIT,
+                record.draft(),
+                new PendingNote.EditTarget("coffeevera-yirgacheffe-g1", LocalDate.of(2026, 7, 9)),
+                null,
+                record.previewTs(),
+                createdAt
+        );
+
+        new JsonFilePendingStore(dataDir, MochaObjectMapper.create(), TTL, FIXED).put(USER, editPending);
+
+        // 프로세스 재시작을 흉내내 별개 인스턴스로 조회 — 수정 draft 생존(AC-40).
+        PendingStore reopened = new JsonFilePendingStore(dataDir, MochaObjectMapper.create(), TTL, FIXED);
+        assertThat(reopened.get(USER)).contains(editPending);
+        assertThat(reopened.get(USER).orElseThrow().mode()).isEqualTo(PendingNote.Mode.EDIT);
+        assertThat(reopened.get(USER).orElseThrow().target())
+                .isEqualTo(new PendingNote.EditTarget("coffeevera-yirgacheffe-g1", LocalDate.of(2026, 7, 9)));
+    }
+
+    @Test
+    @DisplayName("0012-TΔ1/AC-Δ6: mode 없는 0012 이전 pending.json 파일은 record 모드로 로드된다(하위 호환)")
+    void legacyPendingFileLoadsAsRecordMode() throws Exception {
+        OffsetDateTime createdAt = OffsetDateTime.now(FIXED);
+        PendingNote original = sampleDraft(createdAt);
+
+        // 0012 이전 포맷 흉내 — mode·target 필드가 없는 pending.json을 직접 심는다.
+        ObjectMapper mapper = MochaObjectMapper.create();
+        ObjectNode legacy = (ObjectNode) mapper.readTree(mapper.writeValueAsString(original));
+        legacy.remove("mode");
+        legacy.remove("target");
+        Files.writeString(dataDir.resolve("pending.json"), legacy.toString());
+
+        JsonFilePendingStore store = new JsonFilePendingStore(dataDir, mapper, TTL, FIXED);
+        assertThat(store.get(USER)).contains(original);
+        assertThat(store.get(USER).orElseThrow().mode()).isEqualTo(PendingNote.Mode.RECORD);
     }
 
     @Test

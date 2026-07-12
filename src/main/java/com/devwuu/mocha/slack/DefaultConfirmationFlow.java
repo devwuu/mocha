@@ -648,8 +648,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         List<String> merged = new ArrayList<>(entry.photos());
         merged.addAll(provisionalPhotoPaths(draft.slug(), entry.date(), newNames));
         Entry withPhotos = new Entry(entry.date(), entry.myTaste(), entry.rating(), entry.recipe(), merged, entry.updatedAt());
-        PendingNote updated = new PendingNote(
-                withLatestEntry(draft, withPhotos), pending.match(), pending.previewTs(), pending.createdAt());
+        PendingNote updated = pending.withDraft(withLatestEntry(draft, withPhotos));
 
         pendingStore.put(userId, updated);
         previewMessenger.publish(channelId, updated); // preview_ts 있음 → 같은 미리보기 edit
