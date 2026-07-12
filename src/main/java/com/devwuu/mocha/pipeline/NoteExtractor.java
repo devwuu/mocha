@@ -26,7 +26,7 @@ public class NoteExtractor {
             {
               "type": "object",
               "additionalProperties": false,
-              "required": ["coffee_name","roastery","origin","process","roast_level","my_taste","rating","recipe","matched_slug","target_date"],
+              "required": ["coffee_name","roastery","origin","process","roast_level","my_taste","rating","recipe","matched_slug","references_past","target_date"],
               "properties": {
                 "coffee_name":  {"type": ["string","null"], "description": "표시용 커피 이름. 언급 없으면 null."},
                 "roastery":     {"type": ["string","null"], "description": "로스터리. 언급 없으면 null."},
@@ -47,6 +47,7 @@ public class NoteExtractor {
                   }
                 },
                 "matched_slug": {"type": ["string","null"], "description": "existing_notes 중 같은 커피의 slug. 확신이 없으면 null."},
+                "references_past": {"type": "boolean", "description": "'저번에', '그때 그', '또 마셨어' 등 기존 기록을 가리키는 참조 표현이 있으면 true. 없으면 false(기본)."},
                 "target_date":  {"type": ["string","null"], "description": "YYYY-MM-DD. '어제' 등 상대 날짜를 today 기준으로 해석. 날짜 언급이 없으면 today."}
               }
             }
@@ -67,6 +68,7 @@ public class NoteExtractor {
               맛/취향에 대한 감상이 있으면 위 4범주 중 가장 가까운 것을 고르고, 정말 판단 불가할 때만 null로 둔다.
             - recipe는 발화에 추출(브루잉) 레시피가 섞여 있을 때만 채운다("원두 15g에 물 240 부어서…" 등). dose_g(원두량 g)·water_ml(물량 ml)·grind(분쇄도) 중 사용자가 말한 항목만 넣고, 말하지 않은 항목은 null로 둔다. 레시피 언급이 아예 없으면 recipe 자체를 null로 둔다. 값을 상식으로 추측하지 마라(레시피는 사용자 발화 전용 — 검색·OCR이 채우지 않는다).
             - matched_slug는 existing_notes에 같은 커피가 있을 때만 그 slug를 넣는다. 없거나 애매하면 null.
+            - references_past는 사용자가 "저번에", "그때 그", "또 마셨어"처럼 자신의 기존 기록을 가리키는 참조 표현을 썼을 때만 true다. 그런 표현이 없으면 false. 커피 이름이 익숙해 보인다는 이유만으로 true로 하지 마라 — 발화 속 참조 표현이 근거다.
             - target_date는 today를 기준으로 '어제', '그저께', '지난 주말' 같은 상대 날짜를 해석한 YYYY-MM-DD다. 날짜 언급이 없으면 today를 그대로 쓴다.
             입력은 message/today/existing_notes를 담은 JSON으로 주어진다.
             """;

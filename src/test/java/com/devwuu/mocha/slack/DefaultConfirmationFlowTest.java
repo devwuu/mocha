@@ -399,7 +399,7 @@ class DefaultConfirmationFlowTest {
     private static ExtractionResult extraction(
             String coffeeName, String roastery, String origin, String myTaste, Rating rating) {
         // targetDate=null → NoteExtractor가 today로 기본화(data-model §4).
-        return new ExtractionResult(coffeeName, roastery, origin, null, null, myTaste, rating, null, null, null);
+        return new ExtractionResult(coffeeName, roastery, origin, null, null, myTaste, rating, null, null, false, null);
     }
 
     private static PendingNote pendingWith(String slug) {

@@ -23,6 +23,8 @@ import java.time.LocalDate;
  *                    검색·OCR 보강 대상 아님(ADR-22, FR-18). 여기 값은 LLM 원본이며 V-8 정규화는
  *                    Entry 조립 시 {@link Recipe#normalize}로 적용한다(음수·0·공백 항목 드롭).
  * @param matchedSlug existing_notes 중 매칭된 slug, 없으면 null(서버가 재검증 — T2-3).
+ * @param referencesPast "저번에/그때 그" 등 기존 기록을 가리키는 참조 표현 여부. 기본 false.
+ *                       매칭 실패 시 FR-14 과거 참조 분기의 신호가 된다(changes/0011).
  * @param targetDate  "어제 마신" 같은 상대 날짜 해석 결과(YYYY-MM-DD). 미해석 시 today로 기본화.
  */
 public record ExtractionResult(
@@ -35,8 +37,15 @@ public record ExtractionResult(
         Rating rating,
         Recipe recipe,
         String matchedSlug,
+        Boolean referencesPast,
         LocalDate targetDate
 ) {
+
+    public ExtractionResult {
+        // 방어적 기본화: 스키마가 required boolean을 강제하지만 LLM/역직렬화의 null·부재를
+        // "참조 아님"으로 수렴시킨다 (data-model.md#4 "기본 false", targetDate 기본화와 같은 정신).
+        referencesPast = referencesPast != null && referencesPast;
+    }
 
     /**
      * target_date가 비었으면 today로 채운 사본을 돌려준다 (data-model.md#4 "기본 today").
@@ -47,6 +56,7 @@ public record ExtractionResult(
             return this;
         }
         return new ExtractionResult(
-                coffeeName, roastery, origin, process, roastLevel, myTaste, rating, recipe, matchedSlug, today);
+                coffeeName, roastery, origin, process, roastLevel, myTaste, rating, recipe, matchedSlug,
+                referencesPast, today);
     }
 }

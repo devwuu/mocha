@@ -43,7 +43,7 @@ class NoteExtractorTest {
     void assemblesRequestPayload() {
         CapturingLlmClient llm = new CapturingLlmClient();
         llm.response = new ExtractionResult("예가체프", null, null, null, null, null, null, null,
-                "coffeevera-yirgacheffe-g1", TODAY);
+                "coffeevera-yirgacheffe-g1", false, TODAY);
 
         extractor(llm).extract(
                 "커피베라 예가체프 마셨는데 새콤",
@@ -63,7 +63,7 @@ class NoteExtractorTest {
         CapturingLlmClient llm = new CapturingLlmClient();
         // LLM이 today를 기준으로 '어제'를 해석해 target_date를 채워 돌려준다.
         llm.response = new ExtractionResult("예가체프", null, null, null, null, "좋았다",
-                Rating.GOOD, null, null, TODAY.minusDays(1));
+                Rating.GOOD, null, null, false, TODAY.minusDays(1));
 
         ExtractionResult result = extractor(llm).extract("어제 마신 예가체프 좋았다", TODAY, List.of());
 
@@ -77,7 +77,7 @@ class NoteExtractorTest {
     void keepsUnmentionedFieldsNull() {
         CapturingLlmClient llm = new CapturingLlmClient();
         llm.response = new ExtractionResult("예가체프", "커피베라", null, null, null, "새콤",
-                null, null, null, TODAY);
+                null, null, null, false, TODAY);
 
         ExtractionResult result = extractor(llm).extract("커피베라 예가체프 새콤", TODAY, List.of());
 
@@ -93,7 +93,7 @@ class NoteExtractorTest {
     void defaultsNullTargetDateToToday() {
         CapturingLlmClient llm = new CapturingLlmClient();
         llm.response = new ExtractionResult("예가체프", null, null, null, null, null,
-                null, null, null, null);
+                null, null, null, false, null);
 
         ExtractionResult result = extractor(llm).extract("예가체프", TODAY, List.of());
 
@@ -114,6 +114,7 @@ class NoteExtractorTest {
                   "rating": "맛있다",
                   "recipe": { "dose_g": 15, "water_ml": 240, "grind": null },
                   "matched_slug": "coffeevera-yirgacheffe-g1",
+                  "references_past": false,
                   "target_date": "2026-07-09"
                 }
                 """;
@@ -124,8 +125,63 @@ class NoteExtractorTest {
         assertThat(result.myTaste()).isEqualTo("새콤하고 좋았다");
         assertThat(result.rating()).isEqualTo(Rating.GOOD);
         assertThat(result.matchedSlug()).isEqualTo("coffeevera-yirgacheffe-g1");
+        assertThat(result.referencesPast()).isFalse();
         assertThat(result.targetDate()).isEqualTo(LocalDate.of(2026, 7, 9));
         assertThat(result.origin()).isNull();
+    }
+
+    @Test
+    @DisplayName("FR-14: references_past=true 응답이 그대로 역직렬화된다 (data-model §4, changes/0011)")
+    void deserializesReferencesPastTrue() {
+        String json = """
+                {
+                  "coffee_name": "예가체프",
+                  "roastery": null, "origin": null, "process": null, "roast_level": null,
+                  "my_taste": "또 마셨는데 여전히 좋다", "rating": null, "recipe": null,
+                  "matched_slug": null,
+                  "references_past": true,
+                  "target_date": "2026-07-10"
+                }
+                """;
+
+        ExtractionResult result = MochaObjectMapper.create().readValue(json, ExtractionResult.class);
+
+        assertThat(result.referencesPast()).isTrue();
+    }
+
+    @Test
+    @DisplayName("FR-14: references_past 부재 시 기본 false다 (data-model §4 '기본 false')")
+    void defaultsReferencesPastToFalse() {
+        String json = """
+                {
+                  "coffee_name": "예가체프",
+                  "roastery": null, "origin": null, "process": null, "roast_level": null,
+                  "my_taste": null, "rating": null, "recipe": null,
+                  "matched_slug": null, "target_date": "2026-07-10"
+                }
+                """;
+
+        ExtractionResult result = MochaObjectMapper.create().readValue(json, ExtractionResult.class);
+
+        assertThat(result.referencesPast()).isFalse();
+    }
+
+    @Test
+    @DisplayName("FR-14: 스키마·프롬프트가 references_past를 계약으로 강제한다 (changes/0011)")
+    void schemaAndPromptDeclareReferencesPastContract() {
+        CapturingLlmClient llm = new CapturingLlmClient();
+        // 참조 표현("저번에 그") — LLM이 references_past=true로 반환한다.
+        llm.response = new ExtractionResult("예가체프", null, null, null, null, "여전히 좋다",
+                null, null, null, true, TODAY);
+
+        ExtractionResult result = extractor(llm).extract("저번에 마신 그 예가체프 또 마셨어", TODAY, List.of());
+
+        // 계약: 추출기가 반환한 references_past를 그대로 통과시킨다(분기 판단은 이후 단계 몫).
+        assertThat(result.referencesPast()).isTrue();
+        // structured output 스키마가 references_past를 required boolean으로 선언해 응답 구조를 강제한다.
+        LlmRequest<?> request = llm.captured;
+        assertThat(request.jsonSchema()).contains("references_past");
+        assertThat(request.systemPrompt()).contains("references_past");
     }
 
     @Test
@@ -152,7 +208,7 @@ class NoteExtractorTest {
         CapturingLlmClient llm = new CapturingLlmClient();
         // 레시피 언급이 없는 감상 — LLM이 recipe를 null로 반환한다.
         llm.response = new ExtractionResult("예가체프", null, null, null, null, "새콤",
-                null, null, null, TODAY);
+                null, null, null, false, TODAY);
 
         ExtractionResult result = extractor(llm).extract("예가체프 새콤하고 좋았다", TODAY, List.of());
 
@@ -164,7 +220,7 @@ class NoteExtractorTest {
     void schemaAndPromptDeclareRecipeContract() {
         CapturingLlmClient llm = new CapturingLlmClient();
         llm.response = new ExtractionResult("예가체프", null, null, null, null, null,
-                null, new Recipe(15.0, 240.0, null), null, TODAY);
+                null, new Recipe(15.0, 240.0, null), null, false, TODAY);
 
         ExtractionResult result = extractor(llm).extract("원두 15g에 물 240 부어서 마셨어", TODAY, List.of());
 
