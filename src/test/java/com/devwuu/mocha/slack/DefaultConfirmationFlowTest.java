@@ -19,9 +19,6 @@ import com.devwuu.mocha.llm.VisionClient;
 import com.devwuu.mocha.llm.VisionExtraction;
 import com.devwuu.mocha.llm.VisionHint;
 import com.devwuu.mocha.pipeline.ExtractionResult;
-import com.devwuu.mocha.pipeline.IntentClassifier;
-import com.devwuu.mocha.pipeline.IntentResult;
-import com.devwuu.mocha.pipeline.MessageIntent;
 import com.devwuu.mocha.pipeline.NoteEnricher;
 import com.devwuu.mocha.pipeline.NoteExtractor;
 import com.devwuu.mocha.pipeline.NoteMatcher;
@@ -164,24 +161,13 @@ class DefaultConfirmationFlowTest {
     private static final class FakeLlmClient implements LlmClient {
         ExtractionResult canned;
         RevisionResult cannedRevision;
-        // 의도 게이트 기본은 record — 게이트 도입 전 startNewNote 테스트가 불변으로 통과하게 한다(AC-Δ5).
-        IntentResult cannedIntent = new IntentResult(MessageIntent.RECORD);
         RuntimeException failure;         // 모든 요청 공통 실패
-        RuntimeException intentFailure;   // 의도 게이트 요청만 실패(fail-open 검증, AC-Δ4)
-        int intentCalls = 0;
 
         @SuppressWarnings("unchecked")
         @Override
         public <T> T complete(LlmRequest<T> request) {
             if (failure != null) {
                 throw failure;
-            }
-            if (request.responseType() == IntentResult.class) {
-                intentCalls++;
-                if (intentFailure != null) {
-                    throw intentFailure;
-                }
-                return (T) cannedIntent;
             }
             if (request.responseType() == RevisionResult.class) {
                 return (T) cannedRevision;
@@ -378,7 +364,6 @@ class DefaultConfirmationFlowTest {
 
     private final FakeVisionClient visionClient = new FakeVisionClient();
 
-    private final IntentClassifier intentClassifier = new IntentClassifier(llmClient, MochaObjectMapper.create());
     private final NoteExtractor extractor = new NoteExtractor(llmClient, MochaObjectMapper.create());
     private final NoteMatcher matcher = new NoteMatcher();
     private final NoteEnricher enricher = new NoteEnricher(searchClient);
@@ -391,7 +376,7 @@ class DefaultConfirmationFlowTest {
 
     private DefaultConfirmationFlow flow(NoteRepository repo) {
         return new DefaultConfirmationFlow(
-                pendingStore, repo, noteRenderer, responder, intentClassifier,
+                pendingStore, repo, noteRenderer, responder,
                 extractor, matcher, enricher, photoInfoExtractor, reviser, previewMessenger,
                 photoDownloader, photoStore, photoBufferStore, BUFFER_WINDOW, clock);
     }
@@ -521,42 +506,51 @@ class DefaultConfirmationFlowTest {
         assertEquals(List.of(DefaultConfirmationFlow.NEW_NOTE_FAILED), responder.messages);
     }
 
-    // --- TΔ3: 입구 의도 게이트([1.5], ADR-18/FR-17, changes/0007) ---
+    // --- TΔ3(changes/0011): 의도별 안내 응답 — 게이트는 라우터 층으로 상향됐다(ADR-24 구현 배치) ---
 
     @Test
-    @DisplayName("AC-Δ3: pending 없음 + 비기록 텍스트(other) → 추출·보강·pending·미리보기 없이 짧은 안내만")
-    void startNewNoteGateBlocksNonRecord() {
+    @DisplayName("AC-20: other 안내(guideNotARecord) → 추출·보강·pending·미리보기 없이 짧은 안내만, 버퍼도 불변")
+    void guideNotARecordRespondsWithoutSideEffects() {
         NoteRepository repo = noteRepository();
-        llmClient.cannedIntent = new IntentResult(MessageIntent.OTHER);
-        // canned 추출 응답을 일부러 두지 않는다 — 파이프라인에 진입하면 아래 안내 단언이 깨져 드러난다.
-        // 윈도우 내 버퍼가 있어도 게이트에서 막히면 건드리지 않아야 한다(AC-Δ3).
+        // 윈도우 내 버퍼가 있어도 안내 응답은 건드리지 않아야 한다(종전 게이트 차단과 동일 계약).
         photoBufferStore.setBuffer(new PhotoBuffer(OffsetDateTime.now(clock), List.of("a.jpg")));
 
-        flow(repo).startNewNote(message("안녕! 뭐하는 봇이야?"));
+        flow(repo).guideNotARecord(message("안녕! 뭐하는 봇이야?"));
 
-        assertEquals(1, llmClient.intentCalls, "입구 의도 게이트가 판정한다");
         assertTrue(pendingStore.puts.isEmpty(), "other면 pending을 만들지 않는다");
         assertNull(previewMessenger.published, "other면 미리보기가 없다");
         assertTrue(repo.findAll().isEmpty(), "other면 노트 JSON도 없다");
         assertEquals(List.of(DefaultConfirmationFlow.NOT_A_RECORD), responder.messages, "짧은 안내로 응답한다");
-        // 버퍼는 소비·폐기되지 않고 그대로 남는다.
-        assertEquals(0, photoBufferStore.clearCount, "게이트 차단은 버퍼를 건드리지 않는다");
-        assertEquals(0, photoStore.discardCount, "게이트 차단은 스테이징을 폐기하지 않는다");
+        assertEquals(0, photoBufferStore.clearCount, "안내 응답은 버퍼를 건드리지 않는다");
+        assertEquals(0, photoStore.discardCount, "안내 응답은 스테이징을 폐기하지 않는다");
     }
 
     @Test
-    @DisplayName("AC-Δ4: 게이트 판정 실패(LLM/스키마 오류) → record로 간주하고 종전 파이프라인 진행(fail-open)")
-    void startNewNoteGateFailsOpen() {
+    @DisplayName("AC-30: record 의도 + 대기 존재(guidePendingExists) → 대기 불변 + 새 대기 미생성, 안내만")
+    void guidePendingExistsLeavesPendingUntouched() {
         NoteRepository repo = noteRepository();
-        llmClient.intentFailure = new LlmException("의도 게이트 호출 실패");
-        llmClient.canned = extraction("커피베라 예가체프", "커피베라", null, "새콤함", Rating.GOOD);
+        PendingNote pending = pendingWith("coffeevera-yirgacheffe");
+        pendingStore.setPending(pending);
 
-        flow(repo).startNewNote(message("커피베라 예가체프 마셨어"));
+        flow(repo).guidePendingExists(message("어제 마신 다른 커피도 기록해줘"));
 
-        // 게이트가 실패해도 기록은 유실되지 않는다 — 미리보기가 정상 도착한다(AC-Δ4/AC-21).
-        assertNotNull(previewMessenger.published, "게이트 실패 시 record로 간주해 미리보기가 도착한다");
-        assertEquals("커피베라 예가체프", previewMessenger.published.draft().coffeeName().value());
-        assertTrue(responder.messages.isEmpty(), "fail-open은 오류 안내로 수렴하지 않는다");
+        assertEquals(List.of(DefaultConfirmationFlow.PENDING_EXISTS), responder.messages, "먼저 저장/취소 안내");
+        assertTrue(pendingStore.puts.isEmpty(), "대기를 덮어쓰지 않는다(대기 불변)");
+        assertEquals(0, pendingStore.clearCount, "대기를 폐기하지 않는다");
+        assertNull(previewMessenger.published, "새 미리보기를 만들지 않는다");
+        assertTrue(repo.findAll().isEmpty(), "노트 JSON도 없다");
+    }
+
+    @Test
+    @DisplayName("FR-17: revise 의도 + 대기 없음(guideNothingToRevise) → 안내만, 어떤 상태도 만들지 않는다")
+    void guideNothingToReviseRespondsOnly() {
+        NoteRepository repo = noteRepository();
+
+        flow(repo).guideNothingToRevise(message("산미는 낮음으로 바꿔줘"));
+
+        assertEquals(List.of(DefaultConfirmationFlow.NOTHING_TO_REVISE), responder.messages);
+        assertTrue(pendingStore.puts.isEmpty(), "pending을 만들지 않는다");
+        assertNull(previewMessenger.published, "미리보기가 없다");
     }
 
     // --- T3-7: pending 수정 오케스트레이션(revisePending) ---
@@ -587,23 +581,6 @@ class DefaultConfirmationFlowTest {
         // 미리보기 단계이므로 노트 JSON은 손대지 않는다(AC-4).
         assertTrue(repo.findAll().isEmpty(), "수정 반영은 노트 JSON을 만들지 않는다");
         assertTrue(responder.messages.isEmpty(), "정상 수정이면 오류 안내가 없다");
-    }
-
-    @Test
-    @DisplayName("AC-Δ5: pending 중 텍스트=수정 경로에는 의도 게이트를 적용하지 않는다(other여도 정상 수정)")
-    void revisePendingSkipsIntentGate() {
-        NoteRepository repo = noteRepository();
-        PendingNote pending = pendingWith("coffeevera-yirgacheffe");
-        pendingStore.setPending(pending);
-        // 게이트가 other로 기울어도 수정 경로는 그와 무관하게 진행되어야 한다.
-        llmClient.cannedIntent = new IntentResult(MessageIntent.OTHER);
-        llmClient.cannedRevision = new RevisionResult(null, null, null, null, null, null, "산미가 낮아 부드러웠다", null);
-
-        flow(repo).revisePending(message("산미는 낮음으로"), pending);
-
-        assertEquals(0, llmClient.intentCalls, "수정 경로는 의도 게이트를 호출하지 않는다(FR-5/AC-5 불변)");
-        assertNotNull(previewMessenger.published, "게이트와 무관하게 수정 미리보기가 갱신된다");
-        assertEquals("산미가 낮아 부드러웠다", previewMessenger.published.draft().entries().get(0).myTaste());
     }
 
     @Test

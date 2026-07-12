@@ -1,6 +1,7 @@
 package com.devwuu.mocha.config;
 
 import com.devwuu.mocha.json.MochaObjectMapper;
+import com.devwuu.mocha.repository.InMemorySearchSessionStore;
 import com.devwuu.mocha.repository.JsonFileNoteRepository;
 import com.devwuu.mocha.repository.JsonFilePendingStore;
 import com.devwuu.mocha.repository.JsonFilePhotoBufferStore;
@@ -9,6 +10,7 @@ import com.devwuu.mocha.repository.NoteRepository;
 import com.devwuu.mocha.repository.PendingStore;
 import com.devwuu.mocha.repository.PhotoBufferStore;
 import com.devwuu.mocha.repository.PhotoStore;
+import com.devwuu.mocha.repository.SearchSessionStore;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -44,5 +46,11 @@ public class RepositoryConfig {
     @Bean
     public PhotoBufferStore photoBufferStore(@Value("${mocha.data.dir}") String dataDir) {
         return new JsonFilePhotoBufferStore(Path.of(dataDir), MochaObjectMapper.create());
+    }
+
+    @Bean
+    public SearchSessionStore searchSessionStore() {
+        // 메모리 전용(NFR-2 예외, ADR-25) — 파일 경로가 필요 없다. TTL(mocha.search-session.ttl) 주입은 TΔ4에서.
+        return new InMemorySearchSessionStore();
     }
 }

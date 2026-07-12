@@ -10,11 +10,8 @@ import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.llm.VisionExtraction;
 import com.devwuu.mocha.llm.VisionHint;
-import com.devwuu.mocha.pipeline.ContextHint;
 import com.devwuu.mocha.pipeline.ExtractionResult;
-import com.devwuu.mocha.pipeline.IntentClassifier;
 import com.devwuu.mocha.pipeline.MatchResult;
-import com.devwuu.mocha.pipeline.MessageIntent;
 import com.devwuu.mocha.pipeline.NoteCandidate;
 import com.devwuu.mocha.pipeline.NoteEnricher;
 import com.devwuu.mocha.pipeline.NoteExtractor;
@@ -45,9 +42,11 @@ import java.util.Optional;
 
 /**
  * 확인 상태 머신의 오케스트레이터 — {@link ConversationRouter}가 정한 분기의 실제 파이프라인 일을 맡는다
- * (ref: plan.md §1 [2]~[7], ADR-3). T3-2 임시 스텁(LoggingConfirmationFlow)을 대체한다.
+ * (ref: plan.md §1 [2]~[8], ADR-3·ADR-24). T3-2 임시 스텁(LoggingConfirmationFlow)을 대체한다.
+ * <p>의도 게이트는 라우터 층({@link DefaultConversationRouter})에 있다 — 여기는 의도가 확정된 뒤의
+ * 오케스트레이션과 안내 문구·전송만 소유한다(ADR-24 구현 배치, changes/0011 TΔ3).
  * <ul>
- *   <li>{@link #startNewNote} — 입구 의도 게이트([1.5], ADR-18)로 기록 요청만 들인 뒤 신규 파이프라인 배선:
+ *   <li>{@link #startNewNote} — 신규 파이프라인 배선(순수 record 경로):
  *       후보 조회 → {@link NoteExtractor 추출} →
  *       {@link NoteMatcher 매칭} → draft 조립(source=user 마킹) → {@link NoteEnricher 보강} → slug 확정 →
  *       {@link PendingStore#put} → {@link PreviewMessenger#publish} → preview_ts 반영 재저장. (tasks T3-6)</li>
@@ -81,7 +80,10 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
     static final String NEW_NOTE_FAILED = "기록을 정리하다 문제가 생겼어요 멍… 잠시 뒤 다시 보내주시겠어요? 🐾"; // 추출/검색/전송 실패(plan §7)
     static final String REVISE_FAILED = "수정을 반영하다 문제가 생겼어요 멍… 다시 말씀해 주시겠어요? 🐾"; // 수정 병합/전송 실패(plan §7). 기존 pending은 보존
     static final String PHOTO_FAILED = "사진을 받다 문제가 생겼어요 멍… 다시 올려주시겠어요? 🐾"; // 다운로드/스테이징/전송 실패(plan §7)
-    static final String NOT_A_RECORD = "저는 커피 감상을 기록하는 강아지예요 멍! 마신 커피 이야기를 들려주세요 🐾"; // 의도 게이트 other 판정 안내(AC-Δ3)
+    static final String NOT_A_RECORD = "저는 커피 감상을 기록하는 강아지예요 멍! 마신 커피 이야기를 들려주세요 🐾"; // 의도 게이트 other 판정 안내(AC-20)
+    static final String PENDING_EXISTS = "확인을 기다리는 기록이 있어요 멍! 먼저 [저장]이나 [취소]로 마무리해 주세요 🐾"; // record+대기 존재 안내 — 단일 대기 원칙(FR-17, AC-30)
+    static final String NOTHING_TO_REVISE = "지금 고칠 대기 기록이 없어요 멍… 새 커피 이야기면 그대로 들려주세요! 🐾"; // revise+대기 없음 안내(FR-17)
+    static final String SEARCH_NOT_READY = "기록 찾기는 아직 배우는 중이에요 멍… 조금만 기다려 주세요! 🐾"; // 임시 — TΔ5(NoteSearchService)가 실검색으로 대체(changes/0011 tasks)
     // 버튼 1회 소진 상태 문구 — 미리보기 하단 버튼을 대체한다(spec AC-22 문구, changes/0009 ADR-20). 짧은 상태 배지라 강아지 톤은 절제.
     static final String FINALIZE_SAVED = "✅ 저장 완료"; // [저장] 완료 후 버튼 소진 상태 문구(AC-Δ1)
     static final String FINALIZE_CANCELED = "취소됨"; // [취소] 완료 후 버튼 소진 상태 문구(AC-Δ1)
@@ -90,7 +92,6 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
     private final NoteRepository noteRepository;
     private final NoteRenderer noteRenderer;
     private final SlackResponder responder;
-    private final IntentClassifier intentClassifier;
     private final NoteExtractor noteExtractor;
     private final NoteMatcher noteMatcher;
     private final NoteEnricher noteEnricher;
@@ -109,7 +110,6 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
             NoteRepository noteRepository,
             NoteRenderer noteRenderer,
             SlackResponder responder,
-            IntentClassifier intentClassifier,
             NoteExtractor noteExtractor,
             NoteMatcher noteMatcher,
             NoteEnricher noteEnricher,
@@ -120,7 +120,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
             PhotoStore photoStore,
             PhotoBufferStore photoBufferStore,
             @Value("${mocha.photo.buffer-window}") Duration bufferWindow) {
-        this(pendingStore, noteRepository, noteRenderer, responder, intentClassifier,
+        this(pendingStore, noteRepository, noteRenderer, responder,
                 noteExtractor, noteMatcher, noteEnricher, photoInfoExtractor, pendingReviser, previewMessenger,
                 photoDownloader, photoStore, photoBufferStore, bufferWindow, Clock.system(SEOUL));
     }
@@ -131,7 +131,6 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
             NoteRepository noteRepository,
             NoteRenderer noteRenderer,
             SlackResponder responder,
-            IntentClassifier intentClassifier,
             NoteExtractor noteExtractor,
             NoteMatcher noteMatcher,
             NoteEnricher noteEnricher,
@@ -147,7 +146,6 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         this.noteRepository = noteRepository;
         this.noteRenderer = noteRenderer;
         this.responder = responder;
-        this.intentClassifier = intentClassifier;
         this.noteExtractor = noteExtractor;
         this.noteMatcher = noteMatcher;
         this.noteEnricher = noteEnricher;
@@ -166,16 +164,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         String userId = message.userId();
         String channelId = message.channelId();
 
-        // [1.5] 입구 의도 게이트 — 파이프라인 진입 전(버퍼 처리보다도 앞)에서 기록 요청만 들인다.
-        // POLICY: 입구 의도 게이트는 진입 분기만 — 저장/취소 커밋은 버튼(action_id)만(ADR-3 불변).
-        //         게이트 실패·애매함은 record로 진행(fail-open, 기록 유실 방지) (ref: plan.md#ADR-18, spec FR-17).
-        if (!isRecordRequest(message.text(), userId)) {
-            // other 판정 — 추출·보강·pending·미리보기 없이 짧은 안내로 종료한다. 버퍼는 건드리지 않는다(AC-Δ3).
-            log.info("입구 의도 게이트 other — 파이프라인 미진입: user={}", userId);
-            responder.post(channelId, NOT_A_RECORD);
-            return;
-        }
-
+        // 의도 게이트는 라우터 층에서 이미 통과했다(ADR-24 구현 배치) — 여기는 순수 record 파이프라인이다.
         try {
             LocalDate today = LocalDate.now(clock);
             OffsetDateTime now = OffsetDateTime.now(clock);
@@ -253,19 +242,41 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         }
     }
 
-    // [1.5] 입구 의도 게이트 판정 — record면 파이프라인 진입, other면 미진입(안내). 게이트 실패는 fail-open(record)으로 흡수한다.
-    private boolean isRecordRequest(String text, String userId) {
-        try {
-            // pending 없음 분기 한정 호출이라 힌트는 (false, false) — 게이트의 라우터 층 상향은 TΔ3(ADR-24 구현 배치).
-            MessageIntent intent = intentClassifier.classify(text, new ContextHint(false, false)).intent();
-            // 관측(plan §6): 판정 분포(record/other)를 로깅해 오분류 프록시로 삼는다.
-            log.info("입구 의도 게이트 판정: user={} intent={}", userId, intent.value());
-            return intent == MessageIntent.RECORD;
-        } catch (Exception e) {
-            // fail-open: 게이트 호출/스키마 실패 시 record로 간주해 진행한다 — 기록 유실 방지(AC-Δ4, plan §7).
-            log.warn("입구 의도 게이트 실패 — record로 진행(fail-open): user={}", userId, e);
-            return true;
-        }
+    @Override
+    public void guidePendingExists(IncomingMessage message) {
+        // POLICY: 단일 대기 원칙 — record 의도인데 대기가 있으면 대기를 건드리지 않고 안내만, 새 대기 미생성
+        //         (ref: spec FR-17/AC-30, plan.md#ADR-24).
+        log.info("record 의도 + 확인 대기 존재 — 대기 불변, 안내만: user={}", message.userId());
+        responder.post(message.channelId(), PENDING_EXISTS);
+    }
+
+    @Override
+    public void guideNothingToRevise(IncomingMessage message) {
+        // revise 의도인데 고칠 대기가 없다 — 파이프라인 미진입, 안내만(FR-17).
+        log.info("revise 의도 + 확인 대기 없음 — 안내만: user={}", message.userId());
+        responder.post(message.channelId(), NOTHING_TO_REVISE);
+    }
+
+    @Override
+    public void guideNotARecord(IncomingMessage message) {
+        // other 판정 — 추출·보강·pending·미리보기 없이 짧은 안내로 종료한다. 버퍼도 건드리지 않는다(AC-20).
+        log.info("의도 게이트 other — 파이프라인 미진입: user={}", message.userId());
+        responder.post(message.channelId(), NOT_A_RECORD);
+    }
+
+    @Override
+    public void searchNotes(IncomingMessage message) {
+        // 임시 응답 — 검색 세션 오케스트레이션(NoteSearchService, ADR-25)은 changes/0011 TΔ5가 배선한다.
+        // 라우팅 계약(search 의도 → 이 메서드)만 먼저 세운다.
+        log.info("search 의도 수신 — 검색 세션 미배선(TΔ5 전) 임시 안내: user={}", message.userId());
+        responder.post(message.channelId(), SEARCH_NOT_READY);
+    }
+
+    @Override
+    public void endSearch(IncomingMessage message) {
+        // 임시 응답 — 세션 저장이 아직 배선되지 않아(TΔ4·TΔ5 전) 실도달 불가 경로. 계약만 먼저 세운다.
+        log.info("end 의도 수신 — 검색 세션 미배선(TΔ5 전) 임시 안내: user={}", message.userId());
+        responder.post(message.channelId(), SEARCH_NOT_READY);
     }
 
     // 기존 노트를 추출 요청의 매칭 후보(최소 식별 정보)로 축약 (ref: data-model.md#3 existing_notes).
