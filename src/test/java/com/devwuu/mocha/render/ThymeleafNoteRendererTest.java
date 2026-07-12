@@ -4,6 +4,7 @@ import com.devwuu.mocha.config.RenderConfig;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.NoteMeta;
 import com.devwuu.mocha.domain.Rating;
+import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.repository.JsonFileNoteRepository;
@@ -244,6 +245,87 @@ class ThymeleafNoteRendererTest {
         assertTrue(serifCard.contains("1080px") && cuteCard.contains("1080px"), "두 테마 4:5");
         assertTrue(serifCard.contains("로스터리가 말하길") && serifCard.contains("내가 느끼길"), "세리프 2영역");
         assertTrue(cuteCard.contains("로스터리가 말하길") && cuteCard.contains("내가 느끼길"), "귀여운 2영역");
+    }
+
+    // --- TΔ6: 레시피 영역(있는 항목만·전무 시 미출력) + coffeeName Sourced 승격(제목 무표기) ---
+
+    // recipe·coffeeName만 갈아끼우는 단일 엔트리 노트 seed. 나머지 메타는 고정.
+    private NoteRepository seedWithRecipe(Path dataDir, Sourced<String> coffeeName, Recipe recipe) {
+        NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create());
+        OffsetDateTime now = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
+        NoteMeta meta = new NoteMeta(
+                coffeeName,
+                Sourced.user("커피베라"), Sourced.search("에티오피아 예가체프"),
+                Sourced.user("워시드"), Sourced.search("라이트"),
+                Sourced.search(List.of("자몽", "홍차")), List.of());
+        repo.upsertEntry("2026-07-10", meta,
+                new Entry(LocalDate.parse("2026-07-10"), "새콤하다.", Rating.GOOD, recipe, List.of(), now));
+        return repo;
+    }
+
+    private String bakeCardHtml(NoteRepository repo, Theme theme, Path artifactDir) {
+        FakeCardImageRenderer cards = new FakeCardImageRenderer();
+        new ThymeleafNoteRenderer(repo, engine, artifactDir, theme, cards).renderAll();
+        return capturedHtml(cards, "cards/2026-07-10/2026-07-10.jpg");
+    }
+
+    @Test
+    @DisplayName("AC-Δ1/TΔ6: recipe 3항목이 있으면 두 테마 카드 모두 '이렇게 내렸어요'에 원두·물·분쇄도를 표시한다")
+    void recipeSectionRendersWhenPresent(@TempDir Path dataDir, @TempDir Path artA, @TempDir Path artB) {
+        Recipe recipe = new Recipe(15.0, 240.0, "중간");
+        for (Theme theme : new Theme[]{Theme.TYPE_A, Theme.TYPE_B}) {
+            NoteRepository repo = seedWithRecipe(dataDir, Sourced.user("예가체프 G1 워시드"), recipe);
+            String card = bakeCardHtml(repo, theme, theme == Theme.TYPE_A ? artA : artB);
+            // "이렇게 내렸어요" 라벨은 type-b만(시안: type-a는 라벨 없이 인라인 — findings ④). 값은 두 테마 공통.
+            if (theme == Theme.TYPE_B) {
+                assertTrue(card.contains("이렇게 내렸어요"), theme + ": 레시피 라벨");
+            }
+            assertTrue(card.contains("15g"), theme + ": 원두 15g(소수점 없이)");
+            assertTrue(card.contains("240ml"), theme + ": 물 240ml");
+            assertTrue(card.contains("중간"), theme + ": 분쇄도 중간");
+            // AC-10 자동 가드: 레시피 영역이 늘어도 4:5 프레임·overflow 하드클램프는 유지된다(픽셀 무잘림은 수동 체크).
+            assertTrue(card.contains("1080px") && card.contains("1350px"), theme + ": 레시피 추가 후에도 4:5 유지");
+            assertTrue(card.contains("overflow:hidden"), theme + ": overflow 하드클램프 유지");
+        }
+    }
+
+    @Test
+    @DisplayName("AC-Δ2/TΔ6: recipe가 null이면 두 테마 카드 모두 '이렇게 내렸어요' 영역이 나오지 않는다")
+    void recipeSectionOmittedWhenAbsent(@TempDir Path dataDir, @TempDir Path artA, @TempDir Path artB) {
+        for (Theme theme : new Theme[]{Theme.TYPE_A, Theme.TYPE_B}) {
+            NoteRepository repo = seedWithRecipe(dataDir, Sourced.user("예가체프 G1 워시드"), null);
+            String card = bakeCardHtml(repo, theme, theme == Theme.TYPE_A ? artA : artB);
+            // type-b 라벨 부재 + 두 테마 공통으로 레시피 항목("원두") 부재 = 영역 자체가 없음(AC-Δ2).
+            assertFalse(card.contains("이렇게 내렸어요"), theme + ": 레시피 전무 시 라벨 미출력");
+            assertFalse(card.contains("원두"), theme + ": 레시피 전무 시 항목 미출력");
+        }
+    }
+
+    @Test
+    @DisplayName("AC-Δ2/TΔ6: recipe가 일부만 있으면(원두만) 있는 항목만 표시하고 없는 항목은 나오지 않는다")
+    void recipePartialRendersOnlyPresentItems(@TempDir Path dataDir, @TempDir Path artA, @TempDir Path artB) {
+        Recipe partial = Recipe.normalize(15.0, null, null); // 원두만
+        for (Theme theme : new Theme[]{Theme.TYPE_A, Theme.TYPE_B}) {
+            NoteRepository repo = seedWithRecipe(dataDir, Sourced.user("예가체프 G1 워시드"), partial);
+            String card = bakeCardHtml(repo, theme, theme == Theme.TYPE_A ? artA : artB);
+            if (theme == Theme.TYPE_B) {
+                assertTrue(card.contains("이렇게 내렸어요"), theme + ": 부분 레시피도 영역(라벨) 표시");
+            }
+            assertTrue(card.contains("15g"), theme + ": 원두 표시");
+            assertFalse(card.contains("240ml"), theme + ": 물 항목 미출력");
+            assertFalse(card.contains("분쇄도"), theme + ": 분쇄도 항목 미출력");
+        }
+    }
+
+    @Test
+    @DisplayName("AC-Δ4/TΔ6: coffeeName source가 photo여도 카드 제목은 값만 쓰고 (사진) 표기를 달지 않는다")
+    void cardTitleHasNoPhotoTag(@TempDir Path dataDir, @TempDir Path artA, @TempDir Path artB) {
+        for (Theme theme : new Theme[]{Theme.TYPE_A, Theme.TYPE_B}) {
+            NoteRepository repo = seedWithRecipe(dataDir, Sourced.photo("게이샤 내추럴"), null);
+            String card = bakeCardHtml(repo, theme, theme == Theme.TYPE_A ? artA : artB);
+            assertTrue(card.contains("게이샤 내추럴"), theme + ": 제목에 커피명 값");
+            assertFalse(card.contains("(사진)"), theme + ": 제목=정체성 → (사진) 무표기");
+        }
     }
 
     // fake가 캡처한 호출 중 out이 주어진 상대 경로로 끝나는 카드의 HTML을 돌려준다.

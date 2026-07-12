@@ -57,6 +57,7 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
 
     private final KoreanDates dates = new KoreanDates();
     private final RatingStyle ratingStyle = new RatingStyle();
+    private final RecipeAmounts recipeAmounts = new RecipeAmounts();
 
     public ThymeleafNoteRenderer(
             NoteRepository noteRepository, ITemplateEngine templateEngine, Path artifactDir, Theme theme,
@@ -135,7 +136,7 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
         Entry entry = ref.entry();
         NoteView.EntryCard card = new NoteView.EntryCard(
                 note.slug(),
-                value(note.coffeeName()),
+                note.coffeeName(), // Sourced 그대로 — 제목은 value만 쓰되 (사진) 무표기(제목=정체성, TΔ6)
                 note.roastery(),
                 note.origin(),
                 note.process(),
@@ -159,6 +160,7 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
                 entry.date(),
                 entry.myTaste(),
                 entry.rating(),
+                entry.recipe(), // null이면 템플릿이 "이렇게 내렸어요" 영역을 숨긴다(AC-Δ2)
                 thumbs(entry, THUMBS_PREFIX));
     }
 
@@ -184,6 +186,7 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
         Context ctx = new Context(Locale.KOREAN);
         ctx.setVariable("fmt", dates);
         ctx.setVariable("rs", ratingStyle);
+        ctx.setVariable("amt", recipeAmounts);
         ctx.setVariable("mascotHref", MASCOT_NAME); // 카드·인덱스 모두 artifact 루트 기준 상대 경로
         return ctx;
     }

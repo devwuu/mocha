@@ -1,6 +1,7 @@
 package com.devwuu.mocha.render;
 
 import com.devwuu.mocha.domain.Rating;
+import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Sourced;
 
 import java.time.LocalDate;
@@ -41,10 +42,12 @@ public final class NoteView {
      * 출처 표시 필드는 {@link Sourced} 그대로 넘겨 {@code (검색)} 표기 분기(AC-2).
      * <p>카드는 커피의 <b>그 한 잔</b>만 담는다 — 노트 전체 타임라인이 아니라 {@code entry} 1건(AC-Δ4).
      * "로스터리가 말하길"(officialNotes)은 노트 단위, "내가 느끼길"(entry.myTaste)은 그 엔트리 1건(FR-7).
+     * <p>{@code coffeeName}은 {@link Sourced}로 승격됐지만(source ∈ {user, photo}) 카드 제목은 <b>출처 무표기</b>다 —
+     * 제목=커피의 정체성이라 {@code (사진)} 배지를 달지 않는다({@code coffeeName.value}만 렌더, delta AC-Δ4·TΔ6).
      */
     public record EntryCard(
             String slug,
-            String coffeeName,
+            Sourced<String> coffeeName,
             Sourced<String> roastery,
             Sourced<String> origin,
             Sourced<String> process,
@@ -54,11 +57,15 @@ public final class NoteView {
             EntryView entry) {
     }
 
-    /** 카드의 날짜 엔트리 1건 (ref: FR-15, data-model §2.2). {@code photos}는 렌더러가 계산한 썸네일 상대 경로. */
+    /**
+     * 카드의 날짜 엔트리 1건 (ref: FR-15, data-model §2.2). {@code photos}는 렌더러가 계산한 썸네일 상대 경로.
+     * {@code recipe}는 "이렇게 내렸어요" 영역용 — 3항목 전무·미언급 시 {@code null}이라 영역 자체를 숨긴다(FR-18, AC-Δ2·TΔ6).
+     */
     public record EntryView(
             LocalDate date,
             String myTaste,
             Rating rating,
+            Recipe recipe,
             List<String> photos) {
     }
 }
