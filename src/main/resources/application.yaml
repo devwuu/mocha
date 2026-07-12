@@ -1,6 +1,19 @@
 spring:
   application:
     name: mocha
+
+# 파일 로깅 (NFR-7, ADR-21 · changes/0009). Spring 표준 logback 설정 — 콘솔과 병행해 logs/ 아래 상시 기록.
+# 레벨은 root 기본(INFO 이상 전체 — 에러 앞뒤 맥락 보존). 일 단위 롤링 + 30일 보존 + 총 300MB 상한.
+# POLICY: logs/는 개인 데이터 취급 — 사용자 메시지 원문이 남을 수 있어 커밋·공개 금지(.gitignore 유지, 루트 CLAUDE.md §5).
+logging:
+  file:
+    name: logs/mocha.log
+  logback:
+    rollingpolicy:
+      # %d=일 단위 롤링, %i=크기 분할 인덱스(SizeAndTimeBased). .gz로 롤링분 압축.
+      file-name-pattern: logs/mocha.%d{yyyy-MM-dd}.%i.log.gz
+      max-history: 30
+      total-size-cap: 300MB
   # T0-2 실측용: 로컬 비밀(.env.local, KEY=VALUE)을 프로퍼티 소스로 로드해 ${OPENAI_API_KEY} 등을 바인딩.
   # optional: 파일 없으면 기동 실패 없이 스킵(CI/미설정 프로파일 안전). .env.local은 .gitignore 대상.
   config:
