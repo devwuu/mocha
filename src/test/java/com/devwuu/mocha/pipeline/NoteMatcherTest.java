@@ -27,7 +27,7 @@ class NoteMatcherTest {
     private static ExtractionResult extraction(String matchedSlug, LocalDate targetDate) {
         return new ExtractionResult(
                 "예가체프", "커피베라", null, null, null, "좋았다",
-                Rating.GOOD, matchedSlug, targetDate);
+                Rating.GOOD, null, matchedSlug, targetDate);
     }
 
     private static Note noteWithEntries(String slug, LocalDate... entryDates) {

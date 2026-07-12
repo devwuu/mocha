@@ -6,6 +6,7 @@ import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
 import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.domain.PhotoBuffer;
+import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.pipeline.ExtractionResult;
 import com.devwuu.mocha.pipeline.IntentClassifier;
@@ -202,8 +203,12 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
 
             // 흡수한 버퍼 사진의 임시 미리보기 경로. 실제 저장 경로는 [저장] 시 commit이 확정한다(V-4).
             List<String> photoPaths = provisionalPhotoPaths(slug, match.targetDate(), bufferNames);
-            // recipe는 추출 스키마 연결(TΔ2) 전까지 null — 사용자 발화 전용이라 검색·OCR이 채우지 않는다(ADR-22).
-            Entry entry = new Entry(match.targetDate(), extraction.myTaste(), extraction.rating(), null, photoPaths, now);
+            // POLICY: 레시피는 사용자 발화 전용 — 검색·OCR 보강 금지, source 개념 없음 (ADR-22, FR-18).
+            // 추출 원본을 V-8로 정규화(음수·0·공백 항목 드롭, 전무 시 recipe 자체 null)해 Entry에 싣는다.
+            Recipe recipe = extraction.recipe() == null ? null
+                    : Recipe.normalize(
+                            extraction.recipe().doseG(), extraction.recipe().waterMl(), extraction.recipe().grind());
+            Entry entry = new Entry(match.targetDate(), extraction.myTaste(), extraction.rating(), recipe, photoPaths, now);
             Note draft = assembleDraft(slug, userSourced(extraction.coffeeName()), enriched, entry, now);
             MatchInfo matchInfo = match.toMatchInfo();
 

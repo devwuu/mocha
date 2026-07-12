@@ -1,6 +1,7 @@
 package com.devwuu.mocha.pipeline;
 
 import com.devwuu.mocha.domain.Rating;
+import com.devwuu.mocha.domain.Recipe;
 
 import java.time.LocalDate;
 
@@ -18,6 +19,9 @@ import java.time.LocalDate;
  * @param roastLevel  로스팅 정도 — 동일(미언급 null).
  * @param myTaste     내가 느낀 맛. 감상 원문 보존 위주 요약(미언급 null).
  * @param rating      4범주 평가 또는 null(미언급). 4범주 외 값은 역직렬화에서 거부(V-1).
+ * @param recipe      발화 속 추출 레시피(dose_g·water_ml·grind), 미언급 null. <b>사용자 발화 전용</b> —
+ *                    검색·OCR 보강 대상 아님(ADR-22, FR-18). 여기 값은 LLM 원본이며 V-8 정규화는
+ *                    Entry 조립 시 {@link Recipe#normalize}로 적용한다(음수·0·공백 항목 드롭).
  * @param matchedSlug existing_notes 중 매칭된 slug, 없으면 null(서버가 재검증 — T2-3).
  * @param targetDate  "어제 마신" 같은 상대 날짜 해석 결과(YYYY-MM-DD). 미해석 시 today로 기본화.
  */
@@ -29,6 +33,7 @@ public record ExtractionResult(
         String roastLevel,
         String myTaste,
         Rating rating,
+        Recipe recipe,
         String matchedSlug,
         LocalDate targetDate
 ) {
@@ -42,6 +47,6 @@ public record ExtractionResult(
             return this;
         }
         return new ExtractionResult(
-                coffeeName, roastery, origin, process, roastLevel, myTaste, rating, matchedSlug, today);
+                coffeeName, roastery, origin, process, roastLevel, myTaste, rating, recipe, matchedSlug, today);
     }
 }

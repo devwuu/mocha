@@ -1,6 +1,7 @@
 package com.devwuu.mocha.pipeline;
 
 import com.devwuu.mocha.domain.Rating;
+import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.llm.LlmClient;
 import com.devwuu.mocha.llm.LlmRequest;
@@ -41,7 +42,7 @@ class NoteExtractorTest {
     @DisplayName("요청 조립: 원문·today·existing_notes 후보가 사용자 프롬프트에 실린다 (data-model §3)")
     void assemblesRequestPayload() {
         CapturingLlmClient llm = new CapturingLlmClient();
-        llm.response = new ExtractionResult("예가체프", null, null, null, null, null, null,
+        llm.response = new ExtractionResult("예가체프", null, null, null, null, null, null, null,
                 "coffeevera-yirgacheffe-g1", TODAY);
 
         extractor(llm).extract(
@@ -62,7 +63,7 @@ class NoteExtractorTest {
         CapturingLlmClient llm = new CapturingLlmClient();
         // LLM이 today를 기준으로 '어제'를 해석해 target_date를 채워 돌려준다.
         llm.response = new ExtractionResult("예가체프", null, null, null, null, "좋았다",
-                Rating.GOOD, null, TODAY.minusDays(1));
+                Rating.GOOD, null, null, TODAY.minusDays(1));
 
         ExtractionResult result = extractor(llm).extract("어제 마신 예가체프 좋았다", TODAY, List.of());
 
@@ -76,7 +77,7 @@ class NoteExtractorTest {
     void keepsUnmentionedFieldsNull() {
         CapturingLlmClient llm = new CapturingLlmClient();
         llm.response = new ExtractionResult("예가체프", "커피베라", null, null, null, "새콤",
-                null, null, TODAY);
+                null, null, null, TODAY);
 
         ExtractionResult result = extractor(llm).extract("커피베라 예가체프 새콤", TODAY, List.of());
 
@@ -92,7 +93,7 @@ class NoteExtractorTest {
     void defaultsNullTargetDateToToday() {
         CapturingLlmClient llm = new CapturingLlmClient();
         llm.response = new ExtractionResult("예가체프", null, null, null, null, null,
-                null, null, null);
+                null, null, null, null);
 
         ExtractionResult result = extractor(llm).extract("예가체프", TODAY, List.of());
 
@@ -111,6 +112,7 @@ class NoteExtractorTest {
                   "roast_level": null,
                   "my_taste": "새콤하고 좋았다",
                   "rating": "맛있다",
+                  "recipe": { "dose_g": 15, "water_ml": 240, "grind": null },
                   "matched_slug": "coffeevera-yirgacheffe-g1",
                   "target_date": "2026-07-09"
                 }
@@ -124,5 +126,53 @@ class NoteExtractorTest {
         assertThat(result.matchedSlug()).isEqualTo("coffeevera-yirgacheffe-g1");
         assertThat(result.targetDate()).isEqualTo(LocalDate.of(2026, 7, 9));
         assertThat(result.origin()).isNull();
+    }
+
+    @Test
+    @DisplayName("FR-18: recipe 언급 시 dose_g·water_ml·grind가 채워져 역직렬화된다 (changes/0010)")
+    void deserializesRecipeWhenMentioned() {
+        String json = """
+                {
+                  "coffee_name": "예가체프",
+                  "roastery": null, "origin": null, "process": null, "roast_level": null,
+                  "my_taste": "새콤", "rating": null,
+                  "recipe": { "dose_g": 15, "water_ml": 240, "grind": "중간" },
+                  "matched_slug": null, "target_date": "2026-07-10"
+                }
+                """;
+
+        ExtractionResult result = MochaObjectMapper.create().readValue(json, ExtractionResult.class);
+
+        assertThat(result.recipe()).isEqualTo(new Recipe(15.0, 240.0, "중간"));
+    }
+
+    @Test
+    @DisplayName("FR-18/ADR-22: 레시피 미언급 발화는 recipe=null로 통과한다(추측 금지)")
+    void keepsRecipeNullWhenUnmentioned() {
+        CapturingLlmClient llm = new CapturingLlmClient();
+        // 레시피 언급이 없는 감상 — LLM이 recipe를 null로 반환한다.
+        llm.response = new ExtractionResult("예가체프", null, null, null, null, "새콤",
+                null, null, null, TODAY);
+
+        ExtractionResult result = extractor(llm).extract("예가체프 새콤하고 좋았다", TODAY, List.of());
+
+        assertThat(result.recipe()).isNull();
+    }
+
+    @Test
+    @DisplayName("FR-18: 스키마·프롬프트가 recipe 3항목(dose_g·water_ml·grind)을 계약으로 강제한다")
+    void schemaAndPromptDeclareRecipeContract() {
+        CapturingLlmClient llm = new CapturingLlmClient();
+        llm.response = new ExtractionResult("예가체프", null, null, null, null, null,
+                null, new Recipe(15.0, 240.0, null), null, TODAY);
+
+        ExtractionResult result = extractor(llm).extract("원두 15g에 물 240 부어서 마셨어", TODAY, List.of());
+
+        // 계약: 추출기가 반환한 recipe를 그대로 통과시킨다(언급 항목 채움·미언급 항목 null).
+        assertThat(result.recipe()).isEqualTo(new Recipe(15.0, 240.0, null));
+        // structured output 스키마가 recipe 3항목을 required로 선언해 LLM 응답 구조를 강제한다.
+        LlmRequest<?> request = llm.captured;
+        assertThat(request.jsonSchema()).contains("dose_g").contains("water_ml").contains("grind");
+        assertThat(request.systemPrompt()).contains("recipe");
     }
 }

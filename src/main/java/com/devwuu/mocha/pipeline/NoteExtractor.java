@@ -26,7 +26,7 @@ public class NoteExtractor {
             {
               "type": "object",
               "additionalProperties": false,
-              "required": ["coffee_name","roastery","origin","process","roast_level","my_taste","rating","matched_slug","target_date"],
+              "required": ["coffee_name","roastery","origin","process","roast_level","my_taste","rating","recipe","matched_slug","target_date"],
               "properties": {
                 "coffee_name":  {"type": ["string","null"], "description": "표시용 커피 이름. 언급 없으면 null."},
                 "roastery":     {"type": ["string","null"], "description": "로스터리. 언급 없으면 null."},
@@ -35,6 +35,17 @@ public class NoteExtractor {
                 "roast_level":  {"type": ["string","null"], "description": "로스팅 정도. 사용자 명시분만. 추측 금지."},
                 "my_taste":     {"type": ["string","null"], "description": "사용자가 느낀 맛. 감상 원문 보존 위주 요약. 언급 없으면 null."},
                 "rating":       {"type": ["string","null"], "enum": ["완전 내스타일","맛있다","맛은 있는데 내스타일은 아님","맛이 없다", null], "description": "4범주 중 하나 또는 null(명확한 만족도 언급 없을 때)."},
+                "recipe": {
+                  "type": ["object","null"],
+                  "additionalProperties": false,
+                  "required": ["dose_g","water_ml","grind"],
+                  "description": "발화 속 추출(브루잉) 레시피. 레시피 언급이 전혀 없으면 null. 사용자가 말한 항목만 채운다 — 추측 금지.",
+                  "properties": {
+                    "dose_g":   {"type": ["number","null"], "description": "원두량(g). 사용자가 말한 경우만. 미언급 null."},
+                    "water_ml": {"type": ["number","null"], "description": "물량(ml). 사용자가 말한 경우만. 미언급 null."},
+                    "grind":    {"type": ["string","null"], "description": "분쇄도(자유 문자열). 사용자가 말한 경우만. 미언급 null."}
+                  }
+                },
                 "matched_slug": {"type": ["string","null"], "description": "existing_notes 중 같은 커피의 slug. 확신이 없으면 null."},
                 "target_date":  {"type": ["string","null"], "description": "YYYY-MM-DD. '어제' 등 상대 날짜를 today 기준으로 해석. 날짜 언급이 없으면 today."}
               }
@@ -54,6 +65,7 @@ public class NoteExtractor {
               · "맛이 없다" — 부정적/불만족("별로", "맛없다", "실망").
               예: "맛은 있는데 나는 좀 더 단맛이 있는 커피를 좋아하는 것 같아" → "맛은 있는데 내스타일은 아님".
               맛/취향에 대한 감상이 있으면 위 4범주 중 가장 가까운 것을 고르고, 정말 판단 불가할 때만 null로 둔다.
+            - recipe는 발화에 추출(브루잉) 레시피가 섞여 있을 때만 채운다("원두 15g에 물 240 부어서…" 등). dose_g(원두량 g)·water_ml(물량 ml)·grind(분쇄도) 중 사용자가 말한 항목만 넣고, 말하지 않은 항목은 null로 둔다. 레시피 언급이 아예 없으면 recipe 자체를 null로 둔다. 값을 상식으로 추측하지 마라(레시피는 사용자 발화 전용 — 검색·OCR이 채우지 않는다).
             - matched_slug는 existing_notes에 같은 커피가 있을 때만 그 slug를 넣는다. 없거나 애매하면 null.
             - target_date는 today를 기준으로 '어제', '그저께', '지난 주말' 같은 상대 날짜를 해석한 YYYY-MM-DD다. 날짜 언급이 없으면 today를 그대로 쓴다.
             입력은 message/today/existing_notes를 담은 JSON으로 주어진다.
