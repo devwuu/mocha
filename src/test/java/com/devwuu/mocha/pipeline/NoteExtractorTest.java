@@ -216,6 +216,69 @@ class NoteExtractorTest {
     }
 
     @Test
+    @DisplayName("AC-Δ5: 스키마·프롬프트가 my_taste(정규화)와 my_taste_original(원문)을 계약으로 선언한다 (changes/0013, ADR-30)")
+    void schemaAndPromptDeclareMyTasteNormalizationContract() {
+        CapturingLlmClient llm = new CapturingLlmClient();
+        llm.response = new ExtractionResult("예가체프", null, null, null, null, "맛있었음", "맛있더라",
+                Rating.GOOD, null, null, false, TODAY);
+
+        extractor(llm).extract("예가체프 맛있더라", TODAY, List.of());
+
+        LlmRequest<?> request = llm.captured;
+        // 두 필드 모두 required로 선언 + 프롬프트에 정규화·원문 병존 지시.
+        assertThat(request.jsonSchema()).contains("my_taste").contains("my_taste_original");
+        assertThat(request.systemPrompt()).contains("음슴체").contains("my_taste_original");
+    }
+
+    @Test
+    @DisplayName("AC-Δ5: 정규화본·원문 두 필드가 함께 역직렬화된다 (changes/0013, V-11)")
+    void deserializesMyTasteAndOriginal() {
+        String json = """
+                {
+                  "coffee_name": "예가체프",
+                  "roastery": null, "origin": null, "process": null, "roast_level": null,
+                  "my_taste": "새콤하고 좋았음", "my_taste_original": "새콤하고 좋았다",
+                  "rating": "맛있다", "recipe": null,
+                  "matched_slug": null, "references_past": false, "target_date": "2026-07-10"
+                }
+                """;
+
+        ExtractionResult result = MochaObjectMapper.create().readValue(json, ExtractionResult.class);
+
+        assertThat(result.myTaste()).isEqualTo("새콤하고 좋았음");
+        assertThat(result.myTasteOriginal()).isEqualTo("새콤하고 좋았다");
+    }
+
+    @Test
+    @DisplayName("V-11: LLM이 my_taste_original을 누락하면 정규화본을 복사해 병존시킨다 (changes/0013)")
+    void copiesNormalizedWhenOriginalMissing() {
+        String json = """
+                {
+                  "coffee_name": "예가체프",
+                  "roastery": null, "origin": null, "process": null, "roast_level": null,
+                  "my_taste": "맛있었음", "my_taste_original": null,
+                  "rating": null, "recipe": null,
+                  "matched_slug": null, "references_past": false, "target_date": "2026-07-10"
+                }
+                """;
+
+        ExtractionResult result = MochaObjectMapper.create().readValue(json, ExtractionResult.class);
+
+        assertThat(result.myTaste()).isEqualTo("맛있었음");
+        assertThat(result.myTasteOriginal()).isEqualTo("맛있었음"); // 원문 누락 → 정규화본 복사(감상 유실 방지)
+    }
+
+    @Test
+    @DisplayName("V-11: 감상 미언급이면 두 필드 모두 null로 남는다 (복사 규칙은 my_taste 존재 시에만)")
+    void keepsBothNullWhenNoTaste() {
+        ExtractionResult result = new ExtractionResult("예가체프", null, null, null, null, null, null,
+                null, null, null, false, TODAY);
+
+        assertThat(result.myTaste()).isNull();
+        assertThat(result.myTasteOriginal()).isNull();
+    }
+
+    @Test
     @DisplayName("FR-18: 스키마·프롬프트가 recipe 3항목(dose_g·water_ml·grind)을 계약으로 강제한다")
     void schemaAndPromptDeclareRecipeContract() {
         CapturingLlmClient llm = new CapturingLlmClient();

@@ -153,6 +153,64 @@ class PendingReviserTest {
         assertThat(originField).doesNotContain("검색"); // (검색) 표기 제거(AC-2)
     }
 
+    // --- changes/0013 TΔ4: my_taste 정규화 + my_taste_original 병존(ADR-30, V-11, AC-Δ5) ---
+
+    @Test
+    @DisplayName("AC-Δ5: 스키마·프롬프트가 my_taste(정규화)와 my_taste_original(원문)을 계약으로 선언한다 (ADR-30)")
+    void schemaAndPromptDeclareMyTasteOriginalContract() {
+        CapturingLlmClient llm = new CapturingLlmClient();
+        llm.response = noChange();
+
+        reviser(llm).revise(pendingWithSearchOrigin(), "산미는 낮음으로");
+
+        LlmRequest<?> request = llm.captured;
+        assertThat(request.jsonSchema()).contains("my_taste").contains("my_taste_original");
+        assertThat(request.systemPrompt()).contains("음슴체").contains("my_taste_original");
+    }
+
+    @Test
+    @DisplayName("AC-Δ5: 감상을 새로 말하면 my_taste와 my_taste_original이 함께 갱신된다 (ADR-30)")
+    void revisesBothTasteFields() {
+        CapturingLlmClient llm = new CapturingLlmClient();
+        // 사용자가 감상을 새로 말함 → LLM이 정규화본 + 원문을 함께 반환.
+        llm.response = new RevisionResult(null, null, null, null, null, null,
+                "산미가 낮아 부드러웠음", "산미가 낮아 부드러웠어", null, null);
+
+        PendingNote revised = reviser(llm).revise(pendingWithSearchOrigin(), "산미는 낮음으로").pending();
+
+        Entry entry = revised.draft().entries().get(0);
+        assertThat(entry.myTaste()).isEqualTo("산미가 낮아 부드러웠음");         // 정규화본
+        assertThat(entry.myTasteOriginal()).isEqualTo("산미가 낮아 부드러웠어"); // 원문 동반 갱신
+    }
+
+    @Test
+    @DisplayName("V-11: revise 패치가 원문을 누락하면 정규화본을 원문에도 복사한다 (감상 유실 방지)")
+    void revisionCopiesNormalizedWhenOriginalMissing() {
+        CapturingLlmClient llm = new CapturingLlmClient();
+        // 원문 필드를 LLM이 누락(9-arg 구 시그니처 = original null) — my_taste만 채운 패치.
+        llm.response = new RevisionResult(null, null, null, null, null, null, "산미가 낮았음", null, null);
+
+        Entry entry = reviser(llm).revise(pendingWithSearchOrigin(), "산미는 낮음으로")
+                .pending().draft().entries().get(0);
+
+        assertThat(entry.myTaste()).isEqualTo("산미가 낮았음");
+        assertThat(entry.myTasteOriginal()).isEqualTo("산미가 낮았음"); // 누락 → 정규화본 복사
+    }
+
+    @Test
+    @DisplayName("V-11: 감상 미변경 패치는 기존 원문을 보존한다 (둘 다 null = 변경 없음)")
+    void keepsExistingOriginalWhenTasteUnchanged() {
+        CapturingLlmClient llm = new CapturingLlmClient();
+        // origin만 바꾸고 감상은 미변경 → my_taste·my_taste_original 둘 다 null 패치.
+        llm.response = new RevisionResult(null, null, "콜롬비아", null, null, null, null, null, null);
+
+        Entry entry = reviser(llm).revise(pendingWithSearchOrigin(), "원산지는 콜롬비아야")
+                .pending().draft().entries().get(0);
+
+        assertThat(entry.myTaste()).isEqualTo("새콤함");         // 기존 정규화본 보존
+        assertThat(entry.myTasteOriginal()).isEqualTo("새콤함"); // 기존 원문 보존(stale 아님)
+    }
+
     // --- changes/0012 TΔ5: edit 모드 — 커피명 거부(V-9)·날짜 이동(AC-39)·record 경로 불변(AC-Δ6) ---
 
     @Test

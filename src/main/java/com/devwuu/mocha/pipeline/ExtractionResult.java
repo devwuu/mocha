@@ -17,7 +17,10 @@ import java.time.LocalDate;
  * @param origin      원산지 — 사용자 언급분만. 검색 보강은 서버 단계(미언급 null).
  * @param process     가공 방식 — 동일(미언급 null).
  * @param roastLevel  로스팅 정도 — 동일(미언급 null).
- * @param myTaste     내가 느낀 맛. 감상 원문 보존 위주 요약(미언급 null).
+ * @param myTaste     내가 느낀 맛. 표현·뉘앙스 보존 + 한국어 음슴체 정규화(영어는 번역), 미언급 null
+ *                    (ADR-30, changes/0013).
+ * @param myTasteOriginal 말한 그대로의 감상 표현(언어 불문, 요약·정규화 없음). {@code myTaste}와 병존.
+ *                    LLM이 누락하면 정규화본으로 수렴(V-11, changes/0013).
  * @param rating      4범주 평가 또는 null(미언급). 4범주 외 값은 역직렬화에서 거부(V-1).
  * @param recipe      발화 속 추출 레시피(dose_g·water_ml·grind), 미언급 null. <b>사용자 발화 전용</b> —
  *                    검색·OCR 보강 대상 아님(ADR-22, FR-18). 여기 값은 LLM 원본이며 V-8 정규화는
@@ -34,6 +37,7 @@ public record ExtractionResult(
         String process,
         String roastLevel,
         String myTaste,
+        String myTasteOriginal,
         Rating rating,
         Recipe recipe,
         String matchedSlug,
@@ -45,6 +49,19 @@ public record ExtractionResult(
         // 방어적 기본화: 스키마가 required boolean을 강제하지만 LLM/역직렬화의 null·부재를
         // "참조 아님"으로 수렴시킨다 (data-model.md#4 "기본 false", targetDate 기본화와 같은 정신).
         referencesPast = referencesPast != null && referencesPast;
+        // POLICY: my_taste가 있으면 my_taste_original도 병존 — LLM이 원문을 누락하면 정규화본으로 수렴한다
+        //         (ref: data-model.md#V-11, plan#ADR-30, changes/0013).
+        if (myTaste != null && myTasteOriginal == null) {
+            myTasteOriginal = myTaste;
+        }
+    }
+
+    /** 원문 필드 도입 전(changes/0013 이전) 시그니처 호환 생성자 — 원문은 정규화본으로 수렴(V-11). */
+    public ExtractionResult(String coffeeName, String roastery, String origin, String process, String roastLevel,
+                            String myTaste, Rating rating, Recipe recipe, String matchedSlug,
+                            Boolean referencesPast, LocalDate targetDate) {
+        this(coffeeName, roastery, origin, process, roastLevel, myTaste, null, rating, recipe, matchedSlug,
+                referencesPast, targetDate);
     }
 
     /**
@@ -56,7 +73,7 @@ public record ExtractionResult(
             return this;
         }
         return new ExtractionResult(
-                coffeeName, roastery, origin, process, roastLevel, myTaste, rating, recipe, matchedSlug,
-                referencesPast, today);
+                coffeeName, roastery, origin, process, roastLevel, myTaste, myTasteOriginal, rating, recipe,
+                matchedSlug, referencesPast, today);
     }
 }

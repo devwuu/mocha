@@ -38,7 +38,7 @@ public class PendingReviser {
             {
               "type": "object",
               "additionalProperties": false,
-              "required": ["coffee_name","roastery","origin","process","roast_level","official_notes","my_taste","rating","date"],
+              "required": ["coffee_name","roastery","origin","process","roast_level","official_notes","my_taste","my_taste_original","rating","date"],
               "properties": {
                 "coffee_name":    {"type": ["string","null"], "description": "커피 이름 새 값. 사용자가 바꾸라 하지 않았으면 null."},
                 "date":           {"type": ["string","null"], "description": "시음 날짜 새 값(YYYY-MM-DD). 사용자가 기록 날짜를 다른 날로 옮기라고 할 때만. 변경 요청 없으면 null."},
@@ -47,7 +47,8 @@ public class PendingReviser {
                 "process":        {"type": ["string","null"], "description": "가공 방식 새 값. 변경 요청 없으면 null."},
                 "roast_level":    {"type": ["string","null"], "description": "로스팅 정도 새 값. 변경 요청 없으면 null."},
                 "official_notes": {"type": ["array","null"], "items": {"type": "string"}, "description": "로스터리 노트 새 값. 사용자가 직접 불러줄 때만. 변경 요청 없으면 null."},
-                "my_taste":       {"type": ["string","null"], "description": "내가 느낀 맛 새 값. 변경 요청 없으면 null."},
+                "my_taste":       {"type": ["string","null"], "description": "내가 느낀 맛 새 값. 표현·뉘앙스 보존 + 한국어 음슴체 정규화(영어는 번역). 변경 요청 없으면 null."},
+                "my_taste_original": {"type": ["string","null"], "description": "말한 그대로의 감상 표현 새 값(언어 불문, 요약·정규화·번역 없이 원문 보존). my_taste를 바꿀 때만 함께 채운다. 아니면 null."},
                 "rating":         {"type": ["string","null"], "enum": ["완전 내스타일","맛있다","맛은 있는데 내스타일은 아님","맛이 없다", null], "description": "4범주 평가 새 값. 변경 요청 없으면 null."}
               }
             }
@@ -58,7 +59,7 @@ public class PendingReviser {
             - 입력의 current는 지금 초안의 각 필드 값이고, revision은 사용자의 수정 요청 문장이다.
             - 사용자가 명시적으로 바꾸라고 한 필드에만 새 값을 넣는다. 나머지 필드는 전부 null로 둔다(= 변경 없음).
             - 수정 요청과 무관한 필드를 임의로 채우거나 지어내지 않는다. 검색으로 값을 새로 찾지도 않는다.
-            - my_taste는 사용자가 표현한 감상을 원문 보존 위주로 반영한다. 산미/단맛 같은 맛 표현 수정은 my_taste에 담는다.
+            - my_taste는 사용자가 표현한 감상을 표현·뉘앙스 보존하되 한국어 음슴체로 정규화해 반영한다("맛있더라"→"맛있었음", 영어는 한국어로 번역). 산미/단맛 같은 맛 표현 수정은 my_taste에 담는다. my_taste를 바꿀 때는 사용자가 말한 그대로의 표현을 my_taste_original에 원문 그대로(요약·정규화·번역 없이) 함께 담는다. my_taste를 바꾸지 않으면 my_taste_original도 null.
             - rating은 사용자가 만족도를 바꿀 때만 4범주 중 하나로 고른다. 아니면 null.
             - date는 사용자가 기록 날짜를 다른 날로 옮기라고 명시할 때만 YYYY-MM-DD로 채운다. current의 date를 기준으로 계산한다. 아니면 null.
             입력은 current/revision을 담은 JSON으로 주어진다.
@@ -157,6 +158,9 @@ public class PendingReviser {
                 //         수정 대상이 아니다(신규 기록 흐름 불변, changes/0012 AC-Δ6).
                 editMode && patch.date() != null ? patch.date() : entry.date(),
                 patch.myTaste() != null ? patch.myTaste() : entry.myTaste(),
+                // POLICY: 감상 갱신 시 my_taste_original도 동반 갱신 — 원문 병존(V-11, ADR-30). 감상 미변경이면
+                //         패치의 두 필드가 null이라 기존 원문을 보존한다(RevisionResult가 원문 누락을 정규화본으로 수렴).
+                patch.myTasteOriginal() != null ? patch.myTasteOriginal() : entry.myTasteOriginal(),
                 patch.rating() != null ? patch.rating() : entry.rating(),
                 entry.recipe(),  // 레시피는 사용자 발화 전용 — 수정 스키마에 없어 보존(ADR-22)
                 entry.photos(),

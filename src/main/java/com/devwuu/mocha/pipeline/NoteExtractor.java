@@ -26,14 +26,15 @@ public class NoteExtractor {
             {
               "type": "object",
               "additionalProperties": false,
-              "required": ["coffee_name","roastery","origin","process","roast_level","my_taste","rating","recipe","matched_slug","references_past","target_date"],
+              "required": ["coffee_name","roastery","origin","process","roast_level","my_taste","my_taste_original","rating","recipe","matched_slug","references_past","target_date"],
               "properties": {
                 "coffee_name":  {"type": ["string","null"], "description": "표시용 커피 이름. 언급 없으면 null."},
                 "roastery":     {"type": ["string","null"], "description": "로스터리. 언급 없으면 null."},
                 "origin":       {"type": ["string","null"], "description": "원산지. 사용자가 명시한 경우만. 추측 금지, 검색 보강은 서버가 함."},
                 "process":      {"type": ["string","null"], "description": "가공 방식. 사용자 명시분만. 추측 금지."},
                 "roast_level":  {"type": ["string","null"], "description": "로스팅 정도. 사용자 명시분만. 추측 금지."},
-                "my_taste":     {"type": ["string","null"], "description": "사용자가 느낀 맛. 감상 원문 보존 위주 요약. 언급 없으면 null."},
+                "my_taste":     {"type": ["string","null"], "description": "사용자가 느낀 맛. 표현·뉘앙스는 보존하되 한국어 음슴체로 정규화. 영어 감상은 한국어로 번역. 언급 없으면 null."},
+                "my_taste_original": {"type": ["string","null"], "description": "사용자가 말한 그대로의 감상 표현(언어 불문, 요약·정규화·번역 없이 원문 보존). my_taste가 있으면 반드시 함께 채운다. 감상 언급이 없으면 null."},
                 "rating":       {"type": ["string","null"], "enum": ["완전 내스타일","맛있다","맛은 있는데 내스타일은 아님","맛이 없다", null], "description": "4범주 중 하나 또는 null(명확한 만족도 언급 없을 때)."},
                 "recipe": {
                   "type": ["object","null"],
@@ -57,7 +58,8 @@ public class NoteExtractor {
             너는 커피 감상 메시지에서 정해진 필드만 뽑아내는 추출기다. 아래 규칙을 반드시 지켜라.
             - 사용자가 실제로 말한 것만 채운다. 언급되지 않은 필드는 null로 둔다. 추측하거나 지어내지 않는다.
             - origin/process/roast_level은 사용자가 직접 말한 경우에만 채운다. 모르는 값을 상식으로 채우지 마라(검색 보강은 이후 단계가 한다).
-            - my_taste는 감상 표현을 원문 그대로 보존하는 요약으로 담는다. 키워드로 재해석하지 않는다.
+            - my_taste는 감상의 표현·뉘앙스를 보존하되 한국어 음슴체로 정규화해 담는다("맛있더라"→"맛있었음", "좋았어"→"좋았음"). 영어 감상은 한국어로 옮긴다. 키워드로 재해석하지 않는다(표현 보존 우선).
+            - my_taste_original은 사용자가 말한 그대로의 감상 표현을 원문 그대로 담는다(요약·정규화·번역 없이, 원래 언어 그대로). my_taste를 채웠으면 my_taste_original도 반드시 함께 채운다. 감상 언급이 아예 없으면 둘 다 null.
             - rating은 만족도 표현이 4범주에 명확히 대응할 때만 고른다. 만족도 언급이 아예 없으면 null. 아래 매핑을 따른다:
               · "완전 내스타일" — 취향에 딱 맞고 아주 만족("완전 내 취향", "최고", "계속 마시고 싶다").
               · "맛있다" — 맛있고 만족스러움. 취향 불일치 언급은 없음("맛있다", "좋았다").

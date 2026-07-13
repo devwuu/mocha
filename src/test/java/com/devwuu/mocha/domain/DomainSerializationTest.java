@@ -86,6 +86,7 @@ class DomainSerializationTest {
                 .contains("\"roast_level\"")
                 .contains("\"official_notes\"")
                 .contains("\"my_taste\"")
+                .contains("\"my_taste_original\"")  // 감상 원문 병존(V-11, changes/0013)
                 .contains("\"created_at\"")
                 .contains("\"dose_g\"")     // recipe 필드 snake_case(FR-18)
                 .contains("\"water_ml\"");
@@ -114,6 +115,36 @@ class DomainSerializationTest {
 
         assertThat(restored.rating()).isNull();
         assertThat(restored).isEqualTo(entry);
+    }
+
+    // --- TΔ4: my_taste 정규화 + my_taste_original 병존 (ADR-30, V-11, changes/0013) ---
+
+    @Test
+    @DisplayName("AC-Δ5: my_taste(정규화)·my_taste_original(원문)이 둘 다 snake_case로 영속·왕복된다")
+    void myTasteOriginalRoundTrip() throws Exception {
+        Entry entry = new Entry(
+                LocalDate.of(2026, 7, 10), "새콤하고 좋았음", "새콤하고 좋았다",
+                Rating.GOOD, null, List.of(), null);
+
+        String json = mapper.writeValueAsString(entry);
+        Entry restored = mapper.readValue(json, Entry.class);
+
+        assertThat(json).contains("\"my_taste\":\"새콤하고 좋았음\"")
+                .contains("\"my_taste_original\":\"새콤하고 좋았다\"");
+        assertThat(restored.myTaste()).isEqualTo("새콤하고 좋았음");
+        assertThat(restored.myTasteOriginal()).isEqualTo("새콤하고 좋았다");
+        assertThat(restored).isEqualTo(entry);
+    }
+
+    @Test
+    @DisplayName("V-11: 커밋 시 my_taste만 있고 원문이 누락되면 정규화본을 원문에도 담아 영속한다")
+    void persistsCopiedOriginalWhenMissing() throws Exception {
+        // 원문 도입 전 시그니처(6-arg)로 만든 엔트리 = 원문 누락 → V-11 복사가 걸린다.
+        Entry entry = new Entry(LocalDate.of(2026, 7, 10), "맛있었음", Rating.GOOD, null, List.of(), null);
+
+        assertThat(entry.myTasteOriginal()).isEqualTo("맛있었음"); // 도메인 불변 보장
+        Entry restored = mapper.readValue(mapper.writeValueAsString(entry), Entry.class);
+        assertThat(restored.myTasteOriginal()).isEqualTo("맛있었음"); // JSON에도 병존
     }
 
     // --- TΔ1: recipe (FR-18, V-8, changes/0010) ---

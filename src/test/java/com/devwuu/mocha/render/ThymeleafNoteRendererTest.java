@@ -127,6 +127,28 @@ class ThymeleafNoteRendererTest {
     }
 
     @Test
+    @DisplayName("AC-Δ5(changes/0013): 카드는 my_taste(정규화)만 렌더하고 my_taste_original(원문)은 노출하지 않는다")
+    void cardRendersNormalizedTasteAndHidesOriginal(@TempDir Path dataDir, @TempDir Path artifactDir) {
+        NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create());
+        OffsetDateTime now = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
+        NoteMeta meta = new NoteMeta(
+                Sourced.user("예가체프 G1"),
+                Sourced.user("커피베라"), Sourced.search("에티오피아"),
+                null, null, Sourced.search(List.of()), List.of());
+        // 정규화본(음슴체)과 발화 원문을 서로 다른 문자열로 둔다 — 원문 유출을 판별 가능하게.
+        repo.upsertEntry("2026-07-10", meta,
+                new Entry(LocalDate.parse("2026-07-10"), "새콤하고 좋았음", "새콤하고 좋았다구우",
+                        Rating.GOOD, null, List.of(), now));
+
+        FakeCardImageRenderer cards = new FakeCardImageRenderer();
+        new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_B, cards).renderAll();
+
+        String cardHtml = capturedHtml(cards, "cards/2026-07-10/2026-07-10.jpg");
+        assertTrue(cardHtml.contains("새콤하고 좋았음"), "정규화본(my_taste) 렌더");
+        assertFalse(cardHtml.contains("새콤하고 좋았다구우"), "원문(my_taste_original)은 카드에 노출 안 됨(V-11)");
+    }
+
+    @Test
     @DisplayName("AC-Δ4: 같은 커피를 다른 날 기록하면 엔트리마다 별도 카드가 생기고, 카드 HTML은 대상 엔트리 1건만 담는다")
     void sameCoffeeDifferentDatesYieldSeparateSingleEntryCards(@TempDir Path dataDir, @TempDir Path artifactDir) {
         NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create());

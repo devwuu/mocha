@@ -286,7 +286,8 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
             Recipe recipe = extraction.recipe() == null ? null
                     : Recipe.normalize(
                             extraction.recipe().doseG(), extraction.recipe().waterMl(), extraction.recipe().grind());
-            Entry entry = new Entry(match.targetDate(), extraction.myTaste(), extraction.rating(), recipe, photoPaths, now);
+            Entry entry = new Entry(match.targetDate(), extraction.myTaste(), extraction.myTasteOriginal(),
+                    extraction.rating(), recipe, photoPaths, now);
             // coffeeName은 user 우선, 없으면 photo(OCR)로 채워진 값을 쓴다 — enriched가 그대로 실어 나른다(검색 미채움, V-5).
             Note draft = assembleDraft(slug, enriched.coffeeName(), enriched, entry, now);
             MatchInfo matchInfo = match.toMatchInfo();
@@ -677,7 +678,8 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         String date = entry.date().toString();
         List<String> committedPhotos = photoStore.commit(userId, slug, date);
         Entry committedEntry = new Entry(
-                entry.date(), entry.myTaste(), entry.rating(), entry.recipe(), committedPhotos, entry.updatedAt());
+                entry.date(), entry.myTaste(), entry.myTasteOriginal(), entry.rating(), entry.recipe(),
+                committedPhotos, entry.updatedAt());
 
         // POLICY: 사용자 [저장] 확인을 거친 뒤에만 저장한다 (ref: plan.md#ADR-3, AC-4).
         Note saved = noteRepository.upsertEntry(slug, metaOf(draft), committedEntry);
@@ -728,7 +730,8 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         List<String> photos = new ArrayList<>(origin.get().photos() == null ? List.of() : origin.get().photos());
         photos.addAll(photoStore.commit(userId, slug, date));
         Entry committedEntry = new Entry(
-                entry.date(), entry.myTaste(), entry.rating(), entry.recipe(), photos, entry.updatedAt());
+                entry.date(), entry.myTaste(), entry.myTasteOriginal(), entry.rating(), entry.recipe(),
+                photos, entry.updatedAt());
 
         // POLICY: 사용자 [저장] 확인을 거친 뒤에만 저장한다 (ref: plan.md#ADR-3, AC-37).
         Note saved = noteRepository.applyEdit(slug, target.date(), withLatestEntry(pending.draft(), committedEntry));
@@ -910,7 +913,8 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         }
         List<String> merged = new ArrayList<>(entry.photos());
         merged.addAll(provisionalPhotoPaths(draft.slug(), entry.date(), newNames));
-        Entry withPhotos = new Entry(entry.date(), entry.myTaste(), entry.rating(), entry.recipe(), merged, entry.updatedAt());
+        Entry withPhotos = new Entry(entry.date(), entry.myTaste(), entry.myTasteOriginal(), entry.rating(),
+                entry.recipe(), merged, entry.updatedAt());
         PendingNote updated = pending.withDraft(withLatestEntry(draft, withPhotos));
 
         pendingStore.put(userId, updated);
