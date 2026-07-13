@@ -279,6 +279,22 @@ class NoteExtractorTest {
     }
 
     @Test
+    @DisplayName("AC-Δ4: 프롬프트가 고유명사 어미 분리를 지시하고 few-shot 예시를 포함한다 (changes/0013, FR-2)")
+    void promptDeclaresProperNounEndingSeparation() {
+        CapturingLlmClient llm = new CapturingLlmClient();
+        llm.response = new ExtractionResult("예가체프", "카페 화", null, null, null, "맛있었음", "맛있더라",
+                Rating.GOOD, null, null, false, TODAY);
+
+        extractor(llm).extract("로스터리는 카페 화고 달고 맛있더라", TODAY, List.of());
+
+        String systemPrompt = llm.captured.systemPrompt();
+        // 지시: 고유명사 필드는 조사·연결어미 제거 후 이름만.
+        assertThat(systemPrompt).contains("조사").contains("어미");
+        // few-shot: 오염 사례("카페 화고" → "카페 화")가 프롬프트에 박혀 있다.
+        assertThat(systemPrompt).contains("카페 화고").contains("카페 화");
+    }
+
+    @Test
     @DisplayName("FR-18: 스키마·프롬프트가 recipe 3항목(dose_g·water_ml·grind)을 계약으로 강제한다")
     void schemaAndPromptDeclareRecipeContract() {
         CapturingLlmClient llm = new CapturingLlmClient();

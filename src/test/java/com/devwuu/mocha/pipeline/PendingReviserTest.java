@@ -211,6 +211,21 @@ class PendingReviserTest {
         assertThat(entry.myTasteOriginal()).isEqualTo("새콤함"); // 기존 원문 보존(stale 아님)
     }
 
+    @Test
+    @DisplayName("AC-Δ4: 프롬프트가 고유명사 어미 분리를 지시하고 few-shot 예시를 포함한다 (changes/0013, FR-2)")
+    void promptDeclaresProperNounEndingSeparation() {
+        CapturingLlmClient llm = new CapturingLlmClient();
+        llm.response = noChange();
+
+        reviser(llm).revise(pendingWithSearchOrigin(), "로스터리는 카페 화고");
+
+        String systemPrompt = llm.captured.systemPrompt();
+        // 지시: 고유명사 필드는 조사·연결어미 제거 후 이름만.
+        assertThat(systemPrompt).contains("조사").contains("어미");
+        // few-shot: 오염 사례("카페 화고" → "카페 화")가 프롬프트에 박혀 있다.
+        assertThat(systemPrompt).contains("카페 화고").contains("카페 화");
+    }
+
     // --- changes/0012 TΔ5: edit 모드 — 커피명 거부(V-9)·날짜 이동(AC-39)·record 경로 불변(AC-Δ6) ---
 
     @Test
