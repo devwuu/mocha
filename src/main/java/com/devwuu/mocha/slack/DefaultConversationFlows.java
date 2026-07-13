@@ -5,10 +5,8 @@ import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
 import com.devwuu.mocha.domain.PendingNote;
-import com.devwuu.mocha.domain.PhotoBuffer;
 import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Sourced;
-import com.devwuu.mocha.image.ImageFormat;
 import com.devwuu.mocha.llm.VisionExtraction;
 import com.devwuu.mocha.llm.VisionHint;
 import com.devwuu.mocha.domain.SearchSession;
@@ -29,7 +27,6 @@ import com.devwuu.mocha.repository.PendingStore;
 import com.devwuu.mocha.repository.PhotoBufferStore;
 import com.devwuu.mocha.repository.PhotoStore;
 import com.devwuu.mocha.repository.SearchSessionStore;
-import com.devwuu.mocha.repository.StagedImage;
 import com.devwuu.mocha.repository.TransitionSlot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,7 +44,6 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
 
 /**
@@ -72,53 +68,20 @@ import java.util.Optional;
  *   <li>{@link #receiveMedia} — 사진 수신 버퍼 그룹핑: pending 있으면 첨부, 없으면 버퍼링. 윈도우 밖은
  *       새 흐름(FR-10, AC-8). [저장] 시 {@link PhotoStore#commit}으로 스테이징을 노트 트리로 확정한다. (tasks T4-2)</li>
  * </ul>
+ * <p>사진 수신·버퍼·스테이징·포맷 입구 검증·OCR 오버레이는 {@link SlackPhotoIntake}가, 안내 문구 상수는
+ * {@link FlowMessages}가 소유한다 — 이 façade는 배선·위임만 갖는다(ADR-31, changes/0013).
  * <p>POLICY: 사용자 [저장] 확인 없이 {@link NoteRepository} 쓰기를 호출하지 않는다 (ref: plan.md#ADR-3, AC-4).
  * 신규 파이프라인은 미리보기 단계까지만 진행하며 {@link PendingStore}에만 기록한다 — 노트 JSON은 손대지 않는다.
  */
 @Component
-public class DefaultConfirmationFlow implements ConfirmationFlow {
+public class DefaultConversationFlows implements ConversationFlows {
 
-    private static final Logger log = LoggerFactory.getLogger(DefaultConfirmationFlow.class);
+    private static final Logger log = LoggerFactory.getLogger(DefaultConversationFlows.class);
 
     // 날짜/타임스탬프는 Asia/Seoul 기준 — NoteRepository·PendingStore와 동일(V-3).
     private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
     // slug 시각 세그먼트(ADR-28, V-2) — 생성 시각을 HHmmss로 붙여 날짜 세그먼트와 겹치지 않게 한다.
     private static final DateTimeFormatter SLUG_TIME = DateTimeFormatter.ofPattern("HHmmss");
-
-    // --- 멘트(모카 톤) 상수 — 구현 디테일, spec 결정 아님. PreviewBlocks와 같은 강아지 말투("멍" + 🐾). ---
-    static final String SAVE_DONE_CAPTION = "저장했어요 멍! 🐾"; // 배달하는 카드 JPG의 캡션(AC-Δ1)
-    static final String SAVE_DONE_NO_IMAGE = "저장했어요 멍! 카드 이미지는 잠시 뒤에 다시 만들어 볼게요 🐾"; // 카드 렌더/전송 실패 폴백(AC-18)
-    static final String NOTHING_TO_SAVE = "저장할 기록을 못 찾았어요 멍… 만료됐거나 이미 처리됐나 봐요 🐾"; // 만료/부재 안내(V-7)
-    static final String CANCELED = "이번 기록은 지웠어요 멍! 다음에 또 마시면 불러주세요 🐾"; // 취소 안내
-    static final String BROKEN_PENDING = "기록이 뭔가 이상해요 멍… 다시 보내주시겠어요? 🐾"; // 방어(엔트리/슬러그 결손)
-    static final String NEW_NOTE_FAILED = "기록을 정리하다 문제가 생겼어요 멍… 잠시 뒤 다시 보내주시겠어요? 🐾"; // 추출/검색/전송 실패(plan §7)
-    static final String REVISE_FAILED = "수정을 반영하다 문제가 생겼어요 멍… 다시 말씀해 주시겠어요? 🐾"; // 수정 병합/전송 실패(plan §7). 기존 pending은 보존
-    static final String PHOTO_FAILED = "사진을 받다 문제가 생겼어요 멍… 다시 올려주시겠어요? 🐾"; // 다운로드/스테이징/전송 실패(plan §7)
-    static final String UNSUPPORTED_FORMAT = "그 사진은 제가 읽을 수 없는 포맷이에요 멍… JPEG나 PNG로 다시 올려주시겠어요? 🐾"; // 매직바이트 미지원 포맷 거부 안내(ADR-29, V-12, AC-46)
-    static final String NOT_A_RECORD = "저는 커피 감상을 기록하는 강아지예요 멍! 마신 커피 이야기를 들려주세요 🐾"; // 의도 게이트 other 판정 안내(AC-20)
-    static final String PENDING_EXISTS = "확인을 기다리는 기록이 있어요 멍! 먼저 [저장]이나 [취소]로 마무리해 주세요 🐾"; // record+대기 존재 안내 — 단일 대기 원칙(FR-17, AC-30)
-    static final String NOTHING_TO_REVISE = "지금 고칠 대기 기록이 없어요 멍… 새 커피 이야기면 그대로 들려주세요! 🐾"; // revise+대기 없음 안내(FR-17)
-    // --- 검색 세션 멘트(FR-20, ADR-25, changes/0011 TΔ5) — 시작·종료 안내는 spec AC-34가 요구하는 모카 톤. ---
-    static final String SEARCH_STARTED = "기록을 찾아볼게요 멍! 🐾"; // 검색 세션 시작 안내(AC-34)
-    static final String SEARCH_FOUND_CAPTION = "이 기록이 맞나요 멍? 다 보셨으면 \"됐어\"라고 말해주세요 🐾"; // 단일 매치 카드 캡션(AC-31)
-    static final String SEARCH_CANDIDATES_HEADER = "비슷한 기록이 여러 개예요 멍! 번호나 이름으로 골라주세요 🐾"; // 복수 후보 목록 머리말(AC-32)
-    static final String SEARCH_REQUERY = "딱 맞는 기록을 못 찾았어요 멍… 날짜나 로스터리 같은 단서를 더 알려주시겠어요? 🐾"; // 무후보 재질문(AC-33)
-    static final String SEARCH_LIMIT_REACHED = "이번엔 못 찾겠어요 멍… 찾기를 마칠게요. 다른 단서가 떠오르면 다시 불러주세요! 🐾"; // 재질문 상한 도달 → 세션 종료(FR-20/AC-33)
-    static final String SEARCH_ENDED = "기록 찾기를 마칠게요 멍! 또 궁금하면 언제든 불러주세요 🐾"; // end 의도 종료 안내(AC-34)
-    static final String SEARCH_FAILED = "기록을 찾다 문제가 생겼어요 멍… 다시 한 번 말씀해 주시겠어요? 🐾"; // 후보 선정 실패(plan §7) — 세션은 유지
-    // --- 수정 세션 전환 멘트(FR-21, ADR-27, changes/0012 TΔ4) ---
-    static final String EDIT_DATE_PROMPT_HEADER = "이 노트엔 기록이 여러 날 있어요 멍! 어느 날짜 기록을 고칠까요? 🐾"; // 엔트리 복수 → 날짜 목록 선택(AC-42)
-    static final String EDIT_TARGET_GONE = "고치려던 기록을 못 찾았어요 멍… 사라졌나 봐요. 다시 찾아볼까요? 🐾"; // 대상 노트/엔트리 소실 → 수정 세션 미시작(plan §7)
-    static final String EDIT_COFFEE_NAME_REJECTED =
-            "커피 이름은 못 바꿔요 멍… 이름이 다르면 다른 커피예요! 그 커피는 새로 기록해 주세요 🐾"; // 커피명 변경 거부 + 새 등록 안내(V-9, AC-38)
-    // 과거 참조 매치 실패 안내(FR-14, ADR-26, changes/0011 TΔ6) — 다음 의도(새 기록/검색)를 고르게 하고,
-    // 보관이 10분뿐임을 명시해 TTL 폐기 후 일반 신규 처리로 흐르는 것이 놀랍지 않게 한다(AC-36).
-    static final String REFERENCE_NOT_FOUND =
-            "말씀하신 커피를 못 찾았어요 멍… \"새로 기록해줘\"라고 하면 방금 이야기 그대로 기록하고, "
-                    + "\"찾아줘\"라고 하면 같이 찾아볼게요! 10분 동안 기억하고 있을게요 🐾"; // 매치 실패 → 전환 대기 안내
-    // 버튼 1회 소진 상태 문구 — 미리보기 하단 버튼을 대체한다(spec AC-22 문구, changes/0009 ADR-20). 짧은 상태 배지라 강아지 톤은 절제.
-    static final String FINALIZE_SAVED = "✅ 저장 완료"; // [저장] 완료 후 버튼 소진 상태 문구(AC-Δ1)
-    static final String FINALIZE_CANCELED = "취소됨"; // [취소] 완료 후 버튼 소진 상태 문구(AC-Δ1)
 
     private final PendingStore pendingStore;
     private final NoteRepository noteRepository;
@@ -127,21 +90,17 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
     private final NoteExtractor noteExtractor;
     private final NoteMatcher noteMatcher;
     private final NoteEnricher noteEnricher;
-    private final PhotoInfoExtractor photoInfoExtractor;
     private final PendingReviser pendingReviser;
     private final PreviewMessenger previewMessenger;
-    private final PhotoDownloader photoDownloader;
-    private final PhotoStore photoStore;
-    private final PhotoBufferStore photoBufferStore;
     private final SearchSessionStore searchSessionStore;
     private final NoteSearchService noteSearchService;
     private final TransitionSlot transitionSlot;
+    private final SlackPhotoIntake photoIntake;
     private final Path artifactDir;
-    private final Duration bufferWindow;
     private final Clock clock;
 
     @Autowired
-    public DefaultConfirmationFlow(
+    public DefaultConversationFlows(
             PendingStore pendingStore,
             NoteRepository noteRepository,
             NoteRenderer noteRenderer,
@@ -167,7 +126,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
     }
 
     // 테스트에서 시간을 고정하기 위한 생성자(NoteRepository·PendingStore와 동일 패턴).
-    DefaultConfirmationFlow(
+    DefaultConversationFlows(
             PendingStore pendingStore,
             NoteRepository noteRepository,
             NoteRenderer noteRenderer,
@@ -194,17 +153,15 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         this.noteExtractor = noteExtractor;
         this.noteMatcher = noteMatcher;
         this.noteEnricher = noteEnricher;
-        this.photoInfoExtractor = photoInfoExtractor;
         this.pendingReviser = pendingReviser;
         this.previewMessenger = previewMessenger;
-        this.photoDownloader = photoDownloader;
-        this.photoStore = photoStore;
-        this.photoBufferStore = photoBufferStore;
         this.searchSessionStore = searchSessionStore;
         this.noteSearchService = noteSearchService;
         this.transitionSlot = transitionSlot;
+        // 사진 수신 경로는 SlackPhotoIntake 소유(ADR-31) — 생성자 계약(시그니처)은 불변으로 두고 여기서 조립한다.
+        this.photoIntake = new SlackPhotoIntake(pendingStore, responder, previewMessenger,
+                photoDownloader, photoStore, photoBufferStore, photoInfoExtractor, bufferWindow, clock);
         this.artifactDir = artifactDir;
-        this.bufferWindow = bufferWindow;
         this.clock = clock;
     }
 
@@ -222,18 +179,9 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
             // FR-10 버퍼 그룹핑: 텍스트보다 먼저 도착해 버퍼링된 사진이 윈도우 안이면 이 노트로 흡수한다.
             // 소비(clear)는 pending 전송이 성공한 뒤에만 — 실패 시 사진이 버퍼에 남아 재시도로 살아남게 한다.
             // 윈도우 밖 버퍼는 이 텍스트에 묶이지 않는다: 버려진 스테이징을 정리하고 새 흐름으로 진행한다(AC-8 후반).
-            List<String> bufferNames = List.of();
-            boolean consumeBuffer = false;
-            Optional<PhotoBuffer> buffer = photoBufferStore.get(userId);
-            if (buffer.isPresent()) {
-                if (withinBufferWindow(buffer.get().lastMediaAt(), now)) {
-                    bufferNames = buffer.get().stagedNames();
-                    consumeBuffer = true;
-                } else {
-                    photoStore.discard(userId);
-                    photoBufferStore.clear(userId);
-                }
-            }
+            Optional<List<String>> absorbed = photoIntake.absorbFreshBuffer(userId, now);
+            boolean consumeBuffer = absorbed.isPresent();
+            List<String> bufferNames = absorbed.orElse(List.of());
 
             // 전환 슬롯 재개(FR-14, ADR-26): 직전 과거 참조 매치 실패의 보관분이 살아 있으면 이 텍스트("새로
             // 기록해줘")를 추출하지 않고 보관분으로 즉시 미리보기를 재개한다(감상 재전송 불요, AC-36).
@@ -251,7 +199,8 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
 
             // [2.5] 사진이 묶여 있으면 vision OCR을 1회 시도해 빈 필드를 읽는다 — 추출 뒤·매칭 전(OCR이 읽은
             // 커피명·로스터리가 매칭 이후 draft·검색 쿼리에 기여). 실패·무정보는 첨부로만(흐름 불변, FR-19, ADR-23).
-            VisionExtraction photoInfo = readPhotoInfo(userId, consumeBuffer, bufferNames, extraction);
+            VisionExtraction photoInfo = photoIntake.readPhotoInfo(
+                    userId, bufferNames, new VisionHint(extraction.coffeeName(), extraction.roastery()));
 
             MatchResult match = noteMatcher.match(extraction, existingNotes);
 
@@ -261,7 +210,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
             //         기록"을 고른 것이라 이 분기에 다시 들지 않는다. 버퍼 사진은 건드리지 않는다(재개 시 흡수).
             if (!resumed && extraction.referencesPast() && match.isNew()) {
                 transitionSlot.hold(extraction);
-                responder.post(channelId, REFERENCE_NOT_FOUND);
+                responder.post(channelId, FlowMessages.REFERENCE_NOT_FOUND);
                 log.info("과거 참조 매치 실패 — 전환 슬롯 보관 + 안내(pending 미생성): user={} targetDate={}",
                         userId, extraction.targetDate());
                 return;
@@ -269,7 +218,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
 
             // draft 조립: source=user 마킹 → OCR 오버레이(빈 필드만 source=photo, user 불가침 V-6) →
             // [4] 검색 보강(남은 빈 필드만 source=search). 외부 호출은 여기서 끝낸다(CLAUDE.md §3).
-            NoteMeta withPhoto = fillFromPhoto(userDraftMeta(extraction), photoInfo);
+            NoteMeta withPhoto = SlackPhotoIntake.overlayPhotoInfo(userDraftMeta(extraction), photoInfo);
             NoteMeta enriched = noteEnricher.enrich(withPhoto);
 
             // slug 확정: 기존=매칭 노트 slug, 신규=최초 기록일+생성 시각 기반 대체키(V-2, data-model §2.1).
@@ -280,7 +229,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
                     : match.matchedNote().slug();
 
             // 흡수한 버퍼 사진의 임시 미리보기 경로. 실제 저장 경로는 [저장] 시 commit이 확정한다(V-4).
-            List<String> photoPaths = provisionalPhotoPaths(slug, match.targetDate(), bufferNames);
+            List<String> photoPaths = SlackPhotoIntake.provisionalPhotoPaths(slug, match.targetDate(), bufferNames);
             // POLICY: 레시피는 사용자 발화 전용 — 검색·OCR 보강 금지, source 개념 없음 (ADR-22, FR-18).
             // 추출 원본을 V-8로 정규화(음수·0·공백 항목 드롭, 전무 시 recipe 자체 null)해 Entry에 싣는다.
             Recipe recipe = extraction.recipe() == null ? null
@@ -305,14 +254,14 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
             }
             // 사진은 pending으로 이관됐다 — 버퍼는 비운다(스테이징 원본은 [저장] 시 commit이 옮긴다).
             if (consumeBuffer) {
-                photoBufferStore.clear(userId);
+                photoIntake.clearBuffer(userId);
             }
             log.info("신규 파이프라인 미리보기 전송: user={} slug={} match={} photos={}",
                     userId, slug, matchInfo.type(), bufferNames.size());
         } catch (Exception e) {
             // 추출·검색·전송 등 어느 단계 실패든 오류 응답으로 수렴하고 pending은 남기지 않는다(plan §7).
             log.warn("신규 파이프라인 실패(pending 미생성): user={}", userId, e);
-            responder.post(channelId, NEW_NOTE_FAILED);
+            responder.post(channelId, FlowMessages.NEW_NOTE_FAILED);
         }
     }
 
@@ -321,21 +270,21 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         // POLICY: 단일 대기 원칙 — record 의도인데 대기가 있으면 대기를 건드리지 않고 안내만, 새 대기 미생성
         //         (ref: spec FR-17/AC-30, plan.md#ADR-24).
         log.info("record 의도 + 확인 대기 존재 — 대기 불변, 안내만: user={}", message.userId());
-        responder.post(message.channelId(), PENDING_EXISTS);
+        responder.post(message.channelId(), FlowMessages.PENDING_EXISTS);
     }
 
     @Override
     public void guideNothingToRevise(IncomingMessage message) {
         // revise 의도인데 고칠 대기가 없다 — 파이프라인 미진입, 안내만(FR-17).
         log.info("revise 의도 + 확인 대기 없음 — 안내만: user={}", message.userId());
-        responder.post(message.channelId(), NOTHING_TO_REVISE);
+        responder.post(message.channelId(), FlowMessages.NOTHING_TO_REVISE);
     }
 
     @Override
     public void guideNotARecord(IncomingMessage message) {
         // other 판정 — 추출·보강·pending·미리보기 없이 짧은 안내로 종료한다. 버퍼도 건드리지 않는다(AC-20).
         log.info("의도 게이트 other — 파이프라인 미진입: user={}", message.userId());
-        responder.post(message.channelId(), NOT_A_RECORD);
+        responder.post(message.channelId(), FlowMessages.NOT_A_RECORD);
     }
 
     @Override
@@ -352,7 +301,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         Optional<SearchSession> existing = searchSessionStore.get(userId);
         if (existing.isEmpty()) {
             // 세션 시작 안내(AC-34) — 후보 선정(LLM)보다 먼저 보내 즉시 반응한다.
-            responder.post(channelId, SEARCH_STARTED);
+            responder.post(channelId, FlowMessages.SEARCH_STARTED);
         }
         try {
             SearchOutcome outcome = noteSearchService.handle(message.text(), existing, noteRepository.findAll());
@@ -360,7 +309,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
                 case SINGLE_MATCH -> {
                     searchSessionStore.put(userId, outcome.session());
                     SearchHit hit = outcome.hits().get(0);
-                    responder.postImage(channelId, cardOf(hit), SEARCH_FOUND_CAPTION);
+                    responder.postImage(channelId, cardOf(hit), FlowMessages.SEARCH_FOUND_CAPTION);
                     // 관측(plan §6): 매치 결과 분포(단일/복수/무후보) — 오답 프록시와 함께 임베딩 전환 트리거 판단 재료.
                     log.info("검색 단일 매치 — 카드 재전송: user={} slug={} date={}", userId, hit.slug(), hit.latestDate());
                 }
@@ -371,13 +320,13 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
                 }
                 case NO_MATCH -> {
                     searchSessionStore.put(userId, outcome.session());
-                    responder.post(channelId, SEARCH_REQUERY);
+                    responder.post(channelId, FlowMessages.SEARCH_REQUERY);
                     log.info("검색 무후보 — 재질문: user={} requeryCount={}", userId, outcome.session().requeryCount());
                 }
                 case LIMIT_REACHED -> {
                     // POLICY: 재질문 상한(mocha.search-session.max-requery) 도달 → 안내 + 세션 폐기 (spec FR-20/AC-33).
                     searchSessionStore.clear(userId);
-                    responder.post(channelId, SEARCH_LIMIT_REACHED);
+                    responder.post(channelId, FlowMessages.SEARCH_LIMIT_REACHED);
                     log.info("검색 재질문 상한 도달 — 세션 종료: user={}", userId);
                 }
                 case EDIT_DATE_CHOICES -> {
@@ -393,7 +342,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         } catch (Exception e) {
             // plan §7: 후보 선정 실패 → 세션을 잃지 않고 안내만(기존 세션 유지 — 다음 메시지로 계속).
             log.warn("검색 후보 선정 실패(세션 유지): user={}", userId, e);
-            responder.post(channelId, SEARCH_FAILED);
+            responder.post(channelId, FlowMessages.SEARCH_FAILED);
         }
     }
 
@@ -402,7 +351,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         // end 의도 + 세션 존재는 라우터가 판정했다 — 여기는 세션 폐기와 종료 안내만(FR-17/FR-20, AC-34).
         searchSessionStore.clear(message.userId());
         log.info("검색 세션 종료(end 의도): user={}", message.userId());
-        responder.post(message.channelId(), SEARCH_ENDED);
+        responder.post(message.channelId(), FlowMessages.SEARCH_ENDED);
     }
 
     // 단일 매치 카드 경로 — POLICY: 검색 응답은 새 파생물을 만들지 않는다. 기존 카드 재사용, 파일 부재 시에만
@@ -417,7 +366,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
 
     // 검색 세션 → 수정 세션 전환(FR-21, ADR-27, changes/0012 TΔ4) — 대상 노트+엔트리를 draft로 로드해
     // mode=edit pending을 만들고 ✏️ 미리보기를 보낸다. 미리보기 전송 실패는 pending을 남기지 않고 밖의
-    // catch(SEARCH_FAILED — 검색 세션 유지)로 수렴한다.
+    // catch(FlowMessages.SEARCH_FAILED — 검색 세션 유지)로 수렴한다.
     private void enterEditSession(String userId, String channelId, SearchOutcome outcome) throws Exception {
         SearchHit hit = outcome.hits().get(0);
         LocalDate targetDate = outcome.editDate();
@@ -427,7 +376,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         //         (ref: plan.md#ADR-27, changes/0012 findings-TΔ0 Q2).
         if (pendingStore.get(userId).isPresent()) {
             searchSessionStore.put(userId, outcome.session()); // 단서·대상은 세션에 남긴다 — 대기 정리 후 이어서 진입 가능
-            responder.post(channelId, PENDING_EXISTS);
+            responder.post(channelId, FlowMessages.PENDING_EXISTS);
             log.info("수정 세션 진입 거부 — 확인 대기 존재(단일 대기 원칙): user={} slug={}", userId, hit.slug());
             return;
         }
@@ -440,7 +389,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
                         .filter(e -> targetDate.equals(e.date())).findFirst());
         if (target.isEmpty()) {
             searchSessionStore.put(userId, outcome.session());
-            responder.post(channelId, EDIT_TARGET_GONE);
+            responder.post(channelId, FlowMessages.EDIT_TARGET_GONE);
             log.warn("수정 세션 미시작 — 대상 소실: user={} slug={} date={}", userId, hit.slug(), targetDate);
             return;
         }
@@ -474,7 +423,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
 
     // 수정 대상 엔트리 날짜 목록(AC-42) — 번호는 "두 번째" 선택 해석 기준과 같은 순서(SearchOutcome.editDateChoices).
     private static String editDateListText(List<LocalDate> dates) {
-        StringBuilder text = new StringBuilder(EDIT_DATE_PROMPT_HEADER);
+        StringBuilder text = new StringBuilder(FlowMessages.EDIT_DATE_PROMPT_HEADER);
         for (int i = 0; i < dates.size(); i++) {
             text.append("\n").append(i + 1).append(". ").append(dates.get(i));
         }
@@ -483,7 +432,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
 
     // 복수 후보 텍스트 목록(AC-32) — 커피명·로스터리·최근 시음일. 번호는 "두 번째" 선택 해석 기준(세션 candidateSlugs 순서).
     private static String candidateListText(List<SearchHit> hits) {
-        StringBuilder text = new StringBuilder(SEARCH_CANDIDATES_HEADER);
+        StringBuilder text = new StringBuilder(FlowMessages.SEARCH_CANDIDATES_HEADER);
         for (int i = 0; i < hits.size(); i++) {
             SearchHit hit = hits.get(i);
             text.append("\n").append(i + 1).append(". ")
@@ -506,60 +455,6 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
                         note.coffeeName() == null ? null : note.coffeeName().value(),
                         note.roastery() == null ? null : note.roastery().value()))
                 .toList();
-    }
-
-    // [2.5] 수신 사진 OCR — 사진이 묶여 있을 때만 1콜 시도한다. 없으면 빈 결과(호출 없음).
-    // hint.coffeeName은 nullable — 사진-only 흐름은 커피명을 사진에서 읽는다(ADR-23).
-    private VisionExtraction readPhotoInfo(
-            String userId, boolean consumeBuffer, List<String> bufferNames, ExtractionResult extraction) {
-        if (!consumeBuffer || bufferNames.isEmpty()) {
-            return VisionExtraction.empty();
-        }
-        List<StagedImage> images = photoStore.readStaged(userId);
-        if (images.isEmpty()) {
-            return VisionExtraction.empty();
-        }
-        VisionExtraction result = photoInfoExtractor.extract(
-                images, new VisionHint(extraction.coffeeName(), extraction.roastery()));
-        log.info("수신 사진 OCR 시도: user={} images={} coffeeName={}",
-                userId, images.size(), result.coffeeName() != null);
-        return result;
-    }
-
-    // OCR로 읽은 값을 사용자 draft 위에 오버레이한다 — 빈 필드만 source=photo로 채우고 사용자 값은 불가침(V-6).
-    // POLICY: 우선순위 user > photo — 사진 OCR은 source=user 필드를 덮지 않는다(coffee_name 포함) (ADR-23, V-6).
-    private static NoteMeta fillFromPhoto(NoteMeta user, VisionExtraction photo) {
-        if (photo == null) {
-            return user;
-        }
-        return new NoteMeta(
-                fillPhoto(user.coffeeName(), photo.coffeeName()),
-                fillPhoto(user.roastery(), photo.roastery()),
-                fillPhoto(user.origin(), photo.origin()),
-                fillPhoto(user.process(), photo.process()),
-                fillPhoto(user.roastLevel(), photo.roastLevel()),
-                fillPhotoList(user.officialNotes(), photo.officialNotes()),
-                user.sources());
-    }
-
-    private static Sourced<String> fillPhoto(Sourced<String> current, String photoValue) {
-        if (current != null && current.value() != null && !current.value().isBlank()) {
-            return current; // 사용자 값 불가침(V-6)
-        }
-        if (photoValue == null || photoValue.isBlank()) {
-            return current; // 사진에서 못 읽음 — 원래 상태(보통 null) 유지, 검색 보강 대상으로 넘김
-        }
-        return Sourced.photo(photoValue);
-    }
-
-    private static Sourced<List<String>> fillPhotoList(Sourced<List<String>> current, List<String> photoValue) {
-        if (current != null && current.value() != null && !current.value().isEmpty()) {
-            return current;
-        }
-        if (photoValue == null || photoValue.isEmpty()) {
-            return current;
-        }
-        return Sourced.photo(List.copyOf(photoValue));
     }
 
     // 추출 결과를 "사용자가 말한 것"만 담은 NoteMeta로 조립 — 언급한 필드만 source=user, 나머지는 null(보강 대상).
@@ -615,14 +510,14 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
             previewMessenger.publish(channelId, revised);
             // 커피명 변경 거부(V-9/AC-38)는 그 턴의 1회성 안내 — 갱신된 미리보기와 별도로 텍스트로 알린다.
             if (outcome.coffeeNameRejected()) {
-                responder.post(channelId, EDIT_COFFEE_NAME_REJECTED);
+                responder.post(channelId, FlowMessages.EDIT_COFFEE_NAME_REJECTED);
             }
             log.info("pending 수정 반영: user={} slug={} coffeeNameRejected={} dateConflict={}",
                     userId, revised.draft().slug(), outcome.coffeeNameRejected(), revised.dateConflict());
         } catch (Exception e) {
             // 수정 병합·전송 실패 — 신규와 달리 기존 pending은 폐기하지 않는다(이전 미리보기가 여전히 유효). 오류만 안내한다(plan §7).
             log.warn("pending 수정 실패(기존 pending 보존): user={}", userId, e);
-            responder.post(channelId, REVISE_FAILED);
+            responder.post(channelId, FlowMessages.REVISE_FAILED);
         }
     }
 
@@ -647,9 +542,8 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         if (pendingOpt.isEmpty()) {
             log.info("[저장] 무효 — pending 부재/만료: user={}", userId);
             // 만료/부재면 대기 중이던 스테이징 사진도 버려진 것 — 노트 트리로 새지 않게 정리한다(FR-10).
-            photoStore.discard(userId);
-            photoBufferStore.clear(userId);
-            responder.post(action.channelId(), NOTHING_TO_SAVE);
+            photoIntake.discard(userId);
+            responder.post(action.channelId(), FlowMessages.NOTHING_TO_SAVE);
             return;
         }
 
@@ -663,7 +557,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         // edit 모드는 갱신 대상 참조(target)도 필수다(data-model §2.3).
         if (slug == null || slug.isBlank() || entry == null || (editMode && pending.target() == null)) {
             log.warn("[저장] 무효 — 손상된 pending(slug/entry/target 결손): user={} slug={}", userId, slug);
-            responder.post(action.channelId(), BROKEN_PENDING);
+            responder.post(action.channelId(), FlowMessages.BROKEN_PENDING);
             return;
         }
 
@@ -676,7 +570,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         // 사진 커밋: 스테이징 원본을 photos/<slug>/<date>/로 이동하고 상대 경로를 확정한다(V-4, FR-10).
         // 로컬 move라 저장 커밋 경계 안에서 수행한다(외부 I/O는 수신 시점에 이미 끝남, CLAUDE.md §3).
         String date = entry.date().toString();
-        List<String> committedPhotos = photoStore.commit(userId, slug, date);
+        List<String> committedPhotos = photoIntake.commitStaged(userId, slug, date);
         Entry committedEntry = new Entry(
                 entry.date(), entry.myTaste(), entry.myTasteOriginal(), entry.rating(), entry.recipe(),
                 committedPhotos, entry.updatedAt());
@@ -684,7 +578,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         // POLICY: 사용자 [저장] 확인을 거친 뒤에만 저장한다 (ref: plan.md#ADR-3, AC-4).
         Note saved = noteRepository.upsertEntry(slug, metaOf(draft), committedEntry);
         pendingStore.clear(userId);
-        photoBufferStore.clear(userId);
+        photoIntake.clearBuffer(userId);
         log.info("[저장] 커밋 완료: slug={} entries={} photos={}",
                 saved.slug(), saved.entries().size(), committedPhotos.size());
 
@@ -694,14 +588,14 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         // POLICY: 카드 이미지 생성·전송 실패는 저장을 되돌리지 않는다 — 안내 텍스트로 폴백 (ref: plan.md §7, AC-18).
         try {
             Path card = noteRenderer.renderEntryCard(slug, committedEntry.date());
-            responder.postImage(action.channelId(), card, SAVE_DONE_CAPTION);
+            responder.postImage(action.channelId(), card, FlowMessages.SAVE_DONE_CAPTION);
         } catch (RuntimeException e) {
             log.warn("카드 배달 실패(노트는 저장됨, --rerender로 복구 가능): slug={} date={}", saved.slug(), date, e);
-            responder.post(action.channelId(), SAVE_DONE_NO_IMAGE);
+            responder.post(action.channelId(), FlowMessages.SAVE_DONE_NO_IMAGE);
         }
 
         // 커밋·배달 이후 미리보기 버튼을 1회 소진한다 — 실패해도 저장·배달 결과는 유지된다(ADR-20, AC-Δ2).
-        finalizePreviewQuietly(action.channelId(), pending, FINALIZE_SAVED);
+        finalizePreviewQuietly(action.channelId(), pending, FlowMessages.FINALIZE_SAVED);
     }
 
     // edit 커밋(FR-21, AC-37·39, changes/0012 TΔ3) — [저장] 확답 시 대상 노트를 draft로 갱신하고 파생물을 정리한다.
@@ -718,9 +612,8 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         if (origin.isEmpty()) {
             log.warn("[저장] 무효 — 수정 대상 소실: user={} slug={} date={}", userId, slug, target.date());
             pendingStore.clear(userId);
-            photoStore.discard(userId);
-            photoBufferStore.clear(userId);
-            responder.post(action.channelId(), NOTHING_TO_SAVE);
+            photoIntake.discard(userId);
+            responder.post(action.channelId(), FlowMessages.NOTHING_TO_SAVE);
             return;
         }
 
@@ -728,7 +621,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         // (날짜가 이동해도 파일은 옮기지 않는다, findings-TΔ0 §3), 수정 중 스테이징된 새 사진만 뒤에 붙인다(AC-41).
         String date = entry.date().toString();
         List<String> photos = new ArrayList<>(origin.get().photos() == null ? List.of() : origin.get().photos());
-        photos.addAll(photoStore.commit(userId, slug, date));
+        photos.addAll(photoIntake.commitStaged(userId, slug, date));
         Entry committedEntry = new Entry(
                 entry.date(), entry.myTaste(), entry.myTasteOriginal(), entry.rating(), entry.recipe(),
                 photos, entry.updatedAt());
@@ -736,7 +629,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         // POLICY: 사용자 [저장] 확인을 거친 뒤에만 저장한다 (ref: plan.md#ADR-3, AC-37).
         Note saved = noteRepository.applyEdit(slug, target.date(), withLatestEntry(pending.draft(), committedEntry));
         pendingStore.clear(userId);
-        photoBufferStore.clear(userId);
+        photoIntake.clearBuffer(userId);
         boolean dateMoved = !target.date().equals(entry.date());
         log.info("[저장] 수정 커밋 완료: slug={} {} → {} entries={}",
                 slug, target.date(), entry.date(), saved.entries().size());
@@ -755,14 +648,14 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         // POLICY: 카드 이미지 생성·전송 실패는 저장을 되돌리지 않는다 — 안내 텍스트로 폴백 (ref: plan.md §7, AC-18 준용).
         try {
             Path card = noteRenderer.renderEntryCard(slug, committedEntry.date());
-            responder.postImage(action.channelId(), card, SAVE_DONE_CAPTION);
+            responder.postImage(action.channelId(), card, FlowMessages.SAVE_DONE_CAPTION);
         } catch (RuntimeException e) {
             log.warn("카드 배달 실패(수정은 저장됨, --rerender로 복구 가능): slug={} date={}", slug, date, e);
-            responder.post(action.channelId(), SAVE_DONE_NO_IMAGE);
+            responder.post(action.channelId(), FlowMessages.SAVE_DONE_NO_IMAGE);
         }
 
         // 커밋·배달 이후 미리보기 버튼을 1회 소진한다(0009 재사용) — 실패해도 저장·배달 결과는 유지된다(ADR-20).
-        finalizePreviewQuietly(action.channelId(), pending, FINALIZE_SAVED);
+        finalizePreviewQuietly(action.channelId(), pending, FlowMessages.FINALIZE_SAVED);
     }
 
     @Override
@@ -771,13 +664,12 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         Optional<PendingNote> pendingOpt = pendingStore.get(action.userId());
         // [취소]는 저장 없이 pending만 폐기한다(AC-4). 대기 중이던 스테이징 사진·버퍼도 함께 정리한다(FR-10).
         pendingStore.clear(action.userId());
-        photoStore.discard(action.userId());
-        photoBufferStore.clear(action.userId());
+        photoIntake.discard(action.userId());
         log.info("[취소] pending 폐기: user={}", action.userId());
-        responder.post(action.channelId(), CANCELED);
+        responder.post(action.channelId(), FlowMessages.CANCELED);
 
         // 취소 안내 이후 미리보기 버튼을 1회 소진한다 — pending이 있었을 때만(만료/부재면 갱신 대상 없음).
-        pendingOpt.ifPresent(pending -> finalizePreviewQuietly(action.channelId(), pending, FINALIZE_CANCELED));
+        pendingOpt.ifPresent(pending -> finalizePreviewQuietly(action.channelId(), pending, FlowMessages.FINALIZE_CANCELED));
     }
 
     // 버튼 1회 소진 — 커밋·배달 이후 미리보기 버튼을 제거하고 상태 문구로 교체한다.
@@ -793,163 +685,8 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
 
     @Override
     public void receiveMedia(IncomingMedia media) {
-        String userId = media.userId();
-        String channelId = media.channelId();
-        try {
-            Optional<PendingNote> pending = pendingStore.get(userId);
-            if (pending.isPresent()) {
-                // 진행 중 노트가 있으면 사진은 그 노트에 첨부한다 — pending 중 텍스트=수정(ADR-3)과 같은 정신.
-                attachToPending(userId, channelId, pending.get(), stageAll(userId, media));
-            } else {
-                // 담을 노트가 아직 없다 → 버퍼에 쌓아 뒤이을 텍스트를 기다린다(FR-10).
-                bufferMedia(userId, media);
-            }
-        } catch (Exception e) {
-            // 다운로드/스테이징/전송 실패는 삼키지 않고 안내로 수렴한다(plan §7).
-            log.warn("사진 수신 실패: user={}", userId, e);
-            responder.post(channelId, PHOTO_FAILED);
-        }
-    }
-
-    // 수신 사진을 내려받아 매직바이트로 포맷을 검증한 뒤 스테이징에 저장하고 스테이징된 파일명을 순서대로 돌려준다.
-    // POLICY: 스테이징에는 vision 지원 포맷(JPEG/PNG/GIF/WebP)만 — 매직바이트 검증 전 저장 금지(ADR-29, V-12).
-    // HEIC는 Slack 썸네일(실측 PNG)로 대체하고(AC-45), 그 외 미지원·썸네일 부재는 그 사진만 버리고 안내한다
-    // (조용히 버리지 않는다). 같은 배치의 정상 사진 처리는 불변(AC-46).
-    private List<String> stageAll(String userId, IncomingMedia media) {
-        List<String> names = new ArrayList<>();
-        boolean rejected = false;
-        for (IncomingPhoto photo : media.photos()) {
-            StageableImage stageable = resolveStageable(userId, photo);
-            if (stageable == null) {
-                rejected = true;
-                continue;
-            }
-            names.add(photoStore.stage(userId, stageable.filename(), stageable.bytes()));
-        }
-        if (rejected) {
-            responder.post(media.channelId(), UNSUPPORTED_FORMAT);
-        }
-        return names;
-    }
-
-    // 사진 1건을 스테이징 가능한 (파일명, 바이트)로 해석한다 — 미지원·대체 실패는 null(그 사진만 거부).
-    // vision 지원 원본은 그대로, HEIC는 Slack 썸네일로 대체, 그 외 미지원은 거부한다(ADR-29, V-12).
-    private StageableImage resolveStageable(String userId, IncomingPhoto photo) {
-        byte[] bytes = photoDownloader.download(photo.urlPrivate());
-        ImageFormat format = ImageFormat.detect(bytes);
-        if (format.isVisionSupported()) {
-            // 일반 JPEG/PNG 등 — 원본 그대로(대체 미발동, AC-45 후단).
-            return new StageableImage(photo.filename(), bytes);
-        }
-        // 미지원 포맷. HEIC(매직바이트 확정 + 메타 mimetype 참고)면 Slack 썸네일로 대체 다운로드한다(AC-45).
-        if (isHeic(format, photo)) {
-            StageableImage thumbnail = downloadVisionThumbnail(userId, photo);
-            if (thumbnail != null) {
-                return thumbnail;
-            }
-        }
-        // 대체 불가(HEIC 아님 / 썸네일 부재·실패) — poison이 스테이징에 못 들어가게 입구에서 차단한다(delta #2·#3).
-        log.info("미지원 포맷 사진 거부(스테이징 제외): user={} filename={} format={}",
-                userId, photo.filename(), format);
-        return null;
-    }
-
-    // HEIC 판별 — 매직바이트가 1차(확정), Slack 메타 mimetype은 매직바이트가 못 잡은 HEIF 변형을 보강하는 힌트(ADR-29).
-    private static boolean isHeic(ImageFormat format, IncomingPhoto photo) {
-        if (format == ImageFormat.HEIC) {
-            return true;
-        }
-        String mimetype = photo.mimetype();
-        return mimetype != null && mimetype.toLowerCase(Locale.ROOT).startsWith("image/hei"); // image/heic·image/heif
-    }
-
-    // HEIC 원본 대신 vision 지원 포맷 썸네일을 최대 해상도부터 내려받아 매직바이트로 재검증한다(실측: PNG — findings-TΔ0).
-    // 썸네일 부재·다운로드 실패·미지원 포맷이면 null → 상위가 거부 경로로 수렴한다(AC-45 후단).
-    private StageableImage downloadVisionThumbnail(String userId, IncomingPhoto photo) {
-        for (String url : photo.thumbnailUrls()) {
-            byte[] bytes;
-            try {
-                bytes = photoDownloader.download(url);
-            } catch (RuntimeException e) {
-                log.warn("HEIC 썸네일 다운로드 실패 — 다음 후보 시도: user={} filename={}", userId, photo.filename(), e);
-                continue;
-            }
-            ImageFormat format = ImageFormat.detect(bytes);
-            if (!format.isVisionSupported()) {
-                continue;
-            }
-            // 확장자는 실측 포맷 기반 — ".jpg" 하드코딩 금지, 원본 HEIC 확장자를 실제 포맷(PNG→.png)으로 교체(findings-TΔ0 §3).
-            String filename = withExtension(photo.filename(), format.extension());
-            log.info("HEIC 사진 → Slack 썸네일 대체: user={} filename={} format={} bytes={}",
-                    userId, filename, format, bytes.length);
-            return new StageableImage(filename, bytes);
-        }
-        return null;
-    }
-
-    // 파일명의 확장자를 실측 포맷 확장자로 교체한다(점 없는 확장자 입력). 확장자가 없으면 붙인다.
-    private static String withExtension(String filename, String extension) {
-        String base = filename == null || filename.isBlank() ? "photo" : filename;
-        int dot = base.lastIndexOf('.');
-        if (dot > 0) {
-            base = base.substring(0, dot);
-        }
-        return base + "." + extension;
-    }
-
-    // 스테이징 가능한 사진 1건 — 대체 다운로드 시 파일명(확장자)이 원본과 달라질 수 있어 바이트와 함께 실어 나른다.
-    private record StageableImage(String filename, byte[] bytes) {
-    }
-
-    // 진행 중 pending의 이번 시음 엔트리에 사진을 덧붙이고 미리보기를 갱신한다(preview_ts 보존 → edit).
-    private void attachToPending(String userId, String channelId, PendingNote pending, List<String> newNames)
-            throws Exception {
-        Note draft = pending.draft();
-        Entry entry = latestEntry(draft);
-        if (entry == null) {
-            // 방어: 엔트리 없는 pending에는 첨부할 자리가 없다 — 버퍼로 흘리지 않고 그냥 로그만.
-            log.warn("사진 첨부 무효 — 엔트리 없는 pending: user={}", userId);
-            return;
-        }
-        List<String> merged = new ArrayList<>(entry.photos());
-        merged.addAll(provisionalPhotoPaths(draft.slug(), entry.date(), newNames));
-        Entry withPhotos = new Entry(entry.date(), entry.myTaste(), entry.myTasteOriginal(), entry.rating(),
-                entry.recipe(), merged, entry.updatedAt());
-        PendingNote updated = pending.withDraft(withLatestEntry(draft, withPhotos));
-
-        pendingStore.put(userId, updated);
-        previewMessenger.publish(channelId, updated); // preview_ts 있음 → 같은 미리보기 edit
-        log.info("pending 사진 첨부: user={} slug={} photos={}", userId, draft.slug(), merged.size());
-    }
-
-    // pending 없음: 윈도우 밖 이전 버퍼는 버리고 새로 시작, 안이면 이어붙여 버퍼링한다(AC-8).
-    private void bufferMedia(String userId, IncomingMedia media) {
-        OffsetDateTime now = OffsetDateTime.now(clock);
-        List<String> priorNames = List.of();
-        Optional<PhotoBuffer> existing = photoBufferStore.get(userId);
-        if (existing.isPresent()) {
-            if (withinBufferWindow(existing.get().lastMediaAt(), now)) {
-                priorNames = existing.get().stagedNames();
-            } else {
-                // 윈도우 밖 = 이전 버퍼는 버려진 것 → 새 흐름. 새 사진을 담기 전에 옛 스테이징을 비운다(AC-8 후반).
-                photoStore.discard(userId);
-                photoBufferStore.clear(userId);
-            }
-        }
-        List<String> names = new ArrayList<>(priorNames);
-        names.addAll(stageAll(userId, media));
-        photoBufferStore.put(userId, new PhotoBuffer(now, names));
-        log.info("사진 버퍼링: user={} photos={}", userId, names.size());
-    }
-
-    // 스테이징 파일명을 확정 저장 경로 규칙(photos/<slug>/<date>/<name>)에 맞춘 임시 미리보기 경로로 변환한다.
-    // 실제 파일 이동·최종 경로는 [저장] 시 PhotoStore.commit이 정한다(충돌 시 -N 접미 가능).
-    private static List<String> provisionalPhotoPaths(String slug, LocalDate date, List<String> names) {
-        if (names.isEmpty()) {
-            return List.of();
-        }
-        String prefix = "photos/" + slug + "/" + date + "/";
-        return names.stream().map(name -> prefix + name).toList();
+        // 사진 수신·포맷 입구 검증·스테이징·버퍼 그룹핑은 SlackPhotoIntake 소유(ADR-31) — 위임만 한다.
+        photoIntake.receive(media);
     }
 
     // draft의 이번 시음 엔트리(마지막 1건)를 교체한 새 draft를 만든다.
@@ -960,10 +697,6 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
                 draft.slug(), draft.coffeeName(), draft.roastery(), draft.origin(), draft.process(),
                 draft.roastLevel(), draft.officialNotes(), draft.sources(),
                 entries, draft.createdAt(), draft.updatedAt());
-    }
-
-    private boolean withinBufferWindow(OffsetDateTime lastMediaAt, OffsetDateTime now) {
-        return Duration.between(lastMediaAt, now).compareTo(bufferWindow) <= 0;
     }
 
     // draft(Note)에서 노트 단위 메타만 뽑는다 — 엔트리·slug·타임스탬프는 upsertEntry가 다룬다.

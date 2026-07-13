@@ -63,9 +63,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * TΔ7(changes/0012): 신규 기록 경로 불변 회귀 가드 — 구현 변경 없음.
  * <p>0012가 pending에 mode를 도입하고 커밋에 edit 분기를 끼워 넣었으므로, 종전 계약이 깨지지 않았음을
- * 실배선(게이트 stub → 실제 {@link DefaultConversationRouter} → 실제 {@link DefaultConfirmationFlow}
+ * 실배선(게이트 stub → 실제 {@link DefaultConversationRouter} → 실제 {@link DefaultConversationFlows}
  * → 실제 파일 저장소)으로 단언한다. mode=record 경로의 개별 AC(AC-4·13·14·17)는 기존 테스트
- * ({@code DefaultConfirmationFlowTest}·{@code JsonFileNoteRepositoryTest})가 이미 보므로, 여기는
+ * ({@code DefaultConversationFlowsTest}·{@code JsonFileNoteRepositoryTest})가 이미 보므로, 여기는
  * 층을 가로지르는 불변식만 본다.
  * <ul>
  *   <li>① AC-Δ6: 참조 신호 없는 신규 기록은 mode=record pending으로 흐르고, [저장] 커밋·카드 배달·버튼
@@ -247,7 +247,7 @@ class Change0012RegressionGuardTest {
     void wireRealRouterAndFlow() {
         pendingStore = new JsonFilePendingStore(dataDir, mapper, PENDING_TTL);
         noteRepository = new JsonFileNoteRepository(dataDir, mapper);
-        DefaultConfirmationFlow flow = new DefaultConfirmationFlow(
+        DefaultConversationFlows flow = new DefaultConversationFlows(
                 pendingStore, noteRepository, renderer, responder,
                 new NoteExtractor(llmClient, mapper), new NoteMatcher(), new NoteEnricher(new FakeSearchClient()),
                 new PhotoInfoExtractor((imageUrls, hint) -> VisionExtraction.empty(), 4),
@@ -314,7 +314,7 @@ class Change0012RegressionGuardTest {
         assertEquals(1, renderer.entryCards.size(), "증분 렌더 1회 — 종전과 동일");
         assertTrue(renderer.removedCards.isEmpty(), "record 커밋은 removeEntryCard(edit 전용)를 부르지 않는다");
         assertEquals(1, responder.images.size(), "저장 후 갱신 카드가 배달된다(AC-17)");
-        assertEquals(List.of(DefaultConfirmationFlow.FINALIZE_SAVED), responder.finalizeStatuses,
+        assertEquals(List.of(FlowMessages.FINALIZE_SAVED), responder.finalizeStatuses,
                 "버튼 1회 소진(0009) — 종전과 동일");
     }
 
@@ -340,8 +340,8 @@ class Change0012RegressionGuardTest {
 
         assertArrayEquals(original, Files.readAllBytes(noteFile), "[취소] 후 원본 노트 파일 바이트 무변화(AC-Δ1)");
         assertTrue(pendingStore.get("U1").isEmpty(), "[취소]로 edit pending 폐기");
-        assertTrue(responder.messages.contains(DefaultConfirmationFlow.CANCELED), "취소 완료 안내");
-        assertEquals(List.of(DefaultConfirmationFlow.FINALIZE_CANCELED), responder.finalizeStatuses, "버튼 1회 소진");
+        assertTrue(responder.messages.contains(FlowMessages.CANCELED), "취소 완료 안내");
+        assertEquals(List.of(FlowMessages.FINALIZE_CANCELED), responder.finalizeStatuses, "버튼 1회 소진");
         assertTrue(renderer.entryCards.isEmpty() && renderer.removedCards.isEmpty(),
                 "[취소]는 카드 렌더·삭제 어느 파생물도 건드리지 않는다");
     }

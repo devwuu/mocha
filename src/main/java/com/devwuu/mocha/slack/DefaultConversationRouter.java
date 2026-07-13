@@ -17,7 +17,7 @@ import java.util.Optional;
  * (ref: plan.md §1 [1]·[1.5], §3; ADR-24; ADR-3 부분 개정, changes/0011).
  * <p>모든 수신 텍스트는 상시 의도 게이트({@link IntentClassifier} 5분류)를 먼저 통과하고 **의도가 라우팅을
  * 결정**한다 — 상태(확인 대기·검색 세션)는 분류 힌트·분기 조건·폴백 기준으로만 쓴다(FR-17). 실제 파이프라인
- * 일과 안내 문구·전송은 {@link ConfirmationFlow} 소유다(라우터는 responder를 직접 부르지 않는다 — ADR-24 구현 배치).
+ * 일과 안내 문구·전송은 {@link ConversationFlows} 소유다(라우터는 responder를 직접 부르지 않는다 — ADR-24 구현 배치).
  * <ul>
  *   <li>record — 대기 없으면 신규 파이프라인, 있으면 대기 불변 + "먼저 저장/취소" 안내(단일 대기 원칙, AC-30).
  *   <li>revise — 대기 있으면 수정(AC-5), 없는데 검색 세션 진행 중이면 search로 폴백(수정 전환이 막히지 않게,
@@ -44,13 +44,13 @@ public class DefaultConversationRouter implements ConversationRouter {
     private final PendingStore pendingStore;
     private final SearchSessionStore searchSessionStore;
     private final IntentClassifier intentClassifier;
-    private final ConfirmationFlow flow;
+    private final ConversationFlows flow;
 
     public DefaultConversationRouter(
             PendingStore pendingStore,
             SearchSessionStore searchSessionStore,
             IntentClassifier intentClassifier,
-            ConfirmationFlow flow) {
+            ConversationFlows flow) {
         this.pendingStore = pendingStore;
         this.searchSessionStore = searchSessionStore;
         this.intentClassifier = intentClassifier;

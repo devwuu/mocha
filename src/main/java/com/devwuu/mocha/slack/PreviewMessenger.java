@@ -17,7 +17,7 @@ import java.util.List;
  * 확인 미리보기 전송/갱신 어댑터 (ref: plan.md §3 sendPreview; tasks T3-3).
  * <p>{@link PreviewBlocks}가 조립한 블록을 Slack으로 내보낸다 — {@code preview_ts}가 없으면 새로 전송(post),
  * 있으면 그 메시지를 편집(update)한다(수정 시 재전송이 아닌 edit, data-model.md#2.3). 전송/편집으로 확정된
- * 미리보기 메시지 ts를 돌려주며, 호출부(ConfirmationFlow)가 이를 pending에 반영한다.
+ * 미리보기 메시지 ts를 돌려주며, 호출부(ConversationFlows)가 이를 pending에 반영한다.
  * <p>Slack API 타입은 이 어댑터(수신 계층에 대응하는 송신 어댑터)에만 존재한다.
  */
 @Component

@@ -108,7 +108,7 @@ class DefaultConversationRouterTest {
     }
 
     /** 어느 분기가 호출됐는지 캡처하는 fake — 텍스트 분기는 메서드명 문자열로 한 번에 단언한다. */
-    private static final class CapturingFlow implements ConfirmationFlow {
+    private static final class CapturingFlow implements ConversationFlows {
         final List<String> textCalls = new ArrayList<>();
         PendingNote revisedWith;
         final List<IncomingAction> saves = new ArrayList<>();

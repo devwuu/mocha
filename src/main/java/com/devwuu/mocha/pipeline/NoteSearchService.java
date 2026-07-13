@@ -25,7 +25,7 @@ import java.util.Optional;
  * 단일 매치/복수 후보/무후보 재질문/상한 종료를 가른다 (ref: spec FR-20, plan.md §3·#ADR-25, changes/0011 TΔ5).
  * 수정 의도(FR-21)가 감지되면 대상 확정 정도에 따라 수정 전환 분기(날짜 목록 선택·전환 확정)로 판정한다 —
  * 감지는 같은 검색 턴 스키마의 확장 필드로 받아 LLM 콜 수를 늘리지 않는다(ADR-27, changes/0012 TΔ4).
- * <p>세션 저장·폐기와 응답 전송(카드 재전송·목록·멘트)은 배선 단(ConfirmationFlow)의 몫이다 — 여기는
+ * <p>세션 저장·폐기와 응답 전송(카드 재전송·목록·멘트)은 배선 단(ConversationFlows)의 몫이다 — 여기는
  * 상태 없는 판정만 한다. 추출과 같은 경량 모델(`mocha.llm.model`)을 공용한다(새 모델 키 없음).
  * <p>POLICY: LLM candidate_slugs는 서버가 실존 노트로 재검증한다 — 실존 slug가 0개면 무후보로 수렴
  * (환각 필터, FR-14 matched_slug 재검증과 동일 정신) (ref: data-model.md#4.2).

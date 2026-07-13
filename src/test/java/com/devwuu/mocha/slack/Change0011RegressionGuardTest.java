@@ -68,7 +68,7 @@ import static org.junit.jupiter.params.provider.Arguments.arguments;
 /**
  * TΔ7(changes/0011): 커밋·수정·기록 마찰 불변 회귀 가드 — 구현 변경 없음.
  * <p>의도 우선 라우팅(ADR-24)이 상태 머신의 심장을 갈아끼웠으므로, 종전 계약이 깨지지 않았음을
- * 실배선(게이트 stub → 실제 {@link DefaultConversationRouter} → 실제 {@link DefaultConfirmationFlow}
+ * 실배선(게이트 stub → 실제 {@link DefaultConversationRouter} → 실제 {@link DefaultConversationFlows}
  * → 실제 파일 저장소)으로 단언한다. 개별 단위(라우터 매트릭스·플로우 분기·store TTL)는 각자의 테스트가
  * 이미 보므로, 여기는 층을 가로지르는 불변식만 본다.
  * <ul>
@@ -253,7 +253,7 @@ class Change0011RegressionGuardTest {
     void wireRealRouterAndFlow() {
         pendingStore = new JsonFilePendingStore(dataDir, mapper, PENDING_TTL);
         noteRepository = new JsonFileNoteRepository(dataDir, mapper);
-        DefaultConfirmationFlow flow = new DefaultConfirmationFlow(
+        DefaultConversationFlows flow = new DefaultConversationFlows(
                 pendingStore, noteRepository, new FakeNoteRenderer(), responder,
                 new NoteExtractor(llmClient, mapper), new NoteMatcher(), new NoteEnricher(new FakeSearchClient()),
                 new PhotoInfoExtractor((imageUrls, hint) -> VisionExtraction.empty(), 4),
@@ -301,8 +301,8 @@ class Change0011RegressionGuardTest {
             assertTrue(pendingStore.get("U1").isPresent(), "자연어 텍스트로 pending이 폐기되는 경로가 없다(AC-Δ7)");
         }
         assertTrue(responder.finalizeStatuses.isEmpty(), "저장/취소 완료 표시(버튼 소진)에 진입하지 않는다");
-        assertFalse(responder.messages.contains(DefaultConfirmationFlow.CANCELED), "취소 완료 안내가 없다");
-        assertFalse(responder.captions.contains(DefaultConfirmationFlow.SAVE_DONE_CAPTION), "저장 완료 배달이 없다");
+        assertFalse(responder.messages.contains(FlowMessages.CANCELED), "취소 완료 안내가 없다");
+        assertFalse(responder.captions.contains(FlowMessages.SAVE_DONE_CAPTION), "저장 완료 배달이 없다");
     }
 
     // --- ① AC-Δ7: 자연어 커밋/폐기 경로 부재 — 의도×상태 전 조합 ---

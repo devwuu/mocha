@@ -66,7 +66,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 파일 I/O(@TempDir, CLAUDE.md §5.2)로 AC-4를 파일 부재로 단언하고, LLM·검색·Slack 전송은 fake로 대체해
  * 추출→매칭→보강→미리보기 흐름과 커밋 순서/거부 경로를 결정론적으로 본다.
  */
-class DefaultConfirmationFlowTest {
+class DefaultConversationFlowsTest {
 
     /** get()이 돌려줄 pending을 지정하고, put/clear 호출을 캡처하는 fake. */
     private static final class FakePendingStore implements PendingStore {
@@ -483,14 +483,14 @@ class DefaultConfirmationFlowTest {
         return new JsonFileNoteRepository(dataDir, MochaObjectMapper.create());
     }
 
-    private DefaultConfirmationFlow flow(NoteRepository repo) {
+    private DefaultConversationFlows flow(NoteRepository repo) {
         return flow(repo, 0); // 재질문 상한 미설정(0) = 무제한(spec FR-20)
     }
 
-    private DefaultConfirmationFlow flow(NoteRepository repo, int maxRequery) {
+    private DefaultConversationFlows flow(NoteRepository repo, int maxRequery) {
         NoteSearchService noteSearchService =
                 new NoteSearchService(llmClient, MochaObjectMapper.create(), maxRequery);
-        return new DefaultConfirmationFlow(
+        return new DefaultConversationFlows(
                 pendingStore, repo, noteRenderer, responder,
                 extractor, matcher, enricher, photoInfoExtractor, reviser, previewMessenger,
                 photoDownloader, photoStore, photoBufferStore, searchSessionStore, noteSearchService,
@@ -643,7 +643,7 @@ class DefaultConfirmationFlowTest {
 
         assertTrue(pendingStore.puts.isEmpty(), "실패 시 pending을 만들지 않는다");
         assertTrue(repo.findAll().isEmpty(), "실패 시 노트 JSON도 없다");
-        assertEquals(List.of(DefaultConfirmationFlow.NEW_NOTE_FAILED), responder.messages);
+        assertEquals(List.of(FlowMessages.NEW_NOTE_FAILED), responder.messages);
     }
 
     @Test
@@ -657,7 +657,7 @@ class DefaultConfirmationFlowTest {
 
         assertEquals(1, pendingStore.clearCount, "전송 실패 시 남은 pending을 폐기한다");
         assertTrue(pendingStore.get("U1").isEmpty(), "미리보기 없으면 pending도 없다");
-        assertEquals(List.of(DefaultConfirmationFlow.NEW_NOTE_FAILED), responder.messages);
+        assertEquals(List.of(FlowMessages.NEW_NOTE_FAILED), responder.messages);
     }
 
     // --- TΔ3(changes/0011): 의도별 안내 응답 — 게이트는 라우터 층으로 상향됐다(ADR-24 구현 배치) ---
@@ -674,7 +674,7 @@ class DefaultConfirmationFlowTest {
         assertTrue(pendingStore.puts.isEmpty(), "other면 pending을 만들지 않는다");
         assertNull(previewMessenger.published, "other면 미리보기가 없다");
         assertTrue(repo.findAll().isEmpty(), "other면 노트 JSON도 없다");
-        assertEquals(List.of(DefaultConfirmationFlow.NOT_A_RECORD), responder.messages, "짧은 안내로 응답한다");
+        assertEquals(List.of(FlowMessages.NOT_A_RECORD), responder.messages, "짧은 안내로 응답한다");
         assertEquals(0, photoBufferStore.clearCount, "안내 응답은 버퍼를 건드리지 않는다");
         assertEquals(0, photoStore.discardCount, "안내 응답은 스테이징을 폐기하지 않는다");
     }
@@ -688,7 +688,7 @@ class DefaultConfirmationFlowTest {
 
         flow(repo).guidePendingExists(message("어제 마신 다른 커피도 기록해줘"));
 
-        assertEquals(List.of(DefaultConfirmationFlow.PENDING_EXISTS), responder.messages, "먼저 저장/취소 안내");
+        assertEquals(List.of(FlowMessages.PENDING_EXISTS), responder.messages, "먼저 저장/취소 안내");
         assertTrue(pendingStore.puts.isEmpty(), "대기를 덮어쓰지 않는다(대기 불변)");
         assertEquals(0, pendingStore.clearCount, "대기를 폐기하지 않는다");
         assertNull(previewMessenger.published, "새 미리보기를 만들지 않는다");
@@ -702,7 +702,7 @@ class DefaultConfirmationFlowTest {
 
         flow(repo).guideNothingToRevise(message("산미는 낮음으로 바꿔줘"));
 
-        assertEquals(List.of(DefaultConfirmationFlow.NOTHING_TO_REVISE), responder.messages);
+        assertEquals(List.of(FlowMessages.NOTHING_TO_REVISE), responder.messages);
         assertTrue(pendingStore.puts.isEmpty(), "pending을 만들지 않는다");
         assertNull(previewMessenger.published, "미리보기가 없다");
     }
@@ -766,7 +766,7 @@ class DefaultConfirmationFlowTest {
         assertEquals(0, pendingStore.clearCount, "실패해도 기존 pending은 폐기하지 않는다");
         assertTrue(pendingStore.get("U1").isPresent(), "기존 확인 대기 노트가 그대로 남는다");
         assertNull(previewMessenger.published, "수정 실패 시 미리보기 갱신도 없다");
-        assertEquals(List.of(DefaultConfirmationFlow.REVISE_FAILED), responder.messages);
+        assertEquals(List.of(FlowMessages.REVISE_FAILED), responder.messages);
     }
 
     // --- TΔ5(changes/0012): edit 모드 revise — 커피명 거부(V-9)·날짜 이동 충돌 경고(V-10)·사진 첨부(AC-41) ---
@@ -782,7 +782,7 @@ class DefaultConfirmationFlowTest {
 
         flow(repo).revisePending(message("커피 이름을 다른 커피로 바꿔줘"), pending);
 
-        assertEquals(List.of(DefaultConfirmationFlow.EDIT_COFFEE_NAME_REJECTED), responder.messages,
+        assertEquals(List.of(FlowMessages.EDIT_COFFEE_NAME_REJECTED), responder.messages,
                 "거부 + \"새로 등록\" 안내를 보낸다(V-9)");
         assertNotNull(previewMessenger.published, "거부여도 미리보기 갱신은 진행된다");
         assertEquals("커피베라 예가체프", previewMessenger.published.draft().coffeeName().value(),
@@ -863,7 +863,7 @@ class DefaultConfirmationFlowTest {
         assertTrue(photoStore.stagedBytes.stream().noneMatch(b -> java.util.Arrays.equals(b, heicBytes())),
                 "HEIC 바이트는 스테이징에 남지 않는다");
         // 미지원은 조용히 버리지 않는다 — 안내가 온다(ADR-29).
-        assertEquals(List.of(DefaultConfirmationFlow.UNSUPPORTED_FORMAT), responder.messages);
+        assertEquals(List.of(FlowMessages.UNSUPPORTED_FORMAT), responder.messages);
     }
 
     @Test
@@ -914,7 +914,7 @@ class DefaultConfirmationFlowTest {
         flow(repo).receiveMedia(mediaWith(heic));
 
         assertTrue(photoStore.staged.isEmpty(), "대체 불가 HEIC는 스테이징되지 않는다");
-        assertEquals(List.of(DefaultConfirmationFlow.UNSUPPORTED_FORMAT), responder.messages,
+        assertEquals(List.of(FlowMessages.UNSUPPORTED_FORMAT), responder.messages,
                 "썸네일 부재 → 미지원 거부 경로로 수렴한다(조용히 버리지 않음)");
     }
 
@@ -957,7 +957,7 @@ class DefaultConfirmationFlowTest {
         // AC-Δ1: 카드 JPG를 파일로 채널에 배달한다 — file:// 경로 텍스트 응답이 아니다.
         assertEquals(1, responder.images.size(), "방금 엔트리 카드 JPG를 채널에 올린다");
         assertEquals(Path.of("cards", "coffeevera-yirgacheffe", "2026-07-11.jpg"), responder.images.get(0));
-        assertEquals(List.of(DefaultConfirmationFlow.SAVE_DONE_CAPTION), responder.captions);
+        assertEquals(List.of(FlowMessages.SAVE_DONE_CAPTION), responder.captions);
         assertTrue(responder.messages.isEmpty(), "정상 배달이면 폴백 텍스트가 없다");
     }
 
@@ -973,7 +973,7 @@ class DefaultConfirmationFlowTest {
         assertTrue(repo.findBySlug("coffeevera-yirgacheffe").isPresent(), "렌더 실패해도 저장은 유지된다(AC-18)");
         assertEquals(1, pendingStore.clearCount, "커밋은 완료됐다");
         assertTrue(responder.images.isEmpty(), "카드는 배달되지 못했다");
-        assertEquals(List.of(DefaultConfirmationFlow.SAVE_DONE_NO_IMAGE), responder.messages, "안내 텍스트로 폴백한다");
+        assertEquals(List.of(FlowMessages.SAVE_DONE_NO_IMAGE), responder.messages, "안내 텍스트로 폴백한다");
     }
 
     @Test
@@ -987,7 +987,7 @@ class DefaultConfirmationFlowTest {
 
         assertTrue(repo.findBySlug("coffeevera-yirgacheffe").isPresent(), "업로드 실패해도 저장은 유지된다(AC-18)");
         assertEquals(1, noteRenderer.entryCards.size(), "카드는 렌더됐다(전송에서 실패)");
-        assertEquals(List.of(DefaultConfirmationFlow.SAVE_DONE_NO_IMAGE), responder.messages, "안내 텍스트로 폴백한다");
+        assertEquals(List.of(FlowMessages.SAVE_DONE_NO_IMAGE), responder.messages, "안내 텍스트로 폴백한다");
     }
 
     @Test
@@ -1002,7 +1002,7 @@ class DefaultConfirmationFlowTest {
         assertTrue(repo.findAll().isEmpty(), "만료/부재 시 어떤 노트도 저장되지 않는다");
         assertTrue(noteRenderer.entryCards.isEmpty(), "커밋이 없으면 카드 렌더·배달도 없다");
         assertTrue(responder.images.isEmpty());
-        assertEquals(List.of(DefaultConfirmationFlow.NOTHING_TO_SAVE), responder.messages);
+        assertEquals(List.of(FlowMessages.NOTHING_TO_SAVE), responder.messages);
     }
 
     @Test
@@ -1016,7 +1016,7 @@ class DefaultConfirmationFlowTest {
         assertEquals(1, pendingStore.clearCount, "취소는 pending을 폐기한다");
         assertTrue(repo.findAll().isEmpty(), "취소 시 저장은 일어나지 않는다(AC-4)");
         assertTrue(noteRenderer.entryCards.isEmpty());
-        assertEquals(List.of(DefaultConfirmationFlow.CANCELED), responder.messages);
+        assertEquals(List.of(FlowMessages.CANCELED), responder.messages);
     }
 
     @Test
@@ -1030,7 +1030,7 @@ class DefaultConfirmationFlowTest {
         assertTrue(repo.findAll().isEmpty(), "slug 없는 draft는 저장하지 않는다");
         assertTrue(noteRenderer.entryCards.isEmpty());
         assertEquals(0, pendingStore.clearCount, "손상 pending은 커밋 clear 대상이 아니다");
-        assertEquals(List.of(DefaultConfirmationFlow.BROKEN_PENDING), responder.messages);
+        assertEquals(List.of(FlowMessages.BROKEN_PENDING), responder.messages);
         assertFalse(responder.messages.isEmpty());
     }
 
@@ -1046,7 +1046,7 @@ class DefaultConfirmationFlowTest {
         flow(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
 
         // 커밋·배달 이후 버튼 소진이 정확히 1회, "저장 완료" 문구로 호출된다.
-        assertEquals(List.of(DefaultConfirmationFlow.FINALIZE_SAVED), responder.finalizeStatuses);
+        assertEquals(List.of(FlowMessages.FINALIZE_SAVED), responder.finalizeStatuses);
         // 필드 재조립 대상 pending(previewTs 보유)이 넘어간다 — 필드 내용 유지의 재료.
         assertEquals(1, responder.finalizePendings.size());
         assertEquals(pending.previewTs(), responder.finalizePendings.get(0).previewTs(),
@@ -1061,7 +1061,7 @@ class DefaultConfirmationFlowTest {
 
         flow(repo).cancel(action(DefaultConversationRouter.ACTION_CANCEL));
 
-        assertEquals(List.of(DefaultConfirmationFlow.FINALIZE_CANCELED), responder.finalizeStatuses);
+        assertEquals(List.of(FlowMessages.FINALIZE_CANCELED), responder.finalizeStatuses);
     }
 
     @Test
@@ -1138,7 +1138,7 @@ class DefaultConfirmationFlowTest {
         assertEquals(0, noteRenderer.renderAllCount, "edit 저장도 전체 리렌더를 트리거하지 않는다");
         // 갱신 카드 배달 + 버튼 소진(0009 재사용).
         assertEquals(List.of(Path.of("cards", "yirga", "2026-07-09.jpg")), responder.images, "갱신 카드 배달");
-        assertEquals(List.of(DefaultConfirmationFlow.FINALIZE_SAVED), responder.finalizeStatuses, "버튼 1회 소진");
+        assertEquals(List.of(FlowMessages.FINALIZE_SAVED), responder.finalizeStatuses, "버튼 1회 소진");
         assertTrue(responder.messages.isEmpty(), "정상 배달이면 폴백 텍스트가 없다");
     }
 
@@ -1188,8 +1188,8 @@ class DefaultConfirmationFlowTest {
         Note saved = repo.findBySlug("yirga").orElseThrow();
         assertEquals(LocalDate.of(2026, 7, 9), saved.entries().get(0).date(), "렌더 실패해도 수정 커밋은 유지(AC-18 준용)");
         assertTrue(responder.images.isEmpty(), "카드는 배달되지 못했다");
-        assertEquals(List.of(DefaultConfirmationFlow.SAVE_DONE_NO_IMAGE), responder.messages, "안내 텍스트로 폴백");
-        assertEquals(List.of(DefaultConfirmationFlow.FINALIZE_SAVED), responder.finalizeStatuses, "버튼 소진은 그대로");
+        assertEquals(List.of(FlowMessages.SAVE_DONE_NO_IMAGE), responder.messages, "안내 텍스트로 폴백");
+        assertEquals(List.of(FlowMessages.FINALIZE_SAVED), responder.finalizeStatuses, "버튼 소진은 그대로");
     }
 
     @Test
@@ -1204,7 +1204,7 @@ class DefaultConfirmationFlowTest {
         assertTrue(noteRenderer.entryCards.isEmpty() && noteRenderer.removedCards.isEmpty(), "파생물 접촉 없음");
         assertEquals(1, pendingStore.clearCount, "죽은 edit pending은 폐기한다");
         assertEquals(1, photoStore.discardCount, "스테이징 사진도 만료 경로처럼 정리한다");
-        assertEquals(List.of(DefaultConfirmationFlow.NOTHING_TO_SAVE), responder.messages, "만료 안내로 수렴(V-7 준용)");
+        assertEquals(List.of(FlowMessages.NOTHING_TO_SAVE), responder.messages, "만료 안내로 수렴(V-7 준용)");
     }
 
     @Test
@@ -1237,7 +1237,7 @@ class DefaultConfirmationFlowTest {
 
         assertEquals("원래 감상", repo.findBySlug("yirga").orElseThrow().entries().get(0).myTaste(), "원본 무변화");
         assertEquals(0, pendingStore.clearCount, "손상 pending은 커밋 clear 대상이 아니다");
-        assertEquals(List.of(DefaultConfirmationFlow.BROKEN_PENDING), responder.messages);
+        assertEquals(List.of(FlowMessages.BROKEN_PENDING), responder.messages);
     }
 
     @Test
@@ -1249,7 +1249,7 @@ class DefaultConfirmationFlowTest {
         flow(repo).cancel(action(DefaultConversationRouter.ACTION_CANCEL));
 
         assertTrue(responder.finalizeStatuses.isEmpty(), "갱신할 미리보기가 없으면 버튼 소진을 호출하지 않는다");
-        assertEquals(List.of(DefaultConfirmationFlow.CANCELED), responder.messages);
+        assertEquals(List.of(FlowMessages.CANCELED), responder.messages);
     }
 
     // --- T4-2: 사진 버퍼 그룹핑(FR-10, AC-8) ---
@@ -1444,7 +1444,7 @@ class DefaultConfirmationFlowTest {
         flow(repo).searchNotes(message("저번에 마신 거 찾아줘"));
 
         assertEquals(
-                List.of(DefaultConfirmationFlow.SEARCH_STARTED, DefaultConfirmationFlow.SEARCH_REQUERY),
+                List.of(FlowMessages.SEARCH_STARTED, FlowMessages.SEARCH_REQUERY),
                 responder.messages, "시작 안내 → 결과(재질문) 순서로 응답한다");
         assertEquals(1, searchSessionStore.puts.size(), "새 검색 세션이 저장된다");
         assertEquals(1, searchSessionStore.puts.get(0).requeryCount(), "무후보 재질문 횟수가 세션에 반영된다");
@@ -1463,7 +1463,7 @@ class DefaultConfirmationFlowTest {
         flow(repo).searchNotes(message("저번에 마신 예가체프 찾아줘"));
 
         assertEquals(List.of(card), responder.images, "기존 카드 경로를 그대로 재전송한다");
-        assertEquals(List.of(DefaultConfirmationFlow.SEARCH_FOUND_CAPTION), responder.captions);
+        assertEquals(List.of(FlowMessages.SEARCH_FOUND_CAPTION), responder.captions);
         assertTrue(noteRenderer.entryCards.isEmpty(), "카드가 있으면 증분 렌더도 없다(ADR-25 POLICY)");
         assertEquals(List.of("coffeevera-yirgacheffe"), searchSessionStore.puts.get(0).candidateSlugs(),
                 "매치 대상이 세션 후보로 남는다(후속 선택·수정 세션 진입 재료)");
@@ -1494,7 +1494,7 @@ class DefaultConfirmationFlowTest {
         flow(repo).searchNotes(message("예가체프였나 와이키키였나"));
 
         String list = responder.messages.get(responder.messages.size() - 1);
-        assertTrue(list.startsWith(DefaultConfirmationFlow.SEARCH_CANDIDATES_HEADER), "목록 머리말(모카 톤)");
+        assertTrue(list.startsWith(FlowMessages.SEARCH_CANDIDATES_HEADER), "목록 머리말(모카 톤)");
         assertTrue(list.contains("1. 커피베라 예가체프 — 커피베라 (최근 2026-07-01)"), "커피명·로스터리·최근 시음일: " + list);
         assertTrue(list.contains("2. 모모스 와이키키 — 모모스 (최근 2026-05-20)"), "제시 순서 번호가 붙는다: " + list);
         assertEquals(List.of("coffeevera-yirgacheffe", "momos-waikiki"),
@@ -1513,7 +1513,7 @@ class DefaultConfirmationFlowTest {
 
         flow(repo, 1).searchNotes(message("몰라, 그냥 찾아봐"));
 
-        assertEquals(List.of(DefaultConfirmationFlow.SEARCH_LIMIT_REACHED), responder.messages,
+        assertEquals(List.of(FlowMessages.SEARCH_LIMIT_REACHED), responder.messages,
                 "상한 도달 안내(진행 중 세션이라 시작 안내는 없다)");
         assertEquals(1, searchSessionStore.clearCount, "세션을 폐기한다");
         assertTrue(searchSessionStore.get("U1").isEmpty());
@@ -1530,7 +1530,7 @@ class DefaultConfirmationFlowTest {
 
         assertEquals(1, searchSessionStore.clearCount, "end는 세션을 폐기한다");
         assertTrue(searchSessionStore.get("U1").isEmpty());
-        assertEquals(List.of(DefaultConfirmationFlow.SEARCH_ENDED), responder.messages);
+        assertEquals(List.of(FlowMessages.SEARCH_ENDED), responder.messages);
     }
 
     @Test
@@ -1561,7 +1561,7 @@ class DefaultConfirmationFlowTest {
 
         flow(repo).searchNotes(message("작년 겨울에 마신 거"));
 
-        assertEquals(List.of(DefaultConfirmationFlow.SEARCH_FAILED), responder.messages);
+        assertEquals(List.of(FlowMessages.SEARCH_FAILED), responder.messages);
         assertEquals(0, searchSessionStore.clearCount, "실패해도 세션을 잃지 않는다(plan §7)");
         assertTrue(searchSessionStore.get("U1").isPresent(), "다음 메시지로 검색을 계속할 수 있다");
         assertTrue(searchSessionStore.puts.isEmpty(), "실패 턴은 세션을 갱신하지 않는다");
@@ -1607,7 +1607,7 @@ class DefaultConfirmationFlowTest {
         flow(repo).searchNotes(message("그 기록 고쳐줘"));
 
         String list = responder.messages.get(responder.messages.size() - 1);
-        assertTrue(list.startsWith(DefaultConfirmationFlow.EDIT_DATE_PROMPT_HEADER), "날짜 선택 안내(모카 톤): " + list);
+        assertTrue(list.startsWith(FlowMessages.EDIT_DATE_PROMPT_HEADER), "날짜 선택 안내(모카 톤): " + list);
         assertTrue(list.contains("1. 2026-06-01") && list.contains("2. 2026-07-01"), "제시 순서 번호 목록: " + list);
         assertTrue(pendingStore.puts.isEmpty(), "날짜 확정 전에는 pending을 만들지 않는다");
         assertEquals("coffeevera-yirgacheffe", searchSessionStore.puts.get(0).pendingEditSlug(),
@@ -1638,7 +1638,7 @@ class DefaultConfirmationFlowTest {
 
         flow(repo).searchNotes(message("그거 수정할래"));
 
-        assertEquals(List.of(DefaultConfirmationFlow.PENDING_EXISTS), responder.messages,
+        assertEquals(List.of(FlowMessages.PENDING_EXISTS), responder.messages,
                 "단일 대기 원칙 안내(findings-TΔ0 Q2 — 대기 임의 폐기 금지)");
         assertTrue(pendingStore.puts.isEmpty(), "기존 대기를 덮지 않는다");
         assertEquals(0, pendingStore.clearCount, "기존 대기를 폐기하지 않는다");
@@ -1685,7 +1685,7 @@ class DefaultConfirmationFlowTest {
 
         flow(vanishing).searchNotes(message("그거 수정할래"));
 
-        assertEquals(List.of(DefaultConfirmationFlow.EDIT_TARGET_GONE), responder.messages);
+        assertEquals(List.of(FlowMessages.EDIT_TARGET_GONE), responder.messages);
         assertTrue(pendingStore.puts.isEmpty(), "수정 세션은 시작되지 않는다(plan §7)");
         assertEquals(0, searchSessionStore.clearCount, "검색 세션은 유지 — 이어서 다른 기록을 찾을 수 있다");
     }
@@ -1706,7 +1706,7 @@ class DefaultConfirmationFlowTest {
 
         flow(repo).startNewNote(message("저번에 마셨던 그 커피 또 마셨어"));
 
-        assertEquals(List.of(DefaultConfirmationFlow.REFERENCE_NOT_FOUND), responder.messages,
+        assertEquals(List.of(FlowMessages.REFERENCE_NOT_FOUND), responder.messages,
                 "미리보기 대신 못 찾았다 안내가 간다(AC-36)");
         assertTrue(pendingStore.puts.isEmpty(), "매치 실패 분기는 pending을 만들지 않는다(FR-14)");
         assertNull(previewMessenger.published, "미리보기도 없다");

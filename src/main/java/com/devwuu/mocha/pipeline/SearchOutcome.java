@@ -7,7 +7,7 @@ import java.util.List;
 
 /**
  * 검색 세션 1턴의 판정 결과 — {@link NoteSearchService#handle}가 돌려주고, 배선 단
- * (ConfirmationFlow)이 세션 저장/폐기와 응답 전송으로 옮긴다 (ref: spec FR-20, plan.md §3·#ADR-25).
+ * (ConversationFlows)이 세션 저장/폐기와 응답 전송으로 옮긴다 (ref: spec FR-20, plan.md §3·#ADR-25).
  *
  * @param type            응답 분기(단일 매치·복수 후보·무후보 재질문·재질문 상한 도달·수정 전환 2단).
  * @param session         이 턴을 반영한 세션 상태 — 호출부가 저장한다. {@link Type#LIMIT_REACHED}면 null(세션 폐기 신호).
