@@ -28,7 +28,7 @@ import java.util.Optional;
 
 /**
  * 사진 수신 경로 전담 — 다운로드·포맷 입구 검증(ADR-29, V-12)·스테이징·버퍼 그룹핑(FR-10)·OCR
- * 오버레이(ADR-23, V-6)를 {@link DefaultConversationFlows}(façade)에서 위임받아 소유한다
+ * 오버레이(ADR-23, V-6)를 {@link SlackConversationFlows}(façade)에서 위임받아 소유한다
  * (ADR-31, changes/0013). façade가 조립하는 내부 협력자라 Spring 빈이 아니다 — 라우터 계약은 façade에 남는다.
  * <p>이름에 Slack을 붙인 이유: HEIC → Slack 썸네일 대체(ADR-29)처럼 {@link IncomingPhoto}의 Slack 파일
  * 메타(mimetype·썸네일 URL)에 기대는 전송 계층 특화 정책을 품는다 — "URL → 바이트"만 아는 경계 인터페이스

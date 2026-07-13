@@ -66,7 +66,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 파일 I/O(@TempDir, CLAUDE.md §5.2)로 AC-4를 파일 부재로 단언하고, LLM·검색·Slack 전송은 fake로 대체해
  * 추출→매칭→보강→미리보기 흐름과 커밋 순서/거부 경로를 결정론적으로 본다.
  */
-class DefaultConversationFlowsTest {
+class SlackConversationFlowsTest {
 
     /** get()이 돌려줄 pending을 지정하고, put/clear 호출을 캡처하는 fake. */
     private static final class FakePendingStore implements PendingStore {
@@ -483,14 +483,14 @@ class DefaultConversationFlowsTest {
         return new JsonFileNoteRepository(dataDir, MochaObjectMapper.create());
     }
 
-    private DefaultConversationFlows flow(NoteRepository repo) {
+    private SlackConversationFlows flow(NoteRepository repo) {
         return flow(repo, 0); // 재질문 상한 미설정(0) = 무제한(spec FR-20)
     }
 
-    private DefaultConversationFlows flow(NoteRepository repo, int maxRequery) {
+    private SlackConversationFlows flow(NoteRepository repo, int maxRequery) {
         NoteSearchService noteSearchService =
                 new NoteSearchService(llmClient, MochaObjectMapper.create(), maxRequery);
-        return new DefaultConversationFlows(
+        return new SlackConversationFlows(
                 pendingStore, repo, noteRenderer, responder,
                 extractor, matcher, enricher, photoInfoExtractor, reviser, previewMessenger,
                 photoDownloader, photoStore, photoBufferStore, searchSessionStore, noteSearchService,

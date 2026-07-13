@@ -68,7 +68,7 @@ import static org.junit.jupiter.params.provider.Arguments.arguments;
 /**
  * TΔ7(changes/0011): 커밋·수정·기록 마찰 불변 회귀 가드 — 구현 변경 없음.
  * <p>의도 우선 라우팅(ADR-24)이 상태 머신의 심장을 갈아끼웠으므로, 종전 계약이 깨지지 않았음을
- * 실배선(게이트 stub → 실제 {@link DefaultConversationRouter} → 실제 {@link DefaultConversationFlows}
+ * 실배선(게이트 stub → 실제 {@link DefaultConversationRouter} → 실제 {@link SlackConversationFlows}
  * → 실제 파일 저장소)으로 단언한다. 개별 단위(라우터 매트릭스·플로우 분기·store TTL)는 각자의 테스트가
  * 이미 보므로, 여기는 층을 가로지르는 불변식만 본다.
  * <ul>
@@ -253,7 +253,7 @@ class Change0011RegressionGuardTest {
     void wireRealRouterAndFlow() {
         pendingStore = new JsonFilePendingStore(dataDir, mapper, PENDING_TTL);
         noteRepository = new JsonFileNoteRepository(dataDir, mapper);
-        DefaultConversationFlows flow = new DefaultConversationFlows(
+        SlackConversationFlows flow = new SlackConversationFlows(
                 pendingStore, noteRepository, new FakeNoteRenderer(), responder,
                 new NoteExtractor(llmClient, mapper), new NoteMatcher(), new NoteEnricher(new FakeSearchClient()),
                 new PhotoInfoExtractor((imageUrls, hint) -> VisionExtraction.empty(), 4),

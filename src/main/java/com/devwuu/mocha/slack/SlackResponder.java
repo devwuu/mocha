@@ -22,7 +22,7 @@ public interface SlackResponder {
     /**
      * 엔트리 카드 JPG를 파일로 채널에 올린다(FR-16, plan §1 [8]). files.uploadV2 경로.
      * <p>커밋 이후 배달이라 저장을 되돌리지 않지만, 실패를 <b>삼키지 않는다</b> — 예외로 던져
-     * 호출부({@link DefaultConversationFlows#confirmSave})가 안내 텍스트 폴백으로 수렴하게 한다
+     * 호출부({@link SlackConversationFlows#confirmSave})가 안내 텍스트 폴백으로 수렴하게 한다
      * (AC-18, plan §7). "흐름을 끊지 않는다"의 책임은 폴백을 처리하는 호출부에 있다.
      */
     void postImage(String channelId, Path imagePath, String caption);

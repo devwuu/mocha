@@ -16,7 +16,7 @@ import com.devwuu.mocha.domain.PendingNote;
  *   <li>{@link #searchNotes}/{@link #endSearch} — 검색 세션 시작·계속·종료(FR-20, ADR-25).
  *   <li>{@link #confirmSave}/{@link #cancel} — [저장]/[취소] 버튼 커밋(ADR-3 불변 — 자연어로 오지 않는다).
  * </ul>
- * <p>구현: {@link DefaultConversationFlows}.
+ * <p>구현: {@link SlackConversationFlows}.
  */
 public interface ConversationFlows {
 

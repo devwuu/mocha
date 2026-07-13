@@ -63,9 +63,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * TΔ7(changes/0012): 신규 기록 경로 불변 회귀 가드 — 구현 변경 없음.
  * <p>0012가 pending에 mode를 도입하고 커밋에 edit 분기를 끼워 넣었으므로, 종전 계약이 깨지지 않았음을
- * 실배선(게이트 stub → 실제 {@link DefaultConversationRouter} → 실제 {@link DefaultConversationFlows}
+ * 실배선(게이트 stub → 실제 {@link DefaultConversationRouter} → 실제 {@link SlackConversationFlows}
  * → 실제 파일 저장소)으로 단언한다. mode=record 경로의 개별 AC(AC-4·13·14·17)는 기존 테스트
- * ({@code DefaultConversationFlowsTest}·{@code JsonFileNoteRepositoryTest})가 이미 보므로, 여기는
+ * ({@code SlackConversationFlowsTest}·{@code JsonFileNoteRepositoryTest})가 이미 보므로, 여기는
  * 층을 가로지르는 불변식만 본다.
  * <ul>
  *   <li>① AC-Δ6: 참조 신호 없는 신규 기록은 mode=record pending으로 흐르고, [저장] 커밋·카드 배달·버튼
@@ -247,7 +247,7 @@ class Change0012RegressionGuardTest {
     void wireRealRouterAndFlow() {
         pendingStore = new JsonFilePendingStore(dataDir, mapper, PENDING_TTL);
         noteRepository = new JsonFileNoteRepository(dataDir, mapper);
-        DefaultConversationFlows flow = new DefaultConversationFlows(
+        SlackConversationFlows flow = new SlackConversationFlows(
                 pendingStore, noteRepository, renderer, responder,
                 new NoteExtractor(llmClient, mapper), new NoteMatcher(), new NoteEnricher(new FakeSearchClient()),
                 new PhotoInfoExtractor((imageUrls, hint) -> VisionExtraction.empty(), 4),
