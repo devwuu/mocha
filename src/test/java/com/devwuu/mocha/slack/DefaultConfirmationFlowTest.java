@@ -535,6 +535,39 @@ class DefaultConfirmationFlowTest {
     }
 
     @Test
+    @DisplayName("AC-Δ1: 신규 노트 slug가 YYYY-MM-DD-HHmmss 형식이고 사진 경로에서 slug≠date 세그먼트 (ADR-28, V-2)")
+    void startNewNoteAssignsTimestampedSlug() {
+        NoteRepository repo = noteRepository();
+        llmClient.canned = extraction("커피베라 예가체프", "커피베라", null, "새콤함", Rating.GOOD);
+        photoBufferStore.setBuffer(new PhotoBuffer(OffsetDateTime.now(clock), List.of("a.jpg")));
+
+        flow(repo).startNewNote(message("커피베라 예가체프 마셨어"));
+
+        Note draft = previewMessenger.published.draft();
+        // 고정 Clock(Asia/Seoul 2026-07-11 11:00:00) → target_date(2026-07-11) + 생성 시각(110000).
+        assertEquals("2026-07-11-110000", draft.slug(), "slug = 최초 기록일 + 생성 시각(HHmmss)");
+        assertTrue(draft.slug().matches("[a-z0-9-]+"), "V-2 패턴 불변");
+        // 사진 경로 photos/<slug>/<date>/ 에서 slug 세그먼트와 date 세그먼트가 서로 다르다.
+        String photo = draft.entries().get(0).photos().get(0);
+        assertEquals("photos/2026-07-11-110000/2026-07-11/a.jpg", photo);
+    }
+
+    @Test
+    @DisplayName("AC-Δ1/V-2: 같은 초에 만들어져 slug가 충돌하면 -2 접미로 유일화된다")
+    void startNewNoteSuffixesSlugOnSameSecondCollision() {
+        NoteRepository repo = noteRepository();
+        // 같은 초에 이미 다른 커피 노트가 그 slug를 선점(매칭은 커피명이라 신규로 판정된다).
+        savedNote(repo, "2026-07-11-110000", "다른 커피", "다른 로스터리", LocalDate.of(2026, 7, 11));
+        llmClient.canned = extraction("커피베라 예가체프", "커피베라", null, "새콤함", Rating.GOOD);
+
+        flow(repo).startNewNote(message("커피베라 예가체프 마셨어"));
+
+        Note draft = previewMessenger.published.draft();
+        assertEquals(MatchInfo.MatchType.NEW, previewMessenger.published.match().type(), "다른 커피 → 신규 판정");
+        assertEquals("2026-07-11-110000-2", draft.slug(), "선점된 slug 충돌 시 -2 접미");
+    }
+
+    @Test
     @DisplayName("AC-12: 검색이 무결과여도 사용자 값만으로 미리보기가 진행되고 미언급 필드는 빈 채 남는다")
     void startNewNoteProceedsWithoutSearchResults() {
         NoteRepository repo = noteRepository();

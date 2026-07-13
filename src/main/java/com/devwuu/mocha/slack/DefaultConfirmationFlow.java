@@ -43,6 +43,7 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -79,6 +80,8 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
 
     // 날짜/타임스탬프는 Asia/Seoul 기준 — NoteRepository·PendingStore와 동일(V-3).
     private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
+    // slug 시각 세그먼트(ADR-28, V-2) — 생성 시각을 HHmmss로 붙여 날짜 세그먼트와 겹치지 않게 한다.
+    private static final DateTimeFormatter SLUG_TIME = DateTimeFormatter.ofPattern("HHmmss");
 
     // --- 멘트(모카 톤) 상수 — 구현 디테일, spec 결정 아님. PreviewBlocks와 같은 강아지 말투("멍" + 🐾). ---
     static final String SAVE_DONE_CAPTION = "저장했어요 멍! 🐾"; // 배달하는 카드 JPG의 캡션(AC-Δ1)
@@ -266,9 +269,11 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
             NoteMeta withPhoto = fillFromPhoto(userDraftMeta(extraction), photoInfo);
             NoteMeta enriched = noteEnricher.enrich(withPhoto);
 
-            // slug 확정: 기존=매칭 노트 slug, 신규=최초 기록일 기반 대체키(V-2, data-model §2.1).
+            // slug 확정: 기존=매칭 노트 slug, 신규=최초 기록일+생성 시각 기반 대체키(V-2, data-model §2.1).
+            // POLICY: slug 형식은 YYYY-MM-DD-HHmmss(최초 기록일+생성 시각) — 사진·카드 경로 규약은 불변 (ADR-28, V-2)
             String slug = match.isNew()
-                    ? noteRepository.nextAvailableSlug(match.targetDate().toString())
+                    ? noteRepository.nextAvailableSlug(
+                            match.targetDate() + "-" + now.format(SLUG_TIME))
                     : match.matchedNote().slug();
 
             // 흡수한 버퍼 사진의 임시 미리보기 경로. 실제 저장 경로는 [저장] 시 commit이 확정한다(V-4).
