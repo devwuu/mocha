@@ -209,6 +209,33 @@ class SlackGatewayTest {
     }
 
     @Test
+    @DisplayName("AC-Δ2: HEIC 파일의 썸네일 URL을 최대 해상도 우선으로 싣고 메타 mimetype도 전달한다(TΔ3 대체 입력)")
+    void carriesThumbnailUrlsHighestFirst() {
+        CapturingRouter router = new CapturingRouter();
+        MessageFileShareEvent event = new MessageFileShareEvent();
+        event.setUser("U1");
+        event.setChannel("C1");
+        event.setTs("1720000000.000600");
+        // 아이폰 HEIC 실측(findings-TΔ0): mimetype=image/heic, thumb_64~thumb_1024 사다리 존재.
+        File heic = new File();
+        heic.setName("IMG_6354.HEIC");
+        heic.setMimetype("image/heic");
+        heic.setUrlPrivateDownload("https://slack/heic");
+        heic.setThumb64("https://slack/t64");
+        heic.setThumb360("https://slack/t360");
+        heic.setThumb1024("https://slack/t1024");
+        event.setFiles(List.of(heic));
+
+        gateway(router).handleFileShareEvent(event);
+
+        IncomingPhoto photo = router.media.get(0).photos().get(0);
+        assertEquals("image/heic", photo.mimetype(), "메타 mimetype이 실린다(HEIC 판별 힌트)");
+        // 최대 해상도 우선 — 존재하는 키만 내림차순으로.
+        assertEquals(List.of("https://slack/t1024", "https://slack/t360", "https://slack/t64"),
+                photo.thumbnailUrls(), "썸네일 후보는 최대 해상도부터 정렬된다");
+    }
+
+    @Test
     @DisplayName("T4-2: 캡션이 실린 앨범은 사진(onMedia) 먼저, 캡션(onMessage) 뒤로 위임한다")
     void parsesFileShareWithCaption() {
         CapturingRouter router = new CapturingRouter();

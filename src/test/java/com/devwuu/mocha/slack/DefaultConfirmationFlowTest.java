@@ -53,6 +53,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -524,9 +525,14 @@ class DefaultConfirmationFlowTest {
     private static IncomingMedia media(String... filenames) {
         List<IncomingPhoto> photos = new ArrayList<>();
         for (String f : filenames) {
-            photos.add(new IncomingPhoto("https://slack/" + f, f));
+            photos.add(new IncomingPhoto("https://slack/" + f, f, "image/jpeg", List.of()));
         }
         return new IncomingMedia("U1", "C1", photos, "1720000100.000002");
+    }
+
+    // 사진별 mimetype·썸네일 후보를 지정해 HEIC 대체 경로(TΔ3)를 검증하기 위한 변형.
+    private static IncomingMedia mediaWith(IncomingPhoto... photos) {
+        return new IncomingMedia("U1", "C1", List.of(photos), "1720000100.000002");
     }
 
     // --- T3-6: 신규 파이프라인(startNewNote) ---
@@ -870,6 +876,61 @@ class DefaultConfirmationFlowTest {
 
         assertEquals(List.of("j.jpg", "p.png"), photoStore.staged);
         assertTrue(responder.messages.isEmpty(), "지원 포맷만이면 거부 안내가 없다");
+    }
+
+    @Test
+    @DisplayName("AC-Δ2: HEIC 사진은 Slack 썸네일(실측 PNG)로 대체 다운로드·저장되고 확장자가 실측 포맷으로 정정된다")
+    void receiveMediaSubstitutesHeicWithVisionThumbnail() {
+        NoteRepository repo = noteRepository();
+        // 원본은 HEIC(vision 미지원), 썸네일은 PNG(vision 지원) — findings-TΔ0 실측 사다리.
+        photoDownloader.bytesByUrl.put("https://slack/img.heic", heicBytes());
+        photoDownloader.bytesByUrl.put("https://slack/thumb1024", pngBytes());
+        IncomingPhoto heic = new IncomingPhoto(
+                "https://slack/img.heic", "IMG_6354.HEIC", "image/heic",
+                List.of("https://slack/thumb1024", "https://slack/thumb64"));
+
+        flow(repo).receiveMedia(mediaWith(heic));
+
+        // 원본 HEIC 대신 썸네일 PNG가 스테이징됐다 — HEIC 바이트는 스테이징에 못 들어간다(AC-45).
+        assertEquals(1, photoStore.staged.size(), "썸네일 1장이 대체 저장된다");
+        assertEquals("IMG_6354.png", photoStore.staged.get(0), "확장자가 실측 포맷(PNG)으로 정정된다(.jpg 하드코딩 금지)");
+        assertArrayEquals(pngBytes(), photoStore.stagedBytes.get(0), "스테이징 바이트는 썸네일 PNG다");
+        assertTrue(photoStore.stagedBytes.stream().noneMatch(b -> java.util.Arrays.equals(b, heicBytes())),
+                "HEIC 바이트는 스테이징에 남지 않는다");
+        // 최대 해상도 후보(thumb1024)에서 성공 → 하위 후보(thumb64)는 내려받지 않는다.
+        assertTrue(photoDownloader.downloaded.contains("https://slack/thumb1024"));
+        assertFalse(photoDownloader.downloaded.contains("https://slack/thumb64"), "앞 후보 성공 시 이후 후보는 시도하지 않는다");
+        assertTrue(responder.messages.isEmpty(), "대체 성공은 거부 안내가 없다");
+    }
+
+    @Test
+    @DisplayName("AC-Δ2/AC-Δ3: HEIC인데 썸네일이 없으면 대체 실패로 거부되고 안내가 온다")
+    void receiveMediaRejectsHeicWhenThumbnailAbsent() {
+        NoteRepository repo = noteRepository();
+        photoDownloader.bytesByUrl.put("https://slack/img.heic", heicBytes());
+        IncomingPhoto heic = new IncomingPhoto(
+                "https://slack/img.heic", "IMG_6354.HEIC", "image/heic", List.of()); // 썸네일 부재
+
+        flow(repo).receiveMedia(mediaWith(heic));
+
+        assertTrue(photoStore.staged.isEmpty(), "대체 불가 HEIC는 스테이징되지 않는다");
+        assertEquals(List.of(DefaultConfirmationFlow.UNSUPPORTED_FORMAT), responder.messages,
+                "썸네일 부재 → 미지원 거부 경로로 수렴한다(조용히 버리지 않음)");
+    }
+
+    @Test
+    @DisplayName("AC-Δ2: 일반 JPEG는 썸네일이 있어도 원본 그대로 스테이징된다(대체 미발동)")
+    void receiveMediaKeepsOriginalForNormalJpegDespiteThumbnails() {
+        NoteRepository repo = noteRepository();
+        IncomingPhoto jpeg = new IncomingPhoto(
+                "https://slack/a.jpg", "a.jpg", "image/jpeg", List.of("https://slack/thumb1024"));
+
+        flow(repo).receiveMedia(mediaWith(jpeg));
+
+        assertEquals(List.of("a.jpg"), photoStore.staged, "원본 파일명 그대로 저장된다");
+        assertArrayEquals(jpegBytes(), photoStore.stagedBytes.get(0), "원본 JPEG 바이트가 저장된다");
+        assertEquals(List.of("https://slack/a.jpg"), photoDownloader.downloaded, "썸네일은 내려받지 않는다(대체 미발동)");
+        assertTrue(responder.messages.isEmpty());
     }
 
     // --- T3-5: [저장]/[취소] 커밋 ---

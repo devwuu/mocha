@@ -47,6 +47,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
 /**
@@ -809,26 +810,92 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
 
     // 수신 사진을 내려받아 매직바이트로 포맷을 검증한 뒤 스테이징에 저장하고 스테이징된 파일명을 순서대로 돌려준다.
     // POLICY: 스테이징에는 vision 지원 포맷(JPEG/PNG/GIF/WebP)만 — 매직바이트 검증 전 저장 금지(ADR-29, V-12).
-    // 미지원 포맷은 그 사진만 버리고 안내하며(조용히 버리지 않는다), 같은 배치의 정상 사진 처리는 불변(AC-46).
+    // HEIC는 Slack 썸네일(실측 PNG)로 대체하고(AC-45), 그 외 미지원·썸네일 부재는 그 사진만 버리고 안내한다
+    // (조용히 버리지 않는다). 같은 배치의 정상 사진 처리는 불변(AC-46).
     private List<String> stageAll(String userId, IncomingMedia media) {
         List<String> names = new ArrayList<>();
         boolean rejected = false;
         for (IncomingPhoto photo : media.photos()) {
-            byte[] bytes = photoDownloader.download(photo.urlPrivate());
-            ImageFormat format = ImageFormat.detect(bytes);
-            if (!format.isVisionSupported()) {
-                // 다운로드는 성공했으나 포맷이 미지원 — poison이 스테이징에 못 들어가게 입구에서 차단한다(delta #2·#3).
-                log.info("미지원 포맷 사진 거부(스테이징 제외): user={} filename={} format={}",
-                        userId, photo.filename(), format);
+            StageableImage stageable = resolveStageable(userId, photo);
+            if (stageable == null) {
                 rejected = true;
                 continue;
             }
-            names.add(photoStore.stage(userId, photo.filename(), bytes));
+            names.add(photoStore.stage(userId, stageable.filename(), stageable.bytes()));
         }
         if (rejected) {
             responder.post(media.channelId(), UNSUPPORTED_FORMAT);
         }
         return names;
+    }
+
+    // 사진 1건을 스테이징 가능한 (파일명, 바이트)로 해석한다 — 미지원·대체 실패는 null(그 사진만 거부).
+    // vision 지원 원본은 그대로, HEIC는 Slack 썸네일로 대체, 그 외 미지원은 거부한다(ADR-29, V-12).
+    private StageableImage resolveStageable(String userId, IncomingPhoto photo) {
+        byte[] bytes = photoDownloader.download(photo.urlPrivate());
+        ImageFormat format = ImageFormat.detect(bytes);
+        if (format.isVisionSupported()) {
+            // 일반 JPEG/PNG 등 — 원본 그대로(대체 미발동, AC-45 후단).
+            return new StageableImage(photo.filename(), bytes);
+        }
+        // 미지원 포맷. HEIC(매직바이트 확정 + 메타 mimetype 참고)면 Slack 썸네일로 대체 다운로드한다(AC-45).
+        if (isHeic(format, photo)) {
+            StageableImage thumbnail = downloadVisionThumbnail(userId, photo);
+            if (thumbnail != null) {
+                return thumbnail;
+            }
+        }
+        // 대체 불가(HEIC 아님 / 썸네일 부재·실패) — poison이 스테이징에 못 들어가게 입구에서 차단한다(delta #2·#3).
+        log.info("미지원 포맷 사진 거부(스테이징 제외): user={} filename={} format={}",
+                userId, photo.filename(), format);
+        return null;
+    }
+
+    // HEIC 판별 — 매직바이트가 1차(확정), Slack 메타 mimetype은 매직바이트가 못 잡은 HEIF 변형을 보강하는 힌트(ADR-29).
+    private static boolean isHeic(ImageFormat format, IncomingPhoto photo) {
+        if (format == ImageFormat.HEIC) {
+            return true;
+        }
+        String mimetype = photo.mimetype();
+        return mimetype != null && mimetype.toLowerCase(Locale.ROOT).startsWith("image/hei"); // image/heic·image/heif
+    }
+
+    // HEIC 원본 대신 vision 지원 포맷 썸네일을 최대 해상도부터 내려받아 매직바이트로 재검증한다(실측: PNG — findings-TΔ0).
+    // 썸네일 부재·다운로드 실패·미지원 포맷이면 null → 상위가 거부 경로로 수렴한다(AC-45 후단).
+    private StageableImage downloadVisionThumbnail(String userId, IncomingPhoto photo) {
+        for (String url : photo.thumbnailUrls()) {
+            byte[] bytes;
+            try {
+                bytes = photoDownloader.download(url);
+            } catch (RuntimeException e) {
+                log.warn("HEIC 썸네일 다운로드 실패 — 다음 후보 시도: user={} filename={}", userId, photo.filename(), e);
+                continue;
+            }
+            ImageFormat format = ImageFormat.detect(bytes);
+            if (!format.isVisionSupported()) {
+                continue;
+            }
+            // 확장자는 실측 포맷 기반 — ".jpg" 하드코딩 금지, 원본 HEIC 확장자를 실제 포맷(PNG→.png)으로 교체(findings-TΔ0 §3).
+            String filename = withExtension(photo.filename(), format.extension());
+            log.info("HEIC 사진 → Slack 썸네일 대체: user={} filename={} format={} bytes={}",
+                    userId, filename, format, bytes.length);
+            return new StageableImage(filename, bytes);
+        }
+        return null;
+    }
+
+    // 파일명의 확장자를 실측 포맷 확장자로 교체한다(점 없는 확장자 입력). 확장자가 없으면 붙인다.
+    private static String withExtension(String filename, String extension) {
+        String base = filename == null || filename.isBlank() ? "photo" : filename;
+        int dot = base.lastIndexOf('.');
+        if (dot > 0) {
+            base = base.substring(0, dot);
+        }
+        return base + "." + extension;
+    }
+
+    // 스테이징 가능한 사진 1건 — 대체 다운로드 시 파일명(확장자)이 원본과 달라질 수 있어 바이트와 함께 실어 나른다.
+    private record StageableImage(String filename, byte[] bytes) {
     }
 
     // 진행 중 pending의 이번 시음 엔트리에 사진을 덧붙이고 미리보기를 갱신한다(preview_ts 보존 → edit).

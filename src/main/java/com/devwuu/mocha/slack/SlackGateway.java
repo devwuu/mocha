@@ -130,6 +130,7 @@ public class SlackGateway implements SmartLifecycle {
     }
 
     // 이미지 파일만 추려 내부 표현으로 변환. 인증 다운로드용으로 url_private_download를 우선 사용한다.
+    // HEIC 등 vision 미지원 원본을 위해 썸네일 URL 후보(최대 해상도 우선)와 메타 mimetype도 함께 싣는다(ADR-29, TΔ3).
     private static List<IncomingPhoto> imagePhotos(List<File> files) {
         List<IncomingPhoto> photos = new ArrayList<>();
         if (files == null) {
@@ -141,9 +142,31 @@ public class SlackGateway implements SmartLifecycle {
                 continue;
             }
             String url = file.getUrlPrivateDownload() != null ? file.getUrlPrivateDownload() : file.getUrlPrivate();
-            photos.add(new IncomingPhoto(url, file.getName()));
+            photos.add(new IncomingPhoto(url, file.getName(), mimetype, thumbnailUrls(file)));
         }
         return photos;
+    }
+
+    // Slack 썸네일 사다리를 최대 해상도부터 모은다(실측: thumb_1024=1024×768 최대, PNG — findings-TΔ0).
+    // HEIC 대체 다운로드(TΔ3)가 앞 후보부터 시도하도록 내림차순으로 싣는다. 부재 키는 건너뛴다.
+    private static List<String> thumbnailUrls(File file) {
+        List<String> urls = new ArrayList<>();
+        addIfPresent(urls, file.getThumb1024());
+        addIfPresent(urls, file.getThumb960());
+        addIfPresent(urls, file.getThumb800());
+        addIfPresent(urls, file.getThumb720());
+        addIfPresent(urls, file.getThumb480());
+        addIfPresent(urls, file.getThumb360());
+        addIfPresent(urls, file.getThumb160());
+        addIfPresent(urls, file.getThumb80());
+        addIfPresent(urls, file.getThumb64());
+        return urls;
+    }
+
+    private static void addIfPresent(List<String> urls, String url) {
+        if (url != null && !url.isBlank()) {
+            urls.add(url);
+        }
     }
 
     // --- 소켓 수명주기 (SmartLifecycle) ---
