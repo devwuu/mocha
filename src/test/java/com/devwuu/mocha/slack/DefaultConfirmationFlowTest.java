@@ -264,6 +264,9 @@ class DefaultConfirmationFlowTest {
     private static final class FakePhotoDownloader implements PhotoDownloader {
         RuntimeException failure;
         final List<String> downloaded = new ArrayList<>();
+        // 기본은 유효한 JPEG 매직바이트 — 스테이징 입구 게이트(ADR-29)가 통과시키는 정상 포맷.
+        // url별 override로 특정 사진만 HEIC/미상 바이트를 흘려 거부 경로를 검증한다.
+        final java.util.Map<String, byte[]> bytesByUrl = new java.util.HashMap<>();
 
         @Override
         public byte[] download(String urlPrivate) {
@@ -271,8 +274,22 @@ class DefaultConfirmationFlowTest {
                 throw failure;
             }
             downloaded.add(urlPrivate);
-            return new byte[]{1, 2, 3};
+            return bytesByUrl.getOrDefault(urlPrivate, jpegBytes());
         }
+    }
+
+    // vision 지원 포맷의 최소 매직바이트 — 스테이징 게이트 통과·mime 판별 입력.
+    private static byte[] jpegBytes() {
+        return new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xE0, 0, 0, 0, 0, 0, 0, 0, 0};
+    }
+
+    private static byte[] pngBytes() {
+        return new byte[]{(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0};
+    }
+
+    // ISO-BMFF ftyp + heic 브랜드 — vision 미지원(입구 거부 대상).
+    private static byte[] heicBytes() {
+        return new byte[]{0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x68, 0x65, 0x69, 0x63}; // "ftypheic"
     }
 
     /** 스테이징/커밋을 인메모리로 흉내내는 fake — 파일 규칙은 LocalPhotoStore 테스트가 따로 본다. */
@@ -312,6 +329,11 @@ class DefaultConfirmationFlowTest {
             staged.clear();
             stagedBytes.clear();
             discardCount++;
+        }
+
+        @Override
+        public List<String> stagedUserIds() {
+            return staged.isEmpty() ? List.of() : List.of("U1");
         }
     }
 
@@ -821,6 +843,35 @@ class DefaultConfirmationFlowTest {
                 "첨부는 원본 노트를 건드리지 않는다(AC-37 확답 전 무변화)");
     }
 
+    @Test
+    @DisplayName("AC-Δ3: 미지원 포맷 사진은 스테이징되지 않고 안내가 오며, 같은 배치의 정상 사진은 저장된다(배치 오염 없음)")
+    void receiveMediaRejectsUnsupportedFormatButStagesValidInSameBatch() {
+        NoteRepository repo = noteRepository();
+        // 두 번째 사진만 HEIC(vision 미지원) — 나머지는 기본 JPEG.
+        photoDownloader.bytesByUrl.put("https://slack/bad.heic", heicBytes());
+
+        flow(repo).receiveMedia(media("ok.jpg", "bad.heic", "ok2.png"));
+
+        // 정상 두 장만 스테이징됐다 — HEIC 바이트는 스테이징에 못 들어간다(V-12).
+        assertEquals(List.of("ok.jpg", "ok2.png"), photoStore.staged, "지원 포맷만 저장된다");
+        assertTrue(photoStore.stagedBytes.stream().noneMatch(b -> java.util.Arrays.equals(b, heicBytes())),
+                "HEIC 바이트는 스테이징에 남지 않는다");
+        // 미지원은 조용히 버리지 않는다 — 안내가 온다(ADR-29).
+        assertEquals(List.of(DefaultConfirmationFlow.UNSUPPORTED_FORMAT), responder.messages);
+    }
+
+    @Test
+    @DisplayName("AC-Δ3: 정상 포맷만 오면 거부 안내 없이 그대로 스테이징된다(게이트 회귀 가드)")
+    void receiveMediaStagesSupportedWithoutGuidance() {
+        NoteRepository repo = noteRepository();
+        photoDownloader.bytesByUrl.put("https://slack/p.png", pngBytes());
+
+        flow(repo).receiveMedia(media("j.jpg", "p.png"));
+
+        assertEquals(List.of("j.jpg", "p.png"), photoStore.staged);
+        assertTrue(responder.messages.isEmpty(), "지원 포맷만이면 거부 안내가 없다");
+    }
+
     // --- T3-5: [저장]/[취소] 커밋 ---
 
     @Test
@@ -1170,7 +1221,7 @@ class DefaultConfirmationFlowTest {
         NoteRepository repo = noteRepository();
         // 텍스트엔 커피명·원산지 없음 — 사진에서 읽어야 한다.
         llmClient.canned = extraction(null, null, null, "달큰하고 좋았다", Rating.GOOD);
-        photoStore.stage("U1", "bag.jpg", new byte[]{1, 2, 3});
+        photoStore.stage("U1", "bag.jpg", jpegBytes());
         photoBufferStore.setBuffer(new PhotoBuffer(OffsetDateTime.now(clock), List.of("bag.jpg")));
         visionClient.canned = new VisionExtraction(
                 "커피베라 예가체프", "커피베라", "에티오피아", null, null, List.of("자스민"));
@@ -1190,7 +1241,7 @@ class DefaultConfirmationFlowTest {
     void startNewNoteKeepsUserFieldsOverPhoto() {
         NoteRepository repo = noteRepository();
         llmClient.canned = extraction("커피베라 예가체프", null, null, "새콤함", Rating.GOOD);
-        photoStore.stage("U1", "bag.jpg", new byte[]{1});
+        photoStore.stage("U1", "bag.jpg", jpegBytes());
         photoBufferStore.setBuffer(new PhotoBuffer(OffsetDateTime.now(clock), List.of("bag.jpg")));
         // 사진은 다른 커피명·로스터리를 읽었다 — 사용자 값이 이겨야 한다(V-6).
         visionClient.canned = new VisionExtraction(
@@ -1209,7 +1260,7 @@ class DefaultConfirmationFlowTest {
     void startNewNoteProceedsWhenPhotoOcrFails() {
         NoteRepository repo = noteRepository();
         llmClient.canned = extraction("커피베라 예가체프", "커피베라", null, "새콤함", Rating.GOOD);
-        photoStore.stage("U1", "bag.jpg", new byte[]{1});
+        photoStore.stage("U1", "bag.jpg", jpegBytes());
         photoBufferStore.setBuffer(new PhotoBuffer(OffsetDateTime.now(clock), List.of("bag.jpg")));
         visionClient.toThrow = new RuntimeException("vision timeout");
 

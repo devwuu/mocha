@@ -42,4 +42,13 @@ public interface PhotoStore {
 
     /** [취소]/TTL 정리: 해당 사용자의 스테이징을 폐기한다(노트 트리는 건드리지 않는다). */
     void discard(String userId);
+
+    /**
+     * 스테이징에 원본이 남아 있는 사용자 키 목록(스테이징 하위 디렉토리명). 없으면 빈 목록.
+     * <p>앱 시작 시 고아 청소(ADR-29)가 이 목록을 pending·buffer 참조와 대조해 미참조 스테이징을 걸러낸다.
+     * 반환값은 {@code stage} 시 정규화된 안전 키(단일 사용자 Slack id 전제상 {@code userId}와 동치)다.
+     *
+     * @return 스테이징 사용자 키, 오름차순.
+     */
+    List<String> stagedUserIds();
 }

@@ -187,6 +187,11 @@ class Change0011RegressionGuardTest {
         @Override
         public void discard(String userId) {
         }
+
+        @Override
+        public List<String> stagedUserIds() {
+            return List.of();
+        }
     }
 
     private static final class NoopPhotoBufferStore implements PhotoBufferStore {

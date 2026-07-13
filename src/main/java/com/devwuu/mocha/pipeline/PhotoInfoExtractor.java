@@ -1,5 +1,6 @@
 package com.devwuu.mocha.pipeline;
 
+import com.devwuu.mocha.image.ImageFormat;
 import com.devwuu.mocha.llm.VisionClient;
 import com.devwuu.mocha.llm.VisionExtraction;
 import com.devwuu.mocha.llm.VisionHint;
@@ -9,7 +10,6 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Base64;
 import java.util.List;
-import java.util.Locale;
 
 /**
  * 파이프라인 [2.5] — 새 기록 흐름에 사진이 있으면 vision(OCR)으로 커피 정보를 읽어낸다
@@ -58,8 +58,10 @@ public class PhotoInfoExtractor {
             log.info("수신 사진 OCR 상한 절삭: 묶임={} 상한={} 호출={}(초과분은 첨부로만)",
                     images.size(), maxImages, forCall.size());
         }
-        List<String> imageUrls = forCall.stream().map(PhotoInfoExtractor::toDataUri).toList();
         try {
+            // 매직바이트 판별 인코딩은 try 안에서 — 스테이징 게이트(ADR-29)를 뚫고 온 미상 바이트가 있어도
+            // 예외가 파이프라인으로 새지 않고 빈 결과로 수렴한다(ADR-23, AC-Δ5).
+            List<String> imageUrls = forCall.stream().map(PhotoInfoExtractor::toDataUri).toList();
             return visionClient.read(imageUrls, hint);
         } catch (RuntimeException e) {
             // POLICY: 어떤 실패도 파이프라인으로 새지 않는다 — 첨부로만 진행(흐름 불변, ADR-23, AC-Δ5).
@@ -68,22 +70,12 @@ public class PhotoInfoExtractor {
         }
     }
 
-    // 로컬 바이트를 OpenAI가 읽을 수 있는 data URI로 인코딩. mime은 확장자로 판별(기본 image/jpeg).
+    // 로컬 바이트를 OpenAI가 읽을 수 있는 data URI로 인코딩. mime은 확장자가 아니라 매직바이트로 판별한다
+    // (ADR-29, V-12 — 확장자·메타 mimetype 불신). 스테이징은 vision 지원 포맷만 통과하므로 여기 도달하는
+    // 바이트는 정상 판별된다; 미상이면 mimeType()이 던져 위 catch가 빈 결과로 수렴시킨다.
     private static String toDataUri(StagedImage image) {
+        String mime = ImageFormat.detect(image.bytes()).mimeType();
         String base64 = Base64.getEncoder().encodeToString(image.bytes());
-        return "data:" + mimeOf(image.name()) + ";base64," + base64;
-    }
-
-    private static String mimeOf(String name) {
-        String lower = name == null ? "" : name.toLowerCase(Locale.ROOT);
-        int dot = lower.lastIndexOf('.');
-        String ext = dot >= 0 ? lower.substring(dot + 1) : "";
-        return switch (ext) {
-            case "png" -> "image/png";
-            case "gif" -> "image/gif";
-            case "webp" -> "image/webp";
-            case "heic", "heif" -> "image/heic";
-            default -> "image/jpeg"; // jpg/jpeg 및 미상 확장자
-        };
+        return "data:" + mime + ";base64," + base64;
     }
 }

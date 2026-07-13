@@ -39,10 +39,15 @@ class PhotoInfoExtractorTest {
         }
     }
 
+    // 스테이징 게이트(ADR-29)를 통과한 정상 사진 — mime은 매직바이트로 판별되므로 유효한 JPEG 선두를 준다.
+    private static byte[] jpeg() {
+        return new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xE0, 0, 0, 0, 0, 0, 0, 0, 0};
+    }
+
     private static List<StagedImage> stagedImages(int n) {
         List<StagedImage> images = new ArrayList<>();
         for (int i = 0; i < n; i++) {
-            images.add(new StagedImage("bag-" + i + ".jpg", new byte[]{(byte) i}));
+            images.add(new StagedImage("bag-" + i + ".jpg", jpeg()));
         }
         return images;
     }
@@ -79,19 +84,21 @@ class PhotoInfoExtractorTest {
     }
 
     @Test
-    @DisplayName("확장자별 mime — png/webp/heic를 data URI에 반영한다")
-    void encodesMimeFromExtension() {
+    @DisplayName("AC-Δ3: mime는 확장자가 아니라 매직바이트로 판별한다(확장자와 무관)")
+    void encodesMimeFromMagicBytesNotExtension() {
         RecordingVision vision = new RecordingVision();
         PhotoInfoExtractor extractor = new PhotoInfoExtractor(vision, 4);
 
+        // 파일명 확장자와 실제 바이트를 일부러 어긋나게 — 판별은 바이트를 따라야 한다.
+        byte[] png = {(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0};
+        byte[] webp = {0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50}; // RIFF..WEBP
         extractor.extract(List.of(
-                new StagedImage("a.png", new byte[]{1}),
-                new StagedImage("b.webp", new byte[]{2}),
-                new StagedImage("c.heic", new byte[]{3})), hint());
+                new StagedImage("a.jpg", png),    // 이름은 jpg지만 바이트는 PNG
+                new StagedImage("b.heic", webp)), // 이름은 heic지만 바이트는 WebP
+                hint());
 
         assertThat(vision.lastImageUrls.get(0)).startsWith("data:image/png;base64,");
         assertThat(vision.lastImageUrls.get(1)).startsWith("data:image/webp;base64,");
-        assertThat(vision.lastImageUrls.get(2)).startsWith("data:image/heic;base64,");
     }
 
     @Test

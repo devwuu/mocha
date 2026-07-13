@@ -104,6 +104,24 @@ public class LocalPhotoStore implements PhotoStore {
         }
     }
 
+    @Override
+    public List<String> stagedUserIds() {
+        Path root = photosDir.resolve(STAGING);
+        if (!Files.isDirectory(root)) {
+            return List.of();
+        }
+        try (Stream<Path> dirs = Files.list(root)) {
+            // 사용자별 스테이징은 디렉토리다 — .staging 바로 아래의 파일(.DS_Store 등)은 사용자 키가 아니다.
+            return dirs
+                    .filter(Files::isDirectory)
+                    .map(p -> p.getFileName().toString())
+                    .sorted()
+                    .toList();
+        } catch (IOException e) {
+            throw new UncheckedIOException("스테이징 사용자 목록 읽기 실패: " + root, e);
+        }
+    }
+
     private Path stagingDir(String userId) {
         return photosDir.resolve(STAGING).resolve(safeName(userId));
     }

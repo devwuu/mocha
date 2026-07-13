@@ -8,6 +8,7 @@ import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.domain.PhotoBuffer;
 import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Sourced;
+import com.devwuu.mocha.image.ImageFormat;
 import com.devwuu.mocha.llm.VisionExtraction;
 import com.devwuu.mocha.llm.VisionHint;
 import com.devwuu.mocha.domain.SearchSession;
@@ -92,6 +93,7 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
     static final String NEW_NOTE_FAILED = "기록을 정리하다 문제가 생겼어요 멍… 잠시 뒤 다시 보내주시겠어요? 🐾"; // 추출/검색/전송 실패(plan §7)
     static final String REVISE_FAILED = "수정을 반영하다 문제가 생겼어요 멍… 다시 말씀해 주시겠어요? 🐾"; // 수정 병합/전송 실패(plan §7). 기존 pending은 보존
     static final String PHOTO_FAILED = "사진을 받다 문제가 생겼어요 멍… 다시 올려주시겠어요? 🐾"; // 다운로드/스테이징/전송 실패(plan §7)
+    static final String UNSUPPORTED_FORMAT = "그 사진은 제가 읽을 수 없는 포맷이에요 멍… JPEG나 PNG로 다시 올려주시겠어요? 🐾"; // 매직바이트 미지원 포맷 거부 안내(ADR-29, V-12, AC-46)
     static final String NOT_A_RECORD = "저는 커피 감상을 기록하는 강아지예요 멍! 마신 커피 이야기를 들려주세요 🐾"; // 의도 게이트 other 판정 안내(AC-20)
     static final String PENDING_EXISTS = "확인을 기다리는 기록이 있어요 멍! 먼저 [저장]이나 [취소]로 마무리해 주세요 🐾"; // record+대기 존재 안내 — 단일 대기 원칙(FR-17, AC-30)
     static final String NOTHING_TO_REVISE = "지금 고칠 대기 기록이 없어요 멍… 새 커피 이야기면 그대로 들려주세요! 🐾"; // revise+대기 없음 안내(FR-17)
@@ -805,12 +807,26 @@ public class DefaultConfirmationFlow implements ConfirmationFlow {
         }
     }
 
-    // 수신 사진을 내려받아 사용자 스테이징에 저장하고 스테이징된 파일명을 순서대로 돌려준다.
+    // 수신 사진을 내려받아 매직바이트로 포맷을 검증한 뒤 스테이징에 저장하고 스테이징된 파일명을 순서대로 돌려준다.
+    // POLICY: 스테이징에는 vision 지원 포맷(JPEG/PNG/GIF/WebP)만 — 매직바이트 검증 전 저장 금지(ADR-29, V-12).
+    // 미지원 포맷은 그 사진만 버리고 안내하며(조용히 버리지 않는다), 같은 배치의 정상 사진 처리는 불변(AC-46).
     private List<String> stageAll(String userId, IncomingMedia media) {
         List<String> names = new ArrayList<>();
+        boolean rejected = false;
         for (IncomingPhoto photo : media.photos()) {
             byte[] bytes = photoDownloader.download(photo.urlPrivate());
+            ImageFormat format = ImageFormat.detect(bytes);
+            if (!format.isVisionSupported()) {
+                // 다운로드는 성공했으나 포맷이 미지원 — poison이 스테이징에 못 들어가게 입구에서 차단한다(delta #2·#3).
+                log.info("미지원 포맷 사진 거부(스테이징 제외): user={} filename={} format={}",
+                        userId, photo.filename(), format);
+                rejected = true;
+                continue;
+            }
             names.add(photoStore.stage(userId, photo.filename(), bytes));
+        }
+        if (rejected) {
+            responder.post(media.channelId(), UNSUPPORTED_FORMAT);
         }
         return names;
     }
