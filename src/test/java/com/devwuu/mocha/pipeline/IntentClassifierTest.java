@@ -83,15 +83,19 @@ class IntentClassifierTest {
     }
 
     @Test
-    @DisplayName("프롬프트: 검색은 명시적 조회 신호가 있을 때만 판정하고 애매하면 폴백에 맡기는 지침을 담는다 (ADR-24)")
-    void promptGuidesExplicitSearchAndFallback() {
+    @DisplayName("프롬프트: search 판정 핵심 신호를 '새 감상 유무'로 두고(참조 화법+무감상→search), 폴백 우선순위는 불변 (ADR-35, ADR-24)")
+    void promptGuidesNewImpressionSignalAndFallback() {
         CapturingLlmClient llm = new CapturingLlmClient();
         llm.response = new IntentResult(MessageIntent.RECORD);
 
         classifier(llm).classify("아무 말", NO_CONTEXT);
 
         String systemPrompt = llm.captured.systemPrompt();
-        assertThat(systemPrompt).contains("명시적 조회 신호가 있을 때만");
+        // ADR-35: search/record 판정 기준 = "새 시음 감상 유무" — 명시 조회 신호 없어도 참조 화법+무감상이면 search.
+        assertThat(systemPrompt).contains("새 시음 감상");
+        assertThat(systemPrompt).contains("참조 화법");
+        assertThat(systemPrompt).contains("있잖아");            // 버그 리포트 사례 예시 포함
+        // ADR-24 불변: 폴백 우선순위(검색 세션 중→search, 대기 있음→revise, 없음→record).
         assertThat(systemPrompt).contains("폴백에 맡긴다");
     }
 

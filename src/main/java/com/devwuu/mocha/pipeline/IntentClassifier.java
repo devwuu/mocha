@@ -12,10 +12,11 @@ import tools.jackson.databind.ObjectMapper;
  * {@code context} 힌트)을 조립해 {@link LlmClient}로 넘기고,
  * {@code record}/{@code revise}/{@code search}/{@code end}/{@code other} 5값 응답을 {@link IntentResult}로 받는다.
  * 추출과 같은 경량 모델(`mocha.llm.model`)을 공용하며 새 설정 키를 두지 않는다(right-sizing).
- * <p>POLICY: 컨텍스트 힌트는 분류 참고만 — 라우팅은 의도가 결정한다(ADR-24). 검색은 명시적 조회 신호가
- * 있을 때만 판정하고, 애매하면 폴백 우선순위(검색 세션 중→search, 대기 있음→revise, 없음→record)에 맡긴다.
- * 게이트 호출/스키마 실패 시 같은 폴백 우선순위로 라우팅하는 몫은 배선 단(ConversationRouter, TΔ3)에서 처리한다
- * (ref: plan §7, delta AC-Δ5). 진짜 감상의 소리 없는 유실이 오진입보다 나쁘다.
+ * <p>POLICY: 컨텍스트 힌트는 분류 참고만 — 라우팅은 의도가 결정한다(ADR-24). search/record 판정의 핵심
+ * 신호는 "새 시음 감상 유무"다(ADR-35) — 기존 기록을 가리키는 참조 화법 + 새 감상 없음이면 명시 조회 신호가
+ * 없어도 search, 새 감상이 있으면 record. 애매하면 폴백 우선순위(검색 세션 중→search, 대기 있음→revise,
+ * 없음→record)에 맡긴다. 게이트 호출/스키마 실패 시 같은 폴백 우선순위로 라우팅하는 몫은 배선 단
+ * (ConversationRouter)에서 처리한다(ref: plan §7, delta AC-Δ5). 진짜 감상의 소리 없는 유실이 오진입보다 나쁘다.
  */
 public class IntentClassifier {
 
@@ -33,15 +34,21 @@ public class IntentClassifier {
             }
             """;
 
+    // POLICY: 게이트 search 판정의 핵심 신호는 "새 시음 감상 유무" — 참조 화법 + 새 감상 없음이면 명시 조회 신호 없어도 search (ADR-35, FR-17)
     private static final String SYSTEM_PROMPT = """
             너는 사용자가 커피 봇에 보낸 메시지의 의도를 다섯 갈래로 분류하는 게이트다.
-            - "record": 커피를 마신 감상·평가를 새 기록으로 남기려는 요청. 커피/로스터리 이름, 맛 감상, 만족도 표현 등이 담긴다.
+            판정의 핵심 신호는 "이번에 마신 새 시음 감상이 담겼는가"다 — 새 감상이 있으면 기록(record) 쪽,
+            새 감상 없이 기존 기록을 가리키기만 하면 조회(search) 쪽이다.
+            - "record": 커피를 마신 **새 감상·평가**를 기록으로 남기려는 요청. 이번에 마신 맛 묘사, 만족도 표현 등 새로운 시음 소감이 담긴다.
             - "revise": 확인 대기 중인 기록의 내용을 고치려는 요청. "로스터리는 ~로 바꿔줘", "평가는 맛있다로" 등 기존 내용의 정정·보완.
-            - "search": 이미 저장된 기록을 찾아 달라는 조회 요청. "저번에 마신 ~ 찾아줘", "그때 그 커피 뭐였지" 등. 명시적 조회 신호가 있을 때만 고른다.
+            - "search": 이미 저장된 기록을 찾아 달라는 조회 요청. "찾아줘" 같은 명시적 조회 신호가 있으면 물론 search이고,
+              명시적 신호가 없어도 기존 기록을 가리키는 참조 화법("~있잖아", "그때 그", "그거", "저번에 그")이 있고 새 감상이 없으면 search다.
+              예: "오늘 먹은 에티오피아 첼베사 있잖아"(참조 화법 + 새 감상 없음) → search.
+              반대로 "오늘 첼베사 마셨는데 새콤하고 좋았어"(새 감상 있음) → record.
             - "end": 진행 중인 검색 세션을 끝내려는 표현. "됐어", "그만 찾아도 돼" 등.
             - "other": 그 외 전부. 인사, 잡담, 봇 사용법 질문, 커피와 무관한 말 등.
             context는 분류의 참고 힌트일 뿐이다 — has_pending=확인 대기 기록 존재, search_session_active=검색 세션 진행 중.
-            검색은 명시적 조회 신호가 있을 때만 "search"로 분류한다. 판정이 애매하면 폴백에 맡긴다 —
+            새 감상이 있으면 "record"로, 참조 화법 + 새 감상 없음이면 "search"로 기운다. 판정이 애매하면 폴백에 맡긴다 —
             search_session_active면 "search", 아니고 has_pending이면 "revise", 둘 다 아니면 "record"로 기울인다.
             입력은 message와 context를 담은 JSON으로 주어진다. 오직 intent 값만 판정한다.
             """;
