@@ -1016,6 +1016,31 @@ class SlackConversationFlowsTest {
     }
 
     @Test
+    @DisplayName("TΔ3/AC-Δ4: EXISTING 재기록 [저장] 커밋 시 이번 기록의 다른 표기가 노트 별칭에 무콜 축적된다")
+    void confirmSaveAccumulatesObservedAliasesForExistingNote() {
+        NoteRepository repo = noteRepository();
+        // 기존 노트 표시값: Ethiopia Chelbesa / FroB (별칭 비어 있음).
+        savedNote(repo, "ethiopia-chelbesa", "Ethiopia Chelbesa", "FroB", LocalDate.of(2026, 7, 1));
+        // 이번 기록은 한국어 음차로 관측된다 — EXISTING 매칭 draft(별칭 생성 콜은 NEW 전용이라 미발생).
+        Entry entry = new Entry(LocalDate.of(2026, 7, 11), "새콤", Rating.GOOD, null, OffsetDateTime.now(clock));
+        Note draft = new Note(
+                "ethiopia-chelbesa", Sourced.user("에티오피아 첼베사"), Sourced.user("프롭"),
+                null, null, null, null, List.of(),
+                List.of(entry), OffsetDateTime.now(clock), OffsetDateTime.now(clock));
+        pendingStore.setPending(new PendingNote(
+                draft, MatchInfo.existing("ethiopia-chelbesa", LocalDate.of(2026, 7, 11)),
+                "1720000000.000999", OffsetDateTime.now(clock)));
+
+        flow(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
+
+        Note saved = repo.findBySlug("ethiopia-chelbesa").orElseThrow();
+        assertEquals(List.of("에티오피아 첼베사"), saved.aliases().coffeeName(),
+                "EXISTING 커밋은 이번 기록의 다른 커피명 표기를 별칭에 축적한다(표시값과 다름)");
+        assertEquals(List.of("프롭"), saved.aliases().roastery(),
+                "로스터리 다른 표기도 별칭에 축적된다");
+    }
+
+    @Test
     @DisplayName("AC-Δ6: 카드 렌더 실패 → 노트 JSON 저장은 유지되고 안내 텍스트로 폴백한다")
     void confirmSaveKeepsCommitWhenRenderFails() {
         NoteRepository repo = noteRepository();

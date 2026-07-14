@@ -31,6 +31,40 @@ public record Aliases(List<String> coffeeName, List<String> roastery) {
     }
 
     /**
+     * 관측 표기 무콜 축적(TΔ3) — EXISTING 매칭 커밋 시 이번 기록의 커피명·로스터리 표시값을 별칭에 더한다.
+     * <p>노트의 표시값(canonical)과 정규화 일치하는 관측 표기는 별칭에 넣지 않는다 — 표시값 자체는 별칭에
+     * 중복 수록하지 않기 때문(대조 시 별도 포함, V-13). 그 밖의 표기만 기존 별칭과 정규화 중복 제거로 병합한다
+     * (중복·표시값·빈 표기는 미추가). LLM 콜 없이 서버가 축적한다.
+     * (ref: specs/coffee-note-agent/changes/0016 delta AC-Δ4, plan.md#ADR-37 축적 ②)
+     *
+     * @param observedCoffeeName  이번 기록의 커피명 표시값(추출·OCR 유래). null·공백 허용.
+     * @param canonicalCoffeeName 노트의 커피명 표시값 — 이와 정규화 일치하는 관측 표기는 별칭에 넣지 않는다.
+     * @param observedRoastery    이번 기록의 로스터리 표시값(추출·OCR 유래). null·공백 허용.
+     * @param canonicalRoastery   노트의 로스터리 표시값.
+     * @return 관측 표기를 반영한 새 {@link Aliases}(불변). 반영할 신규 표기가 없으면 내용상 동일하다.
+     */
+    public Aliases accumulate(String observedCoffeeName, String canonicalCoffeeName,
+                              String observedRoastery, String canonicalRoastery) {
+        return new Aliases(
+                accumulateInto(coffeeName, observedCoffeeName, canonicalCoffeeName),
+                accumulateInto(roastery, observedRoastery, canonicalRoastery));
+    }
+
+    /**
+     * 관측 표기 1건을 별칭 목록에 더한다 — 표시값(canonical)과 정규화 일치하거나 빈 표기면 그대로 두고,
+     * 그 밖이면 목록 끝에 붙인 뒤 정규화 중복 제거(기존 별칭과의 중복도 흡수). 기존 순서는 보존된다.
+     */
+    private static List<String> accumulateInto(List<String> aliases, String observed, String canonical) {
+        String key = normalize(observed);
+        if (key.isEmpty() || key.equals(normalize(canonical))) {
+            return aliases;
+        }
+        List<String> merged = new ArrayList<>(aliases);
+        merged.add(observed);
+        return dedupNormalized(merged);
+    }
+
+    /**
      * 정규화 키 — 소문자화 + 모든 공백 제거. 대조·중복 제거의 <b>기준</b>이며 저장값이 아니다(V-13).
      * null·빈 문자열은 빈 키("")로 수렴한다.
      */

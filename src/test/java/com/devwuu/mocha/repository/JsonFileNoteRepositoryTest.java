@@ -69,6 +69,13 @@ class JsonFileNoteRepositoryTest {
         return new Entry(date, taste, Rating.GOOD, null, OffsetDateTime.now(FIXED));
     }
 
+    // 관측 표기 축적(TΔ3) 검증용 — 커피명·로스터리만 지정한 최소 메타.
+    private static NoteMeta metaWithNames(String coffeeName, String roastery) {
+        return new NoteMeta(
+                Sourced.user(coffeeName), Sourced.user(roastery),
+                null, null, null, null, List.of());
+    }
+
     @Test
     @DisplayName("AC-14: 같은 날 재기록 시 엔트리 수 불변(갱신만)")
     void sameDayUpsertKeepsSingleEntry() {
@@ -230,11 +237,53 @@ class JsonFileNoteRepositoryTest {
         assertThat(loaded.aliases().coffeeName()).containsExactly("에티오피아 첼베사");
         assertThat(loaded.aliases().roastery()).containsExactly("프롭");
 
-        // 다른 날 재기록(withMergedEntry) — 별칭 존치
-        Note reRecorded = repo.upsertEntry(slug, sampleMeta(), entry(LocalDate.of(2026, 7, 10), "10일"));
+        // 다른 날 재기록(withMergedEntry) — 표시값과 같은 표기로 기록하면 별칭 존치(관측 축적은 미발생)
+        NoteMeta sameNotation = new NoteMeta(
+                Sourced.user("Ethiopia Chelbesa"), Sourced.user("FroB"),
+                null, null, null, null, List.of());
+        Note reRecorded = repo.upsertEntry(slug, sameNotation, entry(LocalDate.of(2026, 7, 10), "10일"));
         assertThat(reRecorded.aliases()).isEqualTo(seeded.aliases());
         assertThat(repo.findBySlug(slug)).get()
                 .extracting(n -> n.aliases().coffeeName()).isEqualTo(List.of("에티오피아 첼베사"));
+    }
+
+    // ── 0016 TΔ3: EXISTING 재기록 커밋 시 관측 표기 무콜 축적 (AC-Δ4, ADR-37) ──────
+
+    @Test
+    @DisplayName("0016-TΔ3/AC-Δ4: EXISTING 재기록 커밋 시 다른 표기는 aliases에 축적되고, 표시값·중복 표기는 미추가")
+    void reRecordAccumulatesObservedAliases() {
+        String slug = "ethiopia-chelbesa";
+        // 표시값 Ethiopia Chelbesa / FroB, 별칭 {에티오피아 첼베사}/{프롭} 로 seed
+        Note seeded = new Note(
+                slug,
+                Sourced.user("Ethiopia Chelbesa"), Sourced.user("FroB"),
+                new Sourced<>(null, com.devwuu.mocha.domain.Source.SEARCH),
+                new Sourced<>(null, com.devwuu.mocha.domain.Source.SEARCH),
+                new Sourced<>(null, com.devwuu.mocha.domain.Source.SEARCH),
+                Sourced.search(List.of()),
+                new com.devwuu.mocha.domain.Aliases(List.of("에티오피아 첼베사"), List.of("프롭")),
+                List.of(),
+                List.of(entry(LocalDate.of(2026, 7, 9), "1일차")),
+                OffsetDateTime.now(FIXED), OffsetDateTime.now(FIXED)
+        );
+        seedNoteFile(seeded);
+
+        // 다른 표기로 재기록 → 신규 표기가 별칭 뒤에 축적된다(첫 등장 순서 보존).
+        Note r1 = repo.upsertEntry(slug, metaWithNames("이디오피아 첼베사", "프로브"),
+                entry(LocalDate.of(2026, 7, 10), "2일차"));
+        assertThat(r1.aliases().coffeeName()).containsExactly("에티오피아 첼베사", "이디오피아 첼베사");
+        assertThat(r1.aliases().roastery()).containsExactly("프롭", "프로브");
+
+        // 같은 표기 재기록 → 정규화 중복 미추가. 표시값(FroB)과 같은 관측 표기 → 미추가.
+        Note r2 = repo.upsertEntry(slug, metaWithNames("이디오피아  첼베사", "FROB"),
+                entry(LocalDate.of(2026, 7, 11), "3일차"));
+        assertThat(r2.aliases().coffeeName()).containsExactly("에티오피아 첼베사", "이디오피아 첼베사");
+        assertThat(r2.aliases().roastery()).containsExactly("프롭", "프로브");
+
+        // 실파일 로드에도 축적분이 반영된다.
+        assertThat(repo.findBySlug(slug)).get()
+                .extracting(n -> n.aliases().coffeeName())
+                .isEqualTo(List.of("에티오피아 첼베사", "이디오피아 첼베사"));
     }
 
     @Test

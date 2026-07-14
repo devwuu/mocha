@@ -318,4 +318,25 @@ class DomainSerializationTest {
         assertThat(Aliases.normalize(null)).isEmpty();
         assertThat(Aliases.normalize("   ")).isEmpty();
     }
+
+    @Test
+    @DisplayName("0016-TΔ3/AC-Δ4: accumulate — 다른 관측 표기는 더하고, 표시값·중복·빈 표기는 더하지 않는다")
+    void aliasesAccumulateObservedNotation() {
+        Aliases base = new Aliases(List.of("에티오피아 첼베사"), List.of("프롭"));
+
+        // 표시값과 다른 신규 표기 → 기존 별칭 뒤에 축적(첫 등장 순서 보존).
+        Aliases added = base.accumulate("이디오피아 첼베사", "Ethiopia Chelbesa", "프로브", "FroB");
+        assertThat(added.coffeeName()).containsExactly("에티오피아 첼베사", "이디오피아 첼베사");
+        assertThat(added.roastery()).containsExactly("프롭", "프로브");
+
+        // 표시값과 정규화 일치하는 관측 표기 → 별칭에 넣지 않는다(V-13 표시값 비중복).
+        Aliases sameAsDisplay = base.accumulate("ethiopia  chelbesa", "Ethiopia Chelbesa", "FROB", "FroB");
+        assertThat(sameAsDisplay.coffeeName()).containsExactly("에티오피아 첼베사");
+        assertThat(sameAsDisplay.roastery()).containsExactly("프롭");
+
+        // 기존 별칭과 정규화 중복 → 미추가. null·빈 관측 표기 → 미추가.
+        Aliases dupOrBlank = base.accumulate(" 에티오피아첼베사 ", "Ethiopia Chelbesa", null, "FroB");
+        assertThat(dupOrBlank.coffeeName()).containsExactly("에티오피아 첼베사");
+        assertThat(dupOrBlank.roastery()).containsExactly("프롭");
+    }
 }
