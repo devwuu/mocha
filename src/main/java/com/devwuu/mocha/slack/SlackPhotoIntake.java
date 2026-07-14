@@ -1,7 +1,5 @@
 package com.devwuu.mocha.slack;
 
-import com.devwuu.mocha.domain.Entry;
-import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
 import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.domain.PhotoBuffer;
@@ -19,7 +17,6 @@ import org.slf4j.LoggerFactory;
 
 import java.time.Clock;
 import java.time.Duration;
-import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -40,7 +37,6 @@ class SlackPhotoIntake {
 
     private final PendingStore pendingStore;
     private final SlackResponder responder;
-    private final PreviewMessenger previewMessenger;
     private final PhotoDownloader photoDownloader;
     private final PhotoStore photoStore;
     private final PhotoBufferStore photoBufferStore;
@@ -51,7 +47,6 @@ class SlackPhotoIntake {
     SlackPhotoIntake(
             PendingStore pendingStore,
             SlackResponder responder,
-            PreviewMessenger previewMessenger,
             PhotoDownloader photoDownloader,
             PhotoStore photoStore,
             PhotoBufferStore photoBufferStore,
@@ -60,7 +55,6 @@ class SlackPhotoIntake {
             Clock clock) {
         this.pendingStore = pendingStore;
         this.responder = responder;
-        this.previewMessenger = previewMessenger;
         this.photoDownloader = photoDownloader;
         this.photoStore = photoStore;
         this.photoBufferStore = photoBufferStore;
@@ -79,8 +73,10 @@ class SlackPhotoIntake {
         try {
             Optional<PendingNote> pending = pendingStore.get(userId);
             if (pending.isPresent()) {
-                // 진행 중 노트가 있으면 사진은 그 노트에 첨부한다 — pending 중 텍스트=수정(ADR-3)과 같은 정신.
-                attachToPending(userId, channelId, pending.get(), stageAll(userId, media));
+                // 진행 중 노트가 있으면 사진은 스테이징에만 둔다 — 아카이브 전용이라 draft·미리보기를 건드리지
+                // 않고(렌더 없음), [저장] 시 commitStaged가 photos/<slug>/<date>/로 옮긴다(changes/0014 ADR-32).
+                List<String> staged = stageAll(userId, media);
+                log.info("pending 중 사진 스테이징: user={} photos={}", userId, staged.size());
             } else {
                 // 담을 노트가 아직 없다 → 버퍼에 쌓아 뒤이을 텍스트를 기다린다(FR-10).
                 bufferMedia(userId, media);
@@ -158,16 +154,6 @@ class SlackPhotoIntake {
     /** 버퍼만 비운다 — 사진이 pending·노트로 이관된 뒤(스테이징 원본은 commit이 옮긴다). */
     void clearBuffer(String userId) {
         photoBufferStore.clear(userId);
-    }
-
-    // 스테이징 파일명을 확정 저장 경로 규칙(photos/<slug>/<date>/<name>)에 맞춘 임시 미리보기 경로로 변환한다.
-    // 실제 파일 이동·최종 경로는 [저장] 시 PhotoStore.commit이 정한다(충돌 시 -N 접미 가능).
-    static List<String> provisionalPhotoPaths(String slug, LocalDate date, List<String> names) {
-        if (names.isEmpty()) {
-            return List.of();
-        }
-        String prefix = "photos/" + slug + "/" + date + "/";
-        return names.stream().map(name -> prefix + name).toList();
     }
 
     // 수신 사진을 내려받아 매직바이트로 포맷을 검증한 뒤 스테이징에 저장하고 스테이징된 파일명을 순서대로 돌려준다.
@@ -260,27 +246,6 @@ class SlackPhotoIntake {
     private record StageableImage(String filename, byte[] bytes) {
     }
 
-    // 진행 중 pending의 이번 시음 엔트리에 사진을 덧붙이고 미리보기를 갱신한다(preview_ts 보존 → edit).
-    private void attachToPending(String userId, String channelId, PendingNote pending, List<String> newNames)
-            throws Exception {
-        Note draft = pending.draft();
-        Entry entry = latestEntry(draft);
-        if (entry == null) {
-            // 방어: 엔트리 없는 pending에는 첨부할 자리가 없다 — 버퍼로 흘리지 않고 그냥 로그만.
-            log.warn("사진 첨부 무효 — 엔트리 없는 pending: user={}", userId);
-            return;
-        }
-        List<String> merged = new ArrayList<>(entry.photos());
-        merged.addAll(provisionalPhotoPaths(draft.slug(), entry.date(), newNames));
-        Entry withPhotos = new Entry(entry.date(), entry.myTaste(), entry.myTasteOriginal(), entry.rating(),
-                entry.recipe(), merged, entry.updatedAt());
-        PendingNote updated = pending.withDraft(withLatestEntry(draft, withPhotos));
-
-        pendingStore.put(userId, updated);
-        previewMessenger.publish(channelId, updated); // preview_ts 있음 → 같은 미리보기 edit
-        log.info("pending 사진 첨부: user={} slug={} photos={}", userId, draft.slug(), merged.size());
-    }
-
     // pending 없음: 윈도우 밖 이전 버퍼는 버리고 새로 시작, 안이면 이어붙여 버퍼링한다(AC-8).
     private void bufferMedia(String userId, IncomingMedia media) {
         OffsetDateTime now = OffsetDateTime.now(clock);
@@ -323,26 +288,5 @@ class SlackPhotoIntake {
             return current;
         }
         return Sourced.photo(List.copyOf(photoValue));
-    }
-
-    // --- draft 최신 엔트리 헬퍼 — façade의 커밋 경로에도 같은 헬퍼가 있다(TΔ7 flow 분리에서 배분, ADR-31). ---
-
-    // 이번 시음 엔트리 — draft.entries는 1건 전제(확인 미리보기와 동일 가정). 마지막 엔트리를 취한다.
-    private static Entry latestEntry(Note draft) {
-        List<Entry> entries = draft.entries();
-        if (entries == null || entries.isEmpty()) {
-            return null;
-        }
-        return entries.get(entries.size() - 1);
-    }
-
-    // draft의 이번 시음 엔트리(마지막 1건)를 교체한 새 draft를 만든다.
-    private static Note withLatestEntry(Note draft, Entry entry) {
-        List<Entry> entries = new ArrayList<>(draft.entries());
-        entries.set(entries.size() - 1, entry);
-        return new Note(
-                draft.slug(), draft.coffeeName(), draft.roastery(), draft.origin(), draft.process(),
-                draft.roastLevel(), draft.officialNotes(), draft.sources(),
-                entries, draft.createdAt(), draft.updatedAt());
     }
 }

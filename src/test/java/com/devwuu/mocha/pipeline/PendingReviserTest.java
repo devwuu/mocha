@@ -57,7 +57,7 @@ class PendingReviserTest {
                 Sourced.user("커피베라"),
                 Sourced.search("에티오피아"),   // 검색 보강값 — 수정으로 user 승격 대상
                 null, null, null, List.of(),
-                List.of(new Entry(DATE, "새콤함", Rating.GOOD, null, List.of(), TS)),
+                List.of(new Entry(DATE, "새콤함", Rating.GOOD, null, TS)),
                 TS, TS);
         return new PendingNote(draft, MatchInfo.newNote(), "1720000000.000999", TS);
     }

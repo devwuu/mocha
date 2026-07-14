@@ -266,7 +266,7 @@ class Change0011RegressionGuardTest {
 
     private static PendingNote pendingWith(String slug) {
         Entry entry = new Entry(
-                LocalDate.of(2026, 7, 11), "새콤하고 좋았다", Rating.GOOD, null, List.of(), OffsetDateTime.now());
+                LocalDate.of(2026, 7, 11), "새콤하고 좋았다", Rating.GOOD, null, OffsetDateTime.now());
         Note draft = new Note(
                 slug, Sourced.user("커피베라 예가체프"),
                 Sourced.user("커피베라"), Sourced.search("에티오피아"), null, null,

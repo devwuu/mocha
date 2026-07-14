@@ -2,7 +2,6 @@ package com.devwuu.mocha.domain;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
-import java.util.List;
 
 /**
  * 날짜별 시음 기록 — Note에 내장. 버전 = 날짜 (ref: data-model.md#2.2, FR-15).
@@ -14,8 +13,10 @@ import java.util.List;
  *                        렌더 대상 아님(V-11, ADR-30, changes/0013).
  * @param rating          4범주 평가 또는 null(미언급).
  * @param recipe          추출 레시피 또는 null(3항목 전무·미언급). 사용자 발화 전용 (FR-18, changes/0010).
- * @param photos          상대 경로(photos/&lt;slug&gt;/&lt;date&gt;/ 하위)만 (V-4).
  * @param updatedAt       같은 날 덮어쓰기 추적용 최종 시각(이력 아님).
+ *
+ * <p>사진은 아카이브 전용이라 노트 JSON에 기록하지 않는다 — 폴더 경로 규약({@code photos/<slug>/<date>/})이
+ * 유일한 연결이다(changes/0014 ADR-32, data-model §2.2). 기존 JSON의 {@code photos} 키는 역직렬화에서 무시된다.
  */
 public record Entry(
         LocalDate date,
@@ -23,7 +24,6 @@ public record Entry(
         String myTasteOriginal,
         Rating rating,
         Recipe recipe,
-        List<String> photos,
         OffsetDateTime updatedAt
 ) {
 
@@ -40,7 +40,7 @@ public record Entry(
      * 수렴한다(위 V-11 규칙). 원문을 별도로 실어야 하는 신규/수정 경로는 canonical 생성자를 직접 쓴다.
      */
     public Entry(LocalDate date, String myTaste, Rating rating, Recipe recipe,
-                 List<String> photos, OffsetDateTime updatedAt) {
-        this(date, myTaste, null, rating, recipe, photos, updatedAt);
+                 OffsetDateTime updatedAt) {
+        this(date, myTaste, null, rating, recipe, updatedAt);
     }
 }

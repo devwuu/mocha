@@ -41,7 +41,7 @@ class PreviewBlocksTest {
     }
 
     private static Entry entry(String myTaste, Rating rating, Recipe recipe) {
-        return new Entry(LocalDate.of(2026, 7, 10), myTaste, rating, recipe, List.of(), OffsetDateTime.now());
+        return new Entry(LocalDate.of(2026, 7, 10), myTaste, rating, recipe, OffsetDateTime.now());
     }
 
     private static String md(TextObject text) {
@@ -362,7 +362,7 @@ class PreviewBlocksTest {
                 Sourced.user("커피베라"),
                 null, null, null, null,
                 List.of(),
-                List.of(new Entry(entryDate, "산미가 좋았다", Rating.GOOD, null, List.of(), OffsetDateTime.now())),
+                List.of(new Entry(entryDate, "산미가 좋았다", Rating.GOOD, null, OffsetDateTime.now())),
                 OffsetDateTime.now(),
                 OffsetDateTime.now());
     }

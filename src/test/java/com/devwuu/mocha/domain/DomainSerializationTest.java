@@ -29,7 +29,6 @@ class DomainSerializationTest {
                 "새콤하고 좋았다",
                 Rating.GOOD,
                 new Recipe(15.0, 240.0, "중간"),   // 레시피 포함 — Note 왕복에 recipe도 실린다(FR-18)
-                List.of("photos/coffeevera-yirgacheffe-g1/2026-07-10/a.jpg"),
                 ts
         );
         return new Note(
@@ -108,13 +107,30 @@ class DomainSerializationTest {
     @Test
     @DisplayName("V-1: rating null 허용(미언급)")
     void nullRatingAllowed() throws Exception {
-        Entry entry = new Entry(LocalDate.of(2026, 7, 10), "무난", null, null, List.of(), null);
+        Entry entry = new Entry(LocalDate.of(2026, 7, 10), "무난", null, null, null);
 
         String json = mapper.writeValueAsString(entry);
         Entry restored = mapper.readValue(json, Entry.class);
 
         assertThat(restored.rating()).isNull();
         assertThat(restored).isEqualTo(entry);
+    }
+
+    @Test
+    @DisplayName("AC-Δ1(changes/0014): photos 키가 든 기존 형식 JSON도 오류 없이 로드되고 재저장 시 photos 키가 사라진다")
+    void legacyPhotosKeyIgnoredOnRoundTrip() throws Exception {
+        // 사진 아카이브 전용화(ADR-32) 이전에 저장된 엔트리 JSON — photos 배열을 품고 있다.
+        String legacy = "{\"date\":\"2026-07-10\",\"my_taste\":\"새콤\",\"my_taste_original\":\"새콤\","
+                + "\"rating\":\"맛있다\",\"recipe\":null,"
+                + "\"photos\":[\"photos/coffeevera/2026-07-10/a.jpg\"],\"updated_at\":null}";
+
+        // 미지 키(photos)는 조용히 무시된다(findings-TΔ0 §1) — 마이그레이션·mapper 옵션 불필요.
+        Entry restored = mapper.readValue(legacy, Entry.class);
+        String reserialized = mapper.writeValueAsString(restored);
+
+        assertThat(reserialized).doesNotContain("photos");
+        assertThat(restored.myTaste()).isEqualTo("새콤");
+        assertThat(restored.rating()).isEqualTo(Rating.GOOD);
     }
 
     // --- TΔ4: my_taste 정규화 + my_taste_original 병존 (ADR-30, V-11, changes/0013) ---
@@ -124,7 +140,7 @@ class DomainSerializationTest {
     void myTasteOriginalRoundTrip() throws Exception {
         Entry entry = new Entry(
                 LocalDate.of(2026, 7, 10), "새콤하고 좋았음", "새콤하고 좋았다",
-                Rating.GOOD, null, List.of(), null);
+                Rating.GOOD, null, null);
 
         String json = mapper.writeValueAsString(entry);
         Entry restored = mapper.readValue(json, Entry.class);
@@ -140,7 +156,7 @@ class DomainSerializationTest {
     @DisplayName("V-11: 커밋 시 my_taste만 있고 원문이 누락되면 정규화본을 원문에도 담아 영속한다")
     void persistsCopiedOriginalWhenMissing() throws Exception {
         // 원문 도입 전 시그니처(6-arg)로 만든 엔트리 = 원문 누락 → V-11 복사가 걸린다.
-        Entry entry = new Entry(LocalDate.of(2026, 7, 10), "맛있었음", Rating.GOOD, null, List.of(), null);
+        Entry entry = new Entry(LocalDate.of(2026, 7, 10), "맛있었음", Rating.GOOD, null, null);
 
         assertThat(entry.myTasteOriginal()).isEqualTo("맛있었음"); // 도메인 불변 보장
         Entry restored = mapper.readValue(mapper.writeValueAsString(entry), Entry.class);
@@ -154,7 +170,7 @@ class DomainSerializationTest {
     void recipeRoundTrip() throws Exception {
         Entry entry = new Entry(
                 LocalDate.of(2026, 7, 10), "새콤", Rating.GOOD,
-                new Recipe(15.0, 240.0, "중간"), List.of(), null);
+                new Recipe(15.0, 240.0, "중간"), null);
 
         String json = mapper.writeValueAsString(entry);
         Entry restored = mapper.readValue(json, Entry.class);
@@ -167,7 +183,7 @@ class DomainSerializationTest {
     @Test
     @DisplayName("TΔ1/AC-Δ8: recipe 미언급 엔트리는 recipe=null로 직렬화·왕복된다")
     void recipeNullRoundTrip() throws Exception {
-        Entry entry = new Entry(LocalDate.of(2026, 7, 10), "무난", Rating.GOOD, null, List.of(), null);
+        Entry entry = new Entry(LocalDate.of(2026, 7, 10), "무난", Rating.GOOD, null, null);
 
         String json = mapper.writeValueAsString(entry);
         Entry restored = mapper.readValue(json, Entry.class);

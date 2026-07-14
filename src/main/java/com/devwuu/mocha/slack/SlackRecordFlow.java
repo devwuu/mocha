@@ -158,15 +158,14 @@ class SlackRecordFlow {
                             match.targetDate() + "-" + now.format(SLUG_TIME))
                     : match.matchedNote().slug();
 
-            // 흡수한 버퍼 사진의 임시 미리보기 경로. 실제 저장 경로는 [저장] 시 commit이 확정한다(V-4).
-            List<String> photoPaths = SlackPhotoIntake.provisionalPhotoPaths(slug, match.targetDate(), bufferNames);
             // POLICY: 레시피는 사용자 발화 전용 — 검색·OCR 보강 금지, source 개념 없음 (ADR-22, FR-18).
             // 추출 원본을 V-8로 정규화(음수·0·공백 항목 드롭, 전무 시 recipe 자체 null)해 Entry에 싣는다.
+            // 사진은 노트에 싣지 않는다 — 아카이브 전용이라 스테이징된 채로 [저장] 시 폴더로만 커밋된다(changes/0014 ADR-32).
             Recipe recipe = extraction.recipe() == null ? null
                     : Recipe.normalize(
                             extraction.recipe().doseG(), extraction.recipe().waterMl(), extraction.recipe().grind());
             Entry entry = new Entry(match.targetDate(), extraction.myTaste(), extraction.myTasteOriginal(),
-                    extraction.rating(), recipe, photoPaths, now);
+                    extraction.rating(), recipe, now);
             // coffeeName은 user 우선, 없으면 photo(OCR)로 채워진 값을 쓴다 — enriched가 그대로 실어 나른다(검색 미채움, V-5).
             Note draft = assembleDraft(slug, enriched.coffeeName(), enriched, entry, now);
             MatchInfo matchInfo = match.toMatchInfo();
@@ -285,20 +284,18 @@ class SlackRecordFlow {
             return;
         }
 
-        // 사진 커밋: 스테이징 원본을 photos/<slug>/<date>/로 이동하고 상대 경로를 확정한다(V-4, FR-10).
+        // 사진 커밋: 스테이징 원본을 photos/<slug>/<date>/로 아카이브 이동한다(FR-10, changes/0014 ADR-32).
         // 로컬 move라 저장 커밋 경계 안에서 수행한다(외부 I/O는 수신 시점에 이미 끝남, CLAUDE.md §3).
+        // 반환 경로는 노트에 싣지 않는다 — 사진은 아카이브 전용, JSON 기록 없음(delta AC-Δ1).
         String date = entry.date().toString();
-        List<String> committedPhotos = photoIntake.commitStaged(userId, slug, date);
-        Entry committedEntry = new Entry(
-                entry.date(), entry.myTaste(), entry.myTasteOriginal(), entry.rating(), entry.recipe(),
-                committedPhotos, entry.updatedAt());
+        photoIntake.commitStaged(userId, slug, date);
+        Entry committedEntry = entry;
 
         // POLICY: 사용자 [저장] 확인을 거친 뒤에만 저장한다 (ref: plan.md#ADR-3, AC-4).
         Note saved = noteRepository.upsertEntry(slug, metaOf(draft), committedEntry);
         pendingStore.clear(userId);
         photoIntake.clearBuffer(userId);
-        log.info("[저장] 커밋 완료: slug={} entries={} photos={}",
-                saved.slug(), saved.entries().size(), committedPhotos.size());
+        log.info("[저장] 커밋 완료: slug={} entries={}", saved.slug(), saved.entries().size());
 
         // 저장은 이미 커밋됨 — 카드 렌더·전송 실패는 데이터 손실이 아니다. 실패해도 저장은 유지하고 안내 텍스트로 폴백한다.
         // POLICY: 저장 시점 렌더는 증분 — 방금 그 (slug,date) 엔트리 카드 1장만 굽는다(전체 재래스터화는 --rerender)

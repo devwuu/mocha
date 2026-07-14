@@ -56,6 +56,7 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -505,7 +506,7 @@ class SlackConversationFlowsTest {
 
     private static PendingNote pendingWith(String slug) {
         Entry entry = new Entry(
-                LocalDate.of(2026, 7, 11), "새콤하고 좋았다", Rating.GOOD, null, List.of(), OffsetDateTime.now());
+                LocalDate.of(2026, 7, 11), "새콤하고 좋았다", Rating.GOOD, null, OffsetDateTime.now());
         Note draft = new Note(
                 slug, Sourced.user("커피베라 예가체프"),
                 Sourced.user("커피베라"), Sourced.search("에티오피아"), null, null,
@@ -563,7 +564,7 @@ class SlackConversationFlowsTest {
     }
 
     @Test
-    @DisplayName("AC-Δ1: 신규 노트 slug가 YYYY-MM-DD-HHmmss 형식이고 사진 경로에서 slug≠date 세그먼트 (ADR-28, V-2)")
+    @DisplayName("AC-Δ1: 신규 노트 slug가 YYYY-MM-DD-HHmmss 형식이고 최초 기록일 세그먼트와 다르다 (ADR-28, V-2)")
     void startNewNoteAssignsTimestampedSlug() {
         NoteRepository repo = noteRepository();
         llmClient.canned = extraction("커피베라 예가체프", "커피베라", null, "새콤함", Rating.GOOD);
@@ -575,9 +576,8 @@ class SlackConversationFlowsTest {
         // 고정 Clock(Asia/Seoul 2026-07-11 11:00:00) → target_date(2026-07-11) + 생성 시각(110000).
         assertEquals("2026-07-11-110000", draft.slug(), "slug = 최초 기록일 + 생성 시각(HHmmss)");
         assertTrue(draft.slug().matches("[a-z0-9-]+"), "V-2 패턴 불변");
-        // 사진 경로 photos/<slug>/<date>/ 에서 slug 세그먼트와 date 세그먼트가 서로 다르다.
-        String photo = draft.entries().get(0).photos().get(0);
-        assertEquals("photos/2026-07-11-110000/2026-07-11/a.jpg", photo);
+        // 아카이브 폴더 규약 photos/<slug>/<date>/에서 slug 세그먼트와 date 세그먼트가 겹치지 않는다(사진은 노트에 싣지 않음, ADR-32).
+        assertNotEquals(draft.entries().get(0).date().toString(), draft.slug(), "slug 세그먼트 ≠ date 세그먼트");
     }
 
     @Test
@@ -775,7 +775,7 @@ class SlackConversationFlowsTest {
     @DisplayName("AC-38/V-9: edit revise 커피명 변경 → 거부 안내 전송 + draft 커피명 불변, 미리보기는 갱신된다")
     void revisePendingEditRejectsCoffeeNameChange() {
         NoteRepository repo = noteRepository();
-        seedEditableNote(repo, "yirga", LocalDate.of(2026, 7, 8), List.of());
+        seedEditableNote(repo, "yirga", LocalDate.of(2026, 7, 8));
         PendingNote pending = editPending("yirga", LocalDate.of(2026, 7, 8), LocalDate.of(2026, 7, 8), "원래 감상");
         pendingStore.setPending(pending);
         llmClient.cannedRevision = new RevisionResult("다른 커피", null, null, null, null, null, null, null, null);
@@ -794,8 +794,8 @@ class SlackConversationFlowsTest {
     @DisplayName("AC-Δ3/V-10: edit revise 날짜 이동이 기존 엔트리와 충돌 → date_conflict 플래그가 pending에 영속된다")
     void revisePendingEditFlagsDateConflict() {
         NoteRepository repo = noteRepository();
-        seedEditableNote(repo, "yirga", LocalDate.of(2026, 7, 8), List.of());
-        seedEditableNote(repo, "yirga", LocalDate.of(2026, 7, 9), List.of()); // 이동처에 기존 엔트리 존재
+        seedEditableNote(repo, "yirga", LocalDate.of(2026, 7, 8));
+        seedEditableNote(repo, "yirga", LocalDate.of(2026, 7, 9)); // 이동처에 기존 엔트리 존재
         PendingNote pending = editPending("yirga", LocalDate.of(2026, 7, 8), LocalDate.of(2026, 7, 8), "원래 감상");
         pendingStore.setPending(pending);
         llmClient.cannedRevision =
@@ -817,7 +817,7 @@ class SlackConversationFlowsTest {
     @DisplayName("V-10: 무충돌 날짜 이동은 경고 플래그 없이 반영된다")
     void revisePendingEditWithoutConflictLeavesFlagOff() {
         NoteRepository repo = noteRepository();
-        seedEditableNote(repo, "yirga", LocalDate.of(2026, 7, 8), List.of());
+        seedEditableNote(repo, "yirga", LocalDate.of(2026, 7, 8));
         PendingNote pending = editPending("yirga", LocalDate.of(2026, 7, 8), LocalDate.of(2026, 7, 8), "원래 감상");
         pendingStore.setPending(pending);
         llmClient.cannedRevision =
@@ -831,22 +831,19 @@ class SlackConversationFlowsTest {
     }
 
     @Test
-    @DisplayName("AC-41/AC-Δ5: edit 세션 중 사진 수신 → 대상 엔트리에 추가되고 같은 미리보기를 edit로 갱신한다")
-    void receiveMediaAttachesToEditPending() {
+    @DisplayName("AC-Δ5: edit 세션 중 사진 수신 → 스테이징만 되고(아카이브 전용) draft·미리보기는 건드리지 않는다")
+    void receiveMediaStagesDuringEditPending() {
         NoteRepository repo = noteRepository();
-        seedEditableNote(repo, "yirga", LocalDate.of(2026, 7, 8), List.of());
+        seedEditableNote(repo, "yirga", LocalDate.of(2026, 7, 8));
         PendingNote pending = editPending("yirga", LocalDate.of(2026, 7, 8), LocalDate.of(2026, 7, 8), "원래 감상");
         pendingStore.setPending(pending);
 
         flow(repo).receiveMedia(media("a.jpg"));
 
-        assertEquals(PendingNote.Mode.EDIT, previewMessenger.published.mode(), "edit 세션이 유지된다");
-        assertEquals(List.of("photos/yirga/2026-07-08/a.jpg"),
-                previewMessenger.published.draft().entries().get(0).photos(), "대상 엔트리에 사진 추가(AC-41)");
-        assertEquals(pending.previewTs(), previewMessenger.published.previewTs(),
-                "preview_ts 보존 → 재전송이 아닌 edit로 갱신한다");
-        assertTrue(repo.findBySlug("yirga").orElseThrow().entries().get(0).photos().isEmpty(),
-                "첨부는 원본 노트를 건드리지 않는다(AC-37 확답 전 무변화)");
+        assertEquals(List.of("a.jpg"), photoStore.staged, "수신 사진은 스테이징에 담긴다([저장] 시 폴더로 커밋)");
+        assertNull(previewMessenger.published, "사진은 렌더되지 않으므로 미리보기를 재발행하지 않는다(ADR-32)");
+        assertTrue(pendingStore.puts.isEmpty(), "draft를 갱신하지 않는다 — pending 재저장 없음");
+        assertTrue(photoStore.committed.isEmpty(), "수신만으로는 아카이브 커밋되지 않는다([저장] 확인 필요)");
     }
 
     @Test
@@ -1099,16 +1096,16 @@ class SlackConversationFlowsTest {
     // --- TΔ3(changes/0012): edit 커밋 — applyEdit + 파생물 정리(AC-Δ3, plan §7) ---
 
     // 수정 대상이 될 원본 노트(엔트리 1건)를 실제 파일로 심는다 — edit 커밋의 @TempDir 재료.
-    private void seedEditableNote(NoteRepository repo, String slug, LocalDate date, List<String> photos) {
+    private void seedEditableNote(NoteRepository repo, String slug, LocalDate date) {
         com.devwuu.mocha.domain.NoteMeta meta = new com.devwuu.mocha.domain.NoteMeta(
                 Sourced.user("커피베라 예가체프"), Sourced.user("커피베라"), Sourced.search("에티오피아"),
                 null, null, null, List.of());
-        repo.upsertEntry(slug, meta, new Entry(date, "원래 감상", Rating.GOOD, null, photos, OffsetDateTime.now()));
+        repo.upsertEntry(slug, meta, new Entry(date, "원래 감상", Rating.GOOD, null, OffsetDateTime.now()));
     }
 
     // mode=edit pending — 원본 (slug, targetDate) 엔트리를 newDate·새 감상으로 고치는 단일 엔트리 draft.
     private static PendingNote editPending(String slug, LocalDate targetDate, LocalDate newDate, String myTaste) {
-        Entry entry = new Entry(newDate, myTaste, Rating.GOOD, null, List.of(), OffsetDateTime.now());
+        Entry entry = new Entry(newDate, myTaste, Rating.GOOD, null, OffsetDateTime.now());
         Note draft = new Note(
                 slug, Sourced.user("커피베라 예가체프"),
                 Sourced.user("커피베라"), Sourced.search("에티오피아"), null, null,
@@ -1121,7 +1118,7 @@ class SlackConversationFlowsTest {
     @DisplayName("AC-Δ3: edit [저장] 날짜 이동 → applyEdit 커밋 후 옛 date 카드 삭제 → 새 date 카드 증분 렌더·배달")
     void confirmSaveEditMovesDateAndCleansOldCard() {
         NoteRepository repo = noteRepository();
-        seedEditableNote(repo, "yirga", LocalDate.of(2026, 7, 8), List.of());
+        seedEditableNote(repo, "yirga", LocalDate.of(2026, 7, 8));
         pendingStore.setPending(editPending("yirga", LocalDate.of(2026, 7, 8), LocalDate.of(2026, 7, 9), "고친 감상"));
 
         flow(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
@@ -1146,7 +1143,7 @@ class SlackConversationFlowsTest {
     @DisplayName("AC-Δ1: edit [저장] 날짜 유지 → 옛 카드 삭제 없이 해당 date 카드만 다시 굽는다")
     void confirmSaveEditWithoutDateMoveSkipsCardRemoval() {
         NoteRepository repo = noteRepository();
-        seedEditableNote(repo, "yirga", LocalDate.of(2026, 7, 8), List.of());
+        seedEditableNote(repo, "yirga", LocalDate.of(2026, 7, 8));
         pendingStore.setPending(editPending("yirga", LocalDate.of(2026, 7, 8), LocalDate.of(2026, 7, 8), "고친 감상"));
 
         flow(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
@@ -1161,7 +1158,7 @@ class SlackConversationFlowsTest {
     @DisplayName("plan §7: 옛 카드 삭제 실패 → 커밋 유지, 새 카드 렌더·배달은 그대로 진행된다")
     void confirmSaveEditKeepsCommitWhenCardRemovalFails() {
         NoteRepository repo = noteRepository();
-        seedEditableNote(repo, "yirga", LocalDate.of(2026, 7, 8), List.of());
+        seedEditableNote(repo, "yirga", LocalDate.of(2026, 7, 8));
         pendingStore.setPending(editPending("yirga", LocalDate.of(2026, 7, 8), LocalDate.of(2026, 7, 9), "고친 감상"));
         noteRenderer.removeFailure = new IllegalStateException("카드 삭제 실패");
 
@@ -1179,7 +1176,7 @@ class SlackConversationFlowsTest {
     @DisplayName("plan §7: edit 커밋 후 카드 렌더 실패 → 커밋은 유지되고 안내 텍스트로 폴백한다")
     void confirmSaveEditKeepsCommitWhenRenderFails() {
         NoteRepository repo = noteRepository();
-        seedEditableNote(repo, "yirga", LocalDate.of(2026, 7, 8), List.of());
+        seedEditableNote(repo, "yirga", LocalDate.of(2026, 7, 8));
         pendingStore.setPending(editPending("yirga", LocalDate.of(2026, 7, 8), LocalDate.of(2026, 7, 9), "고친 감상"));
         noteRenderer.renderFailure = new IllegalStateException("Chromium 미기동");
 
@@ -1208,26 +1205,27 @@ class SlackConversationFlowsTest {
     }
 
     @Test
-    @DisplayName("AC-41 재료: edit [저장] 시 기존 사진 경로는 보존되고 스테이징된 새 사진만 뒤에 붙는다")
-    void confirmSaveEditPreservesExistingPhotosAndAppendsStaged() {
+    @DisplayName("AC-Δ5: edit [저장] 시 스테이징된 새 사진이 대상 엔트리 날짜의 아카이브 폴더로 커밋되고 노트엔 싣지 않는다")
+    void confirmSaveEditArchivesStagedPhotos() {
         NoteRepository repo = noteRepository();
-        seedEditableNote(repo, "yirga", LocalDate.of(2026, 7, 8), List.of("photos/yirga/2026-07-08/a.jpg"));
+        seedEditableNote(repo, "yirga", LocalDate.of(2026, 7, 8));
         photoStore.stage("U1", "b.jpg", new byte[]{1});
         pendingStore.setPending(editPending("yirga", LocalDate.of(2026, 7, 8), LocalDate.of(2026, 7, 9), "고친 감상"));
 
         flow(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
 
-        Note saved = repo.findBySlug("yirga").orElseThrow();
-        // 기존 사진은 옛 date 경로 문자열 그대로(파일 이동 없음) + 새 사진은 새 date 경로로 커밋되어 뒤에 붙는다.
-        assertEquals(List.of("photos/yirga/2026-07-08/a.jpg", "photos/yirga/2026-07-09/b.jpg"),
-                saved.entries().get(0).photos(), "기존 보존 + 신규 추가(삭제 없음)");
+        // 새 사진은 대상 엔트리 날짜 폴더로 아카이브 커밋된다(폴더=진실). 노트 JSON엔 사진을 기록하지 않는다.
+        assertEquals(List.of("photos/yirga/2026-07-09/b.jpg"), photoStore.committed,
+                "스테이징 사진이 대상 엔트리 날짜 폴더로 커밋된다(AC-Δ5)");
+        assertTrue(photoStore.staged.isEmpty(), "커밋 후 스테이징은 비워진다");
+        assertEquals(1, repo.findBySlug("yirga").orElseThrow().entries().size(), "엔트리는 저장되되 사진 필드는 없다");
     }
 
     @Test
     @DisplayName("손상 edit pending(target 결손)에 [저장] → 저장하지 않고 방어 안내한다")
     void confirmSaveRejectsEditPendingWithoutTarget() {
         NoteRepository repo = noteRepository();
-        seedEditableNote(repo, "yirga", LocalDate.of(2026, 7, 8), List.of());
+        seedEditableNote(repo, "yirga", LocalDate.of(2026, 7, 8));
         PendingNote broken = new PendingNote(PendingNote.Mode.EDIT,
                 editPending("yirga", LocalDate.of(2026, 7, 8), LocalDate.of(2026, 7, 9), "고친 감상").draft(),
                 null, null, "1720000000.000999", OffsetDateTime.now()); // target 결손
@@ -1265,12 +1263,8 @@ class SlackConversationFlowsTest {
 
         flow(repo).startNewNote(message("커피베라 예가체프 마셨어"));
 
-        Note draft = previewMessenger.published.draft();
-        List<String> photos = draft.entries().get(0).photos();
-        assertEquals(3, photos.size(), "윈도우 내 사진 3장이 이번 노트로 묶인다(AC-8 전반)");
-        assertTrue(photos.get(0).startsWith("photos/" + draft.slug() + "/"),
-                "미리보기 사진 경로는 확정 저장 경로 규칙을 따른다: " + photos.get(0));
-        assertEquals(1, photoBufferStore.clearCount, "사진이 pending으로 이관되면 버퍼를 비운다");
+        assertNotNull(previewMessenger.published, "윈도우 내 버퍼가 흡수되어 미리보기가 전송된다(AC-8 전반)");
+        assertEquals(1, photoBufferStore.clearCount, "사진 3장이 이 노트 흐름으로 흡수되면 버퍼를 비운다(저장 시 폴더로 commit)");
         assertEquals(0, photoStore.discardCount, "윈도우 내 버퍼는 폐기하지 않는다(저장 시 commit 대상)");
     }
 
@@ -1329,7 +1323,7 @@ class SlackConversationFlowsTest {
 
         assertNotNull(previewMessenger.published, "OCR 실패여도 미리보기는 정상 전송된다(AC-Δ5)");
         Note draft = previewMessenger.published.draft();
-        assertEquals(1, draft.entries().get(0).photos().size(), "사진은 첨부로만 유지된다(흐름 불변)");
+        assertEquals(List.of("bag.jpg"), photoStore.staged, "사진은 스테이징에 남아 [저장] 시 아카이브된다(흐름 불변)");
         assertEquals(Sourced.user("커피베라 예가체프"), draft.coffeeName());
     }
 
@@ -1344,8 +1338,7 @@ class SlackConversationFlowsTest {
 
         flow(repo).startNewNote(message("커피베라 예가체프 마셨어"));
 
-        Note draft = previewMessenger.published.draft();
-        assertTrue(draft.entries().get(0).photos().isEmpty(), "윈도우 밖 사진은 이 노트에 묶이지 않는다(AC-8 후반)");
+        assertNotNull(previewMessenger.published, "윈도우 밖 버퍼는 이 노트에 묶이지 않고 텍스트만으로 미리보기가 진행된다(AC-8 후반)");
         assertEquals(1, photoStore.discardCount, "버려진 스테이징을 정리한다");
     }
 
@@ -1365,20 +1358,18 @@ class SlackConversationFlowsTest {
     }
 
     @Test
-    @DisplayName("T4-2: 진행 중 pending에 사진 수신 → 그 노트에 첨부하고 같은 미리보기를 edit로 갱신한다")
-    void receiveMediaAttachesToExistingPending() {
+    @DisplayName("AC-Δ5: 진행 중 pending에 사진 수신 → 스테이징만 되고 draft·미리보기는 건드리지 않는다")
+    void receiveMediaStagesDuringExistingPending() {
         NoteRepository repo = noteRepository();
-        PendingNote pending = pendingWith("coffeevera-yirgacheffe"); // 엔트리 photos 비어 있음
+        PendingNote pending = pendingWith("coffeevera-yirgacheffe");
         pendingStore.setPending(pending);
 
         flow(repo).receiveMedia(media("a.jpg", "b.jpg"));
 
-        Note draft = previewMessenger.published.draft();
-        assertEquals(2, draft.entries().get(0).photos().size(), "진행 중 노트에 사진 2장이 첨부된다");
-        assertEquals(pending.previewTs(), previewMessenger.published.previewTs(),
-                "preview_ts 보존 → 재전송이 아닌 edit로 갱신한다");
-        assertEquals(1, pendingStore.puts.size(), "첨부 갱신본을 pending에 재저장한다");
-        assertTrue(repo.findAll().isEmpty(), "첨부는 노트 JSON을 만들지 않는다(AC-4)");
+        assertEquals(List.of("a.jpg", "b.jpg"), photoStore.staged, "수신 사진 2장은 스테이징에 담긴다([저장] 시 폴더로 커밋)");
+        assertNull(previewMessenger.published, "사진은 렌더되지 않으므로 미리보기를 재발행하지 않는다(ADR-32)");
+        assertTrue(pendingStore.puts.isEmpty(), "draft를 갱신하지 않는다 — pending 재저장 없음");
+        assertTrue(repo.findAll().isEmpty(), "수신은 노트 JSON을 만들지 않는다(AC-4)");
     }
 
     @Test
@@ -1396,19 +1387,20 @@ class SlackConversationFlowsTest {
     }
 
     @Test
-    @DisplayName("T4-2: [저장] 시 스테이징 사진을 photos/<slug>/<date>/로 commit해 엔트리에 상대 경로로 담는다(V-4)")
-    void confirmSaveCommitsStagedPhotos() {
+    @DisplayName("AC-Δ1: [저장] 시 스테이징 사진을 photos/<slug>/<date>/로 아카이브 커밋하고 노트 JSON엔 싣지 않는다")
+    void confirmSaveArchivesStagedPhotos() {
         NoteRepository repo = noteRepository();
         photoStore.staged.add("a.jpg"); // 대기 중 스테이징 사진
         pendingStore.setPending(pendingWith("coffeevera-yirgacheffe")); // 엔트리 date=2026-07-11
 
         flow(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
 
-        Note saved = repo.findBySlug("coffeevera-yirgacheffe").orElseThrow();
-        List<String> photos = saved.entries().get(0).photos();
-        assertEquals(List.of("photos/coffeevera-yirgacheffe/2026-07-11/a.jpg"), photos,
-                "스테이징 사진이 확정 상대 경로로 엔트리에 담긴다(V-4)");
+        assertEquals(List.of("photos/coffeevera-yirgacheffe/2026-07-11/a.jpg"), photoStore.committed,
+                "스테이징 사진이 확정 폴더 경로로 아카이브 커밋된다");
         assertTrue(photoStore.staged.isEmpty(), "commit 후 스테이징은 비워진다");
+        // 사진은 아카이브 전용 — 엔트리는 저장되되 노트에는 사진 필드가 없다(AC-Δ1).
+        assertEquals(1, repo.findBySlug("coffeevera-yirgacheffe").orElseThrow().entries().size(),
+                "엔트리는 저장된다");
     }
 
     @Test
@@ -1430,7 +1422,7 @@ class SlackConversationFlowsTest {
     private Note savedNote(NoteRepository repo, String slug, String coffeeName, String roastery, LocalDate date) {
         com.devwuu.mocha.domain.NoteMeta meta = new com.devwuu.mocha.domain.NoteMeta(
                 Sourced.user(coffeeName), Sourced.user(roastery), null, null, null, null, List.of());
-        Entry entry = new Entry(date, "좋았다", Rating.GOOD, null, List.of(), OffsetDateTime.now(clock));
+        Entry entry = new Entry(date, "좋았다", Rating.GOOD, null, OffsetDateTime.now(clock));
         return repo.upsertEntry(slug, meta, entry);
     }
 

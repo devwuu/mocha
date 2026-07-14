@@ -166,7 +166,6 @@ public class PendingReviser {
                 patch.myTasteOriginal() != null ? patch.myTasteOriginal() : entry.myTasteOriginal(),
                 patch.rating() != null ? patch.rating() : entry.rating(),
                 entry.recipe(),  // 레시피는 사용자 발화 전용 — 수정 스키마에 없어 보존(ADR-22)
-                entry.photos(),
                 entry.updatedAt()));
         return List.copyOf(revised);
     }

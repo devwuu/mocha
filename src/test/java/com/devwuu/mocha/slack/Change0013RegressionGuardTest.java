@@ -267,7 +267,7 @@ class Change0013RegressionGuardTest {
 
     @Test
     @DisplayName("AC-Δ7: 사진 6장 기록 관통 — vision 1콜·max-images=4 절삭, 새 slug 하 photos/<slug>/<date>/·cards/<slug>/<date>.jpg 규약, [저장] 전 미커밋")
-    void photoRecordPipelineInvariantsSurviveChange0013() {
+    void photoRecordPipelineInvariantsSurviveChange0013() throws java.io.IOException {
         router.onMedia(media("a.jpg", "b.jpg", "c.jpg", "d.jpg", "e.jpg", "f.jpg"));
 
         assertEquals(6, countFiles(stagingDir()), "수신 사진 6장이 전부 스테이징된다(입구 게이트 통과, AC-46 정상 경로)");
@@ -285,14 +285,12 @@ class Change0013RegressionGuardTest {
 
         Note saved = noteRepository.findAll().get(0);
         assertEquals("2026-07-11-110000", saved.slug(), "slug = 최초 기록일 + 생성 시각(ADR-28)");
-        List<String> photos = saved.entries().get(0).photos();
-        assertEquals(6, photos.size(), "OCR 절삭(4장)은 호출만 — 첨부 저장은 6장 전부(UNCHANGED)");
-        for (String photo : photos) {
-            assertTrue(photo.startsWith("photos/2026-07-11-110000/2026-07-11/"),
-                    "사진 경로 규약 photos/<slug>/<date>/ 불변 + slug≠date 세그먼트: " + photo);
-        }
+        // 사진은 아카이브 전용(changes/0014 ADR-32) — OCR 절삭(4장)은 호출만, 저장은 6장 전부 폴더로 이동한다.
+        // 노트 JSON에는 사진을 기록하지 않는다(AC-Δ1) — 경로 규약 photos/<slug>/<date>/ 불변은 디스크로 검증.
         Path committedDir = dataDir.resolve("photos").resolve("2026-07-11-110000").resolve("2026-07-11");
-        assertEquals(6, countFiles(committedDir), "실제 디스크에도 photos/<slug>/<date>/로 6장 이동");
+        assertEquals(6, countFiles(committedDir), "실제 디스크에도 photos/<slug>/<date>/로 6장 이동(첨부 저장은 6장 전부)");
+        String noteJson = Files.readString(dataDir.resolve("notes").resolve("2026-07-11-110000.json"));
+        assertFalse(noteJson.contains("photos"), "노트 JSON에 photos 키가 없다(사진은 아카이브 전용, AC-Δ1)");
         assertEquals(0, countFiles(stagingDir()), "커밋 후 스테이징 잔존물 없음");
         assertTrue(photoBufferStore.get("U1").isEmpty(), "커밋 후 버퍼도 비워진다");
         assertEquals(List.of("2026-07-11-110000/2026-07-11"), renderer.entryCards,

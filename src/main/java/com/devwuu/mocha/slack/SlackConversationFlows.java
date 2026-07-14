@@ -100,7 +100,7 @@ public class SlackConversationFlows implements ConversationFlows {
             Path artifactDir,
             Duration bufferWindow,
             Clock clock) {
-        this.photoIntake = new SlackPhotoIntake(pendingStore, responder, previewMessenger,
+        this.photoIntake = new SlackPhotoIntake(pendingStore, responder,
                 photoDownloader, photoStore, photoBufferStore, photoInfoExtractor, bufferWindow, clock);
         SlackEditFlow editFlow = new SlackEditFlow(pendingStore, searchSessionStore, noteRepository, noteRenderer,
                 responder, previewMessenger, photoIntake, clock);

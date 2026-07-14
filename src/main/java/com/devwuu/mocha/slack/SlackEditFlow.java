@@ -140,14 +140,11 @@ class SlackEditFlow {
             return;
         }
 
-        // 사진은 추가만 가능(delta 비범위: 삭제 없음) — 기존 사진은 원본 엔트리의 경로 문자열을 그대로 보존하고
-        // (날짜가 이동해도 파일은 옮기지 않는다, findings-TΔ0 §3), 수정 중 스테이징된 새 사진만 뒤에 붙인다(AC-41).
+        // 수정 중 스테이징된 새 사진을 대상 엔트리 날짜의 아카이브 폴더로 이동한다(AC-Δ5 = spec AC-41).
+        // 반환 경로는 노트에 싣지 않는다 — 사진은 아카이브 전용, JSON 기록 없음(changes/0014 ADR-32).
         String date = entry.date().toString();
-        List<String> photos = new ArrayList<>(origin.get().photos() == null ? List.of() : origin.get().photos());
-        photos.addAll(photoIntake.commitStaged(userId, slug, date));
-        Entry committedEntry = new Entry(
-                entry.date(), entry.myTaste(), entry.myTasteOriginal(), entry.rating(), entry.recipe(),
-                photos, entry.updatedAt());
+        photoIntake.commitStaged(userId, slug, date);
+        Entry committedEntry = entry;
 
         // POLICY: 사용자 [저장] 확인을 거친 뒤에만 저장한다 (ref: plan.md#ADR-3, AC-37).
         Note saved = noteRepository.applyEdit(slug, target.date(), withLatestEntry(pending.draft(), committedEntry));

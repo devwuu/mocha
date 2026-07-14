@@ -32,7 +32,7 @@ class NoteMatcherTest {
 
     private static Note noteWithEntries(String slug, LocalDate... entryDates) {
         List<Entry> entries = java.util.Arrays.stream(entryDates)
-                .map(d -> new Entry(d, "맛", Rating.GOOD, null, List.of(), OffsetDateTime.now()))
+                .map(d -> new Entry(d, "맛", Rating.GOOD, null, OffsetDateTime.now()))
                 .toList();
         return new Note(
                 slug, Sourced.user("커피베라 예가체프 G1"),

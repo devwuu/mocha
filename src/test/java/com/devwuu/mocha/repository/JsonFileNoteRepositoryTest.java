@@ -50,7 +50,7 @@ class JsonFileNoteRepositoryTest {
     }
 
     private static Entry entry(LocalDate date, String taste) {
-        return new Entry(date, taste, Rating.GOOD, null, List.of(), OffsetDateTime.now(FIXED));
+        return new Entry(date, taste, Rating.GOOD, null, OffsetDateTime.now(FIXED));
     }
 
     @Test

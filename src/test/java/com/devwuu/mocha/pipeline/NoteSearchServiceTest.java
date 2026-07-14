@@ -59,7 +59,7 @@ class NoteSearchServiceTest {
 
     private static Note note(String slug, String coffeeName, String roastery, LocalDate... entryDates) {
         List<Entry> entries = java.util.Arrays.stream(entryDates)
-                .map(date -> new Entry(date, "좋았다", Rating.GOOD, null, List.of(), OffsetDateTime.now(FIXED)))
+                .map(date -> new Entry(date, "좋았다", Rating.GOOD, null, OffsetDateTime.now(FIXED)))
                 .toList();
         return new Note(
                 slug, coffeeName == null ? null : Sourced.user(coffeeName),

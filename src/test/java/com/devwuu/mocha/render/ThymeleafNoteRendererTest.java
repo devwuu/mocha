@@ -57,7 +57,7 @@ class ThymeleafNoteRendererTest {
                 Sourced.search(List.of("자몽", "베르가못", "홍차")),
                 List.of("https://coffeevera.example/yirgacheffe"));
         repo.upsertEntry("2026-07-10", meta1,
-                new Entry(LocalDate.parse("2026-07-10"), "새콤하고 좋았다.\n다음엔 물 온도를 낮춰봐야지.", Rating.GOOD, null, List.of(), now));
+                new Entry(LocalDate.parse("2026-07-10"), "새콤하고 좋았다.\n다음엔 물 온도를 낮춰봐야지.", Rating.GOOD, null, now));
 
         NoteMeta meta2 = new NoteMeta(
                 Sourced.user("콜롬비아 게이샤 워시드"),
@@ -65,7 +65,7 @@ class ThymeleafNoteRendererTest {
                 Sourced.search("콜롬비아"),
                 null, null, Sourced.search(List.of()), List.of());
         repo.upsertEntry("2026-07-04", meta2,
-                new Entry(LocalDate.parse("2026-07-04"), "화사하다.", Rating.PERFECT, null, List.of(), now));
+                new Entry(LocalDate.parse("2026-07-04"), "화사하다.", Rating.PERFECT, null, now));
         return repo;
     }
 
@@ -138,7 +138,7 @@ class ThymeleafNoteRendererTest {
         // 정규화본(음슴체)과 발화 원문을 서로 다른 문자열로 둔다 — 원문 유출을 판별 가능하게.
         repo.upsertEntry("2026-07-10", meta,
                 new Entry(LocalDate.parse("2026-07-10"), "새콤하고 좋았음", "새콤하고 좋았다구우",
-                        Rating.GOOD, null, List.of(), now));
+                        Rating.GOOD, null, now));
 
         FakeCardImageRenderer cards = new FakeCardImageRenderer();
         new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_B, cards).renderAll();
@@ -161,9 +161,9 @@ class ThymeleafNoteRendererTest {
                 List.of("https://coffeevera.example/yirgacheffe"));
         // 같은 노트(slug)에 다른 날짜 엔트리 2건.
         repo.upsertEntry("yirgacheffe", meta,
-                new Entry(LocalDate.parse("2026-07-04"), "첫날: 새콤하고 좋았다.", Rating.GOOD, null, List.of(), now));
+                new Entry(LocalDate.parse("2026-07-04"), "첫날: 새콤하고 좋았다.", Rating.GOOD, null, now));
         repo.upsertEntry("yirgacheffe", meta,
-                new Entry(LocalDate.parse("2026-07-10"), "둘째 날: 물 온도를 낮추니 부드럽다.", Rating.PERFECT, null, List.of(), now));
+                new Entry(LocalDate.parse("2026-07-10"), "둘째 날: 물 온도를 낮추니 부드럽다.", Rating.PERFECT, null, now));
 
         FakeCardImageRenderer cards = new FakeCardImageRenderer();
         new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_B, cards).renderAll();
@@ -196,10 +196,9 @@ class ThymeleafNoteRendererTest {
                 Sourced.user("예가체프 G1 워시드"),
                 Sourced.user("커피베라"), Sourced.search("에티오피아"),
                 null, null, Sourced.search(List.of()), List.of());
-        // 사진이 실린 엔트리 — 렌더는 이를 읽지 않아야 한다(changes/0014 ADR-32, AC-Δ2).
+        // 렌더는 사진을 읽지 않는다 — 엔트리에 사진 필드가 없고 템플릿에도 사진 슬롯이 없다(changes/0014 ADR-32, AC-Δ2).
         repo.upsertEntry("2026-07-10", meta,
-                new Entry(LocalDate.parse("2026-07-10"), "새콤하다.", Rating.GOOD, null,
-                        List.of("photos/2026-07-10/2026-07-10/a.jpg"), now));
+                new Entry(LocalDate.parse("2026-07-10"), "새콤하다.", Rating.GOOD, null, now));
 
         FakeCardImageRenderer cards = new FakeCardImageRenderer();
         new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_B, cards).renderAll();
@@ -229,10 +228,9 @@ class ThymeleafNoteRendererTest {
                 Sourced.user("예가체프 G1 워시드"),
                 Sourced.user("커피베라"), Sourced.search("에티오피아"),
                 null, null, Sourced.search(List.of()), List.of());
-        // 사진이 실린 엔트리 + 실제 사진 파일을 data/photos/에 둔다(리렌더 입력 후보로서의 파일 존재를 재현).
+        // 엔트리 + 실제 사진 파일을 data/photos/에 둔다 — 사진은 노트가 아닌 폴더에만 존재(리렌더 입력 후보로서의 파일 존재를 재현).
         repo.upsertEntry("2026-07-10", meta,
-                new Entry(LocalDate.parse("2026-07-10"), "새콤하다.", Rating.GOOD, null,
-                        List.of("photos/2026-07-10/2026-07-10/a.jpg"), now));
+                new Entry(LocalDate.parse("2026-07-10"), "새콤하다.", Rating.GOOD, null, now));
         Path photosDir = dataDir.resolve("photos/2026-07-10/2026-07-10");
         Files.createDirectories(photosDir);
         Files.write(photosDir.resolve("a.jpg"), new byte[]{1, 2, 3});
@@ -332,7 +330,7 @@ class ThymeleafNoteRendererTest {
                 Sourced.user("워시드"), Sourced.search("라이트"),
                 Sourced.search(List.of("자몽", "홍차")), List.of());
         repo.upsertEntry("2026-07-10", meta,
-                new Entry(LocalDate.parse("2026-07-10"), "새콤하다.", Rating.GOOD, recipe, List.of(), now));
+                new Entry(LocalDate.parse("2026-07-10"), "새콤하다.", Rating.GOOD, recipe, now));
         return repo;
     }
 
@@ -406,7 +404,7 @@ class ThymeleafNoteRendererTest {
     // 원본 노트의 단일 엔트리를 newDate로 옮긴 edit draft(엔트리 1건) — applyEdit 입력.
     private static Note moveDateDraft(Note origin, LocalDate newDate) {
         Entry e = origin.entries().get(0);
-        Entry moved = new Entry(newDate, e.myTaste(), e.rating(), e.recipe(), e.photos(), e.updatedAt());
+        Entry moved = new Entry(newDate, e.myTaste(), e.rating(), e.recipe(), e.updatedAt());
         return new Note(origin.slug(), origin.coffeeName(), origin.roastery(), origin.origin(),
                 origin.process(), origin.roastLevel(), origin.officialNotes(), origin.sources(),
                 List.of(moved), origin.createdAt(), origin.updatedAt());

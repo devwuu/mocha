@@ -45,7 +45,7 @@ class JsonFilePendingStoreTest {
                 new Sourced<>(null, Source.SEARCH),
                 Sourced.search(List.of("자스민", "베르가못")),
                 List.of("https://example.com/coffeevera"),
-                List.of(new Entry(LocalDate.of(2026, 7, 10), "새콤하고 좋았다", Rating.GOOD, null, List.of(), createdAt)),
+                List.of(new Entry(LocalDate.of(2026, 7, 10), "새콤하고 좋았다", Rating.GOOD, null, createdAt)),
                 createdAt,
                 createdAt
         );

@@ -272,13 +272,13 @@ class Change0012RegressionGuardTest {
                 Sourced.user("커피베라 예가체프"), Sourced.user("커피베라"), Sourced.search("에티오피아"),
                 null, null, null, List.of());
         noteRepository.upsertEntry(slug, meta,
-                new Entry(date, "원래 감상", Rating.GOOD, null, List.of(), OffsetDateTime.now()));
+                new Entry(date, "원래 감상", Rating.GOOD, null, OffsetDateTime.now()));
         return dataDir.resolve("notes").resolve(slug + ".json");
     }
 
     /** mode=edit pending — 원본 (slug, targetDate) 엔트리를 고치는 단일 엔트리 draft. */
     private static PendingNote editPending(String slug, LocalDate targetDate) {
-        Entry entry = new Entry(targetDate, "고친 감상 draft", Rating.GOOD, null, List.of(), OffsetDateTime.now());
+        Entry entry = new Entry(targetDate, "고친 감상 draft", Rating.GOOD, null, OffsetDateTime.now());
         Note draft = new Note(
                 slug, Sourced.user("커피베라 예가체프"),
                 Sourced.user("커피베라"), Sourced.search("에티오피아"), null, null,
