@@ -58,6 +58,32 @@ class NoteExtractorTest {
     }
 
     @Test
+    @DisplayName("TΔ5: 후보 페이로드에 aliases·origin·official_notes·last_tasted가 실린다 (data-model §3, ADR-37)")
+    void assemblesExpandedCandidateContext() {
+        CapturingLlmClient llm = new CapturingLlmClient();
+        llm.response = new ExtractionResult("첼베사", null, null, null, null, null, null, null,
+                "chelbesa-frob", false, TODAY);
+
+        extractor(llm).extract(
+                "첼베사 또 마셨어",
+                TODAY,
+                List.of(new NoteCandidate(
+                        "chelbesa-frob", "에티오피아 첼베사", "프롭",
+                        List.of("Ethiopia Chelbesa", "FroB"), "에티오피아",
+                        List.of("자스민", "베르가못"), LocalDate.of(2026, 7, 1))));
+
+        String userPrompt = llm.captured.userPrompt();
+        assertThat(userPrompt).contains("aliases");         // snake_case 키
+        assertThat(userPrompt).contains("Ethiopia Chelbesa"); // 별칭 값
+        assertThat(userPrompt).contains("origin");
+        assertThat(userPrompt).contains("에티오피아");
+        assertThat(userPrompt).contains("official_notes");    // snake_case 키
+        assertThat(userPrompt).contains("자스민");
+        assertThat(userPrompt).contains("last_tasted");       // snake_case 키
+        assertThat(userPrompt).contains("2026-07-01");        // 최근 시음일
+    }
+
+    @Test
     @DisplayName("TΔ4: 선행 OCR photo_hint(커피명·로스터리)가 요청에 실려 matched_slug 판정 재료가 된다 (data-model §3, ADR-36)")
     void assemblesPhotoHintIntoRequest() {
         CapturingLlmClient llm = new CapturingLlmClient();

@@ -12,6 +12,7 @@ import com.devwuu.mocha.llm.VisionExtraction;
 import com.devwuu.mocha.llm.VisionHint;
 import com.devwuu.mocha.pipeline.AliasGenerator;
 import com.devwuu.mocha.pipeline.ExtractionResult;
+import com.devwuu.mocha.pipeline.MatchIdentity;
 import com.devwuu.mocha.pipeline.MatchResult;
 import com.devwuu.mocha.pipeline.NoteCandidate;
 import com.devwuu.mocha.pipeline.NoteEnricher;
@@ -142,7 +143,12 @@ class SlackRecordFlow {
                     ? heldExtraction
                     : noteExtractor.extract(message.text(), today, photoHint, candidatesOf(existingNotes));
 
-            MatchResult match = noteMatcher.match(extraction, existingNotes);
+            // 매칭 식별 정보: 추출값(user) 우선, 비면 OCR(photo)이 채운 값 — V-6 오버레이와 같은 우선순위로
+            // 사진-only 정체성 발화(AC-Δ3)도 별칭 대조 대상이 된다(ADR-37).
+            MatchIdentity identity = new MatchIdentity(
+                    extraction.coffeeName() != null ? extraction.coffeeName() : photoInfo.coffeeName(),
+                    extraction.roastery() != null ? extraction.roastery() : photoInfo.roastery());
+            MatchResult match = noteMatcher.match(extraction, identity, existingNotes);
 
             // POLICY: 과거 참조(references_past) 매치 실패 — pending을 만들지 않고 추출 결과를 전환 슬롯에
             //         보관한 뒤 다음 의도를 기다린다(record류=보관분 재개, search류=검색 세션+슬롯 폐기, TTL 후
@@ -355,14 +361,38 @@ class SlackRecordFlow {
         }
     }
 
-    // 기존 노트를 추출 요청의 매칭 후보(최소 식별 정보)로 축약 (ref: data-model.md#3 existing_notes).
+    // 기존 노트를 추출 요청의 매칭 후보로 축약 — 식별 정보 + 별칭·원산지·official_notes·최근 시음일 확장
+    // (ref: data-model.md#3 existing_notes; changes/0016 ADR-37, 동일성 판단 재료 강화).
     private static List<NoteCandidate> candidatesOf(List<Note> existingNotes) {
         return existingNotes.stream()
                 .map(note -> new NoteCandidate(
                         note.slug(),
                         note.coffeeName() == null ? null : note.coffeeName().value(),
-                        note.roastery() == null ? null : note.roastery().value()))
+                        note.roastery() == null ? null : note.roastery().value(),
+                        combinedAliases(note),
+                        note.origin() == null ? null : note.origin().value(),
+                        note.officialNotes() == null ? List.of() : note.officialNotes().value(),
+                        lastTasted(note)))
                 .toList();
+    }
+
+    // coffee_name·roastery 별칭을 하나의 통합 목록으로 — data-model §3 existing_notes.aliases(이표기 통합).
+    private static List<String> combinedAliases(Note note) {
+        if (note.aliases() == null) {
+            return List.of();
+        }
+        List<String> merged = new java.util.ArrayList<>(note.aliases().coffeeName());
+        merged.addAll(note.aliases().roastery());
+        return Aliases.dedupNormalized(merged);
+    }
+
+    // 최근 시음일 — entries는 날짜 오름차순 유지(data-model §2.1)이므로 마지막 엔트리 날짜. 없으면 null.
+    private static java.time.LocalDate lastTasted(Note note) {
+        List<Entry> entries = note.entries();
+        if (entries == null || entries.isEmpty()) {
+            return null;
+        }
+        return entries.get(entries.size() - 1).date();
     }
 
     // 추출 결과를 "사용자가 말한 것"만 담은 NoteMeta로 조립 — 언급한 필드만 source=user, 나머지는 null(보강 대상).

@@ -1,5 +1,6 @@
 package com.devwuu.mocha.pipeline;
 
+import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
@@ -38,6 +39,15 @@ class NoteMatcherTest {
                 slug, Sourced.user("커피베라 예가체프 G1"),
                 Sourced.user("커피베라"), null, null, null, null,
                 List.of(), entries, OffsetDateTime.now(), OffsetDateTime.now());
+    }
+
+    /** 별칭 대조용 노트 — 커피명·로스터리 표시값과 aliases를 함께 지정한다. */
+    private static Note noteWithAliases(String slug, String coffeeName, String roastery, Aliases aliases) {
+        return new Note(
+                slug, Sourced.user(coffeeName), Sourced.user(roastery), null, null, null, null,
+                aliases, List.of(),
+                List.of(new Entry(TODAY, "맛", Rating.GOOD, null, OffsetDateTime.now())),
+                OffsetDateTime.now(), OffsetDateTime.now());
     }
 
     @Test
@@ -108,5 +118,93 @@ class NoteMatcherTest {
         assertThat(fresh.type()).isEqualTo(MatchInfo.MatchType.NEW);
         assertThat(fresh.slug()).isNull();
         assertThat(fresh.date()).isNull();
+    }
+
+    // --- TΔ5: 서버 결정적 별칭 대조 (ADR-37) ---
+
+    @Test
+    @DisplayName("AC-Δ4: LLM matched_slug=null이어도 식별 정보가 별칭 집합과 일치하면 그 노트로 매칭한다")
+    void aliasMatchWithoutLlmSlug() {
+        // 노트 표시값 "FroB Coffee roasters", 별칭에 "FroB". 식별 정보는 별칭 "FroB"로 들어온다.
+        Note note = noteWithAliases("chelbesa-frob", "에티오피아 첼베사", "FroB Coffee roasters",
+                new Aliases(List.of("Ethiopia Chelbesa"), List.of("FroB")));
+
+        MatchResult result = matcher.match(
+                extraction(null, TODAY),                       // LLM은 확신 못 해 null
+                new MatchIdentity("Ethiopia Chelbesa", "FroB"), // 별칭으로 대조
+                List.of(note));
+
+        assertThat(result.isNew()).isFalse();
+        assertThat(result.matchedNote()).isSameAs(note);
+        assertThat(result.targetDate()).isEqualTo(TODAY);
+    }
+
+    @Test
+    @DisplayName("AC-Δ4: 커피명 표시값(별칭 미수록)도 대조 집합에 포함된다 (V-13)")
+    void aliasMatchUsesDisplayValueEvenWithoutAliases() {
+        Note note = noteWithAliases("chelbesa-frob", "에티오피아 첼베사", "프롭", Aliases.empty());
+
+        // 공백·대소문자만 다른 표기라도 정규화 대조로 일치한다.
+        MatchResult result = matcher.match(
+                extraction(null, TODAY),
+                new MatchIdentity("에티오피아 첼베사", "프롭"),
+                List.of(note));
+
+        assertThat(result.matchedNote()).isSameAs(note);
+    }
+
+    @Test
+    @DisplayName("AC-Δ4: 별칭 불일치면 종전 LLM matched_slug 재검증 경로로 매칭한다")
+    void fallsBackToLlmSlugWhenNoAliasMatch() {
+        Note note = noteWithAliases("chelbesa-frob", "에티오피아 첼베사", "프롭", Aliases.empty());
+
+        MatchResult result = matcher.match(
+                extraction("chelbesa-frob", TODAY),           // LLM이 slug를 지목
+                new MatchIdentity("전혀 다른 커피", "다른 로스터리"), // 별칭 대조는 실패
+                List.of(note));
+
+        assertThat(result.isNew()).isFalse();
+        assertThat(result.matchedNote()).isSameAs(note);
+    }
+
+    @Test
+    @DisplayName("AC-Δ4: 별칭도 LLM slug도 없으면 신규로 판정한다")
+    void newWhenNeitherAliasNorLlmSlug() {
+        Note note = noteWithAliases("chelbesa-frob", "에티오피아 첼베사", "프롭", Aliases.empty());
+
+        MatchResult result = matcher.match(
+                extraction(null, TODAY),
+                new MatchIdentity("전혀 다른 커피", null),
+                List.of(note));
+
+        assertThat(result.isNew()).isTrue();
+    }
+
+    @Test
+    @DisplayName("위양성 차단: 커피명이 별칭과 같아도 로스터리가 양쪽에 있고 어긋나면 매칭하지 않는다")
+    void roasteryMismatchBlocksFalsePositive() {
+        // 같은 커피명 "게이샤"지만 로스터리가 다른 노트 — 별칭 커피 일치만으로 묶으면 안 된다.
+        Note note = noteWithAliases("geisha-a", "게이샤", "로스터리A", Aliases.empty());
+
+        MatchResult result = matcher.match(
+                extraction(null, TODAY),
+                new MatchIdentity("게이샤", "로스터리B"),
+                List.of(note));
+
+        assertThat(result.isNew()).isTrue();
+    }
+
+    @Test
+    @DisplayName("서버 별칭 대조가 LLM matched_slug와 다르면 서버 판정이 우선한다")
+    void serverAliasMatchWinsOverLlmSlug() {
+        Note aliasNote = noteWithAliases("chelbesa-frob", "에티오피아 첼베사", "프롭", Aliases.empty());
+        Note otherNote = noteWithEntries("coffeevera-yirgacheffe-g1", TODAY);
+
+        MatchResult result = matcher.match(
+                extraction("coffeevera-yirgacheffe-g1", TODAY),  // LLM은 다른 노트를 지목
+                new MatchIdentity("에티오피아 첼베사", "프롭"),      // 서버 별칭 대조는 chelbesa-frob
+                List.of(aliasNote, otherNote));
+
+        assertThat(result.matchedNote()).isSameAs(aliasNote);
     }
 }
