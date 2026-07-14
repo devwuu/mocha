@@ -145,6 +145,11 @@ class SlackPhotoIntake {
         return photoStore.commit(userId, slug, date);
     }
 
+    /** 수정 세션 날짜 이동 시 그 엔트리의 아카이브 폴더를 새 날짜로 동반 이동한다(ADR-32, FR-21) — best-effort는 호출부가 감싼다. */
+    void moveEntryPhotos(String slug, String fromDate, String toDate) {
+        photoStore.moveEntryPhotos(slug, fromDate, toDate);
+    }
+
     /** 대기 중이던 스테이징 사진·버퍼를 함께 폐기한다 — 취소·pending 만료 경로(FR-10). */
     void discard(String userId) {
         photoStore.discard(userId);

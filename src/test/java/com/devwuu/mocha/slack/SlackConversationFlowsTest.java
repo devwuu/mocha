@@ -299,6 +299,8 @@ class SlackConversationFlowsTest {
         final List<String> staged = new ArrayList<>();
         final List<byte[]> stagedBytes = new ArrayList<>();
         final List<String> committed = new ArrayList<>();
+        final List<String> moves = new ArrayList<>(); // moveEntryPhotos "slug/from→to" 캡처(changes/0014 TΔ3)
+        RuntimeException moveFailure = null;
         int discardCount = 0;
 
         @Override
@@ -331,6 +333,14 @@ class SlackConversationFlowsTest {
             staged.clear();
             stagedBytes.clear();
             discardCount++;
+        }
+
+        @Override
+        public void moveEntryPhotos(String slug, String fromDate, String toDate) {
+            if (moveFailure != null) {
+                throw moveFailure;
+            }
+            moves.add(slug + "/" + fromDate + "→" + toDate);
         }
 
         @Override
@@ -1129,6 +1139,8 @@ class SlackConversationFlowsTest {
         assertEquals(LocalDate.of(2026, 7, 9), saved.entries().get(0).date(), "엔트리가 새 date로 이동");
         assertEquals("고친 감상", saved.entries().get(0).myTaste(), "수정 내용 반영");
         assertEquals(1, pendingStore.clearCount, "커밋 후 pending 폐기");
+        // 날짜 이동이면 사진 아카이브 폴더도 새 날짜로 동반 이동한다(폴더=진실 불변식, AC-Δ4).
+        assertEquals(List.of("yirga/2026-07-08→2026-07-09"), photoStore.moves, "사진 폴더도 새 date로 이동");
         // 파생물 정리 순서: 옛 date 카드 삭제 → 새 date 카드 증분 렌더(index 갱신은 renderEntryCard가 흡수).
         assertEquals(List.of("yirga/2026-07-08"), noteRenderer.removedCards, "옛 date 카드 삭제");
         assertEquals(List.of("yirga/2026-07-09"), noteRenderer.entryCards, "새 date 카드만 증분 렌더");
@@ -1151,7 +1163,27 @@ class SlackConversationFlowsTest {
         Note saved = repo.findBySlug("yirga").orElseThrow();
         assertEquals("고친 감상", saved.entries().get(0).myTaste(), "필드 갱신 반영");
         assertTrue(noteRenderer.removedCards.isEmpty(), "날짜가 그대로면 카드 삭제가 없다(같은 경로 덮어쓰기)");
+        assertTrue(photoStore.moves.isEmpty(), "날짜가 그대로면 사진 폴더 이동도 없다");
         assertEquals(List.of("yirga/2026-07-08"), noteRenderer.entryCards, "해당 date 카드 재렌더");
+    }
+
+    @Test
+    @DisplayName("AC-Δ4/plan §7: 사진 폴더 이동 실패 → 커밋 유지, 새 카드 렌더·배달은 그대로 진행된다(best-effort)")
+    void confirmSaveEditKeepsCommitWhenPhotoMoveFails() {
+        NoteRepository repo = noteRepository();
+        seedEditableNote(repo, "yirga", LocalDate.of(2026, 7, 8));
+        pendingStore.setPending(editPending("yirga", LocalDate.of(2026, 7, 8), LocalDate.of(2026, 7, 9), "고친 감상"));
+        photoStore.moveFailure = new IllegalStateException("사진 폴더 이동 실패");
+
+        flow(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
+
+        // 이동 실패는 커밋을 되돌리지 않고(사진은 옛 폴더 잔류), 카드 정리·렌더·배달 흐름은 계속된다(ADR-32).
+        Note saved = repo.findBySlug("yirga").orElseThrow();
+        assertEquals(LocalDate.of(2026, 7, 9), saved.entries().get(0).date(), "이동 실패해도 수정 커밋은 유지된다");
+        assertEquals(List.of("yirga/2026-07-08"), noteRenderer.removedCards, "옛 카드 삭제는 그대로 진행");
+        assertEquals(List.of("yirga/2026-07-09"), noteRenderer.entryCards, "새 카드 렌더도 그대로 진행");
+        assertEquals(1, responder.images.size(), "카드 배달도 그대로 진행");
+        assertTrue(responder.messages.isEmpty(), "이동 실패만으로 폴백 텍스트를 보내지 않는다(로그만)");
     }
 
     @Test

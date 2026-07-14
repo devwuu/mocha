@@ -189,6 +189,10 @@ class Change0011RegressionGuardTest {
         }
 
         @Override
+        public void moveEntryPhotos(String slug, String fromDate, String toDate) {
+        }
+
+        @Override
         public List<String> stagedUserIds() {
             return List.of();
         }

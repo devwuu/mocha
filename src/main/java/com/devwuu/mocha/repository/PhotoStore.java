@@ -44,6 +44,20 @@ public interface PhotoStore {
     void discard(String userId);
 
     /**
+     * 수정 세션 날짜 이동 시 그 엔트리의 아카이브 폴더를 새 날짜로 동반 이동한다(ADR-32, FR-21).
+     * <p>{@code photos/<slug>/<fromDate>/}의 파일 전부를 {@code photos/<slug>/<toDate>/}로 옮기고
+     * 빈 옛 폴더를 제거한다 — 폴더=진실 불변식을 유지하기 위함이다. 대상 폴더에 같은 이름 파일이 있으면
+     * {@code -N} 접미로 유일화해 병합하고(유실 없음), 원본 폴더가 아예 없으면 아무 일도 하지 않는다(no-op).
+     * <p>호출부는 best-effort로 감싼다 — 이동 실패는 커밋을 되돌리지 않고 사진은 옛 폴더에 잔류한다
+     * (아카이브로서 유효, 옛 카드 삭제와 동일 정책). (ref: plan.md#ADR-32, §7)
+     *
+     * @param slug     대상 노트 슬러그.
+     * @param fromDate 옮길 원본 날짜 폴더(YYYY-MM-DD).
+     * @param toDate   이동처 날짜 폴더(YYYY-MM-DD).
+     */
+    void moveEntryPhotos(String slug, String fromDate, String toDate);
+
+    /**
      * 스테이징에 원본이 남아 있는 사용자 키 목록(스테이징 하위 디렉토리명). 없으면 빈 목록.
      * <p>앱 시작 시 고아 청소(ADR-29)가 이 목록을 pending·buffer 참조와 대조해 미참조 스테이징을 걸러낸다.
      * 반환값은 {@code stage} 시 정규화된 안전 키(단일 사용자 Slack id 전제상 {@code userId}와 동치)다.

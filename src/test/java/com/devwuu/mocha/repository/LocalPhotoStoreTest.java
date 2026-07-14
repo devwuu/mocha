@@ -111,6 +111,51 @@ class LocalPhotoStoreTest {
     }
 
     @Test
+    @DisplayName("TΔ3(0014): moveEntryPhotos는 옛 날짜 폴더 파일 전부를 새 날짜로 옮기고 빈 옛 폴더를 제거한다 (AC-Δ4)")
+    void moveEntryPhotosMovesAllFilesAndRemovesEmptySource() {
+        store.stage(USER, "a.jpg", new byte[]{1});
+        store.stage(USER, "b.jpg", new byte[]{2});
+        store.commit(USER, "yirga", "2026-07-08");
+
+        store.moveEntryPhotos("yirga", "2026-07-08", "2026-07-09");
+
+        Path from = dataDir.resolve("photos").resolve("yirga").resolve("2026-07-08");
+        Path to = dataDir.resolve("photos").resolve("yirga").resolve("2026-07-09");
+        assertThat(from).doesNotExist(); // 빈 옛 폴더 제거(폴더=진실).
+        assertThat(to.resolve("a.jpg")).exists();
+        assertThat(to.resolve("b.jpg")).exists();
+    }
+
+    @Test
+    @DisplayName("TΔ3(0014): 이동처에 같은 이름 파일이 있으면 -N 접미로 병합해 유실 없이 보관한다 (AC-Δ4)")
+    void moveEntryPhotosMergesCollidingFilenames() throws IOException {
+        // 새 날짜 폴더에 이미 photo.jpg가 있는 상태(그 날짜에 먼저 올린 사진).
+        store.stage(USER, "photo.jpg", new byte[]{9});
+        store.commit(USER, "yirga", "2026-07-09");
+        // 옛 날짜 폴더에도 같은 이름 photo.jpg.
+        store.stage(USER, "photo.jpg", new byte[]{1});
+        store.commit(USER, "yirga", "2026-07-08");
+
+        store.moveEntryPhotos("yirga", "2026-07-08", "2026-07-09");
+
+        Path to = dataDir.resolve("photos").resolve("yirga").resolve("2026-07-09");
+        // 기존 파일은 덮이지 않고 이동분은 -2로 유일화 — 둘 다 보존된다.
+        assertThat(Files.readAllBytes(to.resolve("photo.jpg"))).containsExactly(9);
+        assertThat(Files.readAllBytes(to.resolve("photo-2.jpg"))).containsExactly(1);
+        assertThat(dataDir.resolve("photos").resolve("yirga").resolve("2026-07-08")).doesNotExist();
+    }
+
+    @Test
+    @DisplayName("TΔ3(0014): 원본 폴더가 없으면 아무 일도 하지 않는다(사진 없이 날짜만 이동한 엔트리) — no-op")
+    void moveEntryPhotosNoOpWhenSourceAbsent() {
+        // 예외 없이 조용히 통과하고, 대상 폴더를 새로 만들지도 않는다.
+        store.moveEntryPhotos("yirga", "2026-07-08", "2026-07-09");
+
+        assertThat(dataDir.resolve("photos").resolve("yirga").resolve("2026-07-08")).doesNotExist();
+        assertThat(dataDir.resolve("photos").resolve("yirga").resolve("2026-07-09")).doesNotExist();
+    }
+
+    @Test
     @DisplayName("T4-1: discard는 스테이징만 폐기한다([취소]/TTL 정리)")
     void discardRemovesStagingOnly() {
         store.stage(USER, "x.jpg", new byte[]{1});

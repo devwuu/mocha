@@ -105,6 +105,27 @@ public class LocalPhotoStore implements PhotoStore {
     }
 
     @Override
+    public void moveEntryPhotos(String slug, String fromDate, String toDate) {
+        Path source = photosDir.resolve(slug).resolve(fromDate);
+        // 원본 폴더 부재 = 옮길 사진 없음 → no-op(사진 없이 날짜만 이동한 엔트리도 정상 경로).
+        if (!Files.isDirectory(source)) {
+            return;
+        }
+        Path target = photosDir.resolve(slug).resolve(toDate);
+        try {
+            Files.createDirectories(target);
+            for (Path src : listSorted(source)) {
+                // 충돌 시 -N 유일화 병합 — commit과 동일 규칙(재기록·이동 겹침 모두 유실 없이 보관).
+                String name = uniqueName(target, src.getFileName().toString());
+                move(src, target.resolve(name));
+            }
+            Files.deleteIfExists(source); // 빈 옛 폴더 제거(폴더=진실 불변식).
+        } catch (IOException e) {
+            throw new UncheckedIOException("사진 폴더 이동 실패: " + source + " → " + target, e);
+        }
+    }
+
+    @Override
     public List<String> stagedUserIds() {
         Path root = photosDir.resolve(STAGING);
         if (!Files.isDirectory(root)) {

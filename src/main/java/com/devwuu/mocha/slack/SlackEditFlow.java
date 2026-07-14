@@ -157,6 +157,14 @@ class SlackEditFlow {
         // 파생물 정리: 날짜 이동이면 옛 date 카드부터 지운다. 삭제 실패는 커밋을 되돌리지 않고 새 카드 렌더로
         // 계속 진행한다 — 남은 옛 카드는 renderAll(--rerender)이 정리한다(plan §7, AC-39).
         if (dateMoved) {
+            // POLICY: 날짜 이동 시 사진 폴더 이동은 best-effort — 실패해도 커밋을 되돌리지 않는다(사진은 옛 폴더
+            //         잔류, 아카이브로서 유효). 옛 카드 삭제와 동일 정책 (ref: plan.md#ADR-32, §7, FR-21).
+            try {
+                photoIntake.moveEntryPhotos(slug, target.date().toString(), entry.date().toString());
+            } catch (RuntimeException e) {
+                log.warn("사진 폴더 이동 실패(수정은 저장됨, 사진은 옛 폴더 잔류): slug={} {} → {}",
+                        slug, target.date(), entry.date(), e);
+            }
             try {
                 noteRenderer.removeEntryCard(slug, target.date());
             } catch (RuntimeException e) {
