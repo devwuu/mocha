@@ -72,10 +72,11 @@ public class NoteExtractor {
               예: "맛은 있는데 나는 좀 더 단맛이 있는 커피를 좋아하는 것 같아" → "맛은 있는데 내스타일은 아님".
               맛/취향에 대한 감상이 있으면 위 4범주 중 가장 가까운 것을 고르고, 정말 판단 불가할 때만 null로 둔다.
             - recipe는 발화에 추출(브루잉) 레시피가 섞여 있을 때만 채운다("원두 15g에 물 240 부어서…" 등). dose_g(원두량 g)·water_ml(물량 ml)·grind(분쇄도) 중 사용자가 말한 항목만 넣고, 말하지 않은 항목은 null로 둔다. 레시피 언급이 아예 없으면 recipe 자체를 null로 둔다. 값을 상식으로 추측하지 마라(레시피는 사용자 발화 전용 — 검색·OCR이 채우지 않는다).
-            - matched_slug는 existing_notes에 같은 커피가 있을 때만 그 slug를 넣는다. 없거나 애매하면 null.
+            - matched_slug는 existing_notes에 같은 커피가 있을 때만 그 slug를 넣는다. 없거나 애매하면 null. photo_hint가 주어지면(사진에서 읽은 커피명·로스터리) 텍스트에 커피명이 없어도 그 값으로 existing_notes와 대조해 matched_slug를 판정한다.
+            - photo_hint는 매칭·식별의 단서일 뿐이다 — 그 값을 coffee_name·roastery 응답 필드에 그대로 옮기지 마라. 그 두 필드는 사용자가 텍스트로 직접 말한 것만 채운다(사진 값의 draft 병합은 서버가 한다).
             - references_past는 사용자가 "저번에", "그때 그", "또 마셨어"처럼 자신의 기존 기록을 가리키는 참조 표현을 썼을 때만 true다. 그런 표현이 없으면 false. 커피 이름이 익숙해 보인다는 이유만으로 true로 하지 마라 — 발화 속 참조 표현이 근거다.
             - target_date는 today를 기준으로 '어제', '그저께', '지난 주말' 같은 상대 날짜를 해석한 YYYY-MM-DD다. 날짜 언급이 없으면 today를 그대로 쓴다.
-            입력은 message/today/existing_notes를 담은 JSON으로 주어진다.
+            입력은 message/today/photo_hint/existing_notes를 담은 JSON으로 주어진다. photo_hint는 없을 수 있다(사진 미첨부·OCR 실패 시 null).
             """;
 
     private final LlmClient llmClient;
@@ -91,21 +92,28 @@ public class NoteExtractor {
      *
      * @param message    원문 그대로의 사용자 메시지.
      * @param today      서버가 주입하는 오늘 날짜(Asia/Seoul 기준, data-model.md#3).
+     * @param photoHint  선행 사진 OCR이 읽은 식별 정보(커피명·로스터리). 없으면 null — matched_slug 판정
+     *                   단서로만 쓰이고 coffee_name·roastery 응답 필드로 옮겨지지 않는다(ADR-36, changes/0016).
      * @param candidates 매칭 후보(기존 노트). 없으면 빈 리스트.
      * @throws LlmException 호출 실패, 또는 재시도 소진 후에도 스키마/도메인 위반이 남을 때(plan §7, V-1).
      */
-    public ExtractionResult extract(String message, LocalDate today, List<NoteCandidate> candidates) {
-        String userPrompt = buildUserPrompt(message, today, candidates);
+    public ExtractionResult extract(String message, LocalDate today, PhotoHint photoHint, List<NoteCandidate> candidates) {
+        String userPrompt = buildUserPrompt(message, today, photoHint, candidates);
         LlmRequest<ExtractionResult> request = new LlmRequest<>(
                 SCHEMA_NAME, JSON_SCHEMA, SYSTEM_PROMPT, userPrompt, ExtractionResult.class);
         ExtractionResult result = llmClient.complete(request);
         return result.withTargetDateDefault(today);
     }
 
-    // data-model.md#3 요청 스키마를 그대로 사용자 프롬프트로 직렬화(snake_case: message/today/existing_notes).
-    private String buildUserPrompt(String message, LocalDate today, List<NoteCandidate> candidates) {
+    /** 사진 없는 흐름 편의 오버로드 — photo_hint 없이 추출한다(선행 OCR 미수행·무정보 경로). */
+    public ExtractionResult extract(String message, LocalDate today, List<NoteCandidate> candidates) {
+        return extract(message, today, null, candidates);
+    }
+
+    // data-model.md#3 요청 스키마를 그대로 사용자 프롬프트로 직렬화(snake_case: message/today/photo_hint/existing_notes).
+    private String buildUserPrompt(String message, LocalDate today, PhotoHint photoHint, List<NoteCandidate> candidates) {
         ExtractionRequest payload = new ExtractionRequest(
-                message, today, candidates == null ? List.of() : candidates);
+                message, today, photoHint, candidates == null ? List.of() : candidates);
         try {
             return mapper.writeValueAsString(payload);
         } catch (RuntimeException e) {
@@ -113,7 +121,7 @@ public class NoteExtractor {
         }
     }
 
-    /** data-model.md#3 요청 스키마 대응 내부 페이로드. existing_notes로 직렬화된다(snake_case). */
-    private record ExtractionRequest(String message, LocalDate today, List<NoteCandidate> existingNotes) {
+    /** data-model.md#3 요청 스키마 대응 내부 페이로드. photo_hint·existing_notes로 직렬화된다(snake_case, null 허용). */
+    private record ExtractionRequest(String message, LocalDate today, PhotoHint photoHint, List<NoteCandidate> existingNotes) {
     }
 }

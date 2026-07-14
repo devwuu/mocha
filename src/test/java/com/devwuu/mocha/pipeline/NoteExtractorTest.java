@@ -58,6 +58,39 @@ class NoteExtractorTest {
     }
 
     @Test
+    @DisplayName("TΔ4: 선행 OCR photo_hint(커피명·로스터리)가 요청에 실려 matched_slug 판정 재료가 된다 (data-model §3, ADR-36)")
+    void assemblesPhotoHintIntoRequest() {
+        CapturingLlmClient llm = new CapturingLlmClient();
+        // 텍스트엔 커피명이 없고(사진-only 정체성), 힌트가 OCR이 읽은 식별 정보를 준다.
+        llm.response = new ExtractionResult(null, null, null, null, null, "달큰했음",
+                Rating.GOOD, null, "chelbesa-frob", false, TODAY);
+
+        extractor(llm).extract(
+                "이거 달큰하고 좋았어",
+                TODAY,
+                new PhotoHint("Ethiopia Chelbesa", "FroB"),
+                List.of(new NoteCandidate("chelbesa-frob", "에티오피아 첼베사", "프롭")));
+
+        String userPrompt = llm.captured.userPrompt();
+        assertThat(userPrompt).contains("photo_hint");            // snake_case 키
+        assertThat(userPrompt).contains("Ethiopia Chelbesa");     // OCR 커피명
+        assertThat(userPrompt).contains("FroB");                  // OCR 로스터리
+    }
+
+    @Test
+    @DisplayName("TΔ4: 사진 없음·OCR 실패 시 photo_hint가 null로 실려 종전 흐름 그대로다 (AC-28)")
+    void serializesNullPhotoHintWhenAbsent() {
+        CapturingLlmClient llm = new CapturingLlmClient();
+        llm.response = new ExtractionResult("예가체프", null, null, null, null, null,
+                null, null, null, false, TODAY);
+
+        // 3-arg 오버로드(사진 없는 흐름) — photo_hint 없이 추출한다.
+        extractor(llm).extract("예가체프 마셨어", TODAY, List.of());
+
+        assertThat(llm.captured.userPrompt()).contains("\"photo_hint\":null");
+    }
+
+    @Test
     @DisplayName("상대 날짜: '어제 마신' 해석 결과(today-1)를 그대로 보존한다")
     void preservesRelativeTargetDate() {
         CapturingLlmClient llm = new CapturingLlmClient();

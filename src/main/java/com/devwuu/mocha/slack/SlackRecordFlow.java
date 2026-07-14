@@ -18,6 +18,7 @@ import com.devwuu.mocha.pipeline.NoteEnricher;
 import com.devwuu.mocha.pipeline.NoteExtractor;
 import com.devwuu.mocha.pipeline.NoteMatcher;
 import com.devwuu.mocha.pipeline.PendingReviser;
+import com.devwuu.mocha.pipeline.PhotoHint;
 import com.devwuu.mocha.render.NoteRenderer;
 import com.devwuu.mocha.repository.NoteRepository;
 import com.devwuu.mocha.repository.PendingStore;
@@ -127,15 +128,19 @@ class SlackRecordFlow {
                     .orElse(null);
             boolean resumed = heldExtraction != null;
 
-            // [2] 추출 → [2.5] 수신 사진 OCR → [3] 매칭. LLM/스키마 실패는 예외로 던져져 아래 catch로 수렴한다(plan §7, V-1).
+            // [2.0] 수신 사진 OCR → [2] 추출 → [3] 매칭. LLM/스키마 실패는 예외로 던져져 아래 catch로 수렴한다(plan §7, V-1).
+            // 사진이 묶여 있으면 vision OCR을 추출보다 먼저 1회 시도해 커피명·로스터리를 읽고, 그 식별 정보를
+            // 추출 photo_hint로 주입한다(ADR-36) — 텍스트에 커피명이 없어도 matched_slug 판정 재료가 된다.
+            // 추출 전이라 vision 힌트는 비운다. 실패·무정보·사진 없음은 빈 결과로 수렴(흐름 불변, FR-19, ADR-23, AC-28).
+            VisionExtraction photoInfo = photoIntake.readPhotoInfo(userId, bufferNames, new VisionHint(null, null));
+            PhotoHint photoHint = photoInfo.coffeeName() != null || photoInfo.roastery() != null
+                    ? new PhotoHint(photoInfo.coffeeName(), photoInfo.roastery())
+                    : null;
+
+            // 재개분(resumed)은 직전 턴에 이미 추출이 끝난 보관분이라 재추출·photo_hint 주입 대상이 아니다(findings-TΔ0 §2).
             ExtractionResult extraction = resumed
                     ? heldExtraction
-                    : noteExtractor.extract(message.text(), today, candidatesOf(existingNotes));
-
-            // [2.5] 사진이 묶여 있으면 vision OCR을 1회 시도해 빈 필드를 읽는다 — 추출 뒤·매칭 전(OCR이 읽은
-            // 커피명·로스터리가 매칭 이후 draft·검색 쿼리에 기여). 실패·무정보는 첨부로만(흐름 불변, FR-19, ADR-23).
-            VisionExtraction photoInfo = photoIntake.readPhotoInfo(
-                    userId, bufferNames, new VisionHint(extraction.coffeeName(), extraction.roastery()));
+                    : noteExtractor.extract(message.text(), today, photoHint, candidatesOf(existingNotes));
 
             MatchResult match = noteMatcher.match(extraction, existingNotes);
 

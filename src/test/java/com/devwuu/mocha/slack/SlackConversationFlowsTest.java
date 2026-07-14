@@ -186,6 +186,7 @@ class SlackConversationFlowsTest {
         AliasGenerator.AliasResponse cannedAliases = new AliasGenerator.AliasResponse(List.of(), List.of());
         RuntimeException failure;         // 모든 요청 공통 실패
         RuntimeException aliasFailure;    // 별칭 생성 콜만 실패(다른 콜은 정상) — plan §7 수렴 검증용
+        String lastExtractionPrompt;      // 추출 요청 프롬프트 캡처 — TΔ4 photo_hint 배선 검증용
 
         @SuppressWarnings("unchecked")
         @Override
@@ -205,6 +206,7 @@ class SlackConversationFlowsTest {
             if (request.responseType() == SearchSelection.class) {
                 return (T) cannedSelection;
             }
+            lastExtractionPrompt = request.userPrompt();
             return (T) canned;
         }
     }
@@ -1429,6 +1431,29 @@ class SlackConversationFlowsTest {
         Note draft = previewMessenger.published.draft();
         assertEquals(List.of("bag.jpg"), photoStore.staged, "사진은 스테이징에 남아 [저장] 시 아카이브된다(흐름 불변)");
         assertEquals(Sourced.user("커피베라 예가체프"), draft.coffeeName());
+        // TΔ4/AC-28: OCR 실패 → 힌트 없이 종전 흐름. 추출 요청 photo_hint는 null.
+        assertTrue(llmClient.lastExtractionPrompt.contains("\"photo_hint\":null"),
+                "OCR 실패 시 추출은 photo_hint 없이 진행된다(AC-28)");
+    }
+
+    @Test
+    @DisplayName("TΔ4/AC-Δ3: 텍스트에 커피명 없어도 선행 OCR이 읽은 커피명·로스터리가 추출 photo_hint로 주입된다(매칭 재료, ADR-36)")
+    void startNewNoteInjectsPhotoOcrIntoExtractionHint() {
+        NoteRepository repo = noteRepository();
+        // 텍스트엔 커피 정체성이 없다 — 사진에서 읽어 matched_slug 판정 재료로 삼아야 한다.
+        llmClient.canned = extraction(null, null, null, "달큰하고 좋았다", Rating.GOOD);
+        photoStore.stage("U1", "bag.jpg", jpegBytes());
+        photoBufferStore.setBuffer(new PhotoBuffer(OffsetDateTime.now(clock), List.of("bag.jpg")));
+        visionClient.canned = new VisionExtraction(
+                "에티오피아 첼베사", "프롭", "에티오피아", null, null, List.of());
+
+        flow(repo).startNewNote(message("이거 달큰하고 좋았어"));
+
+        assertEquals(1, visionClient.calls, "OCR은 추출보다 먼저 1회 실행된다(ADR-36)");
+        assertNotNull(llmClient.lastExtractionPrompt, "추출 요청이 조립되어 LLM에 전달된다");
+        assertTrue(llmClient.lastExtractionPrompt.contains("photo_hint"), "추출 요청에 photo_hint가 실린다");
+        assertTrue(llmClient.lastExtractionPrompt.contains("에티오피아 첼베사"), "OCR 커피명이 photo_hint로 주입된다");
+        assertTrue(llmClient.lastExtractionPrompt.contains("프롭"), "OCR 로스터리도 photo_hint로 주입된다");
     }
 
     @Test
