@@ -220,6 +220,49 @@ class ThymeleafNoteRendererTest {
     }
 
     @Test
+    @DisplayName("AC-Δ3(changes/0014): data/photos/를 통째로 옮겨둬도 renderAll 산출(인덱스·카드)이 동일하다 — 리렌더 입력은 JSON뿐")
+    void renderAllIsIndependentOfPhotosDirectory(
+            @TempDir Path dataDir, @TempDir Path withPhotosDir, @TempDir Path withoutPhotosDir) throws IOException {
+        NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create());
+        OffsetDateTime now = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
+        NoteMeta meta = new NoteMeta(
+                Sourced.user("예가체프 G1 워시드"),
+                Sourced.user("커피베라"), Sourced.search("에티오피아"),
+                null, null, Sourced.search(List.of()), List.of());
+        // 사진이 실린 엔트리 + 실제 사진 파일을 data/photos/에 둔다(리렌더 입력 후보로서의 파일 존재를 재현).
+        repo.upsertEntry("2026-07-10", meta,
+                new Entry(LocalDate.parse("2026-07-10"), "새콤하다.", Rating.GOOD, null,
+                        List.of("photos/2026-07-10/2026-07-10/a.jpg"), now));
+        Path photosDir = dataDir.resolve("photos/2026-07-10/2026-07-10");
+        Files.createDirectories(photosDir);
+        Files.write(photosDir.resolve("a.jpg"), new byte[]{1, 2, 3});
+
+        // (1) 사진 폴더가 있는 상태로 렌더.
+        FakeCardImageRenderer cardsWith = new FakeCardImageRenderer();
+        new ThymeleafNoteRenderer(repo, engine, withPhotosDir, Theme.TYPE_B, cardsWith).renderAll();
+        String indexWith = read(withPhotosDir.resolve("index.html"));
+        String cardWith = capturedHtml(cardsWith, "cards/2026-07-10/2026-07-10.jpg");
+
+        // data/photos/를 통째로 옮겨둔다(삭제로 갈음) — 리렌더 입력에서 사진이 사라진 상태.
+        deleteRecursively(dataDir.resolve("photos"));
+        assertFalse(Files.exists(dataDir.resolve("photos")), "photos/ 옮겨둠");
+
+        // (2) 사진 폴더가 없는 상태로 재렌더 — JSON만으로 인덱스·카드가 생성돼야 한다(NFR-3, AC-6).
+        FakeCardImageRenderer cardsWithout = new FakeCardImageRenderer();
+        new ThymeleafNoteRenderer(repo, engine, withoutPhotosDir, Theme.TYPE_B, cardsWithout).renderAll();
+        assertTrue(Files.isRegularFile(withoutPhotosDir.resolve("index.html")), "사진 없이도 인덱스 생성");
+        assertTrue(Files.isRegularFile(withoutPhotosDir.resolve("cards/2026-07-10/2026-07-10.jpg")),
+                "사진 없이도 카드 생성");
+        String indexWithout = read(withoutPhotosDir.resolve("index.html"));
+        String cardWithout = capturedHtml(cardsWithout, "cards/2026-07-10/2026-07-10.jpg");
+
+        // 산출 동일 — 렌더는 JSON만 읽고 data/photos/ 존재 여부에 의존하지 않는다(AC-Δ3).
+        assertEquals(indexWith, indexWithout, "인덱스 산출이 사진 폴더 유무와 무관하게 동일");
+        assertEquals(cardWith, cardWithout, "카드 HTML이 사진 폴더 유무와 무관하게 동일");
+        assertEquals(cardFiles(withPhotosDir), cardFiles(withoutPhotosDir), "카드 파일 집합 동일");
+    }
+
+    @Test
     @DisplayName("AC-Δ7: artifact/ 삭제 후 재렌더하면 index·카드 산출이 동일하게 복원된다")
     void reRenderIsReproducible(@TempDir Path dataDir, @TempDir Path artifactDir) {
         NoteRepository repo = seedRepository(dataDir);
