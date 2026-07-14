@@ -83,10 +83,8 @@
                th:style="'background:' + ${rs.bg(note.entry.rating)} + ';color:' + ${rs.fg(note.entry.rating)}"
                th:text="${note.entry.rating.label()} + ' ' + ${rs.emoji(note.entry.rating)}">평가</div>
         </div>
+        <!-- 사진은 아카이브 전용 — 카드에 렌더하지 않는다(changes/0014, AC-Δ2). -->
         <div style="font-size:30px;line-height:1.8;white-space:pre-line" th:text="${note.entry.myTaste}">감상</div>
-        <div style="display:flex;gap:20px;flex-wrap:wrap" th:if="${!note.entry.photos.isEmpty()}">
-          <img th:each="photo : ${note.entry.photos}" th:src="${photo}" alt="사진" style="width:248px;height:170px;border-radius:24px;object-fit:cover">
-        </div>
       </div>
     </div>
 

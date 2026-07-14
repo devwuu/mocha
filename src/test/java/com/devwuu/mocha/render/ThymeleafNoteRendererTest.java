@@ -188,14 +188,15 @@ class ThymeleafNoteRendererTest {
     }
 
     @Test
-    @DisplayName("AC-Δ5: 엔트리 사진은 카드 HTML에 artifact 루트 상대 썸네일(thumbs/…)로 보존된다")
-    void cardKeepsEntryPhotosAsRelativeThumbs(@TempDir Path dataDir, @TempDir Path artifactDir) {
+    @DisplayName("AC-Δ2(changes/0014): 사진이 있는 엔트리도 카드·인덱스 HTML에 사진·썸네일 요소가 없다(아카이브 전용)")
+    void cardAndIndexHaveNoPhotoOrThumbElements(@TempDir Path dataDir, @TempDir Path artifactDir) {
         NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create());
         OffsetDateTime now = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
                 Sourced.user("예가체프 G1 워시드"),
                 Sourced.user("커피베라"), Sourced.search("에티오피아"),
                 null, null, Sourced.search(List.of()), List.of());
+        // 사진이 실린 엔트리 — 렌더는 이를 읽지 않아야 한다(changes/0014 ADR-32, AC-Δ2).
         repo.upsertEntry("2026-07-10", meta,
                 new Entry(LocalDate.parse("2026-07-10"), "새콤하다.", Rating.GOOD, null,
                         List.of("photos/2026-07-10/2026-07-10/a.jpg"), now));
@@ -204,12 +205,18 @@ class ThymeleafNoteRendererTest {
         new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_B, cards).renderAll();
 
         String cardHtml = capturedHtml(cards, "cards/2026-07-10/2026-07-10.jpg");
-        // 카드는 artifact 루트 base → 썸네일은 ../ 없이 thumbs/… (AC-Δ5).
-        assertTrue(cardHtml.contains("thumbs/2026-07-10/2026-07-10/a.jpg"), "엔트리 사진 썸네일 상대 경로");
-        assertFalse(cardHtml.contains("../thumbs/"), "notes/ 하위 잔재(../) 없음");
-        // index 행 대표 썸네일도 artifact 루트 상대.
+        // 사진·썸네일 경로/요소가 산출 HTML에 전혀 없다(사진 유무 무관 동일 레이아웃).
+        assertFalse(cardHtml.contains("photos/"), "카드에 사진 경로 없음");
+        assertFalse(cardHtml.contains("thumbs/"), "카드에 썸네일 경로 없음");
+        assertFalse(cardHtml.contains("class=\"thumb\""), "카드에 썸네일 요소 없음");
+        assertFalse(cardHtml.contains("alt=\"사진\""), "카드에 사진 img 없음");
+        // 감상 텍스트는 그대로 렌더된다(사진만 빠짐).
+        assertTrue(cardHtml.contains("새콤하다."), "감상 텍스트는 유지");
+
         String indexHtml = read(artifactDir.resolve("index.html"));
-        assertTrue(indexHtml.contains("thumbs/2026-07-10/2026-07-10/a.jpg"), "index 대표 썸네일");
+        assertFalse(indexHtml.contains("photos/"), "index에 사진 경로 없음");
+        assertFalse(indexHtml.contains("thumbs/"), "index에 썸네일 경로 없음");
+        assertFalse(indexHtml.contains("class=\"thumb\""), "index에 썸네일 요소 없음");
     }
 
     @Test

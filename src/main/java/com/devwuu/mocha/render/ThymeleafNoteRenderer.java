@@ -49,8 +49,6 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
     private static final String FONT_RESOURCE_PREFIX = "/assets/fonts/";
     private static final String FONTS_DIR = "fonts";
     private static final String CARDS_DIR = "cards";
-    private static final String PHOTOS_PREFIX = "photos/";
-    private static final String THUMBS_PREFIX = "thumbs/";
 
     private final NoteRepository noteRepository;
     private final ITemplateEngine templateEngine;
@@ -173,8 +171,7 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
                 value(ref.note().roastery()),
                 value(ref.note().origin()),
                 entry.date(),
-                entry.rating(),
-                firstThumb(entry, THUMBS_PREFIX)); // 인덱스는 artifact/ 기준 → thumbs/…
+                entry.rating());
     }
 
     // --- 엔트리 카드 (단일 엔트리 → JPG) ---
@@ -203,14 +200,14 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
         return out;
     }
 
-    // 카드는 artifact 루트를 base로 래스터화하므로 썸네일은 thumbs/… (상대 경로, AC-Δ5).
+    // POLICY: 렌더러는 사진을 읽지 않는다 — 사진은 아카이브 전용이라 카드/인덱스에 실리지 않는다
+    //         (ref: specs/coffee-note-agent/changes/0014-photo-archive-only ADR-32, AC-Δ2).
     private NoteView.EntryView toEntryView(Entry entry) {
         return new NoteView.EntryView(
                 entry.date(),
                 entry.myTaste(),
                 entry.rating(),
-                entry.recipe(), // null이면 템플릿이 "이렇게 내렸어요" 영역을 숨긴다(AC-Δ2)
-                thumbs(entry, THUMBS_PREFIX));
+                entry.recipe()); // null이면 템플릿이 "이렇게 내렸어요" 영역을 숨긴다(AC-Δ2)
     }
 
     // --- 공통 ---
@@ -246,27 +243,6 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
 
     private static String cardHref(String slug, LocalDate date) {
         return CARDS_DIR + "/" + slug + "/" + date + ".jpg";
-    }
-
-    // photos[0]을 썸네일 상대 경로로. 엔트리에 사진이 없으면 null(인덱스 행 대표 썸네일).
-    private static String firstThumb(Entry entry, String prefix) {
-        if (entry == null || entry.photos() == null || entry.photos().isEmpty()) {
-            return null;
-        }
-        return toThumb(entry.photos().get(0), prefix);
-    }
-
-    private static List<String> thumbs(Entry entry, String prefix) {
-        if (entry.photos() == null) {
-            return List.of();
-        }
-        return entry.photos().stream().map(p -> toThumb(p, prefix)).toList();
-    }
-
-    private static String toThumb(String photoRel, String prefix) {
-        // 저장 규칙상 photos/ 접두 상대 경로(V-4). 접두만 썸네일 접두로 치환한다.
-        String tail = photoRel.startsWith(PHOTOS_PREFIX) ? photoRel.substring(PHOTOS_PREFIX.length()) : photoRel;
-        return prefix + tail;
     }
 
     private static String value(Sourced<String> sourced) {

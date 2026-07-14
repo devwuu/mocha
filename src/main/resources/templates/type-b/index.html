@@ -11,7 +11,6 @@
   a{color:#6f4e37}a:hover{color:#4a3423}
   .wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px;box-sizing:border-box}
   .card{width:460px;min-height:650px;background:#f6ead9;border-radius:6px;box-shadow:0 2px 12px rgba(43,31,22,.12);display:flex;flex-direction:column;padding:32px 34px 26px;box-sizing:border-box;color:#4d3320}
-  .thumb{width:46px;height:46px;flex:none;border-radius:12px;object-fit:cover;background:repeating-linear-gradient(45deg,#f3e6d2,#f3e6d2 6px,#ecdcc2 6px,#ecdcc2 12px)}
   .row{text-decoration:none;color:inherit;background:#fff;border-radius:16px;padding:14px 16px;box-shadow:0 2px 0 #e8d3b4;display:flex;align-items:center;gap:13px}
   .empty{margin-top:40px;text-align:center;font-size:13px;color:#8c6a44}
 </style>
@@ -29,8 +28,6 @@
 
     <div style="margin-top:20px;flex:1;display:flex;flex-direction:column;gap:11px">
       <a th:each="row : ${index.rows}" class="row" th:href="${row.href}">
-        <img class="thumb" th:if="${row.thumb != null}" th:src="${row.thumb}" alt="사진">
-        <div class="thumb" th:if="${row.thumb == null}"></div>
         <div style="flex:1;min-width:0">
           <div style="font-size:14.5px;font-weight:700;color:#3f2a17" th:text="${row.coffeeName}">커피</div>
           <div style="font-size:11.5px;color:#8c6a44;margin-top:3px"

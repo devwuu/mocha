@@ -73,12 +73,9 @@
           <div th:if="${note.entry.rating != null and note.entry.rating.name() == 'PERFECT'}" style="font-size:22px;color:#f8f3ea;background:#6f5138;border:2px solid #6f5138;border-radius:999px;padding:6px 24px" th:text="${note.entry.rating.label()}">완전 내스타일</div>
           <div th:if="${note.entry.rating != null and note.entry.rating.name() != 'PERFECT'}" style="font-size:22px;color:#8a6f57;border:2px solid #c9b59a;border-radius:999px;padding:6px 24px" th:text="${note.entry.rating.label()}">맛있다</div>
         </div>
-        <!-- 시안: myTaste 텍스트(flex:1) + 원형 사진 우측 가로 배치. 사진 없으면 텍스트가 전폭 -->
+        <!-- 사진은 아카이브 전용 — 카드에 렌더하지 않는다(changes/0014, AC-Δ2). myTaste 텍스트만 전폭 -->
         <div style="flex:1;min-height:0;display:flex;gap:40px;align-items:center;overflow:hidden">
           <div style="flex:1;font-size:31px;line-height:2;color:#4a3a2c;white-space:pre-line" th:text="${note.entry.myTaste}">감상</div>
-          <div style="display:flex;flex-direction:column;gap:24px;flex:none" th:if="${!note.entry.photos.isEmpty()}">
-            <img th:each="photo : ${note.entry.photos}" th:src="${photo}" alt="사진" style="width:216px;height:216px;border-radius:50%;object-fit:cover">
-          </div>
         </div>
       </div>
 

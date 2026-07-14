@@ -38,9 +38,6 @@ dependencies {
 	// 정규식 파싱 대신 HTML 파서 — 문제 관측 후 도입(right-sizing). 페이지 fetch·파싱은 이미지 수집기 경계 클래스 안에만 노출(NFR-4).
 	implementation 'org.jsoup:jsoup:1.22.2'
 
-	// 썸네일 생성 (EXIF orientation 보정 포함, ref: plan.md §5)
-	implementation 'net.coobird:thumbnailator:0.4.21'
-
 	// 카드 HTML → JPG 래스터화 = 헤드리스 Chromium (ref: plan.md#ADR-11, changes/0002-instagram-share-card).
 	// flexbox·컬러 이모지·한글 웹폰트를 온전히 렌더하려면 실제 브라우저 엔진이 필요. 순수 Java(openhtmltopdf)는 flexbox 미지원.
 	// Chromium 바이너리는 Playwright가 관리(첫 launch 시 다운로드 or `./gradlew installChromium` 사전설치). 렌더 엔진은 CardImageRenderer 뒤에만 노출(NFR-4).

@@ -33,8 +33,7 @@ public final class NoteView {
             String roastery,
             String origin,
             LocalDate date,
-            Rating rating,
-            String thumb) {
+            Rating rating) {
     }
 
     /**
@@ -58,14 +57,14 @@ public final class NoteView {
     }
 
     /**
-     * 카드의 날짜 엔트리 1건 (ref: FR-15, data-model §2.2). {@code photos}는 렌더러가 계산한 썸네일 상대 경로.
+     * 카드의 날짜 엔트리 1건 (ref: FR-15, data-model §2.2). 사진은 렌더에 실리지 않는다 — 아카이브 전용이라
+     * 카드/인덱스는 사진을 읽지 않는다(changes/0014 ADR-32 POLICY, AC-Δ2).
      * {@code recipe}는 "이렇게 내렸어요" 영역용 — 3항목 전무·미언급 시 {@code null}이라 영역 자체를 숨긴다(FR-18, AC-Δ2·TΔ6).
      */
     public record EntryView(
             LocalDate date,
             String myTaste,
             Rating rating,
-            Recipe recipe,
-            List<String> photos) {
+            Recipe recipe) {
     }
 }

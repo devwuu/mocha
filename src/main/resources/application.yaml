@@ -56,13 +56,11 @@ mocha:
   photo:
     # 텍스트/사진 분리 수신 그룹핑 윈도우 (FR-10).
     buffer-window: 10m
-    # 인덱스 카드용 썸네일 폭. EXIF orientation 보정 포함.
-    thumb-width: 480
   data:
     # 노트 JSON·사진·pending 원본 루트 (커밋 금지).
     dir: ./data
   artifact:
-    # 산출물(파생물) 루트 — 엔트리 카드 JPG·index HTML·썸네일 (커밋 금지, 전체 재생성 가능).
+    # 산출물(파생물) 루트 — 엔트리 카드 JPG·index HTML (커밋 금지, 전체 재생성 가능).
     dir: ./artifact
     # 노트/인덱스 디자인 테마 (ref: tasks T5-1). type-a=세리프(명조·액자), type-b=귀여운(고딕·카드·마스코트).
     # 값은 templates/<theme>/ 폴더명이자 렌더 선택자다. 기본은 썸네일 카드 인덱스(FR-8)를 갖춘 type-b.

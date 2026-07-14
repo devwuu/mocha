@@ -10,7 +10,7 @@
 
 - Java 21, Spring Boot 4.x
 - 빌드: Gradle
-- Slack SDK (Socket Mode), OpenAI 클라이언트, Jackson, Thymeleaf(정적 HTML 생성기 용법), Thumbnailator
+- Slack SDK (Socket Mode), OpenAI 클라이언트, Jackson, Thymeleaf(정적 HTML 생성기 용법)
 - **DB 없음.** 영속화는 로컬 JSON 파일. RDB·JPA·캐시·메시지큐 등 인프라를 임의로 추가하지 않는다 — 필요해지면 spec 델타로 먼저 결정한다.
 - AI 모델·외부 연동의 구체값은 spec 및 설정(`mocha.*`)에서 정한다.
 
