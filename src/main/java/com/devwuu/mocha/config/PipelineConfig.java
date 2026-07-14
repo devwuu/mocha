@@ -4,6 +4,7 @@ import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.llm.LlmClient;
 import com.devwuu.mocha.llm.SearchClient;
 import com.devwuu.mocha.llm.VisionClient;
+import com.devwuu.mocha.pipeline.AliasGenerator;
 import com.devwuu.mocha.pipeline.IntentClassifier;
 import com.devwuu.mocha.pipeline.NoteEnricher;
 import com.devwuu.mocha.pipeline.NoteExtractor;
@@ -41,6 +42,12 @@ public class PipelineConfig {
     @Bean
     public NoteMatcher noteMatcher() {
         return new NoteMatcher();
+    }
+
+    // 별칭 생성기([저장] 신규 커밋 시 1콜, ADR-37) — 추출과 경량 모델 공용(mocha.llm.model, 새 설정 키 없음).
+    @Bean
+    public AliasGenerator aliasGenerator(LlmClient llmClient) {
+        return new AliasGenerator(llmClient, MochaObjectMapper.create());
     }
 
     @Bean

@@ -1,5 +1,6 @@
 package com.devwuu.mocha.slack;
 
+import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
@@ -9,6 +10,7 @@ import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.llm.VisionExtraction;
 import com.devwuu.mocha.llm.VisionHint;
+import com.devwuu.mocha.pipeline.AliasGenerator;
 import com.devwuu.mocha.pipeline.ExtractionResult;
 import com.devwuu.mocha.pipeline.MatchResult;
 import com.devwuu.mocha.pipeline.NoteCandidate;
@@ -59,6 +61,7 @@ class SlackRecordFlow {
     private final NoteExtractor noteExtractor;
     private final NoteMatcher noteMatcher;
     private final NoteEnricher noteEnricher;
+    private final AliasGenerator aliasGenerator;
     private final PendingReviser pendingReviser;
     private final PreviewMessenger previewMessenger;
     private final TransitionSlot transitionSlot;
@@ -74,6 +77,7 @@ class SlackRecordFlow {
             NoteExtractor noteExtractor,
             NoteMatcher noteMatcher,
             NoteEnricher noteEnricher,
+            AliasGenerator aliasGenerator,
             PendingReviser pendingReviser,
             PreviewMessenger previewMessenger,
             TransitionSlot transitionSlot,
@@ -87,6 +91,7 @@ class SlackRecordFlow {
         this.noteExtractor = noteExtractor;
         this.noteMatcher = noteMatcher;
         this.noteEnricher = noteEnricher;
+        this.aliasGenerator = aliasGenerator;
         this.pendingReviser = pendingReviser;
         this.previewMessenger = previewMessenger;
         this.transitionSlot = transitionSlot;
@@ -291,8 +296,15 @@ class SlackRecordFlow {
         photoIntake.commitStaged(userId, slug, date);
         Entry committedEntry = entry;
 
+        // 신규 노트(match=NEW) 첫 커밋에 한해 별칭을 1콜로 생성한다(노트당 평생 1회 — 관측 축적은 TΔ3).
+        // POLICY: 외부 호출은 파일 쓰기 전에 끝낸다(CLAUDE.md §3). 생성 실패는 저장을 되돌리지 않는다 —
+        //         빈 별칭으로 수렴(AliasGenerator 내부 처리) (ref: plan.md#ADR-37, §7, V-13).
+        Aliases aliases = pending.match() != null && pending.match().type() == MatchInfo.MatchType.NEW
+                ? aliasGenerator.generate(valueOf(draft.coffeeName()), valueOf(draft.roastery()))
+                : Aliases.empty();
+
         // POLICY: 사용자 [저장] 확인을 거친 뒤에만 저장한다 (ref: plan.md#ADR-3, AC-4).
-        Note saved = noteRepository.upsertEntry(slug, metaOf(draft), committedEntry);
+        Note saved = noteRepository.upsertEntry(slug, metaOf(draft), committedEntry, aliases);
         pendingStore.clear(userId);
         photoIntake.clearBuffer(userId);
         log.info("[저장] 커밋 완료: slug={} entries={}", saved.slug(), saved.entries().size());
@@ -378,6 +390,11 @@ class SlackRecordFlow {
 
     private static Sourced<String> userSourced(String value) {
         return value == null ? null : Sourced.user(value);
+    }
+
+    // 출처 표시 필드의 표시값 추출(null 안전) — 별칭 생성 입력 등 원문 문자열만 필요할 때 쓴다.
+    private static String valueOf(Sourced<String> sourced) {
+        return sourced == null ? null : sourced.value();
     }
 
     // draft(Note)에서 노트 단위 메타만 뽑는다 — 엔트리·slug·타임스탬프는 upsertEntry가 다룬다.

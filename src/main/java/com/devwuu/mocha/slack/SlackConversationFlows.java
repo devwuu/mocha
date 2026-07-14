@@ -1,6 +1,7 @@
 package com.devwuu.mocha.slack;
 
 import com.devwuu.mocha.domain.PendingNote;
+import com.devwuu.mocha.pipeline.AliasGenerator;
 import com.devwuu.mocha.pipeline.NoteEnricher;
 import com.devwuu.mocha.pipeline.NoteExtractor;
 import com.devwuu.mocha.pipeline.NoteMatcher;
@@ -61,6 +62,7 @@ public class SlackConversationFlows implements ConversationFlows {
             NoteExtractor noteExtractor,
             NoteMatcher noteMatcher,
             NoteEnricher noteEnricher,
+            AliasGenerator aliasGenerator,
             PhotoInfoExtractor photoInfoExtractor,
             PendingReviser pendingReviser,
             PreviewMessenger previewMessenger,
@@ -73,7 +75,7 @@ public class SlackConversationFlows implements ConversationFlows {
             @Value("${mocha.artifact.dir}") String artifactDir,
             @Value("${mocha.photo.buffer-window}") Duration bufferWindow) {
         this(pendingStore, noteRepository, noteRenderer, responder,
-                noteExtractor, noteMatcher, noteEnricher, photoInfoExtractor, pendingReviser, previewMessenger,
+                noteExtractor, noteMatcher, noteEnricher, aliasGenerator, photoInfoExtractor, pendingReviser, previewMessenger,
                 photoDownloader, photoStore, photoBufferStore, searchSessionStore, noteSearchService, transitionSlot,
                 Path.of(artifactDir), bufferWindow, Clock.system(SEOUL));
     }
@@ -88,6 +90,7 @@ public class SlackConversationFlows implements ConversationFlows {
             NoteExtractor noteExtractor,
             NoteMatcher noteMatcher,
             NoteEnricher noteEnricher,
+            AliasGenerator aliasGenerator,
             PhotoInfoExtractor photoInfoExtractor,
             PendingReviser pendingReviser,
             PreviewMessenger previewMessenger,
@@ -105,7 +108,7 @@ public class SlackConversationFlows implements ConversationFlows {
         SlackEditFlow editFlow = new SlackEditFlow(pendingStore, searchSessionStore, noteRepository, noteRenderer,
                 responder, previewMessenger, photoIntake, clock);
         this.recordFlow = new SlackRecordFlow(pendingStore, noteRepository, noteRenderer, responder,
-                noteExtractor, noteMatcher, noteEnricher, pendingReviser, previewMessenger, transitionSlot,
+                noteExtractor, noteMatcher, noteEnricher, aliasGenerator, pendingReviser, previewMessenger, transitionSlot,
                 photoIntake, editFlow, clock);
         this.searchFlow = new SlackSearchFlow(searchSessionStore, noteSearchService, noteRepository, noteRenderer,
                 responder, transitionSlot, editFlow, artifactDir);

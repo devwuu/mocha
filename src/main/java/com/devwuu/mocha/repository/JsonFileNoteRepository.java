@@ -1,5 +1,6 @@
 package com.devwuu.mocha.repository;
 
+import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
@@ -87,10 +88,11 @@ public class JsonFileNoteRepository implements NoteRepository {
     }
 
     @Override
-    public Note upsertEntry(String slug, NoteMeta meta, Entry entry) {
+    public Note upsertEntry(String slug, NoteMeta meta, Entry entry, Aliases aliases) {
+        // 신규 노트면 별칭을 심고(AliasGenerator 산출, TΔ2), 기존 노트면 별칭 원본 존치(축적은 TΔ3, V-13).
         Note note = findBySlug(slug)
                 .map(existing -> withMergedEntry(existing, entry))
-                .orElseGet(() -> createNote(slug, meta, entry));
+                .orElseGet(() -> createNote(slug, meta, entry, aliases));
         write(note);
         return note;
     }
@@ -173,7 +175,7 @@ public class JsonFileNoteRepository implements NoteRepository {
         return updated;
     }
 
-    private Note createNote(String slug, NoteMeta meta, Entry entry) {
+    private Note createNote(String slug, NoteMeta meta, Entry entry, Aliases aliases) {
         OffsetDateTime now = OffsetDateTime.now(clock);
         return new Note(
                 slug,
@@ -183,6 +185,7 @@ public class JsonFileNoteRepository implements NoteRepository {
                 meta.process(),
                 meta.roastLevel(),
                 meta.officialNotes(),
+                aliases == null ? Aliases.empty() : aliases,
                 meta.sources(),
                 List.of(entry),
                 now,

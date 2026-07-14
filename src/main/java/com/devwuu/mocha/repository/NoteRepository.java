@@ -1,5 +1,6 @@
 package com.devwuu.mocha.repository;
 
+import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
@@ -39,7 +40,23 @@ public interface NoteRepository {
      *
      * @return 저장된 최종 노트.
      */
-    Note upsertEntry(String slug, NoteMeta meta, Entry entry);
+    default Note upsertEntry(String slug, NoteMeta meta, Entry entry) {
+        return upsertEntry(slug, meta, entry, Aliases.empty());
+    }
+
+    /**
+     * 별칭을 실어 엔트리를 병합 저장한다 (ref: plan.md#ADR-37, changes/0016).
+     * <ul>
+     *   <li>신규 노트(slug 부재)면 {@code aliases}를 그 노트의 초기 별칭으로 심는다
+     *       — 신규 노트 첫 [저장] 시 {@link com.devwuu.mocha.pipeline.AliasGenerator}가 생성한 음차·이표기(TΔ2).</li>
+     *   <li>기존 노트면 별칭은 원본을 존치한다 — 관측 표기 축적은 별도(TΔ3).</li>
+     * </ul>
+     * 그 외 병합 규칙은 {@link #upsertEntry(String, NoteMeta, Entry)}와 동일하다.
+     *
+     * @param aliases 신규 노트에 심을 별칭(내부 전용, V-13). 부재 수렴은 {@link Aliases#empty()}.
+     * @return 저장된 최종 노트.
+     */
+    Note upsertEntry(String slug, NoteMeta meta, Entry entry, Aliases aliases);
 
     /**
      * 수정 세션([저장]) 커밋 — 대상 엔트리를 draft 내용으로 갱신하고, 필요 시 날짜를 이동한다

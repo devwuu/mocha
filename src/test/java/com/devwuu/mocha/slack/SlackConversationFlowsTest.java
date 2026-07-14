@@ -19,6 +19,7 @@ import com.devwuu.mocha.llm.SearchResult;
 import com.devwuu.mocha.llm.VisionClient;
 import com.devwuu.mocha.llm.VisionExtraction;
 import com.devwuu.mocha.llm.VisionHint;
+import com.devwuu.mocha.pipeline.AliasGenerator;
 import com.devwuu.mocha.pipeline.ExtractionResult;
 import com.devwuu.mocha.pipeline.NoteEnricher;
 import com.devwuu.mocha.pipeline.NoteExtractor;
@@ -181,11 +182,20 @@ class SlackConversationFlowsTest {
         ExtractionResult canned;
         RevisionResult cannedRevision;
         SearchSelection cannedSelection = new SearchSelection(List.of());
+        // 별칭 생성 응답(TΔ2) — 기본은 빈 배열(대다수 커밋 테스트는 별칭을 단언하지 않는다).
+        AliasGenerator.AliasResponse cannedAliases = new AliasGenerator.AliasResponse(List.of(), List.of());
         RuntimeException failure;         // 모든 요청 공통 실패
+        RuntimeException aliasFailure;    // 별칭 생성 콜만 실패(다른 콜은 정상) — plan §7 수렴 검증용
 
         @SuppressWarnings("unchecked")
         @Override
         public <T> T complete(LlmRequest<T> request) {
+            if (request.responseType() == AliasGenerator.AliasResponse.class) {
+                if (aliasFailure != null) {
+                    throw aliasFailure;
+                }
+                return (T) cannedAliases;
+            }
             if (failure != null) {
                 throw failure;
             }
@@ -445,8 +455,9 @@ class SlackConversationFlowsTest {
         }
 
         @Override
-        public Note upsertEntry(String slug, com.devwuu.mocha.domain.NoteMeta meta, Entry entry) {
-            Note saved = delegate.upsertEntry(slug, meta, entry);
+        public Note upsertEntry(String slug, com.devwuu.mocha.domain.NoteMeta meta, Entry entry,
+                com.devwuu.mocha.domain.Aliases aliases) {
+            Note saved = delegate.upsertEntry(slug, meta, entry, aliases);
             order.add("commit"); // 파일 쓰기가 실제로 끝난 뒤 기록 — clear보다 앞섬을 단언(AC-Δ5)
             return saved;
         }
@@ -485,6 +496,7 @@ class SlackConversationFlowsTest {
     private final NoteExtractor extractor = new NoteExtractor(llmClient, MochaObjectMapper.create());
     private final NoteMatcher matcher = new NoteMatcher();
     private final NoteEnricher enricher = new NoteEnricher(searchClient);
+    private final AliasGenerator aliasGenerator = new AliasGenerator(llmClient, MochaObjectMapper.create());
     private final PhotoInfoExtractor photoInfoExtractor = new PhotoInfoExtractor(visionClient, 4);
     private final PendingReviser reviser = new PendingReviser(llmClient, MochaObjectMapper.create());
     private final FakeSearchSessionStore searchSessionStore = new FakeSearchSessionStore();
@@ -503,7 +515,7 @@ class SlackConversationFlowsTest {
                 new NoteSearchService(llmClient, MochaObjectMapper.create(), maxRequery);
         return new SlackConversationFlows(
                 pendingStore, repo, noteRenderer, responder,
-                extractor, matcher, enricher, photoInfoExtractor, reviser, previewMessenger,
+                extractor, matcher, enricher, aliasGenerator, photoInfoExtractor, reviser, previewMessenger,
                 photoDownloader, photoStore, photoBufferStore, searchSessionStore, noteSearchService,
                 transitionSlot, artifactDir, BUFFER_WINDOW, clock);
     }
@@ -966,6 +978,41 @@ class SlackConversationFlowsTest {
         assertEquals(Path.of("cards", "coffeevera-yirgacheffe", "2026-07-11.jpg"), responder.images.get(0));
         assertEquals(List.of(FlowMessages.SAVE_DONE_CAPTION), responder.captions);
         assertTrue(responder.messages.isEmpty(), "정상 배달이면 폴백 텍스트가 없다");
+    }
+
+    @Test
+    @DisplayName("TΔ2/AC-Δ4: 신규 노트 첫 [저장] 커밋 시 생성된 별칭이 노트에 저장된다(ADR-37)")
+    void confirmSavePersistsGeneratedAliasesForNewNote() {
+        NoteRepository repo = noteRepository();
+        pendingStore.setPending(pendingWith("coffeevera-yirgacheffe")); // match=NEW
+        llmClient.cannedAliases = new AliasGenerator.AliasResponse(
+                List.of("커피베라 예가체프"), List.of("커피베라"));
+
+        flow(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
+
+        Optional<Note> saved = repo.findBySlug("coffeevera-yirgacheffe");
+        assertTrue(saved.isPresent(), "저장된 노트 JSON이 있어야 한다");
+        assertEquals(List.of("커피베라 예가체프"), saved.get().aliases().coffeeName(),
+                "생성된 커피명 별칭이 노트에 저장된다");
+        assertEquals(List.of("커피베라"), saved.get().aliases().roastery(),
+                "생성된 로스터리 별칭이 노트에 저장된다");
+    }
+
+    @Test
+    @DisplayName("TΔ2/AC-Δ4: 별칭 생성 콜 실패 시에도 노트 저장은 성공하고 aliases만 빈 배열이다(plan §7)")
+    void confirmSaveKeepsCommitWhenAliasGenerationFails() {
+        NoteRepository repo = noteRepository();
+        pendingStore.setPending(pendingWith("coffeevera-yirgacheffe")); // match=NEW
+        llmClient.aliasFailure = new IllegalStateException("별칭 모델 호출 실패");
+
+        flow(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
+
+        Optional<Note> saved = repo.findBySlug("coffeevera-yirgacheffe");
+        assertTrue(saved.isPresent(), "별칭 생성 실패해도 노트 저장은 유지된다");
+        assertEquals(1, saved.get().entries().size(), "엔트리는 정상 저장된다");
+        assertTrue(saved.get().aliases().coffeeName().isEmpty(), "실패 시 커피명 별칭은 빈 배열");
+        assertTrue(saved.get().aliases().roastery().isEmpty(), "실패 시 로스터리 별칭은 빈 배열");
+        assertEquals(1, pendingStore.clearCount, "커밋은 완료됐다");
     }
 
     @Test
@@ -1694,8 +1741,9 @@ class SlackConversationFlowsTest {
             }
 
             @Override
-            public Note upsertEntry(String slug, com.devwuu.mocha.domain.NoteMeta meta, Entry entry) {
-                return repo.upsertEntry(slug, meta, entry);
+            public Note upsertEntry(String slug, com.devwuu.mocha.domain.NoteMeta meta, Entry entry,
+                    com.devwuu.mocha.domain.Aliases aliases) {
+                return repo.upsertEntry(slug, meta, entry, aliases);
             }
 
             @Override

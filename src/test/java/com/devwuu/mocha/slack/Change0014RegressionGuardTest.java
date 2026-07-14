@@ -19,6 +19,7 @@ import com.devwuu.mocha.pipeline.ExtractionResult;
 import com.devwuu.mocha.pipeline.IntentClassifier;
 import com.devwuu.mocha.pipeline.IntentResult;
 import com.devwuu.mocha.pipeline.MessageIntent;
+import com.devwuu.mocha.pipeline.AliasGenerator;
 import com.devwuu.mocha.pipeline.NoteEnricher;
 import com.devwuu.mocha.pipeline.NoteExtractor;
 import com.devwuu.mocha.pipeline.NoteMatcher;
@@ -216,7 +217,7 @@ class Change0014RegressionGuardTest {
         photoBufferStore = new JsonFilePhotoBufferStore(dataDir, mapper);
         SlackConversationFlows flow = new SlackConversationFlows(
                 pendingStore, noteRepository, renderer, responder,
-                new NoteExtractor(llmClient, mapper), new NoteMatcher(), new NoteEnricher(new FakeSearchClient()),
+                new NoteExtractor(llmClient, mapper), new NoteMatcher(), new NoteEnricher(new FakeSearchClient()), new AliasGenerator(llmClient, mapper),
                 new PhotoInfoExtractor(visionClient, 4),
                 new PendingReviser(llmClient, mapper), previewMessenger,
                 urlPrivate -> jpegBytes(), new LocalPhotoStore(dataDir), photoBufferStore,
