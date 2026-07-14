@@ -765,6 +765,29 @@ class SlackConversationFlowsTest {
     }
 
     @Test
+    @DisplayName("AC-56/ADR-39: record 모드 date 정정 → 엔트리 날짜 반영 + EXISTING 매칭 표기가 새 날짜로 재판정된다")
+    void revisePendingRecordDateRejudgesMatch() {
+        NoteRepository repo = noteRepository();
+        // EXISTING 매칭(기존 노트 대상, 7/11 기록) 상태의 record 확인 대기.
+        PendingNote pending = pendingWith("coffeevera-yirgacheffe")
+                .withMatch(MatchInfo.existing("coffeevera-yirgacheffe", LocalDate.of(2026, 7, 11)));
+        pendingStore.setPending(pending);
+        // "엊그제 마신 거였어" → today(7/11) 기준 7/9로 해석한 date 패치.
+        llmClient.cannedRevision = new RevisionResult(null, null, null, null, null, null, null, null, LocalDate.of(2026, 7, 9));
+
+        flow(repo).revisePending(message("엊그제 마신 거였어"), pending);
+
+        Note draft = previewMessenger.published.draft();
+        assertEquals(LocalDate.of(2026, 7, 9), draft.entries().get(0).date(), "record 경로 시음 날짜가 정정된다(AC-56)");
+        MatchInfo match = previewMessenger.published.match();
+        assertEquals(MatchInfo.MatchType.EXISTING, match.type(), "매칭 종류(기존 노트)는 유지된다");
+        assertEquals(LocalDate.of(2026, 7, 9), match.date(), "매칭 표기의 대상 날짜가 새 날짜로 재판정된다(ADR-39)");
+        // 재판정된 match가 pending에 영속된다.
+        assertEquals(LocalDate.of(2026, 7, 9), pendingStore.puts.get(0).match().date());
+        assertTrue(repo.findAll().isEmpty(), "미리보기 단계 — 노트 JSON 무변경(AC-4)");
+    }
+
+    @Test
     @DisplayName("plan §7: 수정 병합 실패 → 오류 안내, 기존 pending 보존(폐기 안 함)")
     void revisePendingKeepsPendingOnFailure() {
         NoteRepository repo = noteRepository();

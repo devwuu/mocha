@@ -232,13 +232,20 @@ class SlackRecordFlow {
         try {
             // [1] 수정 분기: 수정 텍스트를 LLM 패치로 받아 기존 draft에 병합한다 — 엔트리 개수 불변, 새 노트 미생성(AC-5).
             // match·preview_ts·created_at은 PendingReviser가 보존하므로 같은 미리보기 메시지를 edit로 갱신하게 된다.
-            PendingReviser.ReviseOutcome outcome = pendingReviser.revise(pending, message.text());
+            // today를 주입해 "엊그제 마신 거였어"류 상대 날짜 정정을 해석 가능하게 한다(ADR-39, AC-56).
+            LocalDate today = LocalDate.now(clock);
+            PendingReviser.ReviseOutcome outcome = pendingReviser.revise(pending, message.text(), today);
             PendingNote revised = outcome.pending();
 
             // POLICY: 날짜 이동 덮어쓰기는 미리보기 경고 표기 + [저장] 확답 없이는 금지 (ref: plan.md#ADR-27, V-10).
             // 충돌 여부는 revise마다 현 draft 기준으로 재계산해 pending에 영속한다 — 되돌리면 경고도 사라진다.
             if (revised.mode() == PendingNote.Mode.EDIT) {
                 revised = revised.withDateConflict(editFlow.dateConflict(revised));
+            } else if (outcome.recordDatePatch() != null && revised.match() != null
+                    && revised.match().type() == MatchInfo.MatchType.EXISTING) {
+                // record 모드 시음 날짜 정정 — 매칭 표기(기존 노트 대상 날짜)를 새 날짜로 재판정해 미리보기 정합화(ADR-39, AC-56).
+                // NEW 매칭은 미리보기에 날짜가 없어 갱신 대상이 아니다. 갱신/추가 구분은 MatchInfo에 없어(중립 표기) 날짜만 바꾼다.
+                revised = revised.withMatch(MatchInfo.existing(revised.match().slug(), outcome.recordDatePatch()));
             }
 
             // 갱신본을 먼저 영속화(재시작 생존, NFR-2) → preview_ts가 살아 있어 publish는 재전송이 아닌 edit로 갱신한다.

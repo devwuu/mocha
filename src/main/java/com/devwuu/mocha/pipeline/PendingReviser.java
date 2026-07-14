@@ -10,6 +10,7 @@ import com.devwuu.mocha.llm.LlmException;
 import com.devwuu.mocha.llm.LlmRequest;
 import tools.jackson.databind.ObjectMapper;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -24,7 +25,11 @@ import java.util.List;
  *   <li>수정된 출처 표시 필드는 {@code source=user}로 승격한다 — 사용자가 방금 그 값을 직접 지정했기 때문.
  *       미리보기의 {@code (검색)} 표기는 출처가 user로 바뀌면 자연히 사라진다(AC-2 재료).</li>
  *   <li>edit 모드(FR-21, changes/0012 TΔ5): coffee_name 패치는 draft에 반영하지 않고 거부로 보고하며(V-9),
- *       date 패치는 이번 시음 엔트리의 날짜 이동으로 반영한다(AC-39). record 모드는 종전과 동일하다(AC-Δ6).</li>
+ *       date 패치는 이번 시음 엔트리의 날짜 이동으로 반영한다(AC-39).</li>
+ *   <li>date 패치는 record 모드에도 반영한다(changes/0016 ADR-39, FR-5/AC-56 — 종전 "record 경로 날짜 무시"
+ *       개정). record 모드에서 date가 바뀌면 매칭 표기(신규/갱신/추가) 재판정 재료를 {@link ReviseOutcome}에
+ *       실어 저장소를 아는 호출부가 {@code match}를 갱신하게 한다(커피명 거부는 여전히 edit 모드 한정 V-9).</li>
+ *   <li>상대 날짜("엊그제"·"어제")는 요청에 주입한 {@code today}(Asia/Seoul) 기준으로 해석한다(ADR-39).</li>
  * </ul>
  * <p>match(신규/기존 판정)·preview_ts·created_at은 보존한다 — 필드 수정은 매칭·TTL·미리보기 대상 메시지를
  * 바꾸지 않는다(같은 메시지를 edit로 갱신, data-model §2.3).
@@ -64,8 +69,8 @@ public class PendingReviser {
             - my_taste는 사용자가 표현한 감상을 요약·축약하지 않고, 문장 끝 어미만 한국어 음슴체로 바꿔 반영한다("맛있더라"→"맛있었음", 영어는 한국어로 번역). 맛 묘사·수식어·뉘앙스를 하나도 빼지 말고 그대로 보존한다 — 긴 감상을 통째로 "맛있었음" 따위로 줄이면 안 된다. 산미/단맛 같은 맛 표현 수정은 my_taste에 담는다.
               예: "산미 있으면서 깔끔한데 적당히 달아서 너무 부담스럽지 않은 맛? 또 먹고 싶더라" → my_taste "산미 있으면서 깔끔한데 적당히 달아서 너무 부담스럽지 않은 맛이었음. 또 먹고 싶었음"(❌ "맛있었음"). my_taste를 바꿀 때는 사용자가 말한 그대로의 표현을 my_taste_original에 원문 그대로(요약·정규화·번역 없이) 함께 담는다. my_taste를 바꾸지 않으면 my_taste_original도 null.
             - rating은 사용자가 만족도를 바꿀 때만 4범주 중 하나로 고른다. 아니면 null.
-            - date는 사용자가 기록 날짜를 다른 날로 옮기라고 명시할 때만 YYYY-MM-DD로 채운다. current의 date를 기준으로 계산한다. 아니면 null.
-            입력은 current/revision을 담은 JSON으로 주어진다.
+            - date는 사용자가 기록 날짜를 다른 날로 옮기라고 명시할 때만 YYYY-MM-DD로 채운다. "엊그제"·"어제"·"지난 금요일" 같은 상대 표현은 입력의 today(오늘 날짜)를 기준으로 계산한다. 아니면 null.
+            입력은 current/revision/today를 담은 JSON으로 주어진다.
             """;
 
     private final LlmClient llmClient;
@@ -81,18 +86,20 @@ public class PendingReviser {
      *
      * @param pending      라우터가 넘긴 유효(TTL 내) 확인 대기 노트. draft.entries는 이번 시음 엔트리 1건 전제.
      * @param revisionText 사용자의 수정 요청 원문(예: "산미는 낮음으로", "원산지는 콜롬비아야").
+     * @param today        오늘 날짜(Asia/Seoul) — 상대 날짜 단서("엊그제")를 이 기준으로 해석한다(ADR-39).
      * @throws LlmException 호출 실패, 또는 재시도 소진 후에도 스키마/도메인 위반이 남을 때(plan §7, V-1).
      */
-    public ReviseOutcome revise(PendingNote pending, String revisionText) {
-        String userPrompt = buildUserPrompt(pending.draft(), revisionText);
+    public ReviseOutcome revise(PendingNote pending, String revisionText, LocalDate today) {
+        String userPrompt = buildUserPrompt(pending.draft(), revisionText, today);
         LlmRequest<RevisionResult> request = new LlmRequest<>(
                 SCHEMA_NAME, JSON_SCHEMA, SYSTEM_PROMPT, userPrompt, RevisionResult.class);
         RevisionResult patch = llmClient.complete(request);
         return applyPatch(pending, patch);
     }
 
-    // 현재 draft 값 + 수정 요청을 사용자 프롬프트로 직렬화(snake_case). 부분 편집 근거로 현재 값을 함께 보여준다.
-    private String buildUserPrompt(Note draft, String revisionText) {
+    // 현재 draft 값 + 수정 요청 + today를 사용자 프롬프트로 직렬화(snake_case). 부분 편집 근거로 현재 값을,
+    // 상대 날짜 해석 기준으로 today를 함께 보여준다(ADR-39).
+    private String buildUserPrompt(Note draft, String revisionText, LocalDate today) {
         Entry entry = latestEntry(draft);
         CurrentDraft current = new CurrentDraft(
                 valueOf(draft.coffeeName()),
@@ -105,7 +112,8 @@ public class PendingReviser {
                 entry == null || entry.rating() == null ? null : entry.rating().label(),
                 entry == null ? null : entry.date().toString());
         try {
-            return mapper.writeValueAsString(new RevisionRequest(current, revisionText));
+            return mapper.writeValueAsString(
+                    new RevisionRequest(current, revisionText, today == null ? null : today.toString()));
         } catch (RuntimeException e) {
             throw new LlmException("수정 요청 직렬화 실패", e);
         }
@@ -131,12 +139,18 @@ public class PendingReviser {
                 promote(draft.roastLevel(), patch.roastLevel()),
                 promoteList(draft.officialNotes(), patch.officialNotes()),
                 draft.sources(),
-                reviseEntries(draft.entries(), patch, editMode),
+                reviseEntries(draft.entries(), patch),
                 draft.createdAt(),
                 draft.updatedAt());
 
+        // record 모드에서 date가 바뀌면 매칭 표기 재판정 재료로 새 날짜를 싣는다 — 저장소를 아는 호출부가
+        // match(EXISTING이면 대상 날짜)를 갱신한다(ADR-39, AC-56). edit 모드 날짜 이동은 dateConflict(V-10)로
+        //         별도 처리하므로 여기 싣지 않는다.
+        LocalDate recordDatePatch = !editMode && patch.date() != null ? patch.date() : null;
+
         // mode·target·match·preview_ts·created_at 보존 — 필드 수정은 세션 종류·매칭·TTL·미리보기 대상을 바꾸지 않는다.
-        return new ReviseOutcome(pending.withDraft(revisedDraft), coffeeNameRejected);
+        // (match 표기 자체의 날짜 갱신은 recordDatePatch를 받은 호출부 몫 — PendingReviser는 저장소를 모른다.)
+        return new ReviseOutcome(pending.withDraft(revisedDraft), coffeeNameRejected, recordDatePatch);
     }
 
     // 수정된 값이 있으면 source=user로 승격, 없으면 기존 필드(출처 포함) 유지.
@@ -148,8 +162,8 @@ public class PendingReviser {
         return revised != null ? Sourced.user(List.copyOf(revised)) : current;
     }
 
-    // 이번 시음 엔트리 1건을 제자리 갱신 — 엔트리 개수 불변(AC-5). my_taste/rating(+edit 모드 date)만 수정 대상.
-    private static List<Entry> reviseEntries(List<Entry> entries, RevisionResult patch, boolean editMode) {
+    // 이번 시음 엔트리 1건을 제자리 갱신 — 엔트리 개수 불변(AC-5). my_taste/rating/date만 수정 대상.
+    private static List<Entry> reviseEntries(List<Entry> entries, RevisionResult patch) {
         if (entries == null || entries.isEmpty()) {
             return entries;
         }
@@ -157,9 +171,11 @@ public class PendingReviser {
         int last = revised.size() - 1;
         Entry entry = revised.get(last);
         revised.set(last, new Entry(
-                // POLICY: date 패치는 edit 모드 한정(FR-21/AC-39) — record 경로의 날짜는 추출 시점에 확정되며
-                //         수정 대상이 아니다(신규 기록 흐름 불변, changes/0012 AC-Δ6).
-                editMode && patch.date() != null ? patch.date() : entry.date(),
+                // POLICY: date 패치는 record·edit 양쪽에 반영한다 — 저장 전 draft의 시음 날짜 정정은
+                //         "엊그제 마신 거였어"류 실사용 요청으로, 못 고칠 이유가 없다(changes/0016 ADR-39,
+                //         FR-5/AC-56 — changes/0012 "record 날짜 무시" 개정). edit 모드의 날짜 이동 충돌 경고
+                //         (V-10)는 호출부가 별도로 재계산한다.
+                patch.date() != null ? patch.date() : entry.date(),
                 patch.myTaste() != null ? patch.myTaste() : entry.myTaste(),
                 // POLICY: 감상 갱신 시 my_taste_original도 동반 갱신 — 원문 병존(V-11, ADR-30). 감상 미변경이면
                 //         패치의 두 필드가 null이라 기존 원문을 보존한다(RevisionResult가 원문 누락을 정규화본으로 수렴).
@@ -193,12 +209,15 @@ public class PendingReviser {
      *
      * @param pending            패치가 병합된 새 확인 대기 노트.
      * @param coffeeNameRejected edit 모드에서 커피명 변경 요청이 거부됐는지(V-9) — 거부 안내 전송 재료.
+     * @param recordDatePatch    record 모드에서 date가 새로 지정됐을 때 그 날짜(아니면 null) — 매칭 표기
+     *                           재판정 재료다. 저장소를 아는 호출부가 이 날짜로 {@code match}(EXISTING이면 대상
+     *                           날짜)를 갱신해 미리보기 표기를 정합화한다(ADR-39, AC-56). edit 모드·미변경이면 null.
      */
-    public record ReviseOutcome(PendingNote pending, boolean coffeeNameRejected) {
+    public record ReviseOutcome(PendingNote pending, boolean coffeeNameRejected, LocalDate recordDatePatch) {
     }
 
-    /** 사용자 프롬프트 페이로드 — {current, revision}. */
-    private record RevisionRequest(CurrentDraft current, String revision) {
+    /** 사용자 프롬프트 페이로드 — {current, revision, today}. today는 상대 날짜 해석 기준(ADR-39). */
+    private record RevisionRequest(CurrentDraft current, String revision, String today) {
     }
 
     /** 현재 draft 필드 값 스냅샷(출처 벗겨낸 값만) — LLM 부분 편집의 근거. rating은 라벨 문자열로, date는 ISO 문자열로. */
