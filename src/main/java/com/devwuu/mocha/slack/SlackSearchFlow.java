@@ -113,7 +113,10 @@ class SlackSearchFlow {
                     log.info("수정 대상 엔트리 복수 — 날짜 선택 대기: user={} slug={} dates={}",
                             userId, outcome.hits().get(0).slug(), outcome.editDateChoices().size());
                 }
-                case EDIT_TARGET_CONFIRMED -> editFlow.enterEditSession(userId, channelId, outcome);
+                // 전환 트리거 텍스트(message.text())를 진입에 넘겨 수정 세션에서 즉시 적용하게 한다(ADR-39, AC-55).
+                // 상대 날짜("엊그제") 해석 기준으로 today도 함께 넘긴다.
+                case EDIT_TARGET_CONFIRMED ->
+                        editFlow.enterEditSession(userId, channelId, outcome, message.text(), LocalDate.now(clock));
             }
         } catch (Exception e) {
             // plan §7: 후보 선정 실패 → 세션을 잃지 않고 안내만(기존 세션 유지 — 다음 메시지로 계속).

@@ -35,6 +35,8 @@ final class FlowMessages {
     static final String EDIT_TARGET_GONE = "고치려던 기록을 못 찾았어요 멍… 사라졌나 봐요. 다시 찾아볼까요? 🐾"; // 대상 노트/엔트리 소실 → 수정 세션 미시작(plan §7)
     static final String EDIT_COFFEE_NAME_REJECTED =
             "커피 이름은 못 바꿔요 멍… 이름이 다르면 다른 커피예요! 그 커피는 새로 기록해 주세요 🐾"; // 커피명 변경 거부 + 새 등록 안내(V-9, AC-38)
+    static final String EDIT_TRIGGER_REVISE_FAILED =
+            "수정 내용을 반영하지 못했어요 멍… 어떻게 고칠지 다시 말씀해 주시겠어요? 🐾"; // 전환 트리거 즉시 적용 실패 → 재요청(유실 금지, ADR-39, AC-55)
     // 과거 참조 매치 실패 안내(FR-14, ADR-26, changes/0011 TΔ6) — 다음 의도(새 기록/검색)를 고르게 하고,
     // 보관이 10분뿐임을 명시해 TTL 폐기 후 일반 신규 처리로 흐르는 것이 놀랍지 않게 한다(AC-36).
     static final String REFERENCE_NOT_FOUND =

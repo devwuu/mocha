@@ -3,6 +3,7 @@ package com.devwuu.mocha.slack;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.PendingNote;
+import com.devwuu.mocha.pipeline.PendingReviser;
 import com.devwuu.mocha.pipeline.SearchHit;
 import com.devwuu.mocha.pipeline.SearchOutcome;
 import com.devwuu.mocha.render.NoteRenderer;
@@ -41,6 +42,7 @@ class SlackEditFlow {
     private final NoteRenderer noteRenderer;
     private final SlackResponder responder;
     private final PreviewMessenger previewMessenger;
+    private final PendingReviser pendingReviser;
     private final SlackPhotoIntake photoIntake;
     private final Clock clock;
 
@@ -51,6 +53,7 @@ class SlackEditFlow {
             NoteRenderer noteRenderer,
             SlackResponder responder,
             PreviewMessenger previewMessenger,
+            PendingReviser pendingReviser,
             SlackPhotoIntake photoIntake,
             Clock clock) {
         this.pendingStore = pendingStore;
@@ -59,14 +62,19 @@ class SlackEditFlow {
         this.noteRenderer = noteRenderer;
         this.responder = responder;
         this.previewMessenger = previewMessenger;
+        this.pendingReviser = pendingReviser;
         this.photoIntake = photoIntake;
         this.clock = clock;
     }
 
     // 검색 세션 → 수정 세션 전환(FR-21, ADR-27, changes/0012 TΔ4) — 대상 노트+엔트리를 draft로 로드해
-    // mode=edit pending을 만들고 ✏️ 미리보기를 보낸다. 미리보기 전송 실패는 pending을 남기지 않고 호출부
-    // (SlackSearchFlow)의 catch(FlowMessages.SEARCH_FAILED — 검색 세션 유지)로 수렴한다.
-    void enterEditSession(String userId, String channelId, SearchOutcome outcome) throws Exception {
+    // mode=edit pending을 만들고, 전환을 일으킨 텍스트(triggerText)를 진입 직후 revise로 1회 즉시 적용한 뒤
+    // ✏️ 미리보기를 보낸다(changes/0016 TΔ10, ADR-39). 순수 전환 문장("그거 수정할래")이면 전 필드 null
+    // 패치라 원본 그대로다(무해). 즉시 적용이 LLM 오류로 실패하면 진입은 유지하되 원본 미리보기 + 재요청 안내로
+    // 수렴한다(수정 유실 금지, AC-55). 미리보기 전송 실패는 pending을 남기지 않고 호출부(SlackSearchFlow)의
+    // catch(FlowMessages.SEARCH_FAILED — 검색 세션 유지)로 수렴한다.
+    void enterEditSession(String userId, String channelId, SearchOutcome outcome, String triggerText, LocalDate today)
+            throws Exception {
         SearchHit hit = outcome.hits().get(0);
         LocalDate targetDate = outcome.editDate();
 
@@ -101,14 +109,29 @@ class SlackEditFlow {
                 List.of(target.get()), note.createdAt(), note.updatedAt());
         OffsetDateTime now = OffsetDateTime.now(clock);
         PendingNote.EditTarget editTarget = new PendingNote.EditTarget(hit.slug(), targetDate);
+        PendingNote basePending = new PendingNote(PendingNote.Mode.EDIT, draft, editTarget, null, null, now);
+
+        // 전환 트리거 텍스트 즉시 적용(ADR-39): 진입 직후 그 텍스트를 revise로 1회 통과시켜 미리보기에 반영한다.
+        // 성공하면 날짜 이동 충돌 경고(V-10)를 현 draft 기준으로 재계산해 싣고(revisePending과 동일 정신),
+        // 실패하면 진입은 유지하되 원본(basePending)으로 미리보기를 보내고 아래에서 재요청 안내를 별도 전송한다.
+        PendingNote toPreview = basePending;
+        boolean coffeeNameRejected = false;
+        boolean triggerApplyFailed = false;
+        try {
+            PendingReviser.ReviseOutcome revised = pendingReviser.revise(basePending, triggerText, today);
+            toPreview = revised.pending().withDateConflict(dateConflict(revised.pending()));
+            coffeeNameRejected = revised.coffeeNameRejected();
+        } catch (Exception reviseFailure) {
+            triggerApplyFailed = true;
+            log.warn("전환 트리거 즉시 적용 실패 — 원본 미리보기로 진입 유지: user={} slug={}", userId, hit.slug(), reviseFailure);
+        }
 
         // put을 먼저 해 재시작 생존(NFR-2/AC-40)을 확보하고, 전송 후 확정된 preview_ts로 재저장한다 —
         // startNewNote와 동일하게 "미리보기 없으면 pending 없음" 불변을 지킨다.
-        pendingStore.put(userId, new PendingNote(PendingNote.Mode.EDIT, draft, editTarget, null, null, now));
+        pendingStore.put(userId, toPreview);
         try {
-            String previewTs = previewMessenger.publish(
-                    channelId, new PendingNote(PendingNote.Mode.EDIT, draft, editTarget, null, null, now));
-            pendingStore.put(userId, new PendingNote(PendingNote.Mode.EDIT, draft, editTarget, null, previewTs, now));
+            String previewTs = previewMessenger.publish(channelId, toPreview);
+            pendingStore.put(userId, toPreview.withPreviewTs(previewTs));
         } catch (Exception publishFailure) {
             pendingStore.clear(userId);
             throw publishFailure;
@@ -117,7 +140,16 @@ class SlackEditFlow {
         // 전환 완료 — 검색 세션의 역할(대상 찾기)은 끝났다. 남기면 수정 중 텍스트가 검색으로 샐 표면만
         // 넓어진다(전환 슬롯이 search류 전환 시 폐기되는 것과 같은 정신, ADR-26 · findings-TΔ0 Q2).
         searchSessionStore.clear(userId);
-        log.info("수정 세션 진입: user={} slug={} date={}", userId, hit.slug(), targetDate);
+        log.info("수정 세션 진입: user={} slug={} date={} triggerApplied={} conflict={}",
+                userId, hit.slug(), targetDate, !triggerApplyFailed, toPreview.dateConflict());
+
+        // 그 턴의 1회성 안내(미리보기와 별도 텍스트): 즉시 적용 실패면 재요청(유실 금지, AC-55), 아니고 커피명
+        // 변경을 시도했으면 거부 안내(V-9). 순수 전환·정상 적용이면 어느 쪽도 아니라 안내가 없다.
+        if (triggerApplyFailed) {
+            responder.post(channelId, FlowMessages.EDIT_TRIGGER_REVISE_FAILED);
+        } else if (coffeeNameRejected) {
+            responder.post(channelId, FlowMessages.EDIT_COFFEE_NAME_REJECTED);
+        }
     }
 
     // edit 커밋(FR-21, AC-37·39, changes/0012 TΔ3) — [저장] 확답 시 대상 노트를 draft로 갱신하고 파생물을 정리한다.

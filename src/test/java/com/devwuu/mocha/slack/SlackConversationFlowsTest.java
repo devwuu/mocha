@@ -180,12 +180,14 @@ class SlackConversationFlowsTest {
      */
     private static final class FakeLlmClient implements LlmClient {
         ExtractionResult canned;
-        RevisionResult cannedRevision;
+        // 기본 무변경 패치(전 필드 null) — cannedRevision을 지정하지 않는 전환 테스트가 "순수 전환"으로 동작하게 한다(TΔ10).
+        RevisionResult cannedRevision = new RevisionResult(null, null, null, null, null, null, null, null, null);
         SearchSelection cannedSelection = new SearchSelection(List.of());
         // 별칭 생성 응답(TΔ2) — 기본은 빈 배열(대다수 커밋 테스트는 별칭을 단언하지 않는다).
         AliasGenerator.AliasResponse cannedAliases = new AliasGenerator.AliasResponse(List.of(), List.of());
         RuntimeException failure;         // 모든 요청 공통 실패
         RuntimeException aliasFailure;    // 별칭 생성 콜만 실패(다른 콜은 정상) — plan §7 수렴 검증용
+        RuntimeException revisionFailure; // 수정(revise) 콜만 실패 — 전환 트리거 즉시 적용 실패 경로 검증용(TΔ10)
         String lastExtractionPrompt;      // 추출 요청 프롬프트 캡처 — TΔ4 photo_hint 배선 검증용
 
         @SuppressWarnings("unchecked")
@@ -201,6 +203,9 @@ class SlackConversationFlowsTest {
                 throw failure;
             }
             if (request.responseType() == RevisionResult.class) {
+                if (revisionFailure != null) {
+                    throw revisionFailure;
+                }
                 return (T) cannedRevision;
             }
             if (request.responseType() == SearchSelection.class) {
@@ -1821,6 +1826,78 @@ class SlackConversationFlowsTest {
         assertEquals(List.of(FlowMessages.EDIT_TARGET_GONE), responder.messages);
         assertTrue(pendingStore.puts.isEmpty(), "수정 세션은 시작되지 않는다(plan §7)");
         assertEquals(0, searchSessionStore.clearCount, "검색 세션은 유지 — 이어서 다른 기록을 찾을 수 있다");
+    }
+
+    // --- TΔ10(changes/0016): 전환 트리거 텍스트 즉시 적용(FR-21, ADR-39, AC-55) ---
+
+    @Test
+    @DisplayName("AC-55/ADR-39: 수정 내용이 담긴 전환 트리거는 진입 직후 즉시 적용돼 ✏️ 미리보기에 반영된 채 도착한다(무변화 커밋 방지)")
+    void enterEditSessionAppliesTriggerTextImmediately() {
+        NoteRepository repo = noteRepository();
+        savedNote(repo, "momos-waikiki", "모모스 와이키키", "모모스", LocalDate.of(2026, 5, 20));
+        searchSessionStore.setSession(
+                new SearchSession(List.of("와이키키"), List.of("momos-waikiki"), 0, OffsetDateTime.now(clock)));
+        llmClient.cannedSelection = new SearchSelection(List.of("momos-waikiki"), true, null);
+        // 전환 트리거 "그거 날짜 엊그제로 바꿔줘" → today(7/11) 기준 7/9로 해석한 date 패치.
+        llmClient.cannedRevision =
+                new RevisionResult(null, null, null, null, null, null, null, null, LocalDate.of(2026, 7, 9));
+
+        flow(repo).searchNotes(message("그거 날짜 엊그제로 바꿔줘"));
+
+        assertNotNull(previewMessenger.published, "✏️ 수정 미리보기가 전송된다");
+        assertEquals(PendingNote.Mode.EDIT, previewMessenger.published.mode());
+        Note draft = previewMessenger.published.draft();
+        assertEquals(LocalDate.of(2026, 7, 9), draft.entries().get(0).date(),
+                "전환 트리거의 날짜 수정이 미리보기 draft에 이미 반영된다(AC-55 — 무변화 커밋 방지)");
+        assertEquals(previewMessenger.ts, pendingStore.puts.get(1).previewTs(), "확정 preview_ts가 재저장된다");
+        assertEquals(LocalDate.of(2026, 7, 9), pendingStore.puts.get(1).draft().entries().get(0).date(),
+                "즉시 적용된 draft가 pending에 영속된다(재시작 생존)");
+        assertEquals(1, searchSessionStore.clearCount, "전환 완료 → 검색 세션 폐기");
+        assertTrue(responder.messages.isEmpty(), "정상 즉시 적용이면 재요청·거부 안내가 없다");
+    }
+
+    @Test
+    @DisplayName("AC-55/ADR-39: 순수 전환 문장은 전 필드 null 패치라 원본 draft 그대로 미리보기가 전송된다(무해)")
+    void enterEditSessionPureTransitionKeepsOriginalDraft() {
+        NoteRepository repo = noteRepository();
+        savedNote(repo, "momos-waikiki", "모모스 와이키키", "모모스", LocalDate.of(2026, 5, 20));
+        searchSessionStore.setSession(
+                new SearchSession(List.of("와이키키"), List.of("momos-waikiki"), 0, OffsetDateTime.now(clock)));
+        llmClient.cannedSelection = new SearchSelection(List.of("momos-waikiki"), true, null);
+        // "그거 수정할래" → 바꿀 필드 없음(전 필드 null) — FakeLlmClient 기본 cannedRevision과 동일.
+        llmClient.cannedRevision = new RevisionResult(null, null, null, null, null, null, null, null, null);
+
+        flow(repo).searchNotes(message("그거 수정할래"));
+
+        Note draft = previewMessenger.published.draft();
+        assertEquals(LocalDate.of(2026, 5, 20), draft.entries().get(0).date(), "날짜 원본 유지");
+        assertEquals("모모스 와이키키", draft.coffeeName().value(), "커피명 원본 유지");
+        assertFalse(previewMessenger.published.dateConflict(), "순수 전환은 날짜 이동 충돌 경고 없음(V-10)");
+        assertTrue(responder.messages.isEmpty(), "안내 문구 없음(무해)");
+        assertEquals(1, searchSessionStore.clearCount, "전환 완료 → 검색 세션 폐기");
+    }
+
+    @Test
+    @DisplayName("AC-55/ADR-39: 전환 트리거 즉시 적용이 실패하면 진입은 유지하되 원본 미리보기 + 재요청 안내가 온다(유실 금지)")
+    void enterEditSessionKeepsEntryAndGuidesWhenTriggerApplyFails() {
+        NoteRepository repo = noteRepository();
+        savedNote(repo, "momos-waikiki", "모모스 와이키키", "모모스", LocalDate.of(2026, 5, 20));
+        searchSessionStore.setSession(
+                new SearchSession(List.of("와이키키"), List.of("momos-waikiki"), 0, OffsetDateTime.now(clock)));
+        llmClient.cannedSelection = new SearchSelection(List.of("momos-waikiki"), true, null);
+        llmClient.revisionFailure = new LlmException("즉시 적용 LLM 오류"); // 검색 후보 선정은 정상, revise만 실패
+
+        flow(repo).searchNotes(message("그거 날짜 엊그제로 바꿔줘"));
+
+        // 진입은 유지 — 원본 draft로 edit pending이 생성·전송된다(수정 세션에 들어간다).
+        assertNotNull(previewMessenger.published, "실패해도 원본 미리보기는 전송된다(진입 유지)");
+        assertEquals(PendingNote.Mode.EDIT, previewMessenger.published.mode());
+        assertEquals(LocalDate.of(2026, 5, 20), previewMessenger.published.draft().entries().get(0).date(),
+                "즉시 적용 실패 시 원본 날짜 그대로");
+        assertEquals(2, pendingStore.puts.size(), "edit pending은 정상 생성된다(전송 전/후 2회 put)");
+        assertEquals(1, searchSessionStore.clearCount, "전환 완료 → 검색 세션 폐기");
+        assertEquals(List.of(FlowMessages.EDIT_TRIGGER_REVISE_FAILED), responder.messages,
+                "수정 내용을 다시 말해달라는 재요청 안내(유실 금지, ADR-39)");
     }
 
     // --- TΔ6(changes/0011): 과거 참조 매치 실패 → TransitionSlot 보관 + 다음 의도 재개(FR-14, ADR-26) ---

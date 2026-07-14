@@ -106,7 +106,7 @@ public class SlackConversationFlows implements ConversationFlows {
         this.photoIntake = new SlackPhotoIntake(pendingStore, responder,
                 photoDownloader, photoStore, photoBufferStore, photoInfoExtractor, bufferWindow, clock);
         SlackEditFlow editFlow = new SlackEditFlow(pendingStore, searchSessionStore, noteRepository, noteRenderer,
-                responder, previewMessenger, photoIntake, clock);
+                responder, previewMessenger, pendingReviser, photoIntake, clock);
         this.recordFlow = new SlackRecordFlow(pendingStore, noteRepository, noteRenderer, responder,
                 noteExtractor, noteMatcher, noteEnricher, aliasGenerator, pendingReviser, previewMessenger, transitionSlot,
                 photoIntake, editFlow, clock);

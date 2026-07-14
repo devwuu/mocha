@@ -51,6 +51,11 @@ public record PendingNote(
         return new PendingNote(mode, draft, target, conflict, match, previewTs, createdAt);
     }
 
+    /** preview_ts만 교체한 사본 — 미리보기 전송 후 확정된 ts를 다른 필드(draft·충돌 플래그) 손실 없이 반영한다. */
+    public PendingNote withPreviewTs(String ts) {
+        return new PendingNote(mode, draft, target, dateConflict, match, ts, createdAt);
+    }
+
     /** 매칭 표기만 교체한 사본 — record 모드 revise로 시음 날짜가 바뀌면 대상 날짜를 재판정해 싣는다(ADR-39, AC-56). */
     public PendingNote withMatch(MatchInfo revisedMatch) {
         return new PendingNote(mode, draft, target, dateConflict, revisedMatch, previewTs, createdAt);
