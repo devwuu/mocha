@@ -48,6 +48,9 @@ public class OpenAiSearchClient implements SearchClient {
     //         (ref: delta 0006 ADR-16, spec FR-3, plan#ADR-15/16, findings-TΔ0).
     // POLICY: roastery(고유명사)는 원문 표기 유지(음차·번역 금지) — 한국어 통일은 나머지 텍스트 필드만(coffee_name은
     //         검색이 만들지 않음), 4계약 프롬프트 동일 인코딩 (ref: plan.md#ADR-38, spec FR-2/AC-57).
+    // POLICY: sources에는 로스터리+원두명 동시 확인 출처만 담는다 — 값 채움과 동일 가드(참고 출처 ≠ 수록 출처).
+    //         동명의 타 로스터리 상품 페이지가 sources에 섞이던 실데이터 회귀 방지, 스키마 불변
+    //         (ref: plan.md#ADR-16 확장, spec FR-3/AC-58).
     private static final String INSTRUCTIONS = """
             너는 커피 원두 정보를 웹 검색으로 보강하는 도우미다. 주어진 커피에 대해 웹을 검색하고 아래 규칙을 반드시 지켜라.
             - 반드시 그 로스터리의 공식 웹사이트(공식 온라인 쇼핑몰)에서 이 원두의 상품 상세 페이지를 찾아라.
@@ -64,7 +67,7 @@ public class OpenAiSearchClient implements SearchClient {
             - roastery는 공식 출처의 원문 표기를 그대로 유지한다 — 음차·번역하지 않는다("FroB Coffee"는 그대로). 한국어 음차·이표기는 내부에서 따로 만드니 여기서 만들지 마라.
             - origin·process·roast_level·official_notes는 한국어로 기록한다(영문 출처는 한국어로 옮겨 적는다). origin은 한국어 지명으로 통일(영문·한글 혼용 금지: "게데오, Gedeb" ❌ → "게데오"), process·roast_level은 한국어 관용 표기로 옮긴다(예: 가공방식 "워시드/내추럴/허니/무산소", 로스팅 "라이트/미디엄/다크" — 고정 목록 아님).
             - 확인되지 않은 값은 추측하지 말고 null(문자열 필드)·빈 배열(리스트)로 둔다.
-            - sources에는 실제로 참고한 출처 URL만 담는다. 최대 %d개.
+            - sources에는 로스터리명과 원두명이 이 원두의 것으로 함께 확인된 출처 URL만 담는다(값 채움과 동일한 동일성 가드). 검색 중 참고했더라도 같은 대상인지 확신할 수 없는 페이지(동명의 다른 상품·지명 등)는 sources에 넣지 마라 — 참고한 출처와 수록할 출처는 다르다. 최대 %d개.
             - 출력은 아래 JSON 객체 하나만, 다른 설명 없이 반환한다:
               {"roastery": string|null, "origin": string|null, "process": string|null, "roast_level": string|null,
                "official_notes": string[], "official_page_url": string|null, "sources": string[]}

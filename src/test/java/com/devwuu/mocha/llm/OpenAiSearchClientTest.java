@@ -166,6 +166,21 @@ class OpenAiSearchClientTest {
 
     // covers AC-Δ8(ADR-38, FR-2/AC-57): 검색 보강이 만드는 roastery(고유명사)는 원문 유지·음차 금지,
     //        나머지 텍스트 필드는 한국어 통일 — 4계약 프롬프트 동일 인코딩을 검색 지침에서 확인한다.
+    // covers AC-Δ9(ADR-16 확장, FR-3/AC-58): sources 동일성 가드 — 로스터리+원두명 동시 확인 출처만 수록,
+    //        참고 출처와 수록 출처를 구분한다. 스키마 불변(지침 문구만 확인 — 파라미터 조립 검사).
+    @Test
+    @DisplayName("AC-Δ9: INSTRUCTIONS가 sources에 로스터리+원두명 동시 확인 출처만 수록하도록 가드한다")
+    void instructionsGuardSourcesByIdentity() {
+        OpenAiSearchClient client =
+                new OpenAiSearchClient(null, "gpt-4o", 3, MochaObjectMapper.create());
+
+        String instructions = client.buildParams(query()).instructions().orElseThrow();
+
+        // sources에 값 채움과 동일한 동일성 가드 적용 — 참고 출처 ≠ 수록 출처.
+        assertThat(instructions).contains("함께 확인된 출처 URL만 담는다");
+        assertThat(instructions).contains("참고한 출처와 수록할 출처는 다르다");
+    }
+
     @Test
     @DisplayName("AC-Δ8: INSTRUCTIONS가 roastery 원문 유지(음차·번역 금지)를 강제한다")
     void instructionsPreserveRoasteryVerbatim() {
