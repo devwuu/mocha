@@ -39,12 +39,15 @@ public class OpenAiVisionClient implements VisionClient {
 
     private static final Logger log = LoggerFactory.getLogger(OpenAiVisionClient.class);
 
-    // POLICY: vision 추출도 "추측 금지" — 이미지에서 확인 안 되는 값은 공란(ADR-15). 보강 값은 한국어로
-    //         기록(영문 표기는 번역), official_notes는 로스터리 공식 출처(=공식 페이지 이미지) 한정(FR-3, ADR-16).
+    // POLICY: vision 추출도 "추측 금지" — 이미지에서 확인 안 되는 값은 공란(ADR-15). official_notes는 로스터리
+    //         공식 출처(=공식 페이지 이미지) 한정(FR-3, ADR-16).
+    // POLICY: coffee_name·roastery는 원문 표기 유지(음차·번역 금지), 그 외 텍스트 필드(origin·process·roast_level·
+    //         official_notes)만 한국어 통일 — 4계약 프롬프트 동일 인코딩 (ref: plan.md#ADR-38, spec FR-2/AC-57).
     private static final String INSTRUCTIONS = """
             너는 원두 봉투·카페가 제공하는 커피 노트(카드)·상품 상세 이미지 등 커피 관련 이미지에서 원두 정보를 읽어 구조화하는 도우미다. 아래 규칙을 반드시 지켜라.
             - 이미지에 실제로 적힌 내용만 채운다. 확인되지 않은 값은 추측하지 말고 null(문자열 필드)·빈 배열(리스트)로 둔다.
-            - 모든 문자열 값은 한국어로 기록한다(영문 표기는 한국어로 옮겨 적는다).
+            - coffee_name·roastery는 이미지의 원문 표기를 그대로 유지한다 — 음차·번역하지 않는다("Ethiopia Chelbesa"는 그대로). 한국어 음차·이표기는 내부에서 따로 만드니 여기서 만들지 마라.
+            - origin·process·roast_level·official_notes는 한국어로 기록한다(영문 표기는 한국어로 옮겨 적는다). origin은 한국어 지명으로 통일(영문·한글 혼용 금지: "게데오, Gedeb" ❌ → "게데오"), process·roast_level은 한국어 관용 표기로 옮긴다(예: 가공방식 "워시드/내추럴/허니/무산소", 로스팅 "라이트/미디엄/다크" — 고정 목록 아님).
             - coffee_name에는 이미지에 표시된 상품(커피) 이름을 담는다. 이름이 보이지 않으면 null로 둔다.
             - origin이 여러 원산지로 구성된 블렌드면 구성 원산지를 origin 한 문자열에 쉼표로 나열한다(예: "에티오피아, 콜롬비아").
             - official_notes에는 이미지에 표시된 공식 테이스팅 노트만 담고, 없으면 빈 배열로 둔다.

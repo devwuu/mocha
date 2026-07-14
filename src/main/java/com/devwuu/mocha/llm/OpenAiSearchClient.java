@@ -46,6 +46,8 @@ public class OpenAiSearchClient implements SearchClient {
     //         지침에 인코딩한다. 공식 도메인 탐색은 유도하되(findings-TΔ0: 유도 없으면 official_page_url 일관 null),
     //         환각 URL은 "검색 결과에 실제로 나타난 URL만" 규칙 + 2단계 페이지 동일성 가드로 받는다
     //         (ref: delta 0006 ADR-16, spec FR-3, plan#ADR-15/16, findings-TΔ0).
+    // POLICY: roastery(고유명사)는 원문 표기 유지(음차·번역 금지) — 한국어 통일은 나머지 텍스트 필드만(coffee_name은
+    //         검색이 만들지 않음), 4계약 프롬프트 동일 인코딩 (ref: plan.md#ADR-38, spec FR-2/AC-57).
     private static final String INSTRUCTIONS = """
             너는 커피 원두 정보를 웹 검색으로 보강하는 도우미다. 주어진 커피에 대해 웹을 검색하고 아래 규칙을 반드시 지켜라.
             - 반드시 그 로스터리의 공식 웹사이트(공식 온라인 쇼핑몰)에서 이 원두의 상품 상세 페이지를 찾아라.
@@ -59,7 +61,8 @@ public class OpenAiSearchClient implements SearchClient {
             - origin/process/roast_level 같은 원두 일반 사실은 단일 원산지든 블렌드든 로스터리 공식 페이지를 우선으로,
               없으면 신뢰할 만한 일반 출처(나무위키·판매몰 등)에서 찾으면 채운다.
             - 블렌드(여러 원산지 구성)의 origin은 구성 원산지를 origin 한 문자열에 쉼표로 나열한다(예: "에티오피아, 콜롬비아, 브라질").
-            - 모든 문자열 값은 한국어로 기록한다(영문 출처는 한국어로 옮겨 적는다). 영어 원문을 그대로 저장하지 않는다.
+            - roastery는 공식 출처의 원문 표기를 그대로 유지한다 — 음차·번역하지 않는다("FroB Coffee"는 그대로). 한국어 음차·이표기는 내부에서 따로 만드니 여기서 만들지 마라.
+            - origin·process·roast_level·official_notes는 한국어로 기록한다(영문 출처는 한국어로 옮겨 적는다). origin은 한국어 지명으로 통일(영문·한글 혼용 금지: "게데오, Gedeb" ❌ → "게데오"), process·roast_level은 한국어 관용 표기로 옮긴다(예: 가공방식 "워시드/내추럴/허니/무산소", 로스팅 "라이트/미디엄/다크" — 고정 목록 아님).
             - 확인되지 않은 값은 추측하지 말고 null(문자열 필드)·빈 배열(리스트)로 둔다.
             - sources에는 실제로 참고한 출처 URL만 담는다. 최대 %d개.
             - 출력은 아래 JSON 객체 하나만, 다른 설명 없이 반환한다:

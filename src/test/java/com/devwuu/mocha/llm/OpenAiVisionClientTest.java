@@ -115,11 +115,28 @@ class OpenAiVisionClientTest {
 
         String instructions = client.buildParams(images(), hint()).instructions().orElseThrow();
 
-        // AC-Δ4: 모든 값 한국어 기록 규칙.
+        // AC-Δ4: 텍스트 필드 한국어 기록 규칙.
         assertThat(instructions).contains("한국어로 기록");
         // AC-Δ3(추측 금지): 이미지에서 확인 안 되는 값은 공란.
         assertThat(instructions).contains("추측하지 말고");
         assertThat(instructions).contains("이미지에 실제로 적힌 내용만");
+    }
+
+    // covers AC-Δ8(ADR-38, FR-2/AC-57): 고유명사(coffee_name·roastery)는 원문 유지·음차 금지, 나머지
+    //        텍스트 필드는 한국어 통일 — 4계약 프롬프트 동일 인코딩을 vision 지침에서 확인한다.
+    @Test
+    @DisplayName("AC-Δ8: INSTRUCTIONS가 coffee_name·roastery 원문 유지(음차·번역 금지)를 강제한다")
+    void instructionsPreserveProperNounVerbatim() {
+        OpenAiVisionClient client =
+                new OpenAiVisionClient(null, "gpt-4o", MochaObjectMapper.create());
+
+        String instructions = client.buildParams(images(), hint()).instructions().orElseThrow();
+
+        assertThat(instructions).contains("coffee_name·roastery는 이미지의 원문 표기를 그대로 유지");
+        assertThat(instructions).contains("음차·번역하지 않는다");
+        // origin 한국어 지명 통일 + process·roast_level 표준 어휘 예시.
+        assertThat(instructions).contains("한국어 지명으로 통일");
+        assertThat(instructions).contains("워시드/내추럴/허니/무산소");
     }
 
     @Test

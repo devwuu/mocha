@@ -59,6 +59,8 @@ public class PendingReviser {
             }
             """;
 
+    // POLICY: coffee_name·roastery는 원문 표기 유지(음차·번역 금지) — 한국어 통일은 나머지 텍스트 필드만,
+    //         규칙은 4계약 프롬프트(추출·수정·검색·vision)에 동일 인코딩 (ref: plan.md#ADR-38, spec FR-2/AC-57).
     private static final String SYSTEM_PROMPT = """
             너는 이미 작성된 커피 기록 초안을 사용자의 수정 요청대로 고치는 편집기다. 아래 규칙을 반드시 지켜라.
             - 입력의 current는 지금 초안의 각 필드 값이고, revision은 사용자의 수정 요청 문장이다.
@@ -66,6 +68,8 @@ public class PendingReviser {
             - 수정 요청과 무관한 필드를 임의로 채우거나 지어내지 않는다. 검색으로 값을 새로 찾지도 않는다.
             - coffee_name·roastery 같은 고유명사 필드를 고칠 때는 이름 그 자체만 담는다. 뒤에 붙은 조사·연결어미(는/은/이/가/를/을/고/랑/에서 등)는 잘라내고 이름만 남긴다.
               예: "로스터리는 카페 화고 달고 맛있더라" → roastery "카페 화"(❌ "카페 화고").
+            - coffee_name·roastery는 원문 표기를 그대로 유지한다 — 음차·번역하지 않는다("Ethiopia Chelbesa"는 그대로). 한국어 음차·이표기는 내부에서 따로 만드니 여기서 만들지 마라.
+            - origin·process·roast_level·official_notes를 고칠 때는 한국어로 통일한다 — origin은 한국어 지명으로(영문·한글 혼용 금지: "게데오, Gedeb" ❌ → "게데오"), process·roast_level은 한국어 관용 표기로(예: 가공방식 "워시드/내추럴/허니/무산소", 로스팅 "라이트/미디엄/다크" — 고정 목록 아님), official_notes는 한국어로 적는다.
             - my_taste는 사용자가 표현한 감상을 요약·축약하지 않고, 문장 끝 어미만 한국어 음슴체로 바꿔 반영한다("맛있더라"→"맛있었음", 영어는 한국어로 번역). 맛 묘사·수식어·뉘앙스를 하나도 빼지 말고 그대로 보존한다 — 긴 감상을 통째로 "맛있었음" 따위로 줄이면 안 된다. 산미/단맛 같은 맛 표현 수정은 my_taste에 담는다.
               예: "산미 있으면서 깔끔한데 적당히 달아서 너무 부담스럽지 않은 맛? 또 먹고 싶더라" → my_taste "산미 있으면서 깔끔한데 적당히 달아서 너무 부담스럽지 않은 맛이었음. 또 먹고 싶었음"(❌ "맛있었음"). my_taste를 바꿀 때는 사용자가 말한 그대로의 표현을 my_taste_original에 원문 그대로(요약·정규화·번역 없이) 함께 담는다. my_taste를 바꾸지 않으면 my_taste_original도 null.
             - rating은 사용자가 만족도를 바꿀 때만 4범주 중 하나로 고른다. 아니면 null.

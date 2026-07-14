@@ -164,6 +164,23 @@ class OpenAiSearchClientTest {
         assertThat(instructions).contains("로스터리명과 원두명이 함께 확인되는 출처만");
     }
 
+    // covers AC-Δ8(ADR-38, FR-2/AC-57): 검색 보강이 만드는 roastery(고유명사)는 원문 유지·음차 금지,
+    //        나머지 텍스트 필드는 한국어 통일 — 4계약 프롬프트 동일 인코딩을 검색 지침에서 확인한다.
+    @Test
+    @DisplayName("AC-Δ8: INSTRUCTIONS가 roastery 원문 유지(음차·번역 금지)를 강제한다")
+    void instructionsPreserveRoasteryVerbatim() {
+        OpenAiSearchClient client =
+                new OpenAiSearchClient(null, "gpt-4o", 3, MochaObjectMapper.create());
+
+        String instructions = client.buildParams(query()).instructions().orElseThrow();
+
+        assertThat(instructions).contains("roastery는 공식 출처의 원문 표기를 그대로 유지");
+        assertThat(instructions).contains("음차·번역하지 않는다");
+        // origin 한국어 지명 통일 + process·roast_level 표준 어휘 예시.
+        assertThat(instructions).contains("한국어 지명으로 통일");
+        assertThat(instructions).contains("워시드/내추럴/허니/무산소");
+    }
+
     @Test
     @DisplayName("AC-Δ4/AC-Δ5: buildInput 검색 앵커에 필드 라벨이 없고 로스터리명+커피명+'원두' 키워드가 자연 검색어로 담긴다")
     void buildInputHasNoFieldLabels() {
