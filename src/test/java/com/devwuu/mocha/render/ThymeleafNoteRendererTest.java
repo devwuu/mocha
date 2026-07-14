@@ -1,6 +1,7 @@
 package com.devwuu.mocha.render;
 
 import com.devwuu.mocha.config.RenderConfig;
+import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
@@ -216,6 +217,44 @@ class ThymeleafNoteRendererTest {
         assertFalse(indexHtml.contains("photos/"), "index에 사진 경로 없음");
         assertFalse(indexHtml.contains("thumbs/"), "index에 썸네일 경로 없음");
         assertFalse(indexHtml.contains("class=\"thumb\""), "index에 썸네일 요소 없음");
+    }
+
+    @Test
+    @DisplayName("AC-Δ10⑥/V-13(changes/0016): aliases를 채운 노트도 카드·인덱스 HTML에 별칭 문자열이 나타나지 않는다")
+    void aliasesNeverAppearInRenderedOutput(@TempDir Path dataDir, @TempDir Path artA, @TempDir Path artB) {
+        NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create());
+        OffsetDateTime now = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
+        NoteMeta meta = new NoteMeta(
+                Sourced.user("예가체프 G1 워시드"),
+                Sourced.user("커피베라"), Sourced.search("에티오피아 예가체프"),
+                Sourced.user("워시드"), Sourced.search("라이트"),
+                Sourced.search(List.of("자몽", "홍차")), List.of());
+        // 별칭은 표시값(커피명·로스터리)과 명확히 다른 마커 문자열 — 렌더에 새면 반드시 검출된다(V-13).
+        Aliases aliases = new Aliases(
+                List.of("yirgacheffe-ALIAS-LEAK", "이르가체프이표기마커"),
+                List.of("coffeevera-ALIAS-LEAK"));
+        // 신규 slug → 별칭이 노트 초기 별칭으로 심긴다(upsertEntry 4-arg, ADR-37).
+        Note saved = repo.upsertEntry("2026-07-10", meta,
+                new Entry(LocalDate.parse("2026-07-10"), "새콤하다.", Rating.GOOD, null, now), aliases);
+        // 가드 유효성 전제: 별칭이 실제로 노트에 심겼다(빈 별칭이면 가드가 무의미해진다).
+        assertFalse(saved.aliases().coffeeName().isEmpty(), "별칭이 노트에 심겼다(가드 유효성 전제)");
+
+        List<String> markers = List.of("yirgacheffe-ALIAS-LEAK", "이르가체프이표기마커", "coffeevera-ALIAS-LEAK");
+        // 두 테마 템플릿 모두 별칭을 참조할 슬롯이 없다(구조적 불변) — 회귀 가드로 두 산출을 확인.
+        for (Theme theme : new Theme[]{Theme.TYPE_A, Theme.TYPE_B}) {
+            Path artifactDir = theme == Theme.TYPE_A ? artA : artB;
+            FakeCardImageRenderer cards = new FakeCardImageRenderer();
+            new ThymeleafNoteRenderer(repo, engine, artifactDir, theme, cards).renderAll();
+
+            String cardHtml = capturedHtml(cards, "cards/2026-07-10/2026-07-10.jpg");
+            String indexHtml = read(artifactDir.resolve("index.html"));
+            for (String marker : markers) {
+                assertFalse(cardHtml.contains(marker), theme + " 카드에 별칭 미출현(V-13): " + marker);
+                assertFalse(indexHtml.contains(marker), theme + " index에 별칭 미출현(V-13): " + marker);
+            }
+            // 별칭만 빠진 것이지 노트 자체가 안 나오는 게 아니다 — 표시값은 정상 렌더.
+            assertTrue(cardHtml.contains("예가체프 G1 워시드"), theme + ": 커피명 표시값은 정상 렌더");
+        }
     }
 
     @Test
