@@ -121,6 +121,7 @@ public class JsonFileNoteRepository implements NoteRepository {
                 existing.process(),
                 existing.roastLevel(),
                 existing.officialNotes(),
+                existing.aliases(), // 별칭도 노트 단위 메타 — 재기록 시 존치(관측 축적은 TΔ3, V-13)
                 existing.sources(),
                 List.copyOf(merged),
                 existing.createdAt(),
@@ -162,6 +163,7 @@ public class JsonFileNoteRepository implements NoteRepository {
                 draft.process(),
                 draft.roastLevel(),
                 draft.officialNotes(),
+                existing.aliases(), // 수정 세션은 별칭을 건드리지 않는다 — 원본 존치(V-13)
                 draft.sources(),
                 List.copyOf(entries),
                 existing.createdAt(),

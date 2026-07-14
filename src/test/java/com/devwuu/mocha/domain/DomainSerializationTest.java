@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.Arrays;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -264,5 +265,57 @@ class DomainSerializationTest {
                     .contains("\"source\":\"" + src.json() + "\"");
             assertThat(restored).isEqualTo(coffeeName);
         }
+    }
+
+    // --- 0016 TΔ1: Note.aliases 필드 + 정규화 대조 유틸 (V-13, changes/0016, ADR-37) ---
+    // 기존 노트 JSON은 삭제·재생성하므로(ADR-28 관례) aliases 부재 로드 호환 테스트는 두지 않는다.
+
+    @Test
+    @DisplayName("0016-TΔ1: aliases를 담은 Note는 snake_case로 직렬화·왕복된다")
+    void noteWithAliasesRoundTrip() throws Exception {
+        Note original = new Note(
+                "ethiopia-chelbesa",
+                Sourced.user("Ethiopia Chelbesa"),
+                Sourced.user("FroB"),
+                Sourced.search("에티오피아"),
+                new Sourced<>(null, Source.SEARCH),
+                new Sourced<>(null, Source.SEARCH),
+                Sourced.search(List.of()),
+                new Aliases(List.of("에티오피아 첼베사"), List.of("프롭", "프로브")),
+                List.of(),
+                List.of(),
+                OffsetDateTime.of(2026, 7, 13, 21, 0, 23, 0, ZoneOffset.ofHours(9)),
+                OffsetDateTime.of(2026, 7, 13, 21, 0, 23, 0, ZoneOffset.ofHours(9))
+        );
+
+        String json = mapper.writeValueAsString(original);
+        Note restored = mapper.readValue(json, Note.class);
+
+        assertThat(json).contains("\"aliases\"")
+                .contains("\"coffee_name\":[\"에티오피아 첼베사\"]")
+                .contains("\"roastery\":[\"프롭\",\"프로브\"]");
+        assertThat(restored).isEqualTo(original);
+    }
+
+    @Test
+    @DisplayName("0016-TΔ1/V-13: 정규화(소문자화·공백 제거) 기준 중복 제거 — 표시 형태는 첫 등장 보존, null·공백 드롭")
+    void aliasesDedupByNormalizedKey() {
+        // "Ethiopia Chelbesa" / "ethiopia chelbesa" / "ETHIOPIACHELBESA" 는 정규화 시 모두 같은 키.
+        Aliases aliases = new Aliases(
+                Arrays.asList("Ethiopia Chelbesa", "ethiopia chelbesa", " ETHIOPIACHELBESA ", "첼베사"),
+                Arrays.asList("FroB", "  ", null, "frob")  // 공백·null·중복(frob) 드롭
+        );
+
+        assertThat(aliases.coffeeName()).containsExactly("Ethiopia Chelbesa", "첼베사"); // 첫 등장 보존
+        assertThat(aliases.roastery()).containsExactly("FroB");                          // 공백·null·frob 중복 제거
+    }
+
+    @Test
+    @DisplayName("0016-TΔ1: normalize는 소문자화 + 모든 공백 제거, null·공백은 빈 키")
+    void aliasNormalizeContract() {
+        assertThat(Aliases.normalize("Ethiopia Chelbesa")).isEqualTo("ethiopiachelbesa");
+        assertThat(Aliases.normalize("  프롭  커피 ")).isEqualTo("프롭커피");
+        assertThat(Aliases.normalize(null)).isEmpty();
+        assertThat(Aliases.normalize("   ")).isEmpty();
     }
 }

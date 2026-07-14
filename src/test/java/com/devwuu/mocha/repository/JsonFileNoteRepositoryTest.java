@@ -30,11 +30,27 @@ class JsonFileNoteRepositoryTest {
     private static final Clock FIXED =
             Clock.fixed(Instant.parse("2026-07-10T00:30:00Z"), ZoneId.of("Asia/Seoul"));
 
+    private final tools.jackson.databind.ObjectMapper mapper = MochaObjectMapper.create();
+
     private JsonFileNoteRepository repo;
+    private java.nio.file.Path dataDir;
 
     @BeforeEach
     void setUp(@TempDir java.nio.file.Path dataDir) {
-        repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create(), FIXED);
+        this.dataDir = dataDir;
+        repo = new JsonFileNoteRepository(dataDir, mapper, FIXED);
+    }
+
+    /** TΔ2/TΔ3 커밋 배선 전 단계라 upsertEntry로는 aliases를 못 채운다 — notes/ 파일에 직접 seed. */
+    private void seedNoteFile(Note note) {
+        try {
+            java.nio.file.Path notesDir = dataDir.resolve("notes");
+            java.nio.file.Files.createDirectories(notesDir);
+            java.nio.file.Files.write(notesDir.resolve(note.slug() + ".json"),
+                    mapper.writeValueAsBytes(note));
+        } catch (java.io.IOException e) {
+            throw new java.io.UncheckedIOException(e);
+        }
     }
 
     private static NoteMeta sampleMeta() {
@@ -186,6 +202,39 @@ class JsonFileNoteRepositoryTest {
         assertThat(updated.entries().getFirst().myTaste()).isEqualTo("이동해 온 9일 기록");
         assertThat(repo.findBySlug(slug)).get()
                 .extracting(n -> n.entries().size()).isEqualTo(1);
+    }
+
+    // ── 0016 TΔ1: Note.aliases 실파일 왕복·존치 (V-13, changes/0016, ADR-37) ──────
+
+    @Test
+    @DisplayName("0016-TΔ1/V-13: aliases 담긴 노트가 @TempDir 실파일로 저장·복원되고, 재기록·수정에도 존치된다")
+    void aliasesSurviveRealFileRoundTripAndReRecord() {
+        String slug = "ethiopia-chelbesa";
+        LocalDate day1 = LocalDate.of(2026, 7, 9);
+        // TΔ2/TΔ3 배선 전이므로 upsertEntry는 aliases를 채우지 못한다 — 파일에 직접 별칭을 실어 저장 후 로드.
+        Note seeded = new Note(
+                slug,
+                Sourced.user("Ethiopia Chelbesa"), Sourced.user("FroB"),
+                Sourced.search("에티오피아"), new com.devwuu.mocha.domain.Sourced<>(null, com.devwuu.mocha.domain.Source.SEARCH),
+                new com.devwuu.mocha.domain.Sourced<>(null, com.devwuu.mocha.domain.Source.SEARCH),
+                Sourced.search(List.of()),
+                new com.devwuu.mocha.domain.Aliases(List.of("에티오피아 첼베사"), List.of("프롭")),
+                List.of(),
+                List.of(entry(day1, "새콤")),
+                OffsetDateTime.now(FIXED), OffsetDateTime.now(FIXED)
+        );
+        seedNoteFile(seeded);
+
+        // 실파일 왕복
+        Note loaded = repo.findBySlug(slug).orElseThrow();
+        assertThat(loaded.aliases().coffeeName()).containsExactly("에티오피아 첼베사");
+        assertThat(loaded.aliases().roastery()).containsExactly("프롭");
+
+        // 다른 날 재기록(withMergedEntry) — 별칭 존치
+        Note reRecorded = repo.upsertEntry(slug, sampleMeta(), entry(LocalDate.of(2026, 7, 10), "10일"));
+        assertThat(reRecorded.aliases()).isEqualTo(seeded.aliases());
+        assertThat(repo.findBySlug(slug)).get()
+                .extracting(n -> n.aliases().coffeeName()).isEqualTo(List.of("에티오피아 첼베사"));
     }
 
     @Test
