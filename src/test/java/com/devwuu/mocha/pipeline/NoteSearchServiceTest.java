@@ -1,5 +1,6 @@
 package com.devwuu.mocha.pipeline;
 
+import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.Rating;
@@ -50,6 +51,7 @@ class NoteSearchServiceTest {
     private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
     private static final Clock FIXED = Clock.fixed(Instant.parse("2026-07-11T02:00:00Z"), SEOUL);
     private static final OffsetDateTime SESSION_STARTED = OffsetDateTime.now(FIXED).minusMinutes(10);
+    private static final LocalDate TODAY = LocalDate.now(FIXED); // 2026-07-11(Asia/Seoul) — 상대 날짜 해석 근거(TΔ8)
 
     private final CapturingLlmClient llm = new CapturingLlmClient();
 
@@ -83,10 +85,11 @@ class NoteSearchServiceTest {
                 0, SESSION_STARTED);
         llm.response = new SearchSelection(List.of("coffeevera-yirgacheffe-g1"));
 
-        service(0).handle("두 번째", Optional.of(session), NOTES);
+        service(0).handle("두 번째", TODAY, Optional.of(session), NOTES);
 
         String userPrompt = llm.captured.userPrompt();
         assertThat(userPrompt).contains("\"message\":\"두 번째\"");
+        assertThat(userPrompt).contains("\"today\":\"2026-07-11\""); // 상대 날짜 해석 근거(TΔ8)
         assertThat(userPrompt).contains("저번에 마신 예가체프"); // 기존 단서 누적
         assertThat(userPrompt).contains("\"presented_candidates\":[\"coffeevera-yirgacheffe-g1\",\"momos-waikiki\"]");
         assertThat(userPrompt).contains("\"edit_date_options\":[]"); // 날짜 선택 대기 아님 → 빈 목록(changes/0012)
@@ -97,11 +100,29 @@ class NoteSearchServiceTest {
     }
 
     @Test
+    @DisplayName("TΔ8: notes 페이로드에 aliases(coffee_name·roastery 통합)가 실린다 (data-model §4.2, changes/0016)")
+    void includesAliasesInPayload() {
+        Note aliased = new Note(
+                "ethiopia-chelbesa", Sourced.user("Ethiopia Chelbesa"), Sourced.user("FroB"),
+                Sourced.search("에티오피아"), null, null, Sourced.search(List.of()),
+                new Aliases(List.of("에티오피아 첼베사"), List.of("프롭", "프로브")),
+                List.of(), List.of(new Entry(LocalDate.of(2026, 7, 13), "좋았다", Rating.GOOD, null, OffsetDateTime.now(FIXED))),
+                OffsetDateTime.now(FIXED), OffsetDateTime.now(FIXED));
+        llm.response = new SearchSelection(List.of());
+
+        service(0).handle("첼베사 찾아줘", TODAY, Optional.empty(), List.of(aliased));
+
+        String userPrompt = llm.captured.userPrompt();
+        // coffee_name·roastery 별칭이 하나의 통합 목록으로(표시값 자체는 aliases에 미수록, V-13)
+        assertThat(userPrompt).contains("\"aliases\":[\"에티오피아 첼베사\",\"프롭\",\"프로브\"]");
+    }
+
+    @Test
     @DisplayName("스키마: candidate_slugs + 수정 신호(edit_requested·edit_target_date)를 strict로 강제한다 (data-model §4.2, changes/0012)")
     void enforcesSelectionSchema() {
         llm.response = new SearchSelection(List.of());
 
-        service(0).handle("예가체프", Optional.empty(), NOTES);
+        service(0).handle("예가체프", TODAY, Optional.empty(), NOTES);
 
         String schema = llm.captured.jsonSchema();
         assertThat(schema).contains("\"candidate_slugs\"");
@@ -117,7 +138,7 @@ class NoteSearchServiceTest {
     void singleMatchOutcome() {
         llm.response = new SearchSelection(List.of("coffeevera-yirgacheffe-g1"));
 
-        SearchOutcome outcome = service(0).handle("저번에 마신 예가체프 찾아줘", Optional.empty(), NOTES);
+        SearchOutcome outcome = service(0).handle("저번에 마신 예가체프 찾아줘", TODAY, Optional.empty(), NOTES);
 
         assertThat(outcome.type()).isEqualTo(SearchOutcome.Type.SINGLE_MATCH);
         assertThat(outcome.hits()).hasSize(1);
@@ -135,7 +156,7 @@ class NoteSearchServiceTest {
     void multipleCandidatesOutcome() {
         llm.response = new SearchSelection(List.of("momos-waikiki", "coffeevera-yirgacheffe-g1"));
 
-        SearchOutcome outcome = service(0).handle("작년에 마신 거", Optional.empty(), NOTES);
+        SearchOutcome outcome = service(0).handle("작년에 마신 거", TODAY, Optional.empty(), NOTES);
 
         assertThat(outcome.type()).isEqualTo(SearchOutcome.Type.MULTIPLE_CANDIDATES);
         assertThat(outcome.hits()).extracting(SearchHit::slug)
@@ -151,7 +172,7 @@ class NoteSearchServiceTest {
                 List.of("예가체프"), List.of("momos-waikiki"), 1, SESSION_STARTED);
         llm.response = new SearchSelection(List.of());
 
-        SearchOutcome outcome = service(0).handle("5월쯤이었어", Optional.of(session), NOTES);
+        SearchOutcome outcome = service(0).handle("5월쯤이었어", TODAY, Optional.of(session), NOTES);
 
         assertThat(outcome.type()).isEqualTo(SearchOutcome.Type.NO_MATCH);
         assertThat(outcome.session().requeryCount()).isEqualTo(2);
@@ -167,7 +188,7 @@ class NoteSearchServiceTest {
     void filtersHallucinatedSlugs() {
         llm.response = new SearchSelection(List.of("ghost-coffee", "another-ghost"));
 
-        SearchOutcome outcome = service(0).handle("예가체프", Optional.empty(), NOTES);
+        SearchOutcome outcome = service(0).handle("예가체프", TODAY, Optional.empty(), NOTES);
 
         assertThat(outcome.type()).isEqualTo(SearchOutcome.Type.NO_MATCH);
     }
@@ -177,7 +198,7 @@ class NoteSearchServiceTest {
     void keepsOnlyExistingSlugs() {
         llm.response = new SearchSelection(List.of("ghost-coffee", "momos-waikiki"));
 
-        SearchOutcome outcome = service(0).handle("와이키키", Optional.empty(), NOTES);
+        SearchOutcome outcome = service(0).handle("와이키키", TODAY, Optional.empty(), NOTES);
 
         assertThat(outcome.type()).isEqualTo(SearchOutcome.Type.SINGLE_MATCH);
         assertThat(outcome.hits().get(0).slug()).isEqualTo("momos-waikiki");
@@ -191,7 +212,7 @@ class NoteSearchServiceTest {
         SearchSession session = new SearchSession(List.of("예가체프"), List.of(), 2, SESSION_STARTED);
         llm.response = new SearchSelection(List.of());
 
-        SearchOutcome outcome = service(2).handle("몰라 그냥 찾아봐", Optional.of(session), NOTES);
+        SearchOutcome outcome = service(2).handle("몰라 그냥 찾아봐", TODAY, Optional.of(session), NOTES);
 
         assertThat(outcome.type()).isEqualTo(SearchOutcome.Type.LIMIT_REACHED);
         assertThat(outcome.session()).isNull();
@@ -204,7 +225,7 @@ class NoteSearchServiceTest {
         SearchSession session = new SearchSession(List.of("예가체프"), List.of(), 1, SESSION_STARTED);
         llm.response = new SearchSelection(List.of());
 
-        SearchOutcome outcome = service(2).handle("작년 겨울쯤", Optional.of(session), NOTES);
+        SearchOutcome outcome = service(2).handle("작년 겨울쯤", TODAY, Optional.of(session), NOTES);
 
         assertThat(outcome.type()).isEqualTo(SearchOutcome.Type.NO_MATCH);
         assertThat(outcome.session().requeryCount()).isEqualTo(2);
@@ -216,7 +237,7 @@ class NoteSearchServiceTest {
         SearchSession session = new SearchSession(List.of("예가체프"), List.of(), 99, SESSION_STARTED);
         llm.response = new SearchSelection(List.of());
 
-        SearchOutcome outcome = service(0).handle("음 잘 모르겠어", Optional.of(session), NOTES);
+        SearchOutcome outcome = service(0).handle("음 잘 모르겠어", TODAY, Optional.of(session), NOTES);
 
         assertThat(outcome.type()).isEqualTo(SearchOutcome.Type.NO_MATCH);
         assertThat(outcome.session().requeryCount()).isEqualTo(100);
@@ -231,7 +252,7 @@ class NoteSearchServiceTest {
                 List.of("모모스 와이키키 찾아줘"), List.of("momos-waikiki"), 0, SESSION_STARTED);
         llm.response = new SearchSelection(List.of("momos-waikiki"), true, null);
 
-        SearchOutcome outcome = service(0).handle("그거 수정할래", Optional.of(session), NOTES);
+        SearchOutcome outcome = service(0).handle("그거 수정할래", TODAY, Optional.of(session), NOTES);
 
         assertThat(outcome.type()).isEqualTo(SearchOutcome.Type.EDIT_TARGET_CONFIRMED);
         assertThat(outcome.hits()).extracting(SearchHit::slug).containsExactly("momos-waikiki");
@@ -244,7 +265,7 @@ class NoteSearchServiceTest {
     void editRequestWithMultipleEntriesPresentsDateChoices() {
         llm.response = new SearchSelection(List.of("coffeevera-yirgacheffe-g1"), true, null);
 
-        SearchOutcome outcome = service(0).handle("예가체프 기록 고쳐줘", Optional.empty(), NOTES);
+        SearchOutcome outcome = service(0).handle("예가체프 기록 고쳐줘", TODAY, Optional.empty(), NOTES);
 
         assertThat(outcome.type()).isEqualTo(SearchOutcome.Type.EDIT_DATE_CHOICES);
         assertThat(outcome.editDateChoices())
@@ -261,7 +282,7 @@ class NoteSearchServiceTest {
                 "coffeevera-yirgacheffe-g1");
         llm.response = new SearchSelection(List.of(), false, "2026-06-01");
 
-        SearchOutcome outcome = service(0).handle("첫 번째 거", Optional.of(session), NOTES);
+        SearchOutcome outcome = service(0).handle("첫 번째 거", TODAY, Optional.of(session), NOTES);
 
         assertThat(llm.captured.userPrompt())
                 .contains("\"edit_date_options\":[\"2026-06-01\",\"2026-07-01\"]"); // 제시 순서 그대로 컨텍스트 주입
@@ -278,7 +299,7 @@ class NoteSearchServiceTest {
                 "coffeevera-yirgacheffe-g1");
         llm.response = new SearchSelection(List.of(), false, "2026-01-01"); // 목록에 없는 날짜(환각)
 
-        SearchOutcome outcome = service(0).handle("1월 1일 거", Optional.of(session), NOTES);
+        SearchOutcome outcome = service(0).handle("1월 1일 거", TODAY, Optional.of(session), NOTES);
 
         assertThat(outcome.type()).isEqualTo(SearchOutcome.Type.EDIT_DATE_CHOICES);
         assertThat(outcome.editDateChoices())
@@ -292,7 +313,7 @@ class NoteSearchServiceTest {
         llm.response = new SearchSelection(
                 List.of("coffeevera-yirgacheffe-g1", "momos-waikiki"), true, null);
 
-        SearchOutcome outcome = service(0).handle("저번에 마신 거 고치고 싶어", Optional.empty(), NOTES);
+        SearchOutcome outcome = service(0).handle("저번에 마신 거 고치고 싶어", TODAY, Optional.empty(), NOTES);
 
         assertThat(outcome.type()).isEqualTo(SearchOutcome.Type.MULTIPLE_CANDIDATES);
         assertThat(outcome.session().pendingEditSlug()).isNull();
@@ -305,7 +326,7 @@ class NoteSearchServiceTest {
                 List.of("예가체프 고쳐줘"), List.of("ghost-coffee"), 0, SESSION_STARTED, "ghost-coffee");
         llm.response = new SearchSelection(List.of());
 
-        SearchOutcome outcome = service(0).handle("음", Optional.of(session), NOTES);
+        SearchOutcome outcome = service(0).handle("음", TODAY, Optional.of(session), NOTES);
 
         assertThat(outcome.type()).isEqualTo(SearchOutcome.Type.NO_MATCH); // 날짜 재제시가 아니라 일반 재질문
         assertThat(outcome.session().pendingEditSlug()).isNull();
@@ -316,7 +337,7 @@ class NoteSearchServiceTest {
     @Test
     @DisplayName("노트가 0건이면 LLM을 호출하지 않고 무후보로 수렴한다")
     void skipsLlmWhenNoNotes() {
-        SearchOutcome outcome = service(0).handle("예가체프 찾아줘", Optional.empty(), List.of());
+        SearchOutcome outcome = service(0).handle("예가체프 찾아줘", TODAY, Optional.empty(), List.of());
 
         assertThat(llm.calls).isZero();
         assertThat(outcome.type()).isEqualTo(SearchOutcome.Type.NO_MATCH);

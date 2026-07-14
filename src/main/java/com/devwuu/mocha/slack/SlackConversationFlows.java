@@ -111,7 +111,7 @@ public class SlackConversationFlows implements ConversationFlows {
                 noteExtractor, noteMatcher, noteEnricher, aliasGenerator, pendingReviser, previewMessenger, transitionSlot,
                 photoIntake, editFlow, clock);
         this.searchFlow = new SlackSearchFlow(searchSessionStore, noteSearchService, noteRepository, noteRenderer,
-                responder, transitionSlot, editFlow, artifactDir);
+                responder, transitionSlot, editFlow, artifactDir, clock);
     }
 
     @Override

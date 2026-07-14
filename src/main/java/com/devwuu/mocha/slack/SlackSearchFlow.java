@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
@@ -38,6 +39,7 @@ class SlackSearchFlow {
     private final TransitionSlot transitionSlot;
     private final SlackEditFlow editFlow;
     private final Path artifactDir;
+    private final Clock clock;
 
     SlackSearchFlow(
             SearchSessionStore searchSessionStore,
@@ -47,7 +49,8 @@ class SlackSearchFlow {
             SlackResponder responder,
             TransitionSlot transitionSlot,
             SlackEditFlow editFlow,
-            Path artifactDir) {
+            Path artifactDir,
+            Clock clock) {
         this.searchSessionStore = searchSessionStore;
         this.noteSearchService = noteSearchService;
         this.noteRepository = noteRepository;
@@ -56,6 +59,7 @@ class SlackSearchFlow {
         this.transitionSlot = transitionSlot;
         this.editFlow = editFlow;
         this.artifactDir = artifactDir;
+        this.clock = clock;
     }
 
     /** 검색 세션 시작/계속(FR-20, ADR-25) — {@link ConversationFlows#searchNotes}의 실제 구현. */
@@ -75,7 +79,8 @@ class SlackSearchFlow {
             responder.post(channelId, FlowMessages.SEARCH_STARTED);
         }
         try {
-            SearchOutcome outcome = noteSearchService.handle(message.text(), existing, noteRepository.findAll());
+            SearchOutcome outcome = noteSearchService.handle(
+                    message.text(), LocalDate.now(clock), existing, noteRepository.findAll());
             switch (outcome.type()) {
                 case SINGLE_MATCH -> {
                     searchSessionStore.put(userId, outcome.session());

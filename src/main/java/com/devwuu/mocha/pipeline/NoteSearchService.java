@@ -1,5 +1,6 @@
 package com.devwuu.mocha.pipeline;
 
+import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.SearchSession;
@@ -66,8 +67,10 @@ public class NoteSearchService {
 
     private static final String SYSTEM_PROMPT = """
             너는 사용자의 커피 시음 기록(노트) 중에서 사용자가 찾는 기록의 후보를 고르는 검색기다.
-            입력 JSON: message(이번 텍스트), clues(이 검색 세션의 누적 단서), presented_candidates(직전에 제시한 후보 slug — 제시 순서), edit_date_options(수정 대상으로 제시한 엔트리 날짜 목록 — 제시 순서), notes(전체 노트 메타).
+            입력 JSON: message(이번 텍스트), today(오늘 날짜, Asia/Seoul), clues(이 검색 세션의 누적 단서), presented_candidates(직전에 제시한 후보 slug — 제시 순서), edit_date_options(수정 대상으로 제시한 엔트리 날짜 목록 — 제시 순서), notes(전체 노트 메타 — aliases는 내부 이표기·음차).
             - notes에 실제로 있는 slug만 candidate_slugs에 담는다. slug를 지어내지 않는다.
+            - "엊그제 마신 거", "어제", "지난주" 같은 상대 날짜 단서는 today를 기준으로 실제 날짜로 환산해 노트의 last_tasted와 대조한다.
+            - notes의 aliases(이표기·음차)도 커피명·로스터리 대조에 함께 쓴다 — 표기가 갈린 단서도 같은 노트를 가리키게 한다.
             - 단서가 하나의 노트를 확신 있게 가리키면 그 slug 1개만 담는다.
             - 여러 노트가 그럴듯하면 관련도 순으로 모두 담는다.
             - 들어맞는 노트가 없으면 빈 배열로 둔다. 억지로 고르지 않는다.
@@ -98,11 +101,12 @@ public class NoteSearchService {
      * 있으면 계속(단서 누적·직전 후보를 선택 해석 기준으로 주입)이다.
      *
      * @param text            이번 수신 텍스트(최초 질의·추가 단서·"두 번째" 같은 선택 답 전부).
+     * @param today           오늘 날짜(Asia/Seoul) — "엊그제 마신 거" 상대 날짜 단서 해석 근거(data-model §4.2, changes/0016).
      * @param existingSession 진행 중 세션(TTL 내). 비어 있으면 새 세션을 시작한다.
      * @param notes           후보 선정 대상 전체 노트. 비어 있으면 LLM 호출 없이 무후보로 수렴한다.
      * @throws LlmException 후보 선정 호출/스키마 실패(plan §7 — 호출부는 세션을 유지하고 안내로 수렴).
      */
-    public SearchOutcome handle(String text, Optional<SearchSession> existingSession, List<Note> notes) {
+    public SearchOutcome handle(String text, LocalDate today, Optional<SearchSession> existingSession, List<Note> notes) {
         SearchSession base = existingSession.orElseGet(
                 () -> new SearchSession(List.of(), List.of(), 0, OffsetDateTime.now(clock)));
         List<String> clues = appended(base.clues(), text);
@@ -115,7 +119,7 @@ public class NoteSearchService {
 
         SearchSelection selection = notes.isEmpty()
                 ? new SearchSelection(List.of())
-                : select(text, clues, base.candidateSlugs(), dateOptions, notes);
+                : select(text, today, clues, base.candidateSlugs(), dateOptions, notes);
 
         // 날짜 선택 답변 판정(AC-42) — 제시 목록에 실존하는 날짜만 인정한다(환각 필터와 동일 정신).
         if (editPending != null) {
@@ -178,9 +182,9 @@ public class NoteSearchService {
 
     // data-model §4.2 요청을 조립해 LLM 후보 선정(+수정 의도 신호)을 호출한다.
     private SearchSelection select(
-            String text, List<String> clues, List<String> presentedCandidates,
+            String text, LocalDate today, List<String> clues, List<String> presentedCandidates,
             List<LocalDate> editDateOptions, List<Note> notes) {
-        String userPrompt = buildUserPrompt(text, clues, presentedCandidates, editDateOptions, notes);
+        String userPrompt = buildUserPrompt(text, today, clues, presentedCandidates, editDateOptions, notes);
         return llmClient.complete(new LlmRequest<>(
                 SCHEMA_NAME, JSON_SCHEMA, SYSTEM_PROMPT, userPrompt, SearchSelection.class));
     }
@@ -199,12 +203,12 @@ public class NoteSearchService {
     }
 
     private String buildUserPrompt(
-            String text, List<String> clues, List<String> presentedCandidates,
+            String text, LocalDate today, List<String> clues, List<String> presentedCandidates,
             List<LocalDate> editDateOptions, List<Note> notes) {
         List<NotePayload> payloads = notes.stream().map(NoteSearchService::payloadOf).toList();
         try {
             return mapper.writeValueAsString(
-                    new SearchRequest(text, clues, presentedCandidates, editDateOptions, payloads));
+                    new SearchRequest(text, today, clues, presentedCandidates, editDateOptions, payloads));
         } catch (RuntimeException e) {
             throw new LlmException("검색 후보 선정 요청 직렬화 실패", e);
         }
@@ -267,14 +271,17 @@ public class NoteSearchService {
 
     /** data-model.md#4.2 요청 스키마 대응 내부 페이로드(snake_case 직렬화). */
     private record SearchRequest(
-            String message, List<String> clues, List<String> presentedCandidates,
+            String message, LocalDate today, List<String> clues, List<String> presentedCandidates,
             List<LocalDate> editDateOptions, List<NotePayload> notes) {
     }
 
-    /** 후보 선정 컨텍스트에 싣는 노트 메타 축약 — 커피명·로스터리·원산지·official_notes·최근 시음일(FR-20). */
+    /**
+     * 후보 선정 컨텍스트에 싣는 노트 메타 축약 — 커피명·로스터리·별칭·원산지·official_notes·최근 시음일(FR-20).
+     * 별칭은 표기가 갈린 단서도 같은 노트를 가리키게 하는 대조 재료다(changes/0016 TΔ8, data-model §4.2).
+     */
     private record NotePayload(
-            String slug, String coffeeName, String roastery, String origin,
-            List<String> officialNotes, LocalDate lastTasted) {
+            String slug, String coffeeName, String roastery, List<String> aliases,
+            String origin, List<String> officialNotes, LocalDate lastTasted) {
     }
 
     private static NotePayload payloadOf(Note note) {
@@ -282,8 +289,19 @@ public class NoteSearchService {
                 note.slug(),
                 note.coffeeName() == null ? null : note.coffeeName().value(),
                 note.roastery() == null ? null : note.roastery().value(),
+                combinedAliases(note),
                 note.origin() == null ? null : note.origin().value(),
                 note.officialNotes() == null ? null : note.officialNotes().value(),
                 latestDate(note));
+    }
+
+    // coffee_name·roastery 별칭을 하나의 통합 목록으로 — data-model §4.2 notes.aliases(이표기 통합).
+    private static List<String> combinedAliases(Note note) {
+        if (note.aliases() == null) {
+            return List.of();
+        }
+        List<String> merged = new ArrayList<>(note.aliases().coffeeName());
+        merged.addAll(note.aliases().roastery());
+        return Aliases.dedupNormalized(merged);
     }
 }
