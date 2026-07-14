@@ -76,6 +76,7 @@ public class NoteSearchService {
             - 들어맞는 노트가 없으면 빈 배열로 둔다. 억지로 고르지 않는다.
             - "첫 번째", "두 번째" 같은 선택 표현은 presented_candidates의 제시 순서로 해석한다.
             - 사용자가 찾은 기록을 고치고/수정하고 싶다는 의도("그거 수정할래", "날짜 고쳐줘")면 edit_requested를 true로 하고 대상 노트 slug를 candidate_slugs에 담는다.
+            - 수정 의도(edit_requested=true)로 직전에 제시한 기록을 가리키면(presented_candidates), 그 slug를 candidate_slugs에 유지한다. 상대 날짜 단서("어제 마신 거야")가 노트의 last_tasted와 안 맞더라도 후보에서 빼지 않는다 — 그 날짜는 검색 조건이 아니라 사용자가 고치려는 목표값일 수 있다.
             - edit_date_options가 비어 있지 않으면 사용자는 고칠 기록의 날짜를 고르는 중이다 — 이번 텍스트가 그 목록의 날짜를 가리키면("두 번째", "7월 1일 거") edit_target_date에 그 날짜를 YYYY-MM-DD로 담는다. 목록에 없는 날짜를 지어내지 않는다.
             """;
 
@@ -135,6 +136,19 @@ public class NoteSearchService {
         List<Note> matched = existingOnly(selection.candidateSlugs(), notes);
 
         if (matched.isEmpty()) {
+            // 수정 의도인데 신규 후보를 못 잡았고(상대 날짜가 수정 목표값이라 검색 필터로는 안 맞는 등), 날짜 선택
+            // 대기가 아니면서 직전 제시한 단일 후보가 실존하면 그 노트를 수정 대상으로 이어받는다 — 방금 보여준
+            // 카드에 대한 "그거 수정" 지시가 재질문 루프에 갇히지 않게 한다 — 서버 결정적 안전망(NoteMatcher
+            // 별칭 대조와 동일 정신) (ref: spec FR-21/AC-55, plan.md#ADR-39, changes/0016 AC-Δ6).
+            if (selection.editRequested() && editPending == null) {
+                List<Note> presented = existingOnly(base.candidateSlugs(), notes);
+                if (presented.size() == 1) {
+                    SearchOutcome transition = editTransition(presented.get(0), clues, base);
+                    if (transition != null) {
+                        return transition;
+                    }
+                }
+            }
             // 날짜 선택 대기 중인데 날짜도 새 후보도 해석하지 못했다 → 날짜 목록을 다시 제시한다(선택 계속, AC-42).
             if (editPending != null) {
                 SearchSession next = new SearchSession(
@@ -152,32 +166,40 @@ public class NoteSearchService {
             return new SearchOutcome(SearchOutcome.Type.NO_MATCH, next, List.of());
         }
 
-        List<SearchHit> hits = matched.stream().map(NoteSearchService::hitOf).toList();
-        List<String> slugs = matched.stream().map(Note::slug).toList();
-
         // 수정 의도 + 대상 노트 단일 확정(FR-21) — 엔트리 1건이면 즉시 전환 확정, 복수면 날짜 목록 선택(AC-42).
         if (selection.editRequested() && matched.size() == 1) {
-            Note target = matched.get(0);
-            List<LocalDate> dates = entryDates(target);
-            if (dates.size() == 1) {
-                SearchSession next = new SearchSession(
-                        clues, slugs, base.requeryCount(), base.createdAt(), target.slug());
-                return new SearchOutcome(SearchOutcome.Type.EDIT_TARGET_CONFIRMED, next, hits, dates.get(0), List.of());
-            }
-            if (dates.size() > 1) {
-                SearchSession next = new SearchSession(
-                        clues, slugs, base.requeryCount(), base.createdAt(), target.slug());
-                return new SearchOutcome(SearchOutcome.Type.EDIT_DATE_CHOICES, next, hits, null, dates);
+            SearchOutcome transition = editTransition(matched.get(0), clues, base);
+            if (transition != null) {
+                return transition;
             }
             // 엔트리 0건(비정상 데이터)은 전환할 대상 date가 없다 — 일반 검색 분기로 폴백.
         }
 
+        List<SearchHit> hits = matched.stream().map(NoteSearchService::hitOf).toList();
+        List<String> slugs = matched.stream().map(Note::slug).toList();
         // 새 후보가 잡히면 날짜 선택 대기 상태는 해제된다 — 화제가 다른 노트로 옮겨간 것(pendingEditSlug 미보존).
         SearchSession next = new SearchSession(clues, slugs, base.requeryCount(), base.createdAt());
         SearchOutcome.Type type = hits.size() == 1
                 ? SearchOutcome.Type.SINGLE_MATCH
                 : SearchOutcome.Type.MULTIPLE_CANDIDATES;
         return new SearchOutcome(type, next, hits);
+    }
+
+    // 수정 전환 대상 확정 판정 — 엔트리 1건이면 즉시 전환(EDIT_TARGET_CONFIRMED, 그 엔트리 date),
+    // 복수면 날짜 목록 선택(EDIT_DATE_CHOICES). 엔트리 0건(비정상 데이터)은 전환할 date가 없어 null
+    // (일반 검색 분기로 폴백). 대상은 신규 매칭이든 직전 제시분 이어받기든 동일하게 처리한다(FR-21/AC-42).
+    private SearchOutcome editTransition(Note target, List<String> clues, SearchSession base) {
+        List<LocalDate> dates = entryDates(target);
+        if (dates.isEmpty()) {
+            return null;
+        }
+        List<SearchHit> hits = List.of(hitOf(target));
+        List<String> slugs = List.of(target.slug());
+        SearchSession next = new SearchSession(
+                clues, slugs, base.requeryCount(), base.createdAt(), target.slug());
+        return dates.size() == 1
+                ? new SearchOutcome(SearchOutcome.Type.EDIT_TARGET_CONFIRMED, next, hits, dates.get(0), List.of())
+                : new SearchOutcome(SearchOutcome.Type.EDIT_DATE_CHOICES, next, hits, null, dates);
     }
 
     // data-model §4.2 요청을 조립해 LLM 후보 선정(+수정 의도 신호)을 호출한다.

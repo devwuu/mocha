@@ -332,6 +332,66 @@ class NoteSearchServiceTest {
         assertThat(outcome.session().pendingEditSlug()).isNull();
     }
 
+    // --- changes/0016 AC-Δ6: 제시 카드 이어받기(수정 의도 + 후보 공백) ---
+
+    @Test
+    @DisplayName("AC-Δ6 회귀: 카드 제시 후 수정 의도인데 LLM이 후보를 비워도(상대 날짜가 수정 목표값이라 필터 미스) 직전 단일 후보를 수정 대상으로 이어받는다")
+    void editRequestFallsBackToPresentedSingleCandidate() {
+        // 직전 SINGLE_MATCH로 momos-waikiki 카드를 제시한 세션. 후속 "어제 마신 거야, 수정해줘"는
+        // 상대 날짜가 last_tasted와 안 맞아 LLM이 candidate_slugs를 비우지만, 제시분을 이어받아 전환한다.
+        SearchSession session = new SearchSession(
+                List.of("모모스 와이키키"), List.of("momos-waikiki"), 0, SESSION_STARTED);
+        llm.response = new SearchSelection(List.of(), true, null); // 수정 의도 있으나 후보 공백
+
+        SearchOutcome outcome = service(0).handle("맞아 어제 마신 거야 수정해줘", TODAY, Optional.of(session), NOTES);
+
+        assertThat(outcome.type()).isEqualTo(SearchOutcome.Type.EDIT_TARGET_CONFIRMED);
+        assertThat(outcome.hits()).extracting(SearchHit::slug).containsExactly("momos-waikiki");
+        assertThat(outcome.editDate()).isEqualTo(LocalDate.of(2026, 5, 20));
+        assertThat(outcome.session().pendingEditSlug()).isEqualTo("momos-waikiki");
+    }
+
+    @Test
+    @DisplayName("AC-Δ6 회귀: 후보 공백 이어받기 대상의 엔트리가 복수면 날짜 목록 선택(EDIT_DATE_CHOICES)")
+    void editRequestFallbackWithMultipleEntriesPresentsDateChoices() {
+        SearchSession session = new SearchSession(
+                List.of("예가체프"), List.of("coffeevera-yirgacheffe-g1"), 0, SESSION_STARTED);
+        llm.response = new SearchSelection(List.of(), true, null);
+
+        SearchOutcome outcome = service(0).handle("어제 거였어 고쳐줘", TODAY, Optional.of(session), NOTES);
+
+        assertThat(outcome.type()).isEqualTo(SearchOutcome.Type.EDIT_DATE_CHOICES);
+        assertThat(outcome.editDateChoices())
+                .containsExactly(LocalDate.of(2026, 6, 1), LocalDate.of(2026, 7, 1));
+        assertThat(outcome.session().pendingEditSlug()).isEqualTo("coffeevera-yirgacheffe-g1");
+    }
+
+    @Test
+    @DisplayName("case B(사용자 확정): 수정 의도 없이 후보만 공백이면 이어받지 않고 재질문(NO_MATCH) — 명시적 수정어 있을 때만 전환")
+    void noEditIntentDoesNotFallBackToPresentedCandidate() {
+        SearchSession session = new SearchSession(
+                List.of("모모스 와이키키"), List.of("momos-waikiki"), 0, SESSION_STARTED);
+        llm.response = new SearchSelection(List.of(), false, null); // 수정 의도 없음
+
+        SearchOutcome outcome = service(0).handle("맞아 어제 마신 거야", TODAY, Optional.of(session), NOTES);
+
+        assertThat(outcome.type()).isEqualTo(SearchOutcome.Type.NO_MATCH);
+        assertThat(outcome.session().pendingEditSlug()).isNull();
+    }
+
+    @Test
+    @DisplayName("방어: 직전 제시 후보가 복수면(어느 것 지목인지 모호) 이어받기하지 않고 재질문한다")
+    void editRequestFallbackSkippedWhenMultiplePresented() {
+        SearchSession session = new SearchSession(
+                List.of("커피"), List.of("coffeevera-yirgacheffe-g1", "momos-waikiki"), 0, SESSION_STARTED);
+        llm.response = new SearchSelection(List.of(), true, null);
+
+        SearchOutcome outcome = service(0).handle("그거 수정해줘", TODAY, Optional.of(session), NOTES);
+
+        assertThat(outcome.type()).isEqualTo(SearchOutcome.Type.NO_MATCH);
+        assertThat(outcome.session().pendingEditSlug()).isNull();
+    }
+
     // --- 경계 ---
 
     @Test
