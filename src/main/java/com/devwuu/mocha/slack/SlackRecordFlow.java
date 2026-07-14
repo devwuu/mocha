@@ -218,13 +218,6 @@ class SlackRecordFlow {
         responder.post(message.channelId(), FlowMessages.PENDING_EXISTS);
     }
 
-    /** revise 의도 + 확인 대기 없음 → 안내만(FR-17) — {@link ConversationFlows#guideNothingToRevise}. */
-    void guideNothingToRevise(IncomingMessage message) {
-        // revise 의도인데 고칠 대기가 없다 — 파이프라인 미진입, 안내만(FR-17).
-        log.info("revise 의도 + 확인 대기 없음 — 안내만: user={}", message.userId());
-        responder.post(message.channelId(), FlowMessages.NOTHING_TO_REVISE);
-    }
-
     /** other 판정 → 파이프라인 미진입, 짧은 안내만(AC-20) — {@link ConversationFlows#guideNotARecord}. */
     void guideNotARecord(IncomingMessage message) {
         // other 판정 — 추출·보강·pending·미리보기 없이 짧은 안내로 종료한다. 버퍼도 건드리지 않는다(AC-20).

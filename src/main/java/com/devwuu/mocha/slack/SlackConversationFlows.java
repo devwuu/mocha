@@ -125,11 +125,6 @@ public class SlackConversationFlows implements ConversationFlows {
     }
 
     @Override
-    public void guideNothingToRevise(IncomingMessage message) {
-        recordFlow.guideNothingToRevise(message);
-    }
-
-    @Override
     public void guideNotARecord(IncomingMessage message) {
         recordFlow.guideNotARecord(message);
     }

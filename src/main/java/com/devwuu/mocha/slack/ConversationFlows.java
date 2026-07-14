@@ -11,8 +11,7 @@ import com.devwuu.mocha.domain.PendingNote;
  * <ul>
  *   <li>{@link #startNewNote} — record + 대기 없음 → 신규 파이프라인(추출→매칭→보강→미리보기).
  *   <li>{@link #revisePending} — revise + 대기 있음 → pending 수정 반영 후 미리보기 갱신.
- *   <li>{@link #guidePendingExists}/{@link #guideNothingToRevise}/{@link #guideNotARecord} — 의도·상태
- *       불일치/미진입 안내(FR-17).
+ *   <li>{@link #guidePendingExists}/{@link #guideNotARecord} — 의도·상태 불일치/미진입 안내(FR-17).
  *   <li>{@link #searchNotes}/{@link #endSearch} — 검색 세션 시작·계속·종료(FR-20, ADR-25).
  *   <li>{@link #confirmSave}/{@link #cancel} — [저장]/[취소] 버튼 커밋(ADR-3 불변 — 자연어로 오지 않는다).
  * </ul>
@@ -41,9 +40,6 @@ public interface ConversationFlows {
      * <p>POLICY: 단일 대기 원칙 — 새 대기를 만들지 않는다 (ref: spec FR-17/AC-30, plan.md#ADR-24).
      */
     void guidePendingExists(IncomingMessage message);
-
-    /** revise 의도인데 대기 기록이 없음 → 고칠 대상이 없다는 안내만 한다(FR-17). */
-    void guideNothingToRevise(IncomingMessage message);
 
     /** other 판정(또는 end인데 검색 세션 없음) → 파이프라인 미진입, 짧은 안내만(FR-17, AC-20). */
     void guideNotARecord(IncomingMessage message);

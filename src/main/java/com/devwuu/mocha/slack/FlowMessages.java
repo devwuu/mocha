@@ -22,7 +22,6 @@ final class FlowMessages {
     static final String UNSUPPORTED_FORMAT = "그 사진은 제가 읽을 수 없는 포맷이에요 멍… JPEG나 PNG로 다시 올려주시겠어요? 🐾"; // 매직바이트 미지원 포맷 거부 안내(ADR-29, V-12, AC-46)
     static final String NOT_A_RECORD = "저는 커피 감상을 기록하는 강아지예요 멍! 마신 커피 이야기를 들려주세요 🐾"; // 의도 게이트 other 판정 안내(AC-20)
     static final String PENDING_EXISTS = "확인을 기다리는 기록이 있어요 멍! 먼저 [저장]이나 [취소]로 마무리해 주세요 🐾"; // record+대기 존재 안내 — 단일 대기 원칙(FR-17, AC-30)
-    static final String NOTHING_TO_REVISE = "지금 고칠 대기 기록이 없어요 멍… 새 커피 이야기면 그대로 들려주세요! 🐾"; // revise+대기 없음 안내(FR-17)
     // --- 검색 세션 멘트(FR-20, ADR-25, changes/0011 TΔ5) — 시작·종료 안내는 spec AC-34가 요구하는 모카 톤. ---
     static final String SEARCH_STARTED = "기록을 찾아볼게요 멍! 🐾"; // 검색 세션 시작 안내(AC-34)
     static final String SEARCH_FOUND_CAPTION = "이 기록이 맞나요 멍? 다 보셨으면 \"됐어\"라고 말해주세요 🐾"; // 단일 매치 카드 캡션(AC-31)

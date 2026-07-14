@@ -719,18 +719,6 @@ class SlackConversationFlowsTest {
         assertTrue(repo.findAll().isEmpty(), "노트 JSON도 없다");
     }
 
-    @Test
-    @DisplayName("FR-17: revise 의도 + 대기 없음(guideNothingToRevise) → 안내만, 어떤 상태도 만들지 않는다")
-    void guideNothingToReviseRespondsOnly() {
-        NoteRepository repo = noteRepository();
-
-        flow(repo).guideNothingToRevise(message("산미는 낮음으로 바꿔줘"));
-
-        assertEquals(List.of(FlowMessages.NOTHING_TO_REVISE), responder.messages);
-        assertTrue(pendingStore.puts.isEmpty(), "pending을 만들지 않는다");
-        assertNull(previewMessenger.published, "미리보기가 없다");
-    }
-
     // --- T3-7: pending 수정 오케스트레이션(revisePending) ---
 
     @Test
