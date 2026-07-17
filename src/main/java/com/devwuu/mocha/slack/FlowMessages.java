@@ -45,4 +45,7 @@ final class FlowMessages {
     // 버튼 1회 소진 상태 문구 — 미리보기 하단 버튼을 대체한다(spec AC-22 문구, changes/0009 ADR-20). 짧은 상태 배지라 강아지 톤은 절제.
     static final String FINALIZE_SAVED = "✅ 저장 완료"; // [저장] 완료 후 버튼 소진 상태 문구(AC-Δ1)
     static final String FINALIZE_CANCELED = "취소됨"; // [취소] 완료 후 버튼 소진 상태 문구(AC-Δ1)
+    // --- 에이전트 턴 폴백 멘트(FR-25, ADR-48, changes/0018 TΔ7b) ---
+    static final String AGENT_TURN_FAILED =
+            "말씀을 처리하다 문제가 생겼어요 멍… 다시 한 번 보내주시겠어요? 🐾"; // 턴 실패·상한 도달 폴백 — pending·노트 무변화 + 재요청 안내(AC-63)
 }
