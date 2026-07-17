@@ -10,10 +10,10 @@ import java.util.Objects;
  * <p>턴 수 상한({@code mocha.agent.transcript-max-turns})의 계수 단위가 이 쌍이다.
  * 모델 입력({@link AgentInputMessage})으로의 재구성은 컨텍스트 조립부의 몫이다(ADR-44).
  */
-public record TranscriptTurn(String userMessage, String assistantMessage) {
+public record TranscriptTurn(String userMessage, String mochaMessage) {
 
     public TranscriptTurn {
         Objects.requireNonNull(userMessage, "userMessage");
-        Objects.requireNonNull(assistantMessage, "assistantMessage");
+        Objects.requireNonNull(mochaMessage, "mochaMessage");
     }
 }

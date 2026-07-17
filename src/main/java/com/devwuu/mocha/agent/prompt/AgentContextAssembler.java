@@ -19,7 +19,7 @@ import java.util.Objects;
  * {@link AgentTurnInput}(instructions·messages)로 만든다
  * (ref: specs/coffee-note-agent/plan.md#ADR-44, spec FR-22; changes/0018 TΔ7a).
  * <p>배치: 시스템 프롬프트({@link AgentSystemPrompt}) 뒤에 턴 컨텍스트(today·pending·OCR)를 덧붙여
- * instructions로, 트랜스크립트(ADR-46)는 user/assistant 메시지로 재구성해 이번 발화와 함께 messages로.
+ * instructions로, 트랜스크립트(ADR-46)는 user/mocha 메시지로 재구성해 이번 발화와 함께 messages로.
  * <p>OCR 결과는 루프 전 전처리 1콜의 산물이다(FR-19) — 실패·무정보({@link VisionExtraction#empty()})는
  * 컨텍스트에 싣지 않고 진행한다(AC-28, 흐름 불변).
  */
@@ -52,7 +52,7 @@ public class AgentContextAssembler {
         List<AgentInputMessage> messages = new ArrayList<>();
         for (TranscriptTurn turn : transcript) {
             messages.add(AgentInputMessage.user(turn.userMessage()));
-            messages.add(AgentInputMessage.assistant(turn.assistantMessage()));
+            messages.add(AgentInputMessage.mocha(turn.mochaMessage()));
         }
         messages.add(AgentInputMessage.user(userMessage));
 

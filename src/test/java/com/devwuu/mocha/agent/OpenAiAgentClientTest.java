@@ -169,7 +169,7 @@ class OpenAiAgentClientTest {
                 response("resp_1", message("안녕하다멍"))));
 
         client.runTurn(new AgentTurnInput("모카 시스템 프롬프트",
-                        List.of(AgentInputMessage.assistant("이전 답"), AgentInputMessage.user("안녕"))),
+                        List.of(AgentInputMessage.mocha("이전 답"), AgentInputMessage.user("안녕"))),
                 List.of(getNoteTool(args -> "{}")));
 
         ResponseCreateParams first = client.sent.get(0);

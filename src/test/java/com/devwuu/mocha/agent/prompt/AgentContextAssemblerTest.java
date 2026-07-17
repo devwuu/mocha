@@ -50,7 +50,7 @@ class AgentContextAssemblerTest {
     }
 
     @Test
-    @DisplayName("ADR-44: messages = 트랜스크립트 user/assistant 쌍 재구성 + 이번 발화가 마지막 user")
+    @DisplayName("ADR-44: messages = 트랜스크립트 user/mocha 쌍 재구성 + 이번 발화가 마지막 user")
     void reconstructsTranscriptIntoMessages() {
         List<TranscriptTurn> transcript = List.of(
                 new TranscriptTurn("저번에 마신 예가체프 있잖아", "이 기록 말이냐멍?"),
@@ -59,8 +59,8 @@ class AgentContextAssemblerTest {
         AgentTurnInput context = assembler.assemble("그거 수정할래", transcript, null, null);
 
         assertThat(context.messages()).extracting(AgentInputMessage::role).containsExactly(
-                AgentInputMessage.Role.USER, AgentInputMessage.Role.ASSISTANT,
-                AgentInputMessage.Role.USER, AgentInputMessage.Role.ASSISTANT,
+                AgentInputMessage.Role.USER, AgentInputMessage.Role.MOCHA,
+                AgentInputMessage.Role.USER, AgentInputMessage.Role.MOCHA,
                 AgentInputMessage.Role.USER);
         assertThat(context.messages()).extracting(AgentInputMessage::content).containsExactly(
                 "저번에 마신 예가체프 있잖아", "이 기록 말이냐멍?", "응 그거", "카드 보냈다멍!", "그거 수정할래");
