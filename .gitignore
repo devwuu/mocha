@@ -9,6 +9,9 @@
 /ideas/*
 /design/*
 /logs/*
+/docs
+!/docs/sample-card.jpg
+!/docs/architecture-classes-and-flows.md
 
 .gradle
 build/
