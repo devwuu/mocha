@@ -84,62 +84,67 @@
 
 ## 2. 전체 아키텍처 개관
 
-계층은 크게 넷이다: **수신(slack)** → **에이전트 루프(agent)** → **저장(repository/domain)** → **렌더(render)**. LLM 보조 콜(llm)과 조립(config)이 이를 지원한다. OpenAI SDK·Slack SDK 타입은 각각 어댑터 구현 클래스 안에만 존재하고, 나머지 코드는 인터페이스 경계만 참조한다(교체 가능성 NFR-4).
+**기록 1건의 일생**을 따라가면 전체 구조가 그대로 드러난다. Slack에서 오는 수신은 세 종류뿐이고(① 사진 → ② 텍스트 → ③ 버튼), 시간 순서대로 각 단계에 합류한다:
+
+- **① 사진**(선택, 텍스트보다 먼저 올 수 있음)은 스테이징·버퍼에 대기하다가 ②에 흡수되고,
+- **② 텍스트**는 에이전트 턴을 돌아 **pending(확인 대기)까지만** 쓰고 미리보기를 띄우며,
+- **③ [저장] 버튼**만이 노트 JSON을 실제로 쓰고, 그 원본에서 카드·인덱스가 파생된다.
+
+OpenAI SDK·Slack SDK 타입은 각각 어댑터 구현 클래스 안에만 존재하고, 나머지 코드는 인터페이스 경계만 참조한다(교체 가능성 NFR-4). OpenAI 콜은 정확히 세 지점(점선)에서만 일어난다.
 
 ```mermaid
 flowchart TB
-    subgraph EXT["외부 시스템"]
-        SLACK[Slack Socket Mode]
-        OPENAI[OpenAI Responses API]
+    SLACK(["Slack Socket Mode"])
+    OPENAI(["OpenAI Responses API"])
+    GW["SlackGateway<br/>이벤트 파싱 · 즉시 ack"]
+    ROUTER{"AgentConversationRouter<br/>수신 종류 분기"}
+    INTAKE["SlackPhotoIntake<br/>다운로드 · 매직바이트 검증"]
+    STAGING[("data/photos/.staging/<br/>+ photo-buffer.json")]
+
+    subgraph TURN["에이전트 턴 — agent · llm (쓰기 효과는 pending까지)"]
+        OCR["PhotoInfoExtractor<br/>버퍼 사진 OCR 1콜 — 있을 때만, 루프 밖"]
+        ASM["AgentContextAssembler<br/>프롬프트 + 트랜스크립트 + pending + OCR 조립"]
+        LOOP["OpenAiAgentClient ↔ AgentToolkit<br/>모델↔tool 루프 — 노트 읽기 · web_search · 제안 검증"]
     end
 
-    subgraph IN["slack — 수신·응답 계층"]
-        GW[SlackGateway<br/>이벤트 파싱·즉시 ack]
-        ROUTER[AgentConversationRouter<br/>텍스트/버튼/사진 분기]
-        INTAKE[SlackPhotoIntake<br/>사진 다운로드·검증·버퍼링]
-        COMMIT[SlackCommitHandler<br/>저장·취소 버튼 커밋]
-        OUT[outbound: SlackResponder ·<br/>PreviewMessenger · PreviewBlocks]
+    TEXTONLY["텍스트 응답만<br/>데이터 무변화"]
+    PENDING[("data/pending.json<br/>확인 대기 — 사용자당 1건")]
+    PREVIEW["PreviewMessenger<br/>미리보기 + 저장/취소 버튼"]
+    BTN{"③ 버튼 클릭<br/>(Slack → 게이트웨이 재경유)"}
+    CANCEL["pending · 스테이징 폐기<br/>노트 무변화"]
+
+    subgraph COMMITG["결정론 커밋 — slack (노트가 쓰이는 유일한 경로)"]
+        COMMIT["SlackCommitHandler<br/>pending 검증 → 커밋"]
     end
 
-    subgraph AG["agent — 에이전트 루프"]
-        ASM[AgentContextAssembler<br/>턴 입력 조립]
-        CLIENT[OpenAiAgentClient<br/>LLM↔tool 루프 드라이버]
-        TOOLS[AgentToolkit<br/>tool 5종 + 검증]
-        TRANS[ConversationTranscript<br/>메모리 대화 문맥]
+    ARCHIVE[("data/photos/slug/date/<br/>사진 아카이브 확정")]
+    NOTES[("data/notes/*.json<br/>원본 — source of truth")]
+
+    subgraph REN["파생물 — render"]
+        RENDER["ThymeleafNoteRenderer + Playwright<br/>카드 증분 렌더 · 인덱스 갱신"]
+        CARDS[("artifact/<br/>cards/*.jpg · index.html")]
     end
 
-    subgraph LLM["llm — 루프 밖 보조 콜"]
-        VISION[PhotoInfoExtractor<br/>사진 OCR 전처리]
-        ALIAS[OpenAiAliasGenerator<br/>별칭 생성 1콜]
-    end
-
-    subgraph REPO["repository / domain — 로컬 파일 저장"]
-        NOTES[(data/notes/*.json)]
-        PENDING[(data/pending.json)]
-        PHOTOS[(data/photos/)]
-    end
-
-    subgraph REN["render — 파생물 생성"]
-        RENDERER[ThymeleafNoteRenderer]
-        CARDS[(artifact/cards/·index.html)]
-    end
+    DONE["SlackResponder<br/>카드 업로드 · 버튼 소진"]
 
     SLACK --> GW --> ROUTER
-    ROUTER -->|텍스트| ASM --> CLIENT
-    ROUTER -->|사진| INTAKE
-    ROUTER -->|버튼| COMMIT
-    CLIENT <-->|모델 호출| OPENAI
-    CLIENT --> TOOLS
-    TOOLS -->|읽기·제안| REPO
-    TOOLS -->|미리보기·카드 전송| OUT
-    CLIENT -.문맥.- TRANS
-    INTAKE --> VISION -->|OCR 1콜| OPENAI
-    INTAKE --> PHOTOS
-    COMMIT --> NOTES
-    COMMIT --> ALIAS -->|1콜| OPENAI
-    COMMIT --> RENDERER --> CARDS
-    COMMIT --> OUT --> SLACK
+    ROUTER -->|"① 사진"| INTAKE --> STAGING
+    ROUTER -->|"② 텍스트"| OCR
+    STAGING -.->|"윈도우 내 텍스트 도착 시 흡수"| OCR
+    OCR --> ASM --> LOOP
+    LOOP -->|"잡담 · 되묻기"| TEXTONLY
+    LOOP -->|"제안 검증 통과"| PENDING --> PREVIEW --> BTN
+    BTN -->|"[취소]"| CANCEL
+    BTN -->|"[저장]"| COMMIT
+    COMMIT --> ARCHIVE
+    COMMIT --> NOTES --> RENDER --> CARDS --> DONE
+
+    LOOP <-.->|"루프 콜"| OPENAI
+    OCR -.->|"vision 1콜"| OPENAI
+    COMMIT -.->|"신규 노트 별칭 1콜"| OPENAI
 ```
+
+그림에 없는 진입로는 하나뿐이다: `--rerender` CLI(§4.6)는 Slack을 켜지 않고 `data/notes/*.json` → `artifact/` 전체 재생성만 수행한다 — 파생물은 원본에서 언제든 다시 만들 수 있다는 불변식의 실행 형태다.
 
 핵심 불변식:
 
