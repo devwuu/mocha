@@ -98,7 +98,7 @@ public class ProposalValidator {
             Sourced<String> roastLevel = sourced("roast_level", patch.roastLevel(), ENRICHABLE_SOURCES);
             Sourced<List<String>> officialNotes = sourcedNotes(patch.officialNotes());
 
-            // 대상 자신의 날짜로는 이동이 아니다 — null로 정규화(구 SlackEditFlow.dateConflict와 동일 판정).
+            // 대상 자신의 날짜로는 이동이 아니다 — null로 정규화(구 수정 flow의 충돌 판정 승계).
             LocalDate newDate = parseDate("new_date", patch.newDate());
             if (targetDate.equals(newDate)) {
                 newDate = null;
@@ -152,7 +152,7 @@ public class ProposalValidator {
 
     // POLICY: 단일 대기 원칙 준용(record든 edit든) — 확인 대기 중 다른 대상의 수정 세션은 거부한다.
     //         같은 대상(slug+date)의 propose_edit 재호출만 FR-5 후속 수정으로 통과시킨다
-    //         (ref: plan.md#ADR-45, 구 SlackEditFlow 진입 거부의 승계).
+    //         (ref: plan.md#ADR-45, 구 수정 진입 거부의 승계).
     private static void requireSameEditTargetOrFree(PendingNote pending, String slug, LocalDate targetDate) {
         if (pending == null) {
             return;

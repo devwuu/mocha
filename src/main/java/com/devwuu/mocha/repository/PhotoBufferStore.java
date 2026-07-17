@@ -7,7 +7,7 @@ import java.util.Optional;
 /**
  * 사진 버퍼 저장소 — {@code data/photo-buffer.json} (ref: spec FR-10, tasks T4-2).
  * <p>텍스트보다 먼저(또는 분리) 도착한 사진의 스테이징 상태를 파일로 영속화한다. {@link PendingStore}와 달리
- * TTL로 만료 처리하지 않는다 — 그룹핑 윈도우(mocha.photo.buffer-window) 판정은 오케스트레이션(ConversationFlows)이
+ * TTL로 만료 처리하지 않는다 — 그룹핑 윈도우(mocha.photo.buffer-window) 판정은 사진 수신 경로(SlackPhotoIntake)가
  * {@link PhotoBuffer#lastMediaAt}로 직접 하고, 저장소는 있는 그대로 읽고 쓴다.
  * <p>단일 사용자 전제(NFR-6)라 사용자당 최대 1건이며, 단일 파일로 관리한다. 구현: {@link JsonFilePhotoBufferStore}.
  */

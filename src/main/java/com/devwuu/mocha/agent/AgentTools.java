@@ -15,8 +15,7 @@ import java.util.List;
  * 에이전트 function tool 5종의 façade — 도메인 협력자를 주입받아 역할별 구현 클래스를 조립하고,
  * 턴 1회에 장착할 tool 목록(순서 포함)을 소유한다
  * (ref: specs/coffee-note-agent/plan.md §3 AgentTools, #ADR-44/#ADR-45).
- * <p>구현은 역할 축으로 나뉜다({@link com.devwuu.mocha.slack.SlackConversationFlows}의 flow 분할과 동일 규칙 —
- * 내부 협력자는 Spring 빈이 아니다):
+ * <p>구현은 역할 축으로 나뉜다(내부 협력자는 Spring 빈이 아니다):
  * <ul>
  *   <li>{@link NoteLookupTools} — 검색·회상 축: {@code list_notes}·{@code get_note}·{@code send_entry_card} (TΔ5)</li>
  *   <li>{@link ProposalTools} — 쓰기 제안 축: {@code propose_record}·{@code propose_edit} (TΔ6)</li>

@@ -25,8 +25,8 @@ import java.util.Optional;
 
 /**
  * 사진 수신 경로 전담 — 다운로드·포맷 입구 검증(ADR-29, V-12)·스테이징·버퍼 그룹핑(FR-10)·OCR
- * 오버레이(ADR-23, V-6)를 {@link SlackConversationFlows}(façade)에서 위임받아 소유한다
- * (ADR-31, changes/0013). façade가 조립하는 내부 협력자라 Spring 빈이 아니다 — 라우터 계약은 façade에 남는다.
+ * 오버레이(ADR-23, V-6)를 전담 소유한다(ADR-31, changes/0013). 라우터({@link AgentConversationRouter})가
+ * 조립하는 내부 협력자라 Spring 빈이 아니다.
  * <p>이름에 Slack을 붙인 이유: HEIC → Slack 썸네일 대체(ADR-29)처럼 {@link IncomingPhoto}의 Slack 파일
  * 메타(mimetype·썸네일 URL)에 기대는 전송 계층 특화 정책을 품는다 — "URL → 바이트"만 아는 경계 인터페이스
  * {@link PhotoDownloader}(범용 추상)와 레벨을 구분한다.
@@ -64,7 +64,7 @@ class SlackPhotoIntake {
     }
 
     /**
-     * 사진 수신 → 버퍼 그룹핑(FR-10, AC-8) — {@link ConversationFlows#receiveMedia}의 실제 구현.
+     * 사진 수신 → 버퍼 그룹핑(FR-10, AC-8) — 라우터 {@code onMedia} 위임의 실제 구현.
      * pending이 있으면 진행 중 노트에 첨부해 미리보기를 갱신하고, 없으면 버퍼에 담아 뒤이을 텍스트를 기다린다.
      */
     void receive(IncomingMedia media) {

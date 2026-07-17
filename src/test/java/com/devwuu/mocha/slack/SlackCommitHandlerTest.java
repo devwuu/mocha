@@ -7,9 +7,8 @@ import com.devwuu.mocha.domain.NoteMeta;
 import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Sourced;
+import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.json.MochaObjectMapper;
-import com.devwuu.mocha.llm.LlmClient;
-import com.devwuu.mocha.llm.LlmRequest;
 import com.devwuu.mocha.pipeline.AliasGenerator;
 import com.devwuu.mocha.pipeline.PhotoInfoExtractor;
 import com.devwuu.mocha.render.NoteRenderer;
@@ -57,10 +56,9 @@ class SlackCommitHandlerTest {
     private final FakePendingStore pendingStore = new FakePendingStore();
     private final FakeNoteRenderer noteRenderer = new FakeNoteRenderer();
     private final FakeSlackResponder responder = new FakeSlackResponder();
-    private final FakeAliasLlmClient llmClient = new FakeAliasLlmClient();
     private final FakePhotoStore photoStore = new FakePhotoStore();
     private final FakePhotoBufferStore photoBufferStore = new FakePhotoBufferStore();
-    private final AliasGenerator aliasGenerator = new AliasGenerator(llmClient, MochaObjectMapper.create());
+    private final FakeAliasGenerator aliasGenerator = new FakeAliasGenerator();
 
     private NoteRepository noteRepository() {
         return new JsonFileNoteRepository(dataDir, MochaObjectMapper.create());
@@ -82,7 +80,7 @@ class SlackCommitHandlerTest {
         NoteRepository repo = noteRepository();
         pendingStore.setPending(pendingWith("coffeevera-yirgacheffe"));
 
-        handler(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
+        handler(repo).confirmSave(action(AgentConversationRouter.ACTION_SAVE));
 
         Optional<Note> saved = repo.findBySlug("coffeevera-yirgacheffe");
         assertTrue(saved.isPresent(), "저장된 노트 JSON이 있어야 한다");
@@ -104,15 +102,14 @@ class SlackCommitHandlerTest {
     void confirmSavePersistsGeneratedAliasesForNewNote() {
         NoteRepository repo = noteRepository();
         pendingStore.setPending(pendingWith("coffeevera-yirgacheffe")); // match=NEW
-        llmClient.cannedAliases = new AliasGenerator.AliasResponse(
-                List.of("커피베라 예가체프"), List.of("커피베라"));
+        aliasGenerator.canned = new Aliases(List.of("커피베라 예가체프"), List.of("커피베라"));
 
-        handler(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
+        handler(repo).confirmSave(action(AgentConversationRouter.ACTION_SAVE));
 
         Note saved = repo.findBySlug("coffeevera-yirgacheffe").orElseThrow();
         assertEquals(List.of("커피베라 예가체프"), saved.aliases().coffeeName(), "생성된 커피명 별칭이 노트에 저장된다");
         assertEquals(List.of("커피베라"), saved.aliases().roastery(), "생성된 로스터리 별칭이 노트에 저장된다");
-        assertEquals(1, llmClient.calls, "커밋 경로의 LLM 호출은 별칭 생성 1콜뿐(AC-Δ3)");
+        assertEquals(1, aliasGenerator.calls, "커밋 경로의 LLM 호출은 별칭 생성 1콜뿐(AC-Δ3)");
     }
 
     @Test
@@ -120,9 +117,9 @@ class SlackCommitHandlerTest {
     void confirmSaveKeepsCommitWhenAliasGenerationFails() {
         NoteRepository repo = noteRepository();
         pendingStore.setPending(pendingWith("coffeevera-yirgacheffe")); // match=NEW
-        llmClient.aliasFailure = new IllegalStateException("별칭 모델 호출 실패");
+        aliasGenerator.failed = true; // 경계 계약: 콜 실패는 예외가 아니라 빈 별칭 수렴(plan §7, V-13)
 
-        handler(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
+        handler(repo).confirmSave(action(AgentConversationRouter.ACTION_SAVE));
 
         Note saved = repo.findBySlug("coffeevera-yirgacheffe").orElseThrow();
         assertEquals(1, saved.entries().size(), "엔트리는 정상 저장된다");
@@ -145,13 +142,13 @@ class SlackCommitHandlerTest {
                 draft, MatchInfo.existing("ethiopia-chelbesa", LocalDate.of(2026, 7, 11)),
                 "1720000000.000999", OffsetDateTime.now(clock)));
 
-        handler(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
+        handler(repo).confirmSave(action(AgentConversationRouter.ACTION_SAVE));
 
         Note saved = repo.findBySlug("ethiopia-chelbesa").orElseThrow();
         assertEquals(List.of("에티오피아 첼베사"), saved.aliases().coffeeName(),
                 "EXISTING 커밋은 이번 기록의 다른 커피명 표기를 별칭에 축적한다");
         assertEquals(List.of("프롭"), saved.aliases().roastery(), "로스터리 다른 표기도 별칭에 축적된다");
-        assertEquals(0, llmClient.calls, "EXISTING 커밋은 별칭 생성 콜이 없다(NEW 전용)");
+        assertEquals(0, aliasGenerator.calls, "EXISTING 커밋은 별칭 생성 콜이 없다(NEW 전용)");
     }
 
     @Test
@@ -161,7 +158,7 @@ class SlackCommitHandlerTest {
         pendingStore.setPending(pendingWith("coffeevera-yirgacheffe"));
         noteRenderer.renderFailure = new IllegalStateException("Chromium 미기동");
 
-        handler(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
+        handler(repo).confirmSave(action(AgentConversationRouter.ACTION_SAVE));
 
         assertTrue(repo.findBySlug("coffeevera-yirgacheffe").isPresent(), "렌더 실패해도 저장은 유지된다(AC-18)");
         assertEquals(1, pendingStore.clearCount, "커밋은 완료됐다");
@@ -176,7 +173,7 @@ class SlackCommitHandlerTest {
         pendingStore.setPending(pendingWith("coffeevera-yirgacheffe"));
         responder.imageFailure = new IllegalStateException("files.upload 실패");
 
-        handler(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
+        handler(repo).confirmSave(action(AgentConversationRouter.ACTION_SAVE));
 
         assertTrue(repo.findBySlug("coffeevera-yirgacheffe").isPresent(), "업로드 실패해도 저장은 유지된다(AC-18)");
         assertEquals(1, noteRenderer.entryCards.size(), "카드는 렌더됐다(전송에서 실패)");
@@ -189,7 +186,7 @@ class SlackCommitHandlerTest {
         NoteRepository repo = noteRepository();
         pendingStore.setPending(null); // get()이 빈 Optional(만료분은 store가 만료 처리 — V-7)
 
-        handler(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
+        handler(repo).confirmSave(action(AgentConversationRouter.ACTION_SAVE));
 
         assertTrue(repo.findAll().isEmpty(), "만료/부재 시 어떤 노트도 저장되지 않는다");
         assertTrue(noteRenderer.entryCards.isEmpty(), "커밋이 없으면 카드 렌더·배달도 없다");
@@ -204,7 +201,7 @@ class SlackCommitHandlerTest {
         NoteRepository repo = noteRepository();
         pendingStore.setPending(pendingWith("coffeevera-yirgacheffe"));
 
-        handler(repo).cancel(action(DefaultConversationRouter.ACTION_CANCEL));
+        handler(repo).cancel(action(AgentConversationRouter.ACTION_CANCEL));
 
         assertEquals(1, pendingStore.clearCount, "취소는 pending을 폐기한다");
         assertTrue(repo.findAll().isEmpty(), "취소 시 저장은 일어나지 않는다(AC-4)");
@@ -218,7 +215,7 @@ class SlackCommitHandlerTest {
         NoteRepository repo = noteRepository();
         pendingStore.setPending(pendingWith(null)); // slug 미할당 draft
 
-        handler(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
+        handler(repo).confirmSave(action(AgentConversationRouter.ACTION_SAVE));
 
         assertTrue(repo.findAll().isEmpty(), "slug 없는 draft는 저장하지 않는다");
         assertTrue(noteRenderer.entryCards.isEmpty());
@@ -235,7 +232,7 @@ class SlackCommitHandlerTest {
         PendingNote pending = pendingWith("coffeevera-yirgacheffe");
         pendingStore.setPending(pending);
 
-        handler(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
+        handler(repo).confirmSave(action(AgentConversationRouter.ACTION_SAVE));
 
         assertEquals(List.of(FlowMessages.FINALIZE_SAVED), responder.finalizeStatuses);
         assertEquals(1, responder.finalizePendings.size());
@@ -249,7 +246,7 @@ class SlackCommitHandlerTest {
         NoteRepository repo = noteRepository();
         pendingStore.setPending(pendingWith("coffeevera-yirgacheffe"));
 
-        handler(repo).cancel(action(DefaultConversationRouter.ACTION_CANCEL));
+        handler(repo).cancel(action(AgentConversationRouter.ACTION_CANCEL));
 
         assertEquals(List.of(FlowMessages.FINALIZE_CANCELED), responder.finalizeStatuses);
     }
@@ -260,7 +257,7 @@ class SlackCommitHandlerTest {
         NoteRepository repo = noteRepository();
         pendingStore.setPending(null);
 
-        handler(repo).cancel(action(DefaultConversationRouter.ACTION_CANCEL));
+        handler(repo).cancel(action(AgentConversationRouter.ACTION_CANCEL));
 
         assertTrue(responder.finalizeStatuses.isEmpty(), "갱신할 미리보기가 없으면 버튼 소진을 호출하지 않는다");
         assertEquals(List.of(FlowMessages.CANCELED), responder.messages);
@@ -273,7 +270,7 @@ class SlackCommitHandlerTest {
         pendingStore.setPending(pendingWith("coffeevera-yirgacheffe"));
         responder.finalizeFailure = new IllegalStateException("chat.update 실패");
 
-        handler(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
+        handler(repo).confirmSave(action(AgentConversationRouter.ACTION_SAVE));
 
         assertTrue(repo.findBySlug("coffeevera-yirgacheffe").isPresent(), "버튼 소진 실패해도 저장은 유지된다");
         assertEquals(1, pendingStore.clearCount, "커밋은 완료됐다");
@@ -290,7 +287,7 @@ class SlackCommitHandlerTest {
         responder.order = order;
         pendingStore.setPending(pendingWith("coffeevera-yirgacheffe"));
 
-        handler(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
+        handler(repo).confirmSave(action(AgentConversationRouter.ACTION_SAVE));
 
         assertEquals(List.of("commit", "clear", "deliver", "finalize"), order,
                 "저장 커밋 → pending clear → 카드 배달 → 버튼 소진 순서가 유지되어야 한다");
@@ -305,7 +302,7 @@ class SlackCommitHandlerTest {
         photoStore.staged.add("a.jpg"); // 대기 중 스테이징 사진
         pendingStore.setPending(pendingWith("coffeevera-yirgacheffe")); // 엔트리 date=2026-07-11
 
-        handler(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
+        handler(repo).confirmSave(action(AgentConversationRouter.ACTION_SAVE));
 
         assertEquals(List.of("photos/coffeevera-yirgacheffe/2026-07-11/a.jpg"), photoStore.committed,
                 "스테이징 사진이 확정 폴더 경로로 아카이브 커밋된다");
@@ -320,7 +317,7 @@ class SlackCommitHandlerTest {
         photoStore.staged.add("a.jpg");
         pendingStore.setPending(pendingWith("coffeevera-yirgacheffe"));
 
-        handler(repo).cancel(action(DefaultConversationRouter.ACTION_CANCEL));
+        handler(repo).cancel(action(AgentConversationRouter.ACTION_CANCEL));
 
         assertEquals(1, photoStore.discardCount, "취소는 스테이징 사진을 폐기한다");
         assertTrue(photoStore.staged.isEmpty());
@@ -336,7 +333,7 @@ class SlackCommitHandlerTest {
         seedEditableNote(repo, "yirga", LocalDate.of(2026, 7, 8));
         pendingStore.setPending(editPending("yirga", LocalDate.of(2026, 7, 8), LocalDate.of(2026, 7, 9), "고친 감상"));
 
-        handler(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
+        handler(repo).confirmSave(action(AgentConversationRouter.ACTION_SAVE));
 
         Note saved = repo.findBySlug("yirga").orElseThrow();
         assertEquals(1, saved.entries().size(), "이동이지 복제가 아니다 — 엔트리 총수 불변");
@@ -359,7 +356,7 @@ class SlackCommitHandlerTest {
         seedEditableNote(repo, "yirga", LocalDate.of(2026, 7, 8));
         pendingStore.setPending(editPending("yirga", LocalDate.of(2026, 7, 8), LocalDate.of(2026, 7, 8), "고친 감상"));
 
-        handler(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
+        handler(repo).confirmSave(action(AgentConversationRouter.ACTION_SAVE));
 
         Note saved = repo.findBySlug("yirga").orElseThrow();
         assertEquals("고친 감상", saved.entries().get(0).myTaste(), "필드 갱신 반영");
@@ -376,7 +373,7 @@ class SlackCommitHandlerTest {
         pendingStore.setPending(editPending("yirga", LocalDate.of(2026, 7, 8), LocalDate.of(2026, 7, 9), "고친 감상"));
         photoStore.moveFailure = new IllegalStateException("사진 폴더 이동 실패");
 
-        handler(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
+        handler(repo).confirmSave(action(AgentConversationRouter.ACTION_SAVE));
 
         Note saved = repo.findBySlug("yirga").orElseThrow();
         assertEquals(LocalDate.of(2026, 7, 9), saved.entries().get(0).date(), "이동 실패해도 수정 커밋은 유지된다");
@@ -394,7 +391,7 @@ class SlackCommitHandlerTest {
         pendingStore.setPending(editPending("yirga", LocalDate.of(2026, 7, 8), LocalDate.of(2026, 7, 9), "고친 감상"));
         noteRenderer.removeFailure = new IllegalStateException("카드 삭제 실패");
 
-        handler(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
+        handler(repo).confirmSave(action(AgentConversationRouter.ACTION_SAVE));
 
         Note saved = repo.findBySlug("yirga").orElseThrow();
         assertEquals(LocalDate.of(2026, 7, 9), saved.entries().get(0).date(), "커밋은 유지된다");
@@ -411,7 +408,7 @@ class SlackCommitHandlerTest {
         pendingStore.setPending(editPending("yirga", LocalDate.of(2026, 7, 8), LocalDate.of(2026, 7, 9), "고친 감상"));
         noteRenderer.renderFailure = new IllegalStateException("Chromium 미기동");
 
-        handler(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
+        handler(repo).confirmSave(action(AgentConversationRouter.ACTION_SAVE));
 
         Note saved = repo.findBySlug("yirga").orElseThrow();
         assertEquals(LocalDate.of(2026, 7, 9), saved.entries().get(0).date(), "렌더 실패해도 수정 커밋은 유지(AC-18 준용)");
@@ -426,7 +423,7 @@ class SlackCommitHandlerTest {
         NoteRepository repo = noteRepository(); // 대상 노트를 심지 않는다 — 소실 상황
         pendingStore.setPending(editPending("ghost", LocalDate.of(2026, 7, 8), LocalDate.of(2026, 7, 9), "고친 감상"));
 
-        handler(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
+        handler(repo).confirmSave(action(AgentConversationRouter.ACTION_SAVE));
 
         assertTrue(repo.findAll().isEmpty(), "대상 소실 시 어떤 노트도 저장·생성되지 않는다");
         assertTrue(noteRenderer.entryCards.isEmpty() && noteRenderer.removedCards.isEmpty(), "파생물 접촉 없음");
@@ -443,7 +440,7 @@ class SlackCommitHandlerTest {
         photoStore.stage("U1", "b.jpg", new byte[]{1});
         pendingStore.setPending(editPending("yirga", LocalDate.of(2026, 7, 8), LocalDate.of(2026, 7, 9), "고친 감상"));
 
-        handler(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
+        handler(repo).confirmSave(action(AgentConversationRouter.ACTION_SAVE));
 
         assertEquals(List.of("photos/yirga/2026-07-09/b.jpg"), photoStore.committed,
                 "스테이징 사진이 대상 엔트리 날짜 폴더로 커밋된다");
@@ -461,7 +458,7 @@ class SlackCommitHandlerTest {
                 null, null, "1720000000.000999", OffsetDateTime.now()); // target 결손
         pendingStore.setPending(broken);
 
-        handler(repo).confirmSave(action(DefaultConversationRouter.ACTION_SAVE));
+        handler(repo).confirmSave(action(AgentConversationRouter.ACTION_SAVE));
 
         assertEquals("원래 감상", repo.findBySlug("yirga").orElseThrow().entries().get(0).myTaste(), "원본 무변화");
         assertEquals(0, pendingStore.clearCount, "손상 pending은 커밋 clear 대상이 아니다");
@@ -614,24 +611,20 @@ class SlackCommitHandlerTest {
         }
     }
 
-    /** 별칭 생성 응답만 다루는 fake LLM — 커밋 경로의 유일한 LLM 접점(AC-Δ3), 호출 수를 센다. */
-    private static final class FakeAliasLlmClient implements LlmClient {
-        AliasGenerator.AliasResponse cannedAliases = new AliasGenerator.AliasResponse(List.of(), List.of());
-        RuntimeException aliasFailure;
+    /**
+     * 별칭 생성 경계 fake — 커밋 경로의 유일한 LLM 접점(AC-Δ3), 호출 수를 센다.
+     * 경계 계약대로 실패도 예외가 아니라 빈 별칭으로 수렴한다(plan §7 — 실패 수렴 자체는 어댑터
+     * {@code OpenAiAliasGenerator} 테스트가 검증).
+     */
+    private static final class FakeAliasGenerator implements AliasGenerator {
+        Aliases canned = Aliases.empty();
+        boolean failed = false;
         int calls = 0;
 
-        @SuppressWarnings("unchecked")
         @Override
-        public <T> T complete(LlmRequest<T> request) {
+        public Aliases generate(String coffeeName, String roastery) {
             calls++;
-            if (request.responseType() != AliasGenerator.AliasResponse.class) {
-                throw new IllegalStateException("커밋 경로는 별칭 생성 외 LLM을 부르지 않는다(AC-Δ3): "
-                        + request.responseType());
-            }
-            if (aliasFailure != null) {
-                throw aliasFailure;
-            }
-            return (T) cannedAliases;
+            return failed ? Aliases.empty() : canned;
         }
     }
 

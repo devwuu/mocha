@@ -30,8 +30,8 @@ import java.util.Map;
  * 없어 URL 직접 전달로 충분함을 확인했다(OQ-Δ1, findings-TΔ0) — {@code text.format}에 strict JSON schema를
  * 붙여 <b>스키마 보장 JSON</b>으로 {@code roastery/origin/process/roast_level/official_notes}를 받는다.
  * <p>지침에 <b>한국어 기록</b>(영문 표기는 번역)과 <b>추측 금지</b>(이미지에서 확인 안 되는 값은 공란)를
- * 인코딩한다(AC-Δ3, AC-Δ4). {@link SearchResult}와 달리 {@code sources}가 없다 — 출처는 공식 상품
- * 페이지로 고정이라 상위 2단계가 {@code official_page_url}로 넣는다.
+ * 인코딩한다(AC-Δ3, AC-Δ4). {@code sources}는 없다 — 출처 표기는 이 값을 소비하는 상위가 photo 출처로
+ * 다룬다(V-5·V-6).
  * <p>호출/형식 실패(예외·비스키마 응답)는 예외로 새지 않고 {@link VisionExtraction#empty()}로 수렴한다 —
  * 2단계의 어떤 실패도 1단계 결과만으로 진행하게 하기 위함이다(AC-Δ2, plan §7).
  */
@@ -61,7 +61,7 @@ public class OpenAiVisionClient implements VisionClient {
     private final ObjectMapper mapper;
 
     /**
-     * @param model vision 모델 — 검색 보강과 공용(mocha.search.model), 새 설정 키를 늘리지 않는다(plan §5, ADR-15).
+     * @param model vision 모델 — 전용 경량 키 {@code mocha.vision.model}(plan §5, ADR-50).
      */
     public OpenAiVisionClient(OpenAIClient client, String model, ObjectMapper mapper) {
         this.client = client;

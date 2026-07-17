@@ -7,7 +7,7 @@ import java.util.List;
  * <p>계약: {@code runTurn(context, tools): String} — 모델 호출↔tool 실행 루프를 상한
  * ({@code mocha.agent.max-tool-calls})까지 구동하고 모델의 최종 텍스트를 돌려준다.
  * 최종 텍스트가 곧 Slack 응답이다 — 미리보기·카드 등 구조화 송신은 tool 구현체의 몫.
- * <p>POLICY: 루프 밖 코드는 OpenAI SDK 타입을 직접 참조하지 않는다 — AgentClient/VisionClient 뒤에만
+ * <p>POLICY: 루프 밖 코드는 OpenAI SDK 타입을 직접 참조하지 않는다 — AgentClient/VisionClient/AliasGenerator(보조 콜) 뒤에만
  * (ref: specs/coffee-note-agent/plan.md#ADR-44 POLICY, NFR-4). 구현: {@link OpenAiAgentClient}.
  */
 public interface AgentClient {

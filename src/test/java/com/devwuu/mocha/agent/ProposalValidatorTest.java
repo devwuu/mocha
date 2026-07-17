@@ -383,7 +383,7 @@ class ProposalValidatorTest {
                     editArgs(target.slug(), "2026-07-14", ProposeEditArgs.Patch.empty()),
                     target, editPending(target.slug(), LocalDate.of(2026, 7, 13)))))
                     .contains("[저장]");
-            // record 대기 중 수정 세션 제안도 거부(구 SlackEditFlow 진입 거부 승계).
+            // record 대기 중 수정 세션 제안도 거부(구 수정 진입 거부 승계).
             assertThat(rejectionOf(validator.validateEdit(
                     editArgs(target.slug(), "2026-07-13", ProposeEditArgs.Patch.empty()),
                     target, recordPending("와이키키 블렌드"))))

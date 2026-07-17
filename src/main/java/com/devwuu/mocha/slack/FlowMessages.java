@@ -1,8 +1,7 @@
 package com.devwuu.mocha.slack;
 
 /**
- * 대화 흐름의 사용자 안내 문구 상수 — {@link SlackConversationFlows}(façade)에서 분리해 한곳에 소유한다
- * (ADR-31, changes/0013). 문구는 구현 디테일이고 spec 결정이 아니다 — 단, 검색 시작·종료 안내(AC-34) 등
+ * 대화 흐름의 사용자 안내 문구 상수 — 대화 경로 구현에서 분리해 한곳에 소유한다(ADR-31, changes/0013). 문구는 구현 디테일이고 spec 결정이 아니다 — 단, 검색 시작·종료 안내(AC-34) 등
  * spec이 모카 톤을 요구하는 항목은 주석에 근거를 남긴다.
  * <p>모카 톤: {@code PreviewBlocks}와 같은 강아지 말투("멍" + 🐾).
  */

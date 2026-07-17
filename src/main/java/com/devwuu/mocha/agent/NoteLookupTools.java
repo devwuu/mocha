@@ -25,8 +25,7 @@ import java.util.Optional;
 /**
  * 검색·회상 축 tool 3종 — {@code list_notes}·{@code get_note}·{@code send_entry_card}
  * (ref: specs/coffee-note-agent/data-model.md#3.1~3.2·3.5, spec FR-14/FR-20; changes/0018 TΔ5).
- * <p>{@link AgentTools}(façade)가 조립하는 내부 협력자라 Spring 빈이 아니다 —
- * {@link com.devwuu.mocha.slack.SlackConversationFlows}의 flow 분할과 동일 규칙. 전부 읽기 전용이다:
+ * <p>{@link AgentTools}(façade)가 조립하는 내부 협력자라 Spring 빈이 아니다. 전부 읽기 전용이다:
  * 노트·pending 파일을 바꾸지 않고(AC-Δ4), 카드 재전송도 기존 파생물 재사용이 우선이다.
  * <p>값 수준 확인(미존재 slug·날짜 형식)의 위반은 예외가 아니라 <b>사유를 담은 오류 결과</b>로 돌려줘
  * 에이전트가 루프 안에서 정정한다(ADR-45 — 환각 필터).

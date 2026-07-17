@@ -3,18 +3,15 @@ package com.devwuu.mocha.llm;
 import java.util.List;
 
 /**
- * 공식 페이지 상세 이미지 OCR·구조화 추출 결과 (ref: specs/coffee-note-agent/plan.md#ADR-15, §3 read(imageUrls, hint)).
- * <p>한국 로스터리 상품 상세 페이지의 스펙(원산지·가공·로스팅)은 통짜 상세 이미지 안에만 존재해 web_search
- * 텍스트 컨텍스트로는 읽히지 않는다 — 이 값객체는 그 이미지에서 vision(OCR)으로 읽어낸 후보 값 묶음이다.
- * 검색 2단계에서 {@link OpenAiSearchClient}가 1단계 fallback 값보다 우선 병합하고, 미래 "사진 기반 노트
- * 생성"도 같은 경계를 재사용한다(NFR-4). "추측 금지" — 이미지에서 확인 안 되는 값은 null(문자열)·빈 리스트로 온다.
- * <p>{@link SearchResult}와 달리 {@code sources}가 없다 — vision 입력은 공식 상품 페이지 이미지로 출처가
- * 고정이라 출처 URL은 상위(2단계 오케스트레이션)가 {@code official_page_url}로 넣는다.
- * <p>수신 사진 OCR(FR-19, changes/0010)이 같은 경계를 재사용하며 사진에서 <b>커피명</b>도 읽는다 —
- * 그래서 {@code coffeeName}이 추가됐다. 검색 2단계 병합({@code mergeOfficial})은 이 필드를 쓰지 않아
- * 검색 동작은 불변이다(ADR-15/23, AC-Δ7).
+ * 커피 이미지 OCR·구조화 추출 결과 (ref: specs/coffee-note-agent/plan.md#ADR-23, §3 read(imageUrls, hint)).
+ * <p>원두 봉투·커피 노트 카드·상품 상세처럼 <b>텍스트로 존재하지 않는</b> 스펙(커피명·원산지·가공·로스팅·
+ * 공식 노트)을 vision(OCR)으로 읽어낸 후보 값 묶음이다. 수신 사진 OCR(FR-19 — 루프 전 전처리, ADR-23)이
+ * 주 소비자이고, 예비 {@code read_page_images} tool(ADR-49, 비활성)이 같은 경계를 재사용한다(NFR-4).
+ * "추측 금지" — 이미지에서 확인 안 되는 값은 null(문자열)·빈 리스트로 온다.
+ * <p>{@code sources}가 없다 — 출처 표기는 이 값을 소비하는 상위(에이전트 제안·미리보기)가 photo 출처로
+ * 다룬다(V-5·V-6).
  *
- * @param coffeeName    커피 이름 — 수신 사진 OCR이 읽은 값(검색 2단계는 미사용). 확인 안 되면 null.
+ * @param coffeeName    커피 이름 — 이미지에 표시된 상품명. 확인 안 되면 null.
  * @param roastery      로스터리(이미지에서 확인된 값, 보통 null — 이미 문맥으로 주어짐).
  * @param origin        원산지(블렌드는 여러 원산지를 쉼표 문자열로 나열, ADR-14와 일관).
  * @param process       가공 방식.

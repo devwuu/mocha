@@ -34,7 +34,7 @@ import static com.slack.api.model.block.element.BlockElements.button;
  *   <li>매칭 표시: "새 노트" 또는 "기존 노트 {이름}의 {날짜} 기록" (AC-15).
  *   <li>수정 세션(mode=edit)은 ✏️ 헤더 + "기존 노트 수정" 표기, 날짜 이동 충돌 시 덮어쓰기 경고 섹션 필수
  *       (AC-15/AC-37/AC-39, V-10; changes/0012 TΔ6).
- *   <li>[저장]/[취소] 버튼 — action_id는 {@link DefaultConversationRouter}의 계약을 따른다.
+ *   <li>[저장]/[취소] 버튼 — action_id는 {@link AgentConversationRouter}의 계약을 따른다.
  * </ul>
  * <p>멘트(모카 톤)는 구현 디테일이라 상수로 분리한다 — spec의 비즈니스 결정이 아니다.
  */
@@ -87,9 +87,9 @@ public class PreviewBlocks {
         Note draft = pending.draft();
         blocks.add(actions(asElements(
                 button(b -> b.text(plainText(SAVE_LABEL)).style("primary")
-                        .actionId(DefaultConversationRouter.ACTION_SAVE).value(saveValue(draft))),
+                        .actionId(AgentConversationRouter.ACTION_SAVE).value(saveValue(draft))),
                 button(b -> b.text(plainText(CANCEL_LABEL)).style("danger")
-                        .actionId(DefaultConversationRouter.ACTION_CANCEL).value(saveValue(draft)))
+                        .actionId(AgentConversationRouter.ACTION_CANCEL).value(saveValue(draft)))
         )));
         return blocks;
     }

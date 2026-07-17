@@ -119,14 +119,14 @@ class AgentConversationRouterTest {
     @DisplayName("AC-Δ7/AC-Δ3/ADR-3: [저장]/[취소] 버튼은 에이전트 미경유 — 커밋 핸들러 직접 분기(TΔ8a) + 커밋 접힘(ADR-46 규칙 ②)")
     void buttonActionsBypassAgent() {
         transcript.append(USER, new TranscriptTurn("잡담", "네 멍"));
-        router.onAction(action(DefaultConversationRouter.ACTION_SAVE));
+        router.onAction(action(AgentConversationRouter.ACTION_SAVE));
 
         assertThat(commitHandler.saves).hasSize(1);
         assertThat(agentClient.calls).isZero();
         assertThat(transcript.view(USER)).isEmpty(); // SAVE_COMMIT 접힘
 
         transcript.append(USER, new TranscriptTurn("잡담 둘", "네 멍"));
-        router.onAction(action(DefaultConversationRouter.ACTION_CANCEL));
+        router.onAction(action(AgentConversationRouter.ACTION_CANCEL));
 
         assertThat(commitHandler.cancels).hasSize(1);
         assertThat(agentClient.calls).isZero();

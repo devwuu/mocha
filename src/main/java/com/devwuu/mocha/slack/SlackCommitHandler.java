@@ -21,8 +21,8 @@ import java.util.Optional;
 /**
  * [저장]/[취소] 버튼 커밋 핸들러 — 커밋·렌더·배달·버튼 소진 체인의 독립된 홈
  * (ref: specs/coffee-note-agent/plan.md#ADR-3·ADR-20·ADR-45, changes/0018 TΔ8a).
- * <p>구 {@code SlackRecordFlow.confirmSave/cancel}·{@code SlackEditFlow.commitEdit}에서 로직 변경 없이
- * 이관했다(findings-TΔ0 §2) — 라우터가 flow 오케스트레이션을 거치지 않고 직접 부른다(delta AC-Δ3).
+ * <p>구 record/edit flow의 커밋 체인에서 로직 변경 없이 이관했다(findings-TΔ0 §2) — 라우터가
+ * 오케스트레이션을 거치지 않고 직접 부른다(delta AC-Δ3).
  * pending 로드·TTL 판정(V-7)·결손 검증은 mode와 무관하게 {@link #confirmSave}가 공통 게이트로 소유하고,
  * mode=edit 커밋만 내부 분기로 갈린다.
  * <p>이름에 Slack을 붙인 이유: {@link IncomingAction} 수신·카드 배달·버튼 소진({@link SlackResponder}) 등

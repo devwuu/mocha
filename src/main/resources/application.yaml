@@ -30,18 +30,6 @@ mocha:
     # OpenAI API 키(종량제). 비밀이므로 코드/설정에 하드코딩 금지 —
     # 환경변수(.env → .env.local)로 주입. 미설정 시 빈 값 → 실제 호출 시에만 필요(컨텍스트/CI 안전).
     api-key: ${OPENAI_API_KEY:}
-  # ── 구 키(llm·search·search-session) — changes/0018 TΔ8b에서 블록째 폐기 예정(ADR-50) ──
-  llm:
-    # 추출용 경량 모델. 품질 미달 시 상위 모델로 교체(OQ-5).
-    model: gpt-4o-mini
-    # 구조화 응답 스키마/도메인 위반(V-1) 시 재추출 횟수. 총 시도 = 1 + max-retries.
-    max-retries: 1
-  search:
-    # 웹 검색 보강 전용 모델 — 추출(llm.model)과 분리. 공식 페이지 탐색 능력이 필요해 상위 모델을 쓴다.
-    # web_search_preview 도구는 Responses API에서 gpt-4o 계열이 지원. 비용 민감 시 하향 조정.
-    model: gpt-4o
-    # 보강 검색 상한 — 비용/지연 통제.
-    max-results: 3
   # 에이전트 루프·트랜스크립트 (ADR-44/46/50, changes/0018). 상한·TTL은 초기 운영 튜닝 대상이라
   # 설정 키로 승격했다(ADR-50 — 코드 상수 관례의 사용자 확정 예외).
   agent:
@@ -64,11 +52,6 @@ mocha:
   pending:
     # 확인 대기 노트 TTL. 초과 시 자동 폐기 + 안내 (ADR-3).
     ttl: 24h
-  search-session:
-    # 검색 세션 TTL (FR-20, ADR-25). 메모리 전용이라 재시작 시엔 TTL 무관 소멸.
-    ttl: 1h
-    # 세션당 무후보 재질문 상한 (FR-20, ADR-25). 도달 시 종료 안내 + 세션 폐기. 0/미설정 = 무제한.
-    max-requery: 0
   photo:
     # 텍스트/사진 분리 수신 그룹핑 윈도우 (FR-10).
     buffer-window: 10m

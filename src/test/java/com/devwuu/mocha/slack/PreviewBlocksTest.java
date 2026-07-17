@@ -110,8 +110,8 @@ class PreviewBlocksTest {
         List<ButtonElement> buttons = actions.getElements().stream()
                 .map(e -> (ButtonElement) e).toList();
         assertEquals(2, buttons.size());
-        assertEquals(DefaultConversationRouter.ACTION_SAVE, buttons.get(0).getActionId());
-        assertEquals(DefaultConversationRouter.ACTION_CANCEL, buttons.get(1).getActionId());
+        assertEquals(AgentConversationRouter.ACTION_SAVE, buttons.get(0).getActionId());
+        assertEquals(AgentConversationRouter.ACTION_CANCEL, buttons.get(1).getActionId());
     }
 
     @Test

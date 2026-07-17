@@ -45,14 +45,17 @@ import java.util.Objects;
  *   <li>사진 → 버퍼·스테이징 배관(FR-10, {@link SlackPhotoIntake}) 직접 위임 — 캡션 텍스트는
  *       {@link SlackGateway}가 별도 {@link IncomingMessage}로 이어 보내 에이전트 턴이 된다.</li>
  * </ul>
- * <p>구 의도 라우팅({@link DefaultConversationRouter})·flow 3종은 TΔ8b 철거 전까지 미배선 상태로 병존한다 —
- * {@code @Primary}로 이 구현이 게이트웨이에 배선되고, 이 라우터는 {@link ConversationFlows}에 의존하지 않는다(TΔ8a).
  * <p>POLICY: 에이전트 턴 실패(모델 오류·tool 상한·검증 반복)는 pending·노트 무변화 + 재요청 안내 +
  * 원문 로그 보존 — 조용한 유실 금지 (ref: specs/coffee-note-agent/plan.md#ADR-48, spec AC-63).
  */
 @Component
 @Primary
 public class AgentConversationRouter implements ConversationRouter {
+
+    /** 미리보기 [저장] 버튼 action_id — {@link PreviewBlocks}와의 결정론 계약(ADR-3·ADR-20). */
+    public static final String ACTION_SAVE = "mocha_save";
+    /** 미리보기 [취소] 버튼 action_id. */
+    public static final String ACTION_CANCEL = "mocha_cancel";
 
     private static final Logger log = LoggerFactory.getLogger(AgentConversationRouter.class);
 
@@ -85,8 +88,7 @@ public class AgentConversationRouter implements ConversationRouter {
             AliasGenerator aliasGenerator,
             @Value("${mocha.artifact.dir}") String artifactDir,
             @Value("${mocha.photo.buffer-window}") Duration bufferWindow) {
-        // tool façade·컨텍스트 조립기·커밋 핸들러는 프레임워크 무관 내부 협력자라 여기서 조립한다
-        // (SlackConversationFlows의 flow 조립과 동일 규칙 — Spring 빈이 아니다).
+        // tool façade·컨텍스트 조립기·커밋 핸들러는 프레임워크 무관 내부 협력자라 여기서 조립한다(Spring 빈이 아니다).
         this(pendingStore, transcript, agentClient,
                 new AgentTools(noteRepository, noteRenderer, responder, Path.of(artifactDir),
                         MochaObjectMapper.create(), pendingStore, previewMessenger, new ProposalValidator(),
@@ -117,7 +119,7 @@ public class AgentConversationRouter implements ConversationRouter {
                 clock);
     }
 
-    // 테스트에서 협력자·시간을 주입하기 위한 생성자(SlackConversationFlows와 동일 패턴).
+    // 테스트에서 협력자·시간을 주입하기 위한 생성자.
     AgentConversationRouter(
             PendingStore pendingStore,
             ConversationTranscript transcript,
@@ -197,11 +199,11 @@ public class AgentConversationRouter implements ConversationRouter {
         //         (ref: specs/coffee-note-agent/plan.md#ADR-3 불변, #ADR-45, delta AC-Δ7).
         // 커밋·렌더·배달·버튼 소진 체인은 독립 핸들러가 소유한다(TΔ8a 이관 — flow 3종 미경유, AC-Δ3).
         String actionId = action.actionId();
-        if (DefaultConversationRouter.ACTION_SAVE.equals(actionId)) {
+        if (ACTION_SAVE.equals(actionId)) {
             commitHandler.confirmSave(action);
             // 커밋 접힘(ADR-46 규칙 ②) — 확정된 작업의 문맥은 버린다. 배선 지점: 버튼 액션 핸들러(FoldTrigger 계약).
             transcript.clear(action.userId(), ConversationTranscript.FoldTrigger.SAVE_COMMIT);
-        } else if (DefaultConversationRouter.ACTION_CANCEL.equals(actionId)) {
+        } else if (ACTION_CANCEL.equals(actionId)) {
             commitHandler.cancel(action);
             transcript.clear(action.userId(), ConversationTranscript.FoldTrigger.CANCEL_COMMIT);
         } else {
