@@ -1,0 +1,220 @@
+package com.devwuu.mocha.agent;
+
+import com.openai.client.OpenAIClient;
+import com.openai.core.JsonValue;
+import com.openai.models.responses.EasyInputMessage;
+import com.openai.models.responses.FunctionTool;
+import com.openai.models.responses.Response;
+import com.openai.models.responses.ResponseCreateParams;
+import com.openai.models.responses.ResponseFunctionToolCall;
+import com.openai.models.responses.ResponseInputItem;
+import com.openai.models.responses.ResponseOutputItem;
+import com.openai.models.responses.ResponseOutputMessage;
+import com.openai.models.responses.WebSearchTool;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import tools.jackson.databind.ObjectMapper;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * OpenAI Responses API 기반 {@link AgentClient} 구현 — 모델 호출↔tool 실행 루프 드라이버
+ * (ref: specs/coffee-note-agent/plan.md#ADR-44, changes/0018 findings-TΔ0.md §SDK).
+ * <p>루프 계약(TΔ0a 실측): 이터레이션 상태는 {@code previous_response_id} + function_call_output만 싣고,
+ * tool 정의는 매 요청 재전송한다. 내장 web_search는 서버측에서 실행 완료된 채 도착하므로
+ * 클라이언트 왕복·상한 대상이 아니다(관측 로그만). 종료 = function_call 없는 응답.
+ * <p>OpenAI SDK 타입은 이 클래스 안에만 존재한다(plan §4 POLICY, NFR-4).
+ */
+public class OpenAiAgentClient implements AgentClient {
+
+    private static final Logger log = LoggerFactory.getLogger(OpenAiAgentClient.class);
+
+    private final OpenAIClient client;
+    private final String model;
+    private final int maxToolCalls;
+    private final ObjectMapper mapper;
+
+    /**
+     * @param model        에이전트 루프 모델(mocha.agent.model — web_search·다중 tool 호출 품질 필요, ADR-50)
+     * @param maxToolCalls function tool 실행 횟수 상한(mocha.agent.max-tool-calls, ADR-44)
+     */
+    public OpenAiAgentClient(OpenAIClient client, String model, int maxToolCalls, ObjectMapper mapper) {
+        this.client = client;
+        this.model = model;
+        this.maxToolCalls = maxToolCalls;
+        this.mapper = mapper;
+    }
+
+    @Override
+    public String runTurn(AgentTurnContext context, List<AgentTool> tools) {
+        long started = System.currentTimeMillis();
+        Map<String, AgentTool> toolsByName = new LinkedHashMap<>();
+        tools.forEach(tool -> toolsByName.put(tool.name(), tool));
+
+        List<ResponseInputItem> pendingInput = new ArrayList<>();
+        context.messages().forEach(message -> pendingInput.add(toInputItem(message)));
+        String previousResponseId = null;
+        int executedToolCalls = 0;
+        List<String> toolSequence = new ArrayList<>();
+
+        while (true) {
+            Response response = send(buildParams(context.instructions(), tools, pendingInput, previousResponseId));
+            previousResponseId = response.id();
+            pendingInput.clear();
+
+            List<ResponseFunctionToolCall> calls = new ArrayList<>();
+            StringBuilder finalText = new StringBuilder();
+            for (ResponseOutputItem item : response.output()) {
+                if (item.isWebSearchCall()) {
+                    // 서버측에서 이미 실행 완료 — 상한 비대상, 실제 검색 쿼리만 관측(findings-TΔ0 §SDK)
+                    toolSequence.add("web_search");
+                    log.info("에이전트 web_search: {}", item.asWebSearchCall().action());
+                } else if (item.isFunctionCall()) {
+                    calls.add(item.asFunctionCall());
+                } else if (item.isMessage()) {
+                    appendMessageText(item.asMessage(), finalText);
+                }
+                // reasoning 등 그 외 아이템은 디스패치·응답 텍스트와 무관 — 무시
+            }
+
+            if (calls.isEmpty()) {
+                logTurnObservation("완료", toolSequence, executedToolCalls, started, response);
+                if (finalText.isEmpty()) {
+                    throw new AgentException("에이전트 턴이 최종 텍스트 없이 끝남 (response.id=" + response.id() + ")");
+                }
+                return finalText.toString();
+            }
+
+            for (ResponseFunctionToolCall call : calls) {
+                // POLICY: tool 호출 상한 도달 시 루프를 중단하고 폴백한다 — 상한 없는 루프 금지
+                // (ref: specs/coffee-note-agent/plan.md#ADR-44 POLICY)
+                if (executedToolCalls >= maxToolCalls) {
+                    logTurnObservation("상한 도달", toolSequence, executedToolCalls, started, response);
+                    throw new AgentException("tool 호출 상한(" + maxToolCalls + ") 도달 — 턴 중단");
+                }
+                executedToolCalls++;
+                toolSequence.add(call.name());
+                // 결과 짝짓기는 callId(call_...) 기준 — id(fc_...)가 아니다(findings-TΔ0 §SDK).
+                pendingInput.add(ResponseInputItem.ofFunctionCallOutput(
+                        ResponseInputItem.FunctionCallOutput.builder()
+                                .callId(call.callId())
+                                .output(dispatch(toolsByName, call))
+                                .build()));
+            }
+        }
+    }
+
+    /**
+     * tool 호출 1건 디스패치. 실행 오류는 삼키지도 턴을 깨지도 않고 <b>사유를 tool 결과로</b> 돌려준다
+     * — 에이전트가 루프 안에서 정정하거나 사용자에게 안내한다(ref: plan.md#ADR-45 POLICY, AC-Δ5).
+     */
+    private String dispatch(Map<String, AgentTool> toolsByName, ResponseFunctionToolCall call) {
+        AgentTool tool = toolsByName.get(call.name());
+        if (tool == null) {
+            log.warn("에이전트가 등록되지 않은 tool 호출: {}", call.name());
+            return errorOutput("등록되지 않은 tool: " + call.name());
+        }
+        try {
+            return tool.executor().execute(call.arguments());
+        } catch (RuntimeException e) {
+            log.warn("tool {} 실행 실패 — 오류 사유를 tool 결과로 반환", call.name(), e);
+            return errorOutput(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+        }
+    }
+
+    private String errorOutput(String reason) {
+        return mapper.writeValueAsString(Map.of("error", reason));
+    }
+
+    /**
+     * SDK 호출 경계 — 테스트는 이 메서드를 override해 결정론적 응답으로 대체한다(CLAUDE.md §5.2,
+     * 실 API 스모크는 수동). 호출 실패는 {@link AgentException}으로 수렴한다(ADR-48 폴백 대상).
+     */
+    protected Response send(ResponseCreateParams params) {
+        try {
+            return client.responses().create(params);
+        } catch (RuntimeException e) {
+            throw new AgentException("에이전트 모델 호출 실패", e);
+        }
+    }
+
+    // 요청 조립 — tool 정의(function 5종 + 내장 web_search)는 매 요청 재전송(findings-TΔ0 §SDK).
+    ResponseCreateParams buildParams(String instructions, List<AgentTool> tools,
+                                     List<ResponseInputItem> input, String previousResponseId) {
+        ResponseCreateParams.Builder builder = ResponseCreateParams.builder()
+                .model(model)
+                .instructions(instructions)
+                .inputOfResponse(List.copyOf(input));
+        tools.forEach(tool -> builder.addTool(toFunctionTool(tool)));
+        builder.addTool(webSearchTool());
+        if (previousResponseId != null) {
+            builder.previousResponseId(previousResponseId);
+        }
+        return builder.build();
+    }
+
+    // strict schema — 형태는 모델이 보장하고, 값 수준 규칙은 서버 검증(TΔ1)이 맡는다(findings-TΔ0 §SDK).
+    private FunctionTool toFunctionTool(AgentTool tool) {
+        Map<String, Object> schemaFields;
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> parsed = mapper.readValue(tool.parametersSchema(), Map.class);
+            schemaFields = parsed;
+        } catch (RuntimeException e) {
+            throw new AgentException("잘못된 tool 인자 스키마: " + tool.name(), e);
+        }
+        FunctionTool.Parameters.Builder parameters = FunctionTool.Parameters.builder();
+        schemaFields.forEach((key, value) -> parameters.putAdditionalProperty(key, JsonValue.from(value)));
+        return FunctionTool.builder()
+                .name(tool.name())
+                .description(tool.description())
+                .parameters(parameters.build())
+                .strict(true)
+                .build();
+    }
+
+    // 내장 web_search는 GA 타입 + KR 지역화 — 영어권 기본 착지 방지(ADR-16 승계, findings-TΔ0 §SDK).
+    private static WebSearchTool webSearchTool() {
+        return WebSearchTool.builder()
+                .type(WebSearchTool.Type.WEB_SEARCH)
+                .userLocation(WebSearchTool.UserLocation.builder()
+                        .type(WebSearchTool.UserLocation.Type.APPROXIMATE)
+                        .country("KR")
+                        .timezone("Asia/Seoul")
+                        .build())
+                .build();
+    }
+
+    private static ResponseInputItem toInputItem(AgentMessage message) {
+        return ResponseInputItem.ofEasyInputMessage(EasyInputMessage.builder()
+                .role(message.role() == AgentMessage.Role.USER
+                        ? EasyInputMessage.Role.USER
+                        : EasyInputMessage.Role.ASSISTANT)
+                .content(message.content())
+                .build());
+    }
+
+    private static void appendMessageText(ResponseOutputMessage message, StringBuilder finalText) {
+        for (ResponseOutputMessage.Content content : message.content()) {
+            if (content.isOutputText()) {
+                finalText.append(content.asOutputText().text());
+            } else if (content.isRefusal()) {
+                // 거절도 모델의 최종 발화 — 사용자에게 그대로 전달할 텍스트로 취급한다.
+                finalText.append(content.asRefusal().refusal());
+            }
+        }
+    }
+
+    // AC-Δ9: 턴 관측 — tool 시퀀스·호출 수·상한 도달이 파일 로그에서 구분 확인된다(plan §6).
+    private void logTurnObservation(String outcome, List<String> toolSequence, int executedToolCalls,
+                                    long started, Response response) {
+        log.info("에이전트 턴 관측: outcome={} toolSequence={} functionCalls={} elapsedMs={} usage={}",
+                outcome, toolSequence, executedToolCalls, System.currentTimeMillis() - started,
+                response.usage()
+                        .map(u -> "in:" + u.inputTokens() + " out:" + u.outputTokens())
+                        .orElse("?"));
+    }
+}
