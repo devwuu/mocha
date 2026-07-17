@@ -32,9 +32,11 @@ import java.time.ZoneId;
  * 실제 오케스트레이션은 내부 협력자가 소유한다(ADR-31, changes/0013):
  * <ul>
  *   <li>{@link SlackRecordFlow} — 신규 기록 파이프라인({@link #startNewNote})·pending 수정({@link #revisePending})·
- *       [저장]/[취소] 커밋 게이트({@link #confirmSave}/{@link #cancel})·의도 불일치 안내({@code guide*}).</li>
+ *       의도 불일치 안내({@code guide*}).</li>
+ *   <li>{@link SlackCommitHandler} — [저장]/[취소] 커밋 게이트({@link #confirmSave}/{@link #cancel}).
+ *       TΔ8a(changes/0018)에서 flow 밖으로 이관된 독립 핸들러 — 이 façade의 위임은 구 라우터 호환용이다.</li>
  *   <li>{@link SlackSearchFlow} — 검색 세션 시작·계속·종료({@link #searchNotes}/{@link #endSearch})·후보 목록·카드 조회.</li>
- *   <li>{@link SlackEditFlow} — 수정 세션 진입·edit 커밋·날짜 충돌(SlackRecordFlow·SlackSearchFlow가 mode=edit 분기에서 호출).</li>
+ *   <li>{@link SlackEditFlow} — 수정 세션 진입·날짜 충돌(SlackRecordFlow·SlackSearchFlow가 mode=edit 분기에서 호출).</li>
  *   <li>{@link SlackPhotoIntake} — 사진 수신({@link #receiveMedia})·버퍼·스테이징·포맷 입구 검증·OCR 오버레이.</li>
  *   <li>{@link FlowMessages} — 사용자 안내 문구 상수.</li>
  * </ul>
@@ -52,6 +54,7 @@ public class SlackConversationFlows implements ConversationFlows {
     private final SlackRecordFlow recordFlow;
     private final SlackSearchFlow searchFlow;
     private final SlackPhotoIntake photoIntake;
+    private final SlackCommitHandler commitHandler;
 
     @Autowired
     public SlackConversationFlows(
@@ -105,13 +108,16 @@ public class SlackConversationFlows implements ConversationFlows {
             Clock clock) {
         this.photoIntake = new SlackPhotoIntake(pendingStore, responder,
                 photoDownloader, photoStore, photoBufferStore, photoInfoExtractor, bufferWindow, clock);
-        SlackEditFlow editFlow = new SlackEditFlow(pendingStore, searchSessionStore, noteRepository, noteRenderer,
-                responder, previewMessenger, pendingReviser, photoIntake, clock);
-        this.recordFlow = new SlackRecordFlow(pendingStore, noteRepository, noteRenderer, responder,
-                noteExtractor, noteMatcher, noteEnricher, aliasGenerator, pendingReviser, previewMessenger, transitionSlot,
+        SlackEditFlow editFlow = new SlackEditFlow(pendingStore, searchSessionStore, noteRepository,
+                responder, previewMessenger, pendingReviser, clock);
+        this.recordFlow = new SlackRecordFlow(pendingStore, noteRepository, responder,
+                noteExtractor, noteMatcher, noteEnricher, pendingReviser, previewMessenger, transitionSlot,
                 photoIntake, editFlow, clock);
         this.searchFlow = new SlackSearchFlow(searchSessionStore, noteSearchService, noteRepository, noteRenderer,
                 responder, transitionSlot, editFlow, artifactDir, clock);
+        // 커밋 게이트의 새 홈(TΔ8a) — 라우터 계약(confirmSave/cancel)을 위해 façade도 같은 핸들러에 위임한다.
+        this.commitHandler = new SlackCommitHandler(pendingStore, noteRepository, noteRenderer,
+                responder, aliasGenerator, photoIntake);
     }
 
     @Override
@@ -146,12 +152,13 @@ public class SlackConversationFlows implements ConversationFlows {
 
     @Override
     public void confirmSave(IncomingAction action) {
-        recordFlow.confirmSave(action);
+        // TΔ8a 이관 — 커밋 경로는 flow가 아닌 독립 핸들러가 소유한다(구 라우터 호환용 위임, TΔ8b에서 정리).
+        commitHandler.confirmSave(action);
     }
 
     @Override
     public void cancel(IncomingAction action) {
-        recordFlow.cancel(action);
+        commitHandler.cancel(action);
     }
 
     @Override

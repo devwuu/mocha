@@ -9,6 +9,7 @@ import com.devwuu.mocha.agent.ProposalValidator;
 import com.devwuu.mocha.agent.TranscriptTurn;
 import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.json.MochaObjectMapper;
+import com.devwuu.mocha.pipeline.AliasGenerator;
 import com.devwuu.mocha.llm.VisionExtraction;
 import com.devwuu.mocha.llm.VisionHint;
 import com.devwuu.mocha.pipeline.PhotoInfoExtractor;
@@ -39,13 +40,13 @@ import java.util.Objects;
  *   <li>텍스트(사진 캡션 포함) → OCR 전처리(FR-19, 루프 전 결정론 1콜) → 에이전트 턴(TΔ2 루프 + TΔ7a
  *       프롬프트·컨텍스트) → 최종 텍스트가 Slack 응답(ADR-44). 의도 게이트는 없다 — 에이전트 자체가
  *       대화 경계다(ADR-47, FR-24).</li>
- *   <li>버튼 → {@code action_id} 결정론 분기(ADR-3 불변) — 에이전트 미경유(AC-Δ7). 커밋 경로는 TΔ8a
- *       이관 전까지 기존 {@link ConversationFlows}를 태운다.</li>
- *   <li>사진 → 버퍼·스테이징 배관(FR-10) 그대로 위임 — 캡션 텍스트는 {@link SlackGateway}가 별도
- *       {@link IncomingMessage}로 이어 보내 에이전트 턴이 된다.</li>
+ *   <li>버튼 → {@code action_id} 결정론 분기(ADR-3 불변) — 에이전트 미경유(AC-Δ7). 커밋·렌더·배달·버튼
+ *       소진 체인은 {@link SlackCommitHandler}를 직접 부른다(TΔ8a 이관 — flow 3종 미경유, AC-Δ3).</li>
+ *   <li>사진 → 버퍼·스테이징 배관(FR-10, {@link SlackPhotoIntake}) 직접 위임 — 캡션 텍스트는
+ *       {@link SlackGateway}가 별도 {@link IncomingMessage}로 이어 보내 에이전트 턴이 된다.</li>
  * </ul>
- * <p>구 의도 라우팅({@link DefaultConversationRouter})은 TΔ8b 철거 전까지 미배선 상태로 병존한다 —
- * {@code @Primary}로 이 구현이 게이트웨이에 배선된다(tasks TΔ7b 병존 허용).
+ * <p>구 의도 라우팅({@link DefaultConversationRouter})·flow 3종은 TΔ8b 철거 전까지 미배선 상태로 병존한다 —
+ * {@code @Primary}로 이 구현이 게이트웨이에 배선되고, 이 라우터는 {@link ConversationFlows}에 의존하지 않는다(TΔ8a).
  * <p>POLICY: 에이전트 턴 실패(모델 오류·tool 상한·검증 반복)는 pending·노트 무변화 + 재요청 안내 +
  * 원문 로그 보존 — 조용한 유실 금지 (ref: specs/coffee-note-agent/plan.md#ADR-48, spec AC-63).
  */
@@ -65,7 +66,7 @@ public class AgentConversationRouter implements ConversationRouter {
     private final AgentContextAssembler contextAssembler;
     private final SlackPhotoIntake photoIntake;
     private final SlackResponder responder;
-    private final ConversationFlows flow;
+    private final SlackCommitHandler commitHandler;
     private final Clock clock;
 
     @Autowired
@@ -81,10 +82,10 @@ public class AgentConversationRouter implements ConversationRouter {
             PhotoStore photoStore,
             PhotoBufferStore photoBufferStore,
             PhotoInfoExtractor photoInfoExtractor,
-            ConversationFlows flow,
+            AliasGenerator aliasGenerator,
             @Value("${mocha.artifact.dir}") String artifactDir,
             @Value("${mocha.photo.buffer-window}") Duration bufferWindow) {
-        // tool façade·컨텍스트 조립기는 프레임워크 무관 내부 협력자라 여기서 조립한다
+        // tool façade·컨텍스트 조립기·커밋 핸들러는 프레임워크 무관 내부 협력자라 여기서 조립한다
         // (SlackConversationFlows의 flow 조립과 동일 규칙 — Spring 빈이 아니다).
         this(pendingStore, transcript, agentClient,
                 new AgentTools(noteRepository, noteRenderer, responder, Path.of(artifactDir),
@@ -93,7 +94,27 @@ public class AgentConversationRouter implements ConversationRouter {
                 new AgentContextAssembler(MochaObjectMapper.create(), Clock.system(SEOUL)),
                 new SlackPhotoIntake(pendingStore, responder, photoDownloader, photoStore, photoBufferStore,
                         photoInfoExtractor, bufferWindow, Clock.system(SEOUL)),
-                responder, flow, Clock.system(SEOUL));
+                responder, noteRepository, noteRenderer, aliasGenerator, Clock.system(SEOUL));
+    }
+
+    // 커밋 핸들러가 사진 배관(photoIntake)을 라우터와 공유하도록 잇는 중간 생성자 — this(...) 단일 식
+    // 제약 때문에 photoIntake를 매개변수로 받아 두 곳에 배선한다.
+    private AgentConversationRouter(
+            PendingStore pendingStore,
+            ConversationTranscript transcript,
+            AgentClient agentClient,
+            AgentTools agentTools,
+            AgentContextAssembler contextAssembler,
+            SlackPhotoIntake photoIntake,
+            SlackResponder responder,
+            NoteRepository noteRepository,
+            NoteRenderer noteRenderer,
+            AliasGenerator aliasGenerator,
+            Clock clock) {
+        this(pendingStore, transcript, agentClient, agentTools, contextAssembler, photoIntake, responder,
+                new SlackCommitHandler(pendingStore, noteRepository, noteRenderer, responder,
+                        aliasGenerator, photoIntake),
+                clock);
     }
 
     // 테스트에서 협력자·시간을 주입하기 위한 생성자(SlackConversationFlows와 동일 패턴).
@@ -105,7 +126,7 @@ public class AgentConversationRouter implements ConversationRouter {
             AgentContextAssembler contextAssembler,
             SlackPhotoIntake photoIntake,
             SlackResponder responder,
-            ConversationFlows flow,
+            SlackCommitHandler commitHandler,
             Clock clock) {
         this.pendingStore = pendingStore;
         this.transcript = transcript;
@@ -114,7 +135,7 @@ public class AgentConversationRouter implements ConversationRouter {
         this.contextAssembler = contextAssembler;
         this.photoIntake = photoIntake;
         this.responder = responder;
-        this.flow = flow;
+        this.commitHandler = commitHandler;
         this.clock = clock;
     }
 
@@ -174,14 +195,14 @@ public class AgentConversationRouter implements ConversationRouter {
     public void onAction(IncomingAction action) {
         // POLICY: 저장/취소 커밋은 Block Kit 버튼(action_id) 결정론 분기만 — 자연어·에이전트 미경유
         //         (ref: specs/coffee-note-agent/plan.md#ADR-3 불변, #ADR-45, delta AC-Δ7).
-        // 커밋·렌더·배달 체인은 TΔ8a 이관 전까지 기존 flow가 소유한다.
+        // 커밋·렌더·배달·버튼 소진 체인은 독립 핸들러가 소유한다(TΔ8a 이관 — flow 3종 미경유, AC-Δ3).
         String actionId = action.actionId();
         if (DefaultConversationRouter.ACTION_SAVE.equals(actionId)) {
-            flow.confirmSave(action);
+            commitHandler.confirmSave(action);
             // 커밋 접힘(ADR-46 규칙 ②) — 확정된 작업의 문맥은 버린다. 배선 지점: 버튼 액션 핸들러(FoldTrigger 계약).
             transcript.clear(action.userId(), ConversationTranscript.FoldTrigger.SAVE_COMMIT);
         } else if (DefaultConversationRouter.ACTION_CANCEL.equals(actionId)) {
-            flow.cancel(action);
+            commitHandler.cancel(action);
             transcript.clear(action.userId(), ConversationTranscript.FoldTrigger.CANCEL_COMMIT);
         } else {
             // 계약에 없는 action_id — 조용히 무시하되 원인 추적용으로 남긴다(구 라우터 규칙 승계).
@@ -191,8 +212,8 @@ public class AgentConversationRouter implements ConversationRouter {
 
     @Override
     public void onMedia(IncomingMedia media) {
-        // 사진 버퍼·스테이징·포맷 검증 배관은 불변(ADR-29, delta UNCHANGED) — 그대로 위임한다.
+        // 사진 버퍼·스테이징·포맷 검증 배관은 불변(ADR-29, delta UNCHANGED) — flow 미경유로 직접 위임한다(TΔ8a).
         // 캡션 텍스트는 게이트웨이가 별도 IncomingMessage로 이어 보내 에이전트 턴(onMessage)이 된다.
-        flow.receiveMedia(media);
+        photoIntake.receive(media);
     }
 }

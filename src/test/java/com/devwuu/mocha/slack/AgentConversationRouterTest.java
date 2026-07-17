@@ -47,7 +47,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * TΔ7b(changes/0018): 라우터 배선 + 결정론 폴백 — 버튼 외 수신 = OCR 전처리 → 에이전트 턴(ADR-44·47),
  * 버튼 = 에이전트 미경유 결정론 분기(AC-Δ7), 턴 실패 = pending 무변화 + 재요청 안내(ADR-48, AC-63).
- * 외부 의존(모델·store·flow)은 전부 fake — LLM 판단 자체는 비대상(모듈 CLAUDE.md §5.2·5.3).
+ * 커밋 경로는 {@link SlackCommitHandler} 직접 배선(TΔ8a — flow 3종 미경유, AC-Δ3).
+ * 외부 의존(모델·store·커밋 핸들러)은 전부 fake — LLM 판단 자체는 비대상(모듈 CLAUDE.md §5.2·5.3).
  */
 class AgentConversationRouterTest {
 
@@ -60,7 +61,7 @@ class AgentConversationRouterTest {
     private final FakePendingStore pendingStore = new FakePendingStore();
     private final ConversationTranscript transcript = new ConversationTranscript(20, Duration.ofHours(1));
     private final RecordingResponder responder = new RecordingResponder();
-    private final CapturingFlow flow = new CapturingFlow();
+    private final CapturingCommitHandler commitHandler = new CapturingCommitHandler();
     private final FakePhotoStore photoStore = new FakePhotoStore();
     private final FakePhotoBufferStore photoBufferStore = new FakePhotoBufferStore();
     private final StubPhotoInfoExtractor photoInfoExtractor = new StubPhotoInfoExtractor();
@@ -69,14 +70,14 @@ class AgentConversationRouterTest {
     @BeforeEach
     void setUp() {
         SlackPhotoIntake photoIntake = new SlackPhotoIntake(pendingStore, responder,
-                url -> new byte[0], photoStore, photoBufferStore, photoInfoExtractor,
+                url -> jpegBytes(), photoStore, photoBufferStore, photoInfoExtractor,
                 Duration.ofMinutes(3), clock);
         // fake AgentClient는 tool 실행기를 부르지 않으므로 lookup·제안 협력자는 미접촉 — 장착 목록 계약만 쓴다.
         AgentTools agentTools = new AgentTools(null, null, responder, Path.of("unused-artifact"),
                 MochaObjectMapper.create(), pendingStore, null, new ProposalValidator(), transcript, clock);
         router = new AgentConversationRouter(pendingStore, transcript, agentClient, agentTools,
                 new AgentContextAssembler(MochaObjectMapper.create(), clock), photoIntake,
-                responder, flow, clock);
+                responder, commitHandler, clock);
     }
 
     @Test
@@ -115,39 +116,41 @@ class AgentConversationRouterTest {
     }
 
     @Test
-    @DisplayName("AC-Δ7/ADR-3: [저장]/[취소] 버튼은 에이전트 미경유 결정론 분기 + 커밋 접힘(ADR-46 규칙 ②)")
+    @DisplayName("AC-Δ7/AC-Δ3/ADR-3: [저장]/[취소] 버튼은 에이전트 미경유 — 커밋 핸들러 직접 분기(TΔ8a) + 커밋 접힘(ADR-46 규칙 ②)")
     void buttonActionsBypassAgent() {
         transcript.append(USER, new TranscriptTurn("잡담", "네 멍"));
         router.onAction(action(DefaultConversationRouter.ACTION_SAVE));
 
-        assertThat(flow.saves).hasSize(1);
+        assertThat(commitHandler.saves).hasSize(1);
         assertThat(agentClient.calls).isZero();
         assertThat(transcript.view(USER)).isEmpty(); // SAVE_COMMIT 접힘
 
         transcript.append(USER, new TranscriptTurn("잡담 둘", "네 멍"));
         router.onAction(action(DefaultConversationRouter.ACTION_CANCEL));
 
-        assertThat(flow.cancels).hasSize(1);
+        assertThat(commitHandler.cancels).hasSize(1);
         assertThat(agentClient.calls).isZero();
         assertThat(transcript.view(USER)).isEmpty(); // CANCEL_COMMIT 접힘
     }
 
     @Test
-    @DisplayName("계약 밖 action_id는 무시 — flow·에이전트 미호출(구 라우터 규칙 승계)")
+    @DisplayName("계약 밖 action_id는 무시 — 커밋 핸들러·에이전트 미호출(구 라우터 규칙 승계)")
     void unknownActionIsIgnored() {
         router.onAction(action("mocha_unknown"));
 
-        assertThat(flow.saves).isEmpty();
-        assertThat(flow.cancels).isEmpty();
+        assertThat(commitHandler.saves).isEmpty();
+        assertThat(commitHandler.cancels).isEmpty();
         assertThat(agentClient.calls).isZero();
     }
 
     @Test
-    @DisplayName("FR-10: 사진 수신은 버퍼·스테이징 배관으로만 위임 — 에이전트 미경유(캡션은 별도 텍스트 턴)")
+    @DisplayName("FR-10/TΔ8a: 사진 수신은 버퍼·스테이징 배관(SlackPhotoIntake) 직접 배선 — 에이전트·flow 미경유")
     void mediaDelegatesWithoutAgent() {
-        router.onMedia(new IncomingMedia(USER, CHANNEL, List.of(), "1720000000.000111"));
+        IncomingPhoto photo = new IncomingPhoto("https://slack/bag.jpg", "bag.jpg", "image/jpeg", List.of());
+        router.onMedia(new IncomingMedia(USER, CHANNEL, List.of(photo), "1720000000.000111"));
 
-        assertThat(flow.media).hasSize(1);
+        assertThat(photoStore.staged.get(USER)).extracting(StagedImage::name).containsExactly("bag.jpg");
+        assertThat(photoBufferStore.get(USER)).isPresent(); // pending 없음 → 버퍼에 담아 텍스트를 기다린다
         assertThat(agentClient.calls).isZero();
     }
 
@@ -203,6 +206,11 @@ class AgentConversationRouterTest {
 
     private static IncomingAction action(String actionId) {
         return new IncomingAction(USER, CHANNEL, actionId, null, "1720000000.000456");
+    }
+
+    // vision 지원 포맷의 최소 매직바이트 — 스테이징 입구 게이트(ADR-29) 통과용.
+    private static byte[] jpegBytes() {
+        return new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xE0, 0, 0, 0, 0, 0, 0, 0, 0};
     }
 
     private void bufferPhoto(String stagedName) {
@@ -279,59 +287,27 @@ class AgentConversationRouterTest {
 
         @Override
         public void finalizePreview(String channelId, PendingNote pending, String statusText) {
-            throw new UnsupportedOperationException("버튼 소진은 커밋 flow의 몫(TΔ8a 이관 전)");
+            throw new UnsupportedOperationException("버튼 소진은 SlackCommitHandler의 몫(TΔ8a)");
         }
     }
 
-    /** 버튼·사진 위임만 캡처하는 flow — 구 텍스트 flow가 호출되면 배선 위반으로 즉시 실패한다(AC-Δ7). */
-    private static final class CapturingFlow implements ConversationFlows {
+    /** 버튼 분기만 캡처하는 커밋 핸들러 스텁 — 커밋 체인 자체는 SlackCommitHandlerTest가 본다(TΔ8a). */
+    private static final class CapturingCommitHandler extends SlackCommitHandler {
         final List<IncomingAction> saves = new ArrayList<>();
         final List<IncomingAction> cancels = new ArrayList<>();
-        final List<IncomingMedia> media = new ArrayList<>();
 
-        @Override
-        public void startNewNote(IncomingMessage message) {
-            throw new UnsupportedOperationException("텍스트는 에이전트 턴으로만 흐른다(ADR-44)");
+        CapturingCommitHandler() {
+            super(null, null, null, null, null, null); // 캡처 전용 — 실 협력자 미접촉
         }
 
         @Override
-        public void revisePending(IncomingMessage message, PendingNote pending) {
-            throw new UnsupportedOperationException("텍스트는 에이전트 턴으로만 흐른다(ADR-44)");
-        }
-
-        @Override
-        public void guidePendingExists(IncomingMessage message) {
-            throw new UnsupportedOperationException("의도 게이트 안내는 폐지됐다(ADR-47)");
-        }
-
-        @Override
-        public void guideNotARecord(IncomingMessage message) {
-            throw new UnsupportedOperationException("의도 게이트 안내는 폐지됐다(ADR-47)");
-        }
-
-        @Override
-        public void searchNotes(IncomingMessage message) {
-            throw new UnsupportedOperationException("검색은 에이전트 tool로만 흐른다(ADR-44)");
-        }
-
-        @Override
-        public void endSearch(IncomingMessage message) {
-            throw new UnsupportedOperationException("검색 세션은 폐지됐다(ADR-46)");
-        }
-
-        @Override
-        public void confirmSave(IncomingAction action) {
+        void confirmSave(IncomingAction action) {
             saves.add(action);
         }
 
         @Override
-        public void cancel(IncomingAction action) {
+        void cancel(IncomingAction action) {
             cancels.add(action);
-        }
-
-        @Override
-        public void receiveMedia(IncomingMedia incoming) {
-            media.add(incoming);
         }
     }
 
@@ -359,7 +335,8 @@ class AgentConversationRouterTest {
 
         @Override
         public String stage(String userId, String filename, byte[] bytes) {
-            throw new UnsupportedOperationException("스테이징은 사진 수신 경로(onMedia)의 몫");
+            staged.computeIfAbsent(userId, k -> new ArrayList<>()).add(new StagedImage(filename, bytes));
+            return filename;
         }
 
         @Override

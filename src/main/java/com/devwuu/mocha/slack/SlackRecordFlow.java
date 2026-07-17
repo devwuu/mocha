@@ -10,7 +10,6 @@ import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.llm.VisionExtraction;
 import com.devwuu.mocha.llm.VisionHint;
-import com.devwuu.mocha.pipeline.AliasGenerator;
 import com.devwuu.mocha.pipeline.ExtractionResult;
 import com.devwuu.mocha.pipeline.MatchIdentity;
 import com.devwuu.mocha.pipeline.MatchResult;
@@ -20,14 +19,12 @@ import com.devwuu.mocha.pipeline.NoteExtractor;
 import com.devwuu.mocha.pipeline.NoteMatcher;
 import com.devwuu.mocha.pipeline.PendingReviser;
 import com.devwuu.mocha.pipeline.PhotoHint;
-import com.devwuu.mocha.render.NoteRenderer;
 import com.devwuu.mocha.repository.NoteRepository;
 import com.devwuu.mocha.repository.PendingStore;
 import com.devwuu.mocha.repository.TransitionSlot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.nio.file.Path;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -37,9 +34,11 @@ import java.util.Optional;
 
 /**
  * 기록·수정 의도 축 전담 — 신규 기록 파이프라인(추출→매칭→보강→미리보기)·pending 수정(revise)·
- * [저장]/[취소] 커밋 게이트·의도 불일치 안내(FR-17)를 {@link SlackConversationFlows}(façade)에서
- * 위임받아 소유한다(ADR-31, changes/0013). façade가 조립하는 내부 협력자라 Spring 빈이 아니다 —
+ * 의도 불일치 안내(FR-17)를 {@link SlackConversationFlows}(façade)에서 위임받아 소유한다
+ * (ADR-31, changes/0013). façade가 조립하는 내부 협력자라 Spring 빈이 아니다 —
  * 라우터 계약은 façade에 남는다.
+ * <p>[저장]/[취소] 커밋 게이트는 {@link SlackCommitHandler}로 이관됐다(changes/0018 TΔ8a) —
+ * 이 flow는 미리보기(pending) 단계까지만 소유한다.
  * <p>이름에 Slack을 붙인 이유: {@link IncomingMessage}·{@link IncomingAction} 수신, Block Kit
  * 미리보기({@link PreviewMessenger}), 안내 문구 전송({@link SlackResponder}) 등 Slack 전송 계층에 결합된
  * 구체 flow다 — 범용 경계 인터페이스 {@link ConversationFlows}와 레벨을 구분한다({@link SlackPhotoIntake}과
@@ -58,12 +57,10 @@ class SlackRecordFlow {
 
     private final PendingStore pendingStore;
     private final NoteRepository noteRepository;
-    private final NoteRenderer noteRenderer;
     private final SlackResponder responder;
     private final NoteExtractor noteExtractor;
     private final NoteMatcher noteMatcher;
     private final NoteEnricher noteEnricher;
-    private final AliasGenerator aliasGenerator;
     private final PendingReviser pendingReviser;
     private final PreviewMessenger previewMessenger;
     private final TransitionSlot transitionSlot;
@@ -74,12 +71,10 @@ class SlackRecordFlow {
     SlackRecordFlow(
             PendingStore pendingStore,
             NoteRepository noteRepository,
-            NoteRenderer noteRenderer,
             SlackResponder responder,
             NoteExtractor noteExtractor,
             NoteMatcher noteMatcher,
             NoteEnricher noteEnricher,
-            AliasGenerator aliasGenerator,
             PendingReviser pendingReviser,
             PreviewMessenger previewMessenger,
             TransitionSlot transitionSlot,
@@ -88,12 +83,10 @@ class SlackRecordFlow {
             Clock clock) {
         this.pendingStore = pendingStore;
         this.noteRepository = noteRepository;
-        this.noteRenderer = noteRenderer;
         this.responder = responder;
         this.noteExtractor = noteExtractor;
         this.noteMatcher = noteMatcher;
         this.noteEnricher = noteEnricher;
-        this.aliasGenerator = aliasGenerator;
         this.pendingReviser = pendingReviser;
         this.previewMessenger = previewMessenger;
         this.transitionSlot = transitionSlot;
@@ -264,103 +257,6 @@ class SlackRecordFlow {
         }
     }
 
-    /**
-     * [저장] 버튼 커밋 — {@link ConversationFlows#confirmSave}의 실제 구현. pending 로드·TTL 판정(V-7)·
-     * 결손 검증은 mode와 무관하게 여기가 공통 게이트고, mode=edit 커밋만 {@link SlackEditFlow#commitEdit}로 갈린다.
-     */
-    void confirmSave(IncomingAction action) {
-        String userId = action.userId();
-        // V-7: pending 부재/TTL 초과면 저장하지 않고 만료 안내 — get()이 만료분을 빈 Optional로 준다.
-        Optional<PendingNote> pendingOpt = pendingStore.get(userId);
-        if (pendingOpt.isEmpty()) {
-            log.info("[저장] 무효 — pending 부재/만료: user={}", userId);
-            // 만료/부재면 대기 중이던 스테이징 사진도 버려진 것 — 노트 트리로 새지 않게 정리한다(FR-10).
-            photoIntake.discard(userId);
-            responder.post(action.channelId(), FlowMessages.NOTHING_TO_SAVE);
-            return;
-        }
-
-        // previewTs는 pending clear 이후엔 다시 못 읽으므로 clear 전에 지역 변수로 확보한다(버튼 소진 대상, findings-TΔ0 §1).
-        PendingNote pending = pendingOpt.get();
-        Note draft = pending.draft();
-        String slug = draft.slug();
-        Entry entry = latestEntry(draft);
-        boolean editMode = pending.mode() == PendingNote.Mode.EDIT;
-        // 커밋 대상은 draft.slug()(신규는 상위 파이프라인이 할당, 기존은 매칭 slug). 결손이면 저장하지 않는다.
-        // edit 모드는 갱신 대상 참조(target)도 필수다(data-model §2.3).
-        if (slug == null || slug.isBlank() || entry == null || (editMode && pending.target() == null)) {
-            log.warn("[저장] 무효 — 손상된 pending(slug/entry/target 결손): user={} slug={}", userId, slug);
-            responder.post(action.channelId(), FlowMessages.BROKEN_PENDING);
-            return;
-        }
-
-        // edit 커밋은 별도 경로 — 신규 기록(record) 흐름은 mode 도입 전과 동일하게 유지한다(delta AC-Δ6).
-        if (editMode) {
-            editFlow.commitEdit(action, pending, entry);
-            return;
-        }
-
-        // 사진 커밋: 스테이징 원본을 photos/<slug>/<date>/로 아카이브 이동한다(FR-10, changes/0014 ADR-32).
-        // 로컬 move라 저장 커밋 경계 안에서 수행한다(외부 I/O는 수신 시점에 이미 끝남, CLAUDE.md §3).
-        // 반환 경로는 노트에 싣지 않는다 — 사진은 아카이브 전용, JSON 기록 없음(delta AC-Δ1).
-        String date = entry.date().toString();
-        photoIntake.commitStaged(userId, slug, date);
-        Entry committedEntry = entry;
-
-        // 신규 노트(match=NEW) 첫 커밋에 한해 별칭을 1콜로 생성한다(노트당 평생 1회 — 관측 축적은 TΔ3).
-        // POLICY: 외부 호출은 파일 쓰기 전에 끝낸다(CLAUDE.md §3). 생성 실패는 저장을 되돌리지 않는다 —
-        //         빈 별칭으로 수렴(AliasGenerator 내부 처리) (ref: plan.md#ADR-37, §7, V-13).
-        Aliases aliases = pending.match() != null && pending.match().type() == MatchInfo.MatchType.NEW
-                ? aliasGenerator.generate(valueOf(draft.coffeeName()), valueOf(draft.roastery()))
-                : Aliases.empty();
-
-        // POLICY: 사용자 [저장] 확인을 거친 뒤에만 저장한다 (ref: plan.md#ADR-3, AC-4).
-        Note saved = noteRepository.upsertEntry(slug, metaOf(draft), committedEntry, aliases);
-        pendingStore.clear(userId);
-        photoIntake.clearBuffer(userId);
-        log.info("[저장] 커밋 완료: slug={} entries={}", saved.slug(), saved.entries().size());
-
-        // 저장은 이미 커밋됨 — 카드 렌더·전송 실패는 데이터 손실이 아니다. 실패해도 저장은 유지하고 안내 텍스트로 폴백한다.
-        // POLICY: 저장 시점 렌더는 증분 — 방금 그 (slug,date) 엔트리 카드 1장만 굽는다(전체 재래스터화는 --rerender)
-        //         (ref: plan.md#ADR-10, AC-Δ7).
-        // POLICY: 카드 이미지 생성·전송 실패는 저장을 되돌리지 않는다 — 안내 텍스트로 폴백 (ref: plan.md §7, AC-18).
-        try {
-            Path card = noteRenderer.renderEntryCard(slug, committedEntry.date());
-            responder.postImage(action.channelId(), card, FlowMessages.SAVE_DONE_CAPTION);
-        } catch (RuntimeException e) {
-            log.warn("카드 배달 실패(노트는 저장됨, --rerender로 복구 가능): slug={} date={}", saved.slug(), date, e);
-            responder.post(action.channelId(), FlowMessages.SAVE_DONE_NO_IMAGE);
-        }
-
-        // 커밋·배달 이후 미리보기 버튼을 1회 소진한다 — 실패해도 저장·배달 결과는 유지된다(ADR-20, AC-Δ2).
-        finalizePreviewQuietly(action.channelId(), pending, FlowMessages.FINALIZE_SAVED);
-    }
-
-    /** [취소] 버튼 — {@link ConversationFlows#cancel}의 실제 구현. 저장 없이 pending만 폐기한다(AC-4). */
-    void cancel(IncomingAction action) {
-        // 버튼 소진에 previewTs가 필요하므로 clear 이전에 pending을 읽어 확보한다(findings-TΔ0 §2).
-        Optional<PendingNote> pendingOpt = pendingStore.get(action.userId());
-        // [취소]는 저장 없이 pending만 폐기한다(AC-4). 대기 중이던 스테이징 사진·버퍼도 함께 정리한다(FR-10).
-        pendingStore.clear(action.userId());
-        photoIntake.discard(action.userId());
-        log.info("[취소] pending 폐기: user={}", action.userId());
-        responder.post(action.channelId(), FlowMessages.CANCELED);
-
-        // 취소 안내 이후 미리보기 버튼을 1회 소진한다 — pending이 있었을 때만(만료/부재면 갱신 대상 없음).
-        pendingOpt.ifPresent(pending -> finalizePreviewQuietly(action.channelId(), pending, FlowMessages.FINALIZE_CANCELED));
-    }
-
-    // 버튼 1회 소진 — 커밋·배달 이후 미리보기 버튼을 제거하고 상태 문구로 교체한다.
-    // POLICY: 갱신 실패는 저장/취소 결과를 되돌리지 않는다 — 로그만 (ref: plan.md#ADR-20, AC-22). responder도 내부적으로
-    //         삼키지만, 여기서 한 번 더 감싸 어떤 예외도 커밋·배달 이후 흐름을 끊지 않게 한다.
-    private void finalizePreviewQuietly(String channelId, PendingNote pending, String statusText) {
-        try {
-            responder.finalizePreview(channelId, pending, statusText);
-        } catch (Exception e) {
-            log.warn("미리보기 버튼 소진 실패(커밋·배달 결과 유지): channel={}", channelId, e);
-        }
-    }
-
     // 기존 노트를 추출 요청의 매칭 후보로 축약 — 식별 정보 + 별칭·원산지·official_notes·최근 시음일 확장
     // (ref: data-model.md#3 existing_notes; changes/0016 ADR-37, 동일성 판단 재료 강화).
     private static List<NoteCandidate> candidatesOf(List<Note> existingNotes) {
@@ -427,29 +323,4 @@ class SlackRecordFlow {
         return value == null ? null : Sourced.user(value);
     }
 
-    // 출처 표시 필드의 표시값 추출(null 안전) — 별칭 생성 입력 등 원문 문자열만 필요할 때 쓴다.
-    private static String valueOf(Sourced<String> sourced) {
-        return sourced == null ? null : sourced.value();
-    }
-
-    // draft(Note)에서 노트 단위 메타만 뽑는다 — 엔트리·slug·타임스탬프는 upsertEntry가 다룬다.
-    private static NoteMeta metaOf(Note draft) {
-        return new NoteMeta(
-                draft.coffeeName(),
-                draft.roastery(),
-                draft.origin(),
-                draft.process(),
-                draft.roastLevel(),
-                draft.officialNotes(),
-                draft.sources());
-    }
-
-    // 이번 시음 엔트리 — draft.entries는 1건 전제(확인 미리보기와 동일 가정). 마지막 엔트리를 취한다.
-    private static Entry latestEntry(Note draft) {
-        List<Entry> entries = draft.entries();
-        if (entries == null || entries.isEmpty()) {
-            return null;
-        }
-        return entries.get(entries.size() - 1);
-    }
 }
