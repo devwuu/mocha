@@ -12,6 +12,7 @@ import com.devwuu.mocha.pipeline.NoteMatcher;
 import com.devwuu.mocha.pipeline.NoteSearchService;
 import com.devwuu.mocha.pipeline.PendingReviser;
 import com.devwuu.mocha.pipeline.PhotoInfoExtractor;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -44,10 +45,11 @@ public class PipelineConfig {
         return new NoteMatcher();
     }
 
-    // 별칭 생성기([저장] 신규 커밋 시 1콜, ADR-37) — 추출과 경량 모델 공용(mocha.llm.model, 새 설정 키 없음).
+    // 별칭 생성기([저장] 신규 커밋 시 1콜, ADR-37) — 전용 최경량 키(mocha.alias.model)의 클라이언트로
+    // 재배선(ADR-50, changes/0018 TΔ4). 역할별 키 일관 규칙 — vision·agent 키에 편승하지 않는다.
     @Bean
-    public AliasGenerator aliasGenerator(LlmClient llmClient) {
-        return new AliasGenerator(llmClient, MochaObjectMapper.create());
+    public AliasGenerator aliasGenerator(@Qualifier("aliasLlmClient") LlmClient aliasLlmClient) {
+        return new AliasGenerator(aliasLlmClient, MochaObjectMapper.create());
     }
 
     @Bean
@@ -55,8 +57,8 @@ public class PipelineConfig {
         return new NoteEnricher(searchClient);
     }
 
-    // 수신 사진 OCR([2.5], FR-19/ADR-23) — VisionClient(LlmConfig, mocha.search.model 공용) 재사용.
-    // 1콜당 이미지 상한만 새 설정 키(mocha.vision.max-images, 기본 4)로 둔다(plan §5).
+    // 수신 사진 OCR([2.5], FR-19/ADR-23) — VisionClient(LlmConfig, 전용 키 mocha.vision.model — ADR-50) 재사용.
+    // 1콜당 이미지 상한은 mocha.vision.max-images(기본 4).
     @Bean
     public PhotoInfoExtractor photoInfoExtractor(
             VisionClient visionClient,

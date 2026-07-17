@@ -13,8 +13,8 @@ import java.util.List;
  * 별칭 생성기 — 신규 노트 첫 [저장] 커밋 시 커피명·로스터리의 한국어 음차·이표기를 1콜로 생성한다
  * (ref: plan.md#ADR-37, data-model.md#4.3, spec FR-14; changes/0016).
  * <p>노트당 평생 1회(match=NEW일 때만) 호출된다 — 이후 같은 노트로 매칭된 기록의 관측 표기는 콜 없이
- * 서버가 축적한다(TΔ3, data-model §2.1). 경량 모델 공용({@link LlmClient} — {@code mocha.llm.model},
- * 새 설정 키 없음).
+ * 서버가 축적한다(TΔ3, data-model §2.1). 모델은 텍스트 전용 최경량 전용 키({@code mocha.alias.model} —
+ * ADR-50, changes/0018).
  * <p>POLICY: 별칭 생성 콜 실패·스키마 위반은 저장을 되돌리지 않는다 — 빈 배열({@link Aliases#empty()})로
  * 수렴하고 노트 저장은 유지한다. 이후 관측 표기 축적이 보완한다 (ref: plan.md §7, V-13, ADR-37).
  */
