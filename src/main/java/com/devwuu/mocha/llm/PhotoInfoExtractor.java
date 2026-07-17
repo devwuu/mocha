@@ -1,9 +1,6 @@
-package com.devwuu.mocha.pipeline;
+package com.devwuu.mocha.llm;
 
 import com.devwuu.mocha.image.ImageFormat;
-import com.devwuu.mocha.llm.VisionClient;
-import com.devwuu.mocha.llm.VisionExtraction;
-import com.devwuu.mocha.llm.VisionHint;
 import com.devwuu.mocha.repository.StagedImage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

@@ -1,7 +1,6 @@
 package com.devwuu.mocha.llm;
 
 import com.devwuu.mocha.domain.Aliases;
-import com.devwuu.mocha.pipeline.AliasGenerator;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.openai.client.OpenAIClient;
 import com.openai.core.JsonValue;

@@ -20,7 +20,7 @@ import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.llm.VisionExtraction;
 import com.devwuu.mocha.llm.VisionHint;
-import com.devwuu.mocha.pipeline.PhotoInfoExtractor;
+import com.devwuu.mocha.llm.PhotoInfoExtractor;
 import com.devwuu.mocha.repository.PendingStore;
 import com.devwuu.mocha.repository.PhotoBufferStore;
 import com.devwuu.mocha.repository.PhotoStore;

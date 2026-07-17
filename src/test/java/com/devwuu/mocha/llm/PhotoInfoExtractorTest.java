@@ -1,8 +1,5 @@
-package com.devwuu.mocha.pipeline;
+package com.devwuu.mocha.llm;
 
-import com.devwuu.mocha.llm.VisionClient;
-import com.devwuu.mocha.llm.VisionExtraction;
-import com.devwuu.mocha.llm.VisionHint;
 import com.devwuu.mocha.repository.StagedImage;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

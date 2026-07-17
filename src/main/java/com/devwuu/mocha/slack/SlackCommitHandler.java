@@ -7,7 +7,7 @@ import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
 import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.domain.Sourced;
-import com.devwuu.mocha.pipeline.AliasGenerator;
+import com.devwuu.mocha.llm.AliasGenerator;
 import com.devwuu.mocha.render.NoteRenderer;
 import com.devwuu.mocha.repository.NoteRepository;
 import com.devwuu.mocha.repository.PendingStore;

@@ -1,4 +1,4 @@
-package com.devwuu.mocha.pipeline;
+package com.devwuu.mocha.llm;
 
 import com.devwuu.mocha.domain.Aliases;
 
@@ -7,7 +7,7 @@ import com.devwuu.mocha.domain.Aliases;
  * (ref: plan.md#ADR-37, data-model.md#4.1, spec FR-14; changes/0016).
  * <p>노트당 평생 1회(match=NEW일 때만) 호출된다 — 이후 같은 노트로 매칭된 기록의 관측 표기는 콜 없이
  * 서버가 축적한다(data-model §2.1). 에이전트 루프 밖 보조 콜 경계로 {@code VisionClient}와 함께 별도
- * 유지된다(plan ADR-44·50, NFR-4). 구현: {@link com.devwuu.mocha.llm.OpenAiAliasGenerator}
+ * 유지된다(plan ADR-44·50, NFR-4). 구현: {@link OpenAiAliasGenerator}
  * (모델은 텍스트 전용 최경량 전용 키 {@code mocha.alias.model} — ADR-50, changes/0018).
  * <p>POLICY: 별칭 생성 콜 실패·스키마 위반은 저장을 되돌리지 않는다 — 빈 배열({@link Aliases#empty()})로
  * 수렴하고 노트 저장은 유지한다. 이후 관측 표기 축적이 보완한다 (ref: plan.md §7, V-13, ADR-37).

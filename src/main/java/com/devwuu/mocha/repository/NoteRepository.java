@@ -48,7 +48,7 @@ public interface NoteRepository {
      * 별칭을 실어 엔트리를 병합 저장한다 (ref: plan.md#ADR-37, changes/0016).
      * <ul>
      *   <li>신규 노트(slug 부재)면 {@code aliases}를 그 노트의 초기 별칭으로 심는다
-     *       — 신규 노트 첫 [저장] 시 {@link com.devwuu.mocha.pipeline.AliasGenerator}가 생성한 음차·이표기(TΔ2).</li>
+     *       — 신규 노트 첫 [저장] 시 {@link com.devwuu.mocha.llm.AliasGenerator}가 생성한 음차·이표기(TΔ2).</li>
      *   <li>기존 노트면 {@code aliases} 인자는 무시하고, {@code meta}의 커피명·로스터리 관측 표기를
      *       기존 별칭에 정규화 중복 제거로 무콜 축적한다(표시값과 같은 표기는 미추가, TΔ3, V-13).</li>
      * </ul>

@@ -5,7 +5,7 @@ import com.devwuu.mocha.agent.ConversationTranscript;
 import com.devwuu.mocha.agent.OpenAiAgentClient;
 import com.devwuu.mocha.llm.OpenAiAliasGenerator;
 import com.devwuu.mocha.llm.VisionClient;
-import com.devwuu.mocha.pipeline.AliasGenerator;
+import com.devwuu.mocha.llm.AliasGenerator;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.convert.ApplicationConversionService;
