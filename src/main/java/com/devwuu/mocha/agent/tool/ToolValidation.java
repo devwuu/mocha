@@ -1,4 +1,4 @@
-package com.devwuu.mocha.agent;
+package com.devwuu.mocha.agent.tool;
 
 /**
  * 제안 tool 서버 검증의 결과 타입 — 통과({@link Ok}) 또는 <b>사유를 담은 거부</b>({@link Rejected}).

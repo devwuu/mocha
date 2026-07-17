@@ -1,4 +1,4 @@
-package com.devwuu.mocha.agent;
+package com.devwuu.mocha.agent.tool;
 
 import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.json.MochaObjectMapper;

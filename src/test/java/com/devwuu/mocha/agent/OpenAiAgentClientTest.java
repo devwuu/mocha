@@ -3,6 +3,9 @@ package com.devwuu.mocha.agent;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.devwuu.mocha.agent.prompt.AgentInputMessage;
+import com.devwuu.mocha.agent.prompt.AgentTurnInput;
+import com.devwuu.mocha.agent.tool.AgentTool;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.openai.models.responses.FunctionTool;
 import com.openai.models.responses.Response;
@@ -165,8 +168,8 @@ class OpenAiAgentClientTest {
         ScriptedAgentClient client = new ScriptedAgentClient(8, List.of(
                 response("resp_1", message("안녕하다멍"))));
 
-        client.runTurn(new AgentTurnContext("모카 시스템 프롬프트",
-                        List.of(AgentMessage.assistant("이전 답"), AgentMessage.user("안녕"))),
+        client.runTurn(new AgentTurnInput("모카 시스템 프롬프트",
+                        List.of(AgentInputMessage.assistant("이전 답"), AgentInputMessage.user("안녕"))),
                 List.of(getNoteTool(args -> "{}")));
 
         ResponseCreateParams first = client.sent.get(0);
@@ -235,8 +238,8 @@ class OpenAiAgentClientTest {
 
     // ---- fake 조립 헬퍼 ----
 
-    private static AgentTurnContext context(String userText) {
-        return new AgentTurnContext("시스템 프롬프트", List.of(AgentMessage.user(userText)));
+    private static AgentTurnInput context(String userText) {
+        return new AgentTurnInput("시스템 프롬프트", List.of(AgentInputMessage.user(userText)));
     }
 
     private static AgentTool getNoteTool(AgentTool.Executor executor) {

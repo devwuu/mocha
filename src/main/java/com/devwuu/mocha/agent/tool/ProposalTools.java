@@ -1,5 +1,6 @@
-package com.devwuu.mocha.agent;
+package com.devwuu.mocha.agent.tool;
 
+import com.devwuu.mocha.agent.conversation.ConversationTranscript;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
@@ -23,7 +24,7 @@ import java.util.Optional;
 /**
  * 쓰기 제안 축 tool 2종 — {@code propose_record}·{@code propose_edit}
  * (ref: specs/coffee-note-agent/data-model.md#3.3~3.4, plan#ADR-45; changes/0018 TΔ6).
- * <p>{@link AgentTools}(façade)가 조립하는 내부 협력자라 Spring 빈이 아니다.
+ * <p>{@link AgentToolkit}(façade)가 조립하는 내부 협력자라 Spring 빈이 아니다.
  * <p>strict schema(전 필드 required·additionalProperties=false)가 인자 <b>형태</b>를 보장하고, 값 수준
  * 규칙(V-1·5·8·10·11, 단일 대기)은 {@link ProposalValidator}가 결정론으로 강제한다 — 위반은 예외가 아니라
  * <b>사유를 담은 오류 결과</b>로 돌려줘 에이전트가 루프 안에서 정정한다(ADR-45, findings-TΔ0 §SDK).

@@ -1,4 +1,4 @@
-package com.devwuu.mocha.agent;
+package com.devwuu.mocha.agent.prompt;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

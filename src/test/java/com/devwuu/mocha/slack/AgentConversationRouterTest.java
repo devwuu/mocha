@@ -1,15 +1,15 @@
 package com.devwuu.mocha.slack;
 
 import com.devwuu.mocha.agent.AgentClient;
-import com.devwuu.mocha.agent.AgentContextAssembler;
 import com.devwuu.mocha.agent.AgentException;
-import com.devwuu.mocha.agent.AgentMessage;
-import com.devwuu.mocha.agent.AgentTool;
-import com.devwuu.mocha.agent.AgentTools;
-import com.devwuu.mocha.agent.AgentTurnContext;
-import com.devwuu.mocha.agent.ConversationTranscript;
-import com.devwuu.mocha.agent.ProposalValidator;
-import com.devwuu.mocha.agent.TranscriptTurn;
+import com.devwuu.mocha.agent.conversation.ConversationTranscript;
+import com.devwuu.mocha.agent.conversation.TranscriptTurn;
+import com.devwuu.mocha.agent.prompt.AgentContextAssembler;
+import com.devwuu.mocha.agent.prompt.AgentInputMessage;
+import com.devwuu.mocha.agent.prompt.AgentTurnInput;
+import com.devwuu.mocha.agent.tool.AgentTool;
+import com.devwuu.mocha.agent.tool.AgentToolkit;
+import com.devwuu.mocha.agent.tool.ProposalValidator;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
@@ -18,9 +18,9 @@ import com.devwuu.mocha.domain.PhotoBuffer;
 import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.json.MochaObjectMapper;
+import com.devwuu.mocha.llm.PhotoInfoExtractor;
 import com.devwuu.mocha.llm.VisionExtraction;
 import com.devwuu.mocha.llm.VisionHint;
-import com.devwuu.mocha.llm.PhotoInfoExtractor;
 import com.devwuu.mocha.repository.PendingStore;
 import com.devwuu.mocha.repository.PhotoBufferStore;
 import com.devwuu.mocha.repository.PhotoStore;
@@ -73,7 +73,7 @@ class AgentConversationRouterTest {
                 url -> jpegBytes(), photoStore, photoBufferStore, photoInfoExtractor,
                 Duration.ofMinutes(3), clock);
         // fake AgentClient는 tool 실행기를 부르지 않으므로 lookup·제안 협력자는 미접촉 — 장착 목록 계약만 쓴다.
-        AgentTools agentTools = new AgentTools(null, null, responder, Path.of("unused-artifact"),
+        AgentToolkit agentTools = new AgentToolkit(null, null, responder, Path.of("unused-artifact"),
                 MochaObjectMapper.create(), pendingStore, null, new ProposalValidator(), transcript, clock);
         router = new AgentConversationRouter(pendingStore, transcript, agentClient, agentTools,
                 new AgentContextAssembler(MochaObjectMapper.create(), clock), photoIntake,
@@ -90,8 +90,8 @@ class AgentConversationRouterTest {
         assertThat(agentClient.calls).isEqualTo(1);
         assertThat(responder.posted).containsExactly("커피 얘기 좋아요 멍! 🐾");
         // 이번 발화가 messages의 마지막 user 메시지로 실린다(TΔ7a 조립 계약).
-        List<AgentMessage> messages = agentClient.lastContext.messages();
-        assertThat(messages.get(messages.size() - 1)).isEqualTo(AgentMessage.user("요즘 커피 뭐가 맛있어?"));
+        List<AgentInputMessage> messages = agentClient.lastContext.messages();
+        assertThat(messages.get(messages.size() - 1)).isEqualTo(AgentInputMessage.user("요즘 커피 뭐가 맛있어?"));
         assertThat(agentClient.lastTools).extracting(AgentTool::name).containsExactly(
                 "list_notes", "get_note", "propose_record", "propose_edit", "send_entry_card");
         // 제안 없는 턴은 트랜스크립트에 쌓인다(FR-23) — 다음 턴의 문맥이 된다.
@@ -234,11 +234,11 @@ class AgentConversationRouterTest {
         RuntimeException failure;
         Runnable onRun;
         int calls;
-        AgentTurnContext lastContext;
+        AgentTurnInput lastContext;
         List<AgentTool> lastTools;
 
         @Override
-        public String runTurn(AgentTurnContext context, List<AgentTool> tools) {
+        public String runTurn(AgentTurnInput context, List<AgentTool> tools) {
             calls++;
             lastContext = context;
             lastTools = tools;

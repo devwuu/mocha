@@ -1,5 +1,7 @@
-package com.devwuu.mocha.agent;
+package com.devwuu.mocha.agent.prompt;
 
+import com.devwuu.mocha.agent.conversation.ConversationTranscript;
+import com.devwuu.mocha.agent.conversation.TranscriptTurn;
 import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.llm.VisionExtraction;
 import tools.jackson.databind.ObjectMapper;
@@ -14,7 +16,7 @@ import java.util.Objects;
 
 /**
  * 에이전트 턴 컨텍스트 조립 — 트랜스크립트 + pending draft + OCR 결과 + today를
- * {@link AgentTurnContext}(instructions·messages)로 만든다
+ * {@link AgentTurnInput}(instructions·messages)로 만든다
  * (ref: specs/coffee-note-agent/plan.md#ADR-44, spec FR-22; changes/0018 TΔ7a).
  * <p>배치: 시스템 프롬프트({@link AgentSystemPrompt}) 뒤에 턴 컨텍스트(today·pending·OCR)를 덧붙여
  * instructions로, 트랜스크립트(ADR-46)는 user/assistant 메시지로 재구성해 이번 발화와 함께 messages로.
@@ -42,19 +44,19 @@ public class AgentContextAssembler {
      * @param pending     확인 대기 — 없으면 null. draft가 곧 접힘 후 문맥의 압축본이다(ADR-46)
      * @param ocr         수신 사진 OCR 전처리 결과 — 사진 없음·실패·무정보면 null 또는 empty(AC-28)
      */
-    public AgentTurnContext assemble(String userMessage, List<TranscriptTurn> transcript,
+    public AgentTurnInput assemble(String userMessage, List<TranscriptTurn> transcript,
                                      PendingNote pending, VisionExtraction ocr) {
         Objects.requireNonNull(userMessage, "userMessage");
         Objects.requireNonNull(transcript, "transcript");
 
-        List<AgentMessage> messages = new ArrayList<>();
+        List<AgentInputMessage> messages = new ArrayList<>();
         for (TranscriptTurn turn : transcript) {
-            messages.add(AgentMessage.user(turn.userMessage()));
-            messages.add(AgentMessage.assistant(turn.assistantMessage()));
+            messages.add(AgentInputMessage.user(turn.userMessage()));
+            messages.add(AgentInputMessage.assistant(turn.assistantMessage()));
         }
-        messages.add(AgentMessage.user(userMessage));
+        messages.add(AgentInputMessage.user(userMessage));
 
-        return new AgentTurnContext(AgentSystemPrompt.INSTRUCTIONS + "\n" + turnContext(pending, ocr), messages);
+        return new AgentTurnInput(AgentSystemPrompt.INSTRUCTIONS + "\n" + turnContext(pending, ocr), messages);
     }
 
     // 턴 컨텍스트 블록 — 프롬프트 정책이 참조하는 동적 사실(today·대기 상태·OCR)만 싣는다.

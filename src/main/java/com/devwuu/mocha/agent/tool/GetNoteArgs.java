@@ -1,4 +1,4 @@
-package com.devwuu.mocha.agent;
+package com.devwuu.mocha.agent.tool;
 
 /**
  * {@code get_note} tool 인자 — 노트 전체 조회(읽기).

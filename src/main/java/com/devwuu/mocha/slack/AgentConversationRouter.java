@@ -1,18 +1,18 @@
 package com.devwuu.mocha.slack;
 
 import com.devwuu.mocha.agent.AgentClient;
-import com.devwuu.mocha.agent.AgentContextAssembler;
-import com.devwuu.mocha.agent.AgentTools;
-import com.devwuu.mocha.agent.AgentTurnContext;
-import com.devwuu.mocha.agent.ConversationTranscript;
-import com.devwuu.mocha.agent.ProposalValidator;
-import com.devwuu.mocha.agent.TranscriptTurn;
+import com.devwuu.mocha.agent.conversation.ConversationTranscript;
+import com.devwuu.mocha.agent.conversation.TranscriptTurn;
+import com.devwuu.mocha.agent.prompt.AgentContextAssembler;
+import com.devwuu.mocha.agent.prompt.AgentTurnInput;
+import com.devwuu.mocha.agent.tool.AgentToolkit;
+import com.devwuu.mocha.agent.tool.ProposalValidator;
 import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.llm.AliasGenerator;
+import com.devwuu.mocha.llm.PhotoInfoExtractor;
 import com.devwuu.mocha.llm.VisionExtraction;
 import com.devwuu.mocha.llm.VisionHint;
-import com.devwuu.mocha.llm.PhotoInfoExtractor;
 import com.devwuu.mocha.render.NoteRenderer;
 import com.devwuu.mocha.repository.NoteRepository;
 import com.devwuu.mocha.repository.PendingStore;
@@ -65,7 +65,7 @@ public class AgentConversationRouter implements ConversationRouter {
     private final PendingStore pendingStore;
     private final ConversationTranscript transcript;
     private final AgentClient agentClient;
-    private final AgentTools agentTools;
+    private final AgentToolkit agentTools;
     private final AgentContextAssembler contextAssembler;
     private final SlackPhotoIntake photoIntake;
     private final SlackResponder responder;
@@ -90,7 +90,7 @@ public class AgentConversationRouter implements ConversationRouter {
             @Value("${mocha.photo.buffer-window}") Duration bufferWindow) {
         // tool façade·컨텍스트 조립기·커밋 핸들러는 프레임워크 무관 내부 협력자라 여기서 조립한다(Spring 빈이 아니다).
         this(pendingStore, transcript, agentClient,
-                new AgentTools(noteRepository, noteRenderer, responder, Path.of(artifactDir),
+                new AgentToolkit(noteRepository, noteRenderer, responder, Path.of(artifactDir),
                         MochaObjectMapper.create(), pendingStore, previewMessenger, new ProposalValidator(),
                         transcript, Clock.system(SEOUL)),
                 new AgentContextAssembler(MochaObjectMapper.create(), Clock.system(SEOUL)),
@@ -105,7 +105,7 @@ public class AgentConversationRouter implements ConversationRouter {
             PendingStore pendingStore,
             ConversationTranscript transcript,
             AgentClient agentClient,
-            AgentTools agentTools,
+            AgentToolkit agentTools,
             AgentContextAssembler contextAssembler,
             SlackPhotoIntake photoIntake,
             SlackResponder responder,
@@ -124,7 +124,7 @@ public class AgentConversationRouter implements ConversationRouter {
             PendingStore pendingStore,
             ConversationTranscript transcript,
             AgentClient agentClient,
-            AgentTools agentTools,
+            AgentToolkit agentTools,
             AgentContextAssembler contextAssembler,
             SlackPhotoIntake photoIntake,
             SlackResponder responder,
@@ -157,7 +157,7 @@ public class AgentConversationRouter implements ConversationRouter {
             VisionExtraction ocr = photoIntake.readPhotoInfo(userId, bufferNames, new VisionHint(null, null));
 
             PendingNote pendingBefore = pendingStore.get(userId).orElse(null);
-            AgentTurnContext context = contextAssembler.assemble(
+            AgentTurnInput context = contextAssembler.assemble(
                     message.text(), transcript.view(userId), pendingBefore, ocr);
 
             log.info("에이전트 턴 진입: user={} buffered={} pending={}",

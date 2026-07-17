@@ -1,4 +1,4 @@
-package com.devwuu.mocha.agent;
+package com.devwuu.mocha.agent.prompt;
 
 import java.util.List;
 import java.util.Objects;
@@ -11,9 +11,9 @@ import java.util.Objects;
  * @param instructions 시스템 프롬프트(페르소나·정책 — ADR-47·49)
  * @param messages     대화 메시지(트랜스크립트 재구성 + 이번 발화 — 마지막이 이번 사용자 발화)
  */
-public record AgentTurnContext(String instructions, List<AgentMessage> messages) {
+public record AgentTurnInput(String instructions, List<AgentInputMessage> messages) {
 
-    public AgentTurnContext {
+    public AgentTurnInput {
         Objects.requireNonNull(instructions, "instructions");
         Objects.requireNonNull(messages, "messages");
         if (messages.isEmpty()) {

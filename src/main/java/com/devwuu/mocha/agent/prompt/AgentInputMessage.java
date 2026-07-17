@@ -1,4 +1,4 @@
-package com.devwuu.mocha.agent;
+package com.devwuu.mocha.agent.prompt;
 
 import java.util.Objects;
 
@@ -7,22 +7,22 @@ import java.util.Objects;
  * (ref: specs/coffee-note-agent/plan.md#ADR-44, findings-TΔ0.md §SDK — 턴과 턴 사이 문맥은
  * 메모리 트랜스크립트가 소유하고, 새 턴 시작 시 role user/assistant 메시지로 재구성한다).
  */
-public record AgentMessage(Role role, String content) {
+public record AgentInputMessage(Role role, String content) {
 
     public enum Role {
         USER, ASSISTANT
     }
 
-    public AgentMessage {
+    public AgentInputMessage {
         Objects.requireNonNull(role, "role");
         Objects.requireNonNull(content, "content");
     }
 
-    public static AgentMessage user(String content) {
-        return new AgentMessage(Role.USER, content);
+    public static AgentInputMessage user(String content) {
+        return new AgentInputMessage(Role.USER, content);
     }
 
-    public static AgentMessage assistant(String content) {
-        return new AgentMessage(Role.ASSISTANT, content);
+    public static AgentInputMessage assistant(String content) {
+        return new AgentInputMessage(Role.ASSISTANT, content);
     }
 }

@@ -1,5 +1,7 @@
-package com.devwuu.mocha.agent;
+package com.devwuu.mocha.agent.tool;
 
+import com.devwuu.mocha.agent.conversation.ConversationTranscript;
+import com.devwuu.mocha.agent.conversation.TranscriptTurn;
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
@@ -46,7 +48,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 미리보기 전송·단일 대기 거부·충돌 경고·트랜스크립트 접힘)을 결정론으로 단언한다
  * (data-model §3, plan ADR-45·46, AC-Δ4·Δ5·Δ6). 외부 호출 없음 — 협력자는 전부 fake(모듈 CLAUDE.md §5.2).
  */
-class AgentToolsTest {
+class AgentToolkitTest {
 
     private static final String USER = "U-dev";
     private static final String CHANNEL = "C-mocha";
@@ -62,7 +64,7 @@ class AgentToolsTest {
     private RecordingResponder responder;
     private CapturingPreviewMessenger previewMessenger;
     private ConversationTranscript transcript;
-    private AgentTools agentTools;
+    private AgentToolkit agentTools;
 
     @BeforeEach
     void setUp() {
@@ -70,7 +72,7 @@ class AgentToolsTest {
         responder = new RecordingResponder();
         previewMessenger = new CapturingPreviewMessenger();
         transcript = new ConversationTranscript(20, Duration.ofHours(1));
-        agentTools = new AgentTools(noteRepository, renderer, responder, artifactDir, mapper,
+        agentTools = new AgentToolkit(noteRepository, renderer, responder, artifactDir, mapper,
                 pendingStore, previewMessenger, new ProposalValidator(), transcript, clock);
     }
 

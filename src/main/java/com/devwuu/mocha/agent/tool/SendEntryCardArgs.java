@@ -1,4 +1,4 @@
-package com.devwuu.mocha.agent;
+package com.devwuu.mocha.agent.tool;
 
 /**
  * {@code send_entry_card} tool 인자 — 기존 시음 엔트리 카드 재전송(FR-20).

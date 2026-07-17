@@ -1,8 +1,8 @@
 package com.devwuu.mocha.config;
 
 import com.devwuu.mocha.agent.AgentClient;
-import com.devwuu.mocha.agent.ConversationTranscript;
 import com.devwuu.mocha.agent.OpenAiAgentClient;
+import com.devwuu.mocha.agent.conversation.ConversationTranscript;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.openai.client.OpenAIClient;
 import org.springframework.beans.factory.annotation.Value;

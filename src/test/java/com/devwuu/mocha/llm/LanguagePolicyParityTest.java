@@ -1,6 +1,6 @@
 package com.devwuu.mocha.llm;
 
-import com.devwuu.mocha.agent.AgentSystemPrompt;
+import com.devwuu.mocha.agent.prompt.AgentSystemPrompt;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

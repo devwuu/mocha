@@ -1,4 +1,4 @@
-package com.devwuu.mocha.agent;
+package com.devwuu.mocha.agent.conversation;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

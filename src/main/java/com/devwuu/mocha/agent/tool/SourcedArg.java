@@ -1,4 +1,4 @@
-package com.devwuu.mocha.agent;
+package com.devwuu.mocha.agent.tool;
 
 /**
  * 제안 tool 인자의 출처 표시 필드 — {@code { "value": ..., "source": "user"|"photo"|"search"|null }}의
