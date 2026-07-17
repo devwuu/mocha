@@ -29,7 +29,7 @@ class ConfigDefaultsTest {
             // Boot 런타임과 동일한 문자열→Duration("1h") 변환을 켠다 — 실제 앱 컨텍스트와 조건을 맞춘다.
             .withInitializer(context -> context.getBeanFactory()
                     .setConversionService(ApplicationConversionService.getSharedInstance()))
-            .withUserConfiguration(LlmConfig.class, PipelineConfig.class, AgentConfig.class);
+            .withUserConfiguration(LlmConfig.class, AgentConfig.class);
 
     @Test
     @DisplayName("ADR-50: mocha.agent.* 미설정 시 루프·트랜스크립트 빈이 코드 default로 뜬다")

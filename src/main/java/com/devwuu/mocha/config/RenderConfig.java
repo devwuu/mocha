@@ -20,7 +20,7 @@ import java.nio.file.Path;
  * <p>Thymeleaf를 <b>오프라인 정적 생성기</b>로 쓴다 — starter-web 없이 클래스패스 템플릿을 직접 처리한다.
  * 템플릿은 {@code templates/<theme>/{index,note}.html}에 있고 테마({@code mocha.artifact.theme})가 폴더를 고른다.
  * <p>{@link ThymeleafNoteRenderer}는 프레임워크 의존이 없는 순수 렌더러라 {@code @Component} 스캔 대신 여기서
- * 명시적으로 조립한다(RepositoryConfig·PipelineConfig와 동일 방침).
+ * 명시적으로 조립한다(RepositoryConfig·LlmConfig와 동일 방침).
  */
 @Configuration
 public class RenderConfig {
