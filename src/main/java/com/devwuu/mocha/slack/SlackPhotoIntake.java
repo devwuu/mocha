@@ -84,7 +84,7 @@ class SlackPhotoIntake {
         } catch (Exception e) {
             // 다운로드/스테이징/전송 실패는 삼키지 않고 안내로 수렴한다(plan §7).
             log.warn("사진 수신 실패: user={}", userId, e);
-            responder.post(channelId, FlowMessages.PHOTO_FAILED);
+            responder.post(channelId, MochaMessages.PHOTO_FAILED);
         }
     }
 
@@ -177,7 +177,7 @@ class SlackPhotoIntake {
             names.add(photoStore.stage(userId, stageable.filename(), stageable.bytes()));
         }
         if (rejected) {
-            responder.post(media.channelId(), FlowMessages.UNSUPPORTED_FORMAT);
+            responder.post(media.channelId(), MochaMessages.UNSUPPORTED_FORMAT);
         }
         return names;
     }

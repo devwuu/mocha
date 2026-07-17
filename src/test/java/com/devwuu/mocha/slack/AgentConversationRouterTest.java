@@ -111,7 +111,7 @@ class AgentConversationRouterTest {
         router.onMessage(message("어제 마신 예가체프 새콤했어"));
 
         assertThat(pendingStore.get(USER)).contains(pending); // pending 무변화
-        assertThat(responder.posted).containsExactly(FlowMessages.AGENT_TURN_FAILED);
+        assertThat(responder.posted).containsExactly(MochaMessages.AGENT_TURN_FAILED);
         assertThat(transcript.view(USER)).hasSize(1);         // 실패 턴은 문맥에 쌓지 않는다
     }
 
@@ -195,7 +195,7 @@ class AgentConversationRouterTest {
         router.onMessage(message("이거 기록해줘"));
 
         assertThat(photoBufferStore.get(USER)).isPresent();
-        assertThat(responder.posted).containsExactly(FlowMessages.AGENT_TURN_FAILED);
+        assertThat(responder.posted).containsExactly(MochaMessages.AGENT_TURN_FAILED);
     }
 
     // ---- 헬퍼 ----

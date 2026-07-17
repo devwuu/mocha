@@ -172,7 +172,7 @@ public class AgentConversationRouter implements ConversationRouter {
             //         (ref: specs/coffee-note-agent/plan.md#ADR-48, spec FR-25/AC-63). 이미 성공한 제안 tool의
             //         pending·미리보기는 유효하게 남는다(부분 성공 존중). 폴백 사유는 예외 메시지로 구분 관측(plan §6).
             log.warn("에이전트 턴 폴백(pending·노트 무변화, 원문 보존): user={} 원문={}", userId, message.text(), e);
-            responder.post(channelId, FlowMessages.AGENT_TURN_FAILED);
+            responder.post(channelId, MochaMessages.AGENT_TURN_FAILED);
         }
     }
 

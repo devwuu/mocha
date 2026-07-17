@@ -93,7 +93,7 @@ class SlackCommitHandlerTest {
         assertEquals(0, noteRenderer.renderAllCount, "저장 시점은 전체 리렌더를 트리거하지 않는다");
         assertEquals(1, responder.images.size(), "방금 엔트리 카드 JPG를 채널에 올린다");
         assertEquals(Path.of("cards", "coffeevera-yirgacheffe", "2026-07-11.jpg"), responder.images.get(0));
-        assertEquals(List.of(FlowMessages.SAVE_DONE_CAPTION), responder.captions);
+        assertEquals(List.of(MochaMessages.SAVE_DONE_CAPTION), responder.captions);
         assertTrue(responder.messages.isEmpty(), "정상 배달이면 폴백 텍스트가 없다");
     }
 
@@ -163,7 +163,7 @@ class SlackCommitHandlerTest {
         assertTrue(repo.findBySlug("coffeevera-yirgacheffe").isPresent(), "렌더 실패해도 저장은 유지된다(AC-18)");
         assertEquals(1, pendingStore.clearCount, "커밋은 완료됐다");
         assertTrue(responder.images.isEmpty(), "카드는 배달되지 못했다");
-        assertEquals(List.of(FlowMessages.SAVE_DONE_NO_IMAGE), responder.messages, "안내 텍스트로 폴백한다");
+        assertEquals(List.of(MochaMessages.SAVE_DONE_NO_IMAGE), responder.messages, "안내 텍스트로 폴백한다");
     }
 
     @Test
@@ -177,7 +177,7 @@ class SlackCommitHandlerTest {
 
         assertTrue(repo.findBySlug("coffeevera-yirgacheffe").isPresent(), "업로드 실패해도 저장은 유지된다(AC-18)");
         assertEquals(1, noteRenderer.entryCards.size(), "카드는 렌더됐다(전송에서 실패)");
-        assertEquals(List.of(FlowMessages.SAVE_DONE_NO_IMAGE), responder.messages, "안내 텍스트로 폴백한다");
+        assertEquals(List.of(MochaMessages.SAVE_DONE_NO_IMAGE), responder.messages, "안내 텍스트로 폴백한다");
     }
 
     @Test
@@ -192,7 +192,7 @@ class SlackCommitHandlerTest {
         assertTrue(noteRenderer.entryCards.isEmpty(), "커밋이 없으면 카드 렌더·배달도 없다");
         assertTrue(responder.images.isEmpty());
         assertEquals(1, photoStore.discardCount, "대기 중이던 스테이징 사진도 정리한다(FR-10)");
-        assertEquals(List.of(FlowMessages.NOTHING_TO_SAVE), responder.messages);
+        assertEquals(List.of(MochaMessages.NOTHING_TO_SAVE), responder.messages);
     }
 
     @Test
@@ -206,7 +206,7 @@ class SlackCommitHandlerTest {
         assertEquals(1, pendingStore.clearCount, "취소는 pending을 폐기한다");
         assertTrue(repo.findAll().isEmpty(), "취소 시 저장은 일어나지 않는다(AC-4)");
         assertTrue(noteRenderer.entryCards.isEmpty());
-        assertEquals(List.of(FlowMessages.CANCELED), responder.messages);
+        assertEquals(List.of(MochaMessages.CANCELED), responder.messages);
     }
 
     @Test
@@ -220,7 +220,7 @@ class SlackCommitHandlerTest {
         assertTrue(repo.findAll().isEmpty(), "slug 없는 draft는 저장하지 않는다");
         assertTrue(noteRenderer.entryCards.isEmpty());
         assertEquals(0, pendingStore.clearCount, "손상 pending은 커밋 clear 대상이 아니다");
-        assertEquals(List.of(FlowMessages.BROKEN_PENDING), responder.messages);
+        assertEquals(List.of(MochaMessages.BROKEN_PENDING), responder.messages);
     }
 
     // --- 버튼 1회 소진(ADR-20, AC-22) — 구 TΔ2(changes/0009) 절 포팅 ---
@@ -234,7 +234,7 @@ class SlackCommitHandlerTest {
 
         handler(repo).confirmSave(action(AgentConversationRouter.ACTION_SAVE));
 
-        assertEquals(List.of(FlowMessages.FINALIZE_SAVED), responder.finalizeStatuses);
+        assertEquals(List.of(MochaMessages.FINALIZE_SAVED), responder.finalizeStatuses);
         assertEquals(1, responder.finalizePendings.size());
         assertEquals(pending.previewTs(), responder.finalizePendings.get(0).previewTs(),
                 "버튼 소진 대상 미리보기 메시지(previewTs)가 넘어가야 한다");
@@ -248,7 +248,7 @@ class SlackCommitHandlerTest {
 
         handler(repo).cancel(action(AgentConversationRouter.ACTION_CANCEL));
 
-        assertEquals(List.of(FlowMessages.FINALIZE_CANCELED), responder.finalizeStatuses);
+        assertEquals(List.of(MochaMessages.FINALIZE_CANCELED), responder.finalizeStatuses);
     }
 
     @Test
@@ -260,7 +260,7 @@ class SlackCommitHandlerTest {
         handler(repo).cancel(action(AgentConversationRouter.ACTION_CANCEL));
 
         assertTrue(responder.finalizeStatuses.isEmpty(), "갱신할 미리보기가 없으면 버튼 소진을 호출하지 않는다");
-        assertEquals(List.of(FlowMessages.CANCELED), responder.messages);
+        assertEquals(List.of(MochaMessages.CANCELED), responder.messages);
     }
 
     @Test
@@ -345,7 +345,7 @@ class SlackCommitHandlerTest {
         assertEquals(List.of("yirga/2026-07-09"), noteRenderer.entryCards, "새 date 카드만 증분 렌더");
         assertEquals(0, noteRenderer.renderAllCount, "edit 저장도 전체 리렌더를 트리거하지 않는다");
         assertEquals(List.of(Path.of("cards", "yirga", "2026-07-09.jpg")), responder.images, "갱신 카드 배달");
-        assertEquals(List.of(FlowMessages.FINALIZE_SAVED), responder.finalizeStatuses, "버튼 1회 소진");
+        assertEquals(List.of(MochaMessages.FINALIZE_SAVED), responder.finalizeStatuses, "버튼 1회 소진");
         assertTrue(responder.messages.isEmpty(), "정상 배달이면 폴백 텍스트가 없다");
     }
 
@@ -413,8 +413,8 @@ class SlackCommitHandlerTest {
         Note saved = repo.findBySlug("yirga").orElseThrow();
         assertEquals(LocalDate.of(2026, 7, 9), saved.entries().get(0).date(), "렌더 실패해도 수정 커밋은 유지(AC-18 준용)");
         assertTrue(responder.images.isEmpty(), "카드는 배달되지 못했다");
-        assertEquals(List.of(FlowMessages.SAVE_DONE_NO_IMAGE), responder.messages, "안내 텍스트로 폴백");
-        assertEquals(List.of(FlowMessages.FINALIZE_SAVED), responder.finalizeStatuses, "버튼 소진은 그대로");
+        assertEquals(List.of(MochaMessages.SAVE_DONE_NO_IMAGE), responder.messages, "안내 텍스트로 폴백");
+        assertEquals(List.of(MochaMessages.FINALIZE_SAVED), responder.finalizeStatuses, "버튼 소진은 그대로");
     }
 
     @Test
@@ -429,7 +429,7 @@ class SlackCommitHandlerTest {
         assertTrue(noteRenderer.entryCards.isEmpty() && noteRenderer.removedCards.isEmpty(), "파생물 접촉 없음");
         assertEquals(1, pendingStore.clearCount, "죽은 edit pending은 폐기한다");
         assertEquals(1, photoStore.discardCount, "스테이징 사진도 만료 경로처럼 정리한다");
-        assertEquals(List.of(FlowMessages.NOTHING_TO_SAVE), responder.messages, "만료 안내로 수렴(V-7 준용)");
+        assertEquals(List.of(MochaMessages.NOTHING_TO_SAVE), responder.messages, "만료 안내로 수렴(V-7 준용)");
     }
 
     @Test
@@ -462,7 +462,7 @@ class SlackCommitHandlerTest {
 
         assertEquals("원래 감상", repo.findBySlug("yirga").orElseThrow().entries().get(0).myTaste(), "원본 무변화");
         assertEquals(0, pendingStore.clearCount, "손상 pending은 커밋 clear 대상이 아니다");
-        assertEquals(List.of(FlowMessages.BROKEN_PENDING), responder.messages);
+        assertEquals(List.of(MochaMessages.BROKEN_PENDING), responder.messages);
     }
 
     // ---- 헬퍼 ----

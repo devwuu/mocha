@@ -162,7 +162,7 @@ class PreviewBlocksTest {
                 draft, MatchInfo.existing("coffeevera-yirgacheffe-g1", LocalDate.of(2026, 7, 10)),
                 "1720000000.000999", OffsetDateTime.now());
 
-        List<LayoutBlock> blocks = previewBlocks.buildFinalized(pending, FlowMessages.FINALIZE_SAVED);
+        List<LayoutBlock> blocks = previewBlocks.buildFinalized(pending, MochaMessages.FINALIZE_SAVED);
 
         // 버튼 소진: ActionsBlock이 하나도 없어야 재클릭이 불가능하다(AC-22).
         assertTrue(blocks.stream().noneMatch(b -> b instanceof ActionsBlock), "버튼 블록이 남으면 안 된다");
@@ -180,7 +180,7 @@ class PreviewBlocksTest {
         LayoutBlock last = blocks.get(blocks.size() - 1);
         assertTrue(last instanceof SectionBlock s
                 && s.getText() instanceof MarkdownTextObject t
-                && t.getText().equals(FlowMessages.FINALIZE_SAVED),
+                && t.getText().equals(MochaMessages.FINALIZE_SAVED),
                 "마지막 블록은 상태 문구 섹션이어야 한다");
     }
 
@@ -332,7 +332,7 @@ class PreviewBlocksTest {
         assertTrue(warning.contains("2026-07-12"), warning);
 
         // buildFinalized(버튼 소진, 0009 재사용)에서도 본문 공유로 경고·✏️ 헤더 유지
-        List<LayoutBlock> finalized = previewBlocks.buildFinalized(pending, FlowMessages.FINALIZE_SAVED);
+        List<LayoutBlock> finalized = previewBlocks.buildFinalized(pending, MochaMessages.FINALIZE_SAVED);
         assertEquals(PreviewBlocks.HEADER_EDIT, ((HeaderBlock) finalized.get(0)).getText().getText());
         assertTrue(finalized.stream().noneMatch(b -> b instanceof ActionsBlock));
         assertTrue(finalized.stream().anyMatch(b -> b instanceof SectionBlock s

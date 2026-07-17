@@ -70,7 +70,7 @@ class SlackCommitHandler {
             log.info("[저장] 무효 — pending 부재/만료: user={}", userId);
             // 만료/부재면 대기 중이던 스테이징 사진도 버려진 것 — 노트 트리로 새지 않게 정리한다(FR-10).
             photoIntake.discard(userId);
-            responder.post(action.channelId(), FlowMessages.NOTHING_TO_SAVE);
+            responder.post(action.channelId(), MochaMessages.NOTHING_TO_SAVE);
             return;
         }
 
@@ -84,7 +84,7 @@ class SlackCommitHandler {
         // edit 모드는 갱신 대상 참조(target)도 필수다(data-model §2.3).
         if (slug == null || slug.isBlank() || entry == null || (editMode && pending.target() == null)) {
             log.warn("[저장] 무효 — 손상된 pending(slug/entry/target 결손): user={} slug={}", userId, slug);
-            responder.post(action.channelId(), FlowMessages.BROKEN_PENDING);
+            responder.post(action.channelId(), MochaMessages.BROKEN_PENDING);
             return;
         }
 
@@ -120,14 +120,14 @@ class SlackCommitHandler {
         // POLICY: 카드 이미지 생성·전송 실패는 저장을 되돌리지 않는다 — 안내 텍스트로 폴백 (ref: plan.md §7, AC-18).
         try {
             Path card = noteRenderer.renderEntryCard(slug, committedEntry.date());
-            responder.postImage(action.channelId(), card, FlowMessages.SAVE_DONE_CAPTION);
+            responder.postImage(action.channelId(), card, MochaMessages.SAVE_DONE_CAPTION);
         } catch (RuntimeException e) {
             log.warn("카드 배달 실패(노트는 저장됨, --rerender로 복구 가능): slug={} date={}", saved.slug(), date, e);
-            responder.post(action.channelId(), FlowMessages.SAVE_DONE_NO_IMAGE);
+            responder.post(action.channelId(), MochaMessages.SAVE_DONE_NO_IMAGE);
         }
 
         // 커밋·배달 이후 미리보기 버튼을 1회 소진한다 — 실패해도 저장·배달 결과는 유지된다(ADR-20, AC-Δ2).
-        finalizePreviewQuietly(action.channelId(), pending, FlowMessages.FINALIZE_SAVED);
+        finalizePreviewQuietly(action.channelId(), pending, MochaMessages.FINALIZE_SAVED);
     }
 
     /** [취소] 버튼 — 저장 없이 pending만 폐기한다(AC-4). */
@@ -138,10 +138,10 @@ class SlackCommitHandler {
         pendingStore.clear(action.userId());
         photoIntake.discard(action.userId());
         log.info("[취소] pending 폐기: user={}", action.userId());
-        responder.post(action.channelId(), FlowMessages.CANCELED);
+        responder.post(action.channelId(), MochaMessages.CANCELED);
 
         // 취소 안내 이후 미리보기 버튼을 1회 소진한다 — pending이 있었을 때만(만료/부재면 갱신 대상 없음).
-        pendingOpt.ifPresent(pending -> finalizePreviewQuietly(action.channelId(), pending, FlowMessages.FINALIZE_CANCELED));
+        pendingOpt.ifPresent(pending -> finalizePreviewQuietly(action.channelId(), pending, MochaMessages.FINALIZE_CANCELED));
     }
 
     // edit 커밋(FR-21, AC-37·39, changes/0012 TΔ3) — [저장] 확답 시 대상 노트를 draft로 갱신하고 파생물을 정리한다.
@@ -160,7 +160,7 @@ class SlackCommitHandler {
             log.warn("[저장] 무효 — 수정 대상 소실: user={} slug={} date={}", userId, slug, target.date());
             pendingStore.clear(userId);
             photoIntake.discard(userId);
-            responder.post(action.channelId(), FlowMessages.NOTHING_TO_SAVE);
+            responder.post(action.channelId(), MochaMessages.NOTHING_TO_SAVE);
             return;
         }
 
@@ -200,14 +200,14 @@ class SlackCommitHandler {
         // POLICY: 카드 이미지 생성·전송 실패는 저장을 되돌리지 않는다 — 안내 텍스트로 폴백 (ref: plan.md §7, AC-18 준용).
         try {
             Path card = noteRenderer.renderEntryCard(slug, committedEntry.date());
-            responder.postImage(action.channelId(), card, FlowMessages.SAVE_DONE_CAPTION);
+            responder.postImage(action.channelId(), card, MochaMessages.SAVE_DONE_CAPTION);
         } catch (RuntimeException e) {
             log.warn("카드 배달 실패(수정은 저장됨, --rerender로 복구 가능): slug={} date={}", slug, date, e);
-            responder.post(action.channelId(), FlowMessages.SAVE_DONE_NO_IMAGE);
+            responder.post(action.channelId(), MochaMessages.SAVE_DONE_NO_IMAGE);
         }
 
         // 커밋·배달 이후 미리보기 버튼을 1회 소진한다(0009 재사용) — 실패해도 저장·배달 결과는 유지된다(ADR-20).
-        finalizePreviewQuietly(action.channelId(), pending, FlowMessages.FINALIZE_SAVED);
+        finalizePreviewQuietly(action.channelId(), pending, MochaMessages.FINALIZE_SAVED);
     }
 
     // 버튼 1회 소진 — 커밋·배달 이후 미리보기 버튼을 제거하고 상태 문구로 교체한다.
