@@ -11,6 +11,10 @@ import com.devwuu.mocha.llm.AliasGenerator;
 import com.devwuu.mocha.render.NoteRenderer;
 import com.devwuu.mocha.repository.NoteRepository;
 import com.devwuu.mocha.repository.PendingStore;
+import com.devwuu.mocha.slack.inbound.IncomingAction;
+import com.devwuu.mocha.slack.inbound.SlackPhotoIntake;
+import com.devwuu.mocha.slack.outbound.MochaMessages;
+import com.devwuu.mocha.slack.outbound.SlackResponder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

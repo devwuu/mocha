@@ -1,4 +1,4 @@
-package com.devwuu.mocha.slack;
+package com.devwuu.mocha.slack.inbound;
 
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;

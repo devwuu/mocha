@@ -1,4 +1,4 @@
-package com.devwuu.mocha.slack;
+package com.devwuu.mocha.slack.outbound;
 
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
@@ -7,6 +7,7 @@ import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Sourced;
+import com.devwuu.mocha.slack.AgentConversationRouter;
 import com.slack.api.model.block.ActionsBlock;
 import com.slack.api.model.block.ContextBlock;
 import com.slack.api.model.block.HeaderBlock;

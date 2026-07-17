@@ -1,4 +1,7 @@
-package com.devwuu.mocha.slack;
+package com.devwuu.mocha.slack.inbound;
+
+import com.devwuu.mocha.slack.ConversationRouter;
+import com.devwuu.mocha.slack.SlackGateway;
 
 /**
  * Slack 원시 메시지 이벤트에서 필요한 필드만 뽑아낸 내부 표현.

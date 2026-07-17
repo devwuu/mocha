@@ -1,5 +1,9 @@
 package com.devwuu.mocha.slack;
 
+import com.devwuu.mocha.slack.inbound.IncomingAction;
+import com.devwuu.mocha.slack.inbound.IncomingMedia;
+import com.devwuu.mocha.slack.inbound.IncomingMessage;
+
 /**
  * 파이프라인 [1] — 수신 이벤트를 pending 유무로 분기하는 라우팅 경계 (ref: plan.md §1 [1], §3; ADR-3).
  * <p>{@link SlackGateway}(얇은 수신 계층)가 파싱한 내부 표현을 넘기면, 구현체가 결정론적으로 분기한다:

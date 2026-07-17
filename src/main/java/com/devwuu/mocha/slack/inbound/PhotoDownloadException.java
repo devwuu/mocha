@@ -1,4 +1,4 @@
-package com.devwuu.mocha.slack;
+package com.devwuu.mocha.slack.inbound;
 
 /**
  * Slack 사진 원본 다운로드 실패 (ref: plan.md §7, tasks T4-1).

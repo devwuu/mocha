@@ -1,5 +1,9 @@
 package com.devwuu.mocha.slack;
 
+import com.devwuu.mocha.slack.inbound.IncomingAction;
+import com.devwuu.mocha.slack.inbound.IncomingMedia;
+import com.devwuu.mocha.slack.inbound.IncomingMessage;
+import com.devwuu.mocha.slack.inbound.IncomingPhoto;
 import com.slack.api.app_backend.interactive_components.payload.BlockActionPayload;
 import com.slack.api.bolt.App;
 import com.slack.api.bolt.AppConfig;

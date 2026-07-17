@@ -1,4 +1,4 @@
-package com.devwuu.mocha.slack;
+package com.devwuu.mocha.slack.inbound;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;

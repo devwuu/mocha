@@ -1,4 +1,6 @@
-package com.devwuu.mocha.slack;
+package com.devwuu.mocha.slack.inbound;
+
+import com.devwuu.mocha.slack.SlackGateway;
 
 import java.util.List;
 

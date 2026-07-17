@@ -1,4 +1,4 @@
-package com.devwuu.mocha.slack;
+package com.devwuu.mocha.slack.outbound;
 
 import com.devwuu.mocha.domain.PendingNote;
 import com.slack.api.methods.MethodsClient;

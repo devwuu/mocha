@@ -1,4 +1,4 @@
-package com.devwuu.mocha.slack;
+package com.devwuu.mocha.slack.outbound;
 
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
@@ -6,8 +6,8 @@ import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Sourced;
-import com.slack.api.methods.MethodsClient;
 import com.slack.api.RequestConfigurator;
+import com.slack.api.methods.MethodsClient;
 import com.slack.api.methods.response.chat.ChatPostMessageResponse;
 import com.slack.api.methods.response.chat.ChatUpdateResponse;
 import org.junit.jupiter.api.DisplayName;

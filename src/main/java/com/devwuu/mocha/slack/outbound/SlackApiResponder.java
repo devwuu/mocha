@@ -1,4 +1,4 @@
-package com.devwuu.mocha.slack;
+package com.devwuu.mocha.slack.outbound;
 
 import com.devwuu.mocha.domain.PendingNote;
 import com.slack.api.methods.MethodsClient;
@@ -24,14 +24,14 @@ import java.util.List;
  * 던져 호출부가 텍스트 폴백으로 수렴하게 한다(AC-18, plan.md §7).
  */
 @Component
-public class MethodsSlackResponder implements SlackResponder {
+public class SlackApiResponder implements SlackResponder {
 
-    private static final Logger log = LoggerFactory.getLogger(MethodsSlackResponder.class);
+    private static final Logger log = LoggerFactory.getLogger(SlackApiResponder.class);
 
     private final MethodsClient methods;
     private final PreviewBlocks previewBlocks;
 
-    public MethodsSlackResponder(MethodsClient methods, PreviewBlocks previewBlocks) {
+    public SlackApiResponder(MethodsClient methods, PreviewBlocks previewBlocks) {
         this.methods = methods;
         this.previewBlocks = previewBlocks;
     }

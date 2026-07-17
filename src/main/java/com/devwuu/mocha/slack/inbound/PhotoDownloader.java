@@ -1,4 +1,4 @@
-package com.devwuu.mocha.slack;
+package com.devwuu.mocha.slack.inbound;
 
 /**
  * 사진 원본 다운로드 경계 (ref: tasks T4-1/T4-2, spec FR-10).

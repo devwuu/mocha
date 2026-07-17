@@ -1,4 +1,4 @@
-package com.devwuu.mocha.slack;
+package com.devwuu.mocha.slack.inbound;
 
 /**
  * Slack Block Kit 액션(버튼 등)에서 필요한 필드만 뽑아낸 내부 표현.

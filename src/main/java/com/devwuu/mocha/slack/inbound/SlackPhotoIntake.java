@@ -1,17 +1,20 @@
-package com.devwuu.mocha.slack;
+package com.devwuu.mocha.slack.inbound;
 
 import com.devwuu.mocha.domain.NoteMeta;
 import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.domain.PhotoBuffer;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.image.ImageFormat;
+import com.devwuu.mocha.llm.PhotoInfoExtractor;
 import com.devwuu.mocha.llm.VisionExtraction;
 import com.devwuu.mocha.llm.VisionHint;
-import com.devwuu.mocha.llm.PhotoInfoExtractor;
 import com.devwuu.mocha.repository.PendingStore;
 import com.devwuu.mocha.repository.PhotoBufferStore;
 import com.devwuu.mocha.repository.PhotoStore;
 import com.devwuu.mocha.repository.StagedImage;
+import com.devwuu.mocha.slack.AgentConversationRouter;
+import com.devwuu.mocha.slack.outbound.MochaMessages;
+import com.devwuu.mocha.slack.outbound.SlackResponder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,7 +34,7 @@ import java.util.Optional;
  * 메타(mimetype·썸네일 URL)에 기대는 전송 계층 특화 정책을 품는다 — "URL → 바이트"만 아는 경계 인터페이스
  * {@link PhotoDownloader}(범용 추상)와 레벨을 구분한다.
  */
-class SlackPhotoIntake {
+public class SlackPhotoIntake {
 
     private static final Logger log = LoggerFactory.getLogger(SlackPhotoIntake.class);
 
@@ -44,7 +47,7 @@ class SlackPhotoIntake {
     private final Duration bufferWindow;
     private final Clock clock;
 
-    SlackPhotoIntake(
+    public SlackPhotoIntake(
             PendingStore pendingStore,
             SlackResponder responder,
             PhotoDownloader photoDownloader,
@@ -67,7 +70,7 @@ class SlackPhotoIntake {
      * 사진 수신 → 버퍼 그룹핑(FR-10, AC-8) — 라우터 {@code onMedia} 위임의 실제 구현.
      * pending이 있으면 진행 중 노트에 첨부해 미리보기를 갱신하고, 없으면 버퍼에 담아 뒤이을 텍스트를 기다린다.
      */
-    void receive(IncomingMedia media) {
+    public void receive(IncomingMedia media) {
         String userId = media.userId();
         String channelId = media.channelId();
         try {
@@ -93,7 +96,7 @@ class SlackPhotoIntake {
      * (소비는 호출부가 pending 전송 성공 뒤 {@link #clearBuffer}로), 윈도우 밖이면 버려진 스테이징을 정리하고
      * 빈 Optional(새 흐름)로 수렴한다.
      */
-    Optional<List<String>> absorbFreshBuffer(String userId, OffsetDateTime now) {
+    public Optional<List<String>> absorbFreshBuffer(String userId, OffsetDateTime now) {
         Optional<PhotoBuffer> buffer = photoBufferStore.get(userId);
         if (buffer.isEmpty()) {
             return Optional.empty();
@@ -110,7 +113,7 @@ class SlackPhotoIntake {
      * [2.5] 수신 사진 OCR(ADR-23) — 흡수된 버퍼 사진이 있을 때만 1콜 시도한다. 없으면 빈 결과(호출 없음).
      * hint.coffeeName은 nullable — 사진-only 흐름은 커피명을 사진에서 읽는다.
      */
-    VisionExtraction readPhotoInfo(String userId, List<String> bufferNames, VisionHint hint) {
+    public VisionExtraction readPhotoInfo(String userId, List<String> bufferNames, VisionHint hint) {
         if (bufferNames.isEmpty()) {
             return VisionExtraction.empty();
         }
@@ -141,23 +144,23 @@ class SlackPhotoIntake {
     }
 
     /** 스테이징 원본을 photos/&lt;slug&gt;/&lt;date&gt;/로 이동해 확정하고 상대 경로 목록을 돌려준다(V-4, FR-10). */
-    List<String> commitStaged(String userId, String slug, String date) {
+    public List<String> commitStaged(String userId, String slug, String date) {
         return photoStore.commit(userId, slug, date);
     }
 
     /** 수정 세션 날짜 이동 시 그 엔트리의 아카이브 폴더를 새 날짜로 동반 이동한다(ADR-32, FR-21) — best-effort는 호출부가 감싼다. */
-    void moveEntryPhotos(String slug, String fromDate, String toDate) {
+    public void moveEntryPhotos(String slug, String fromDate, String toDate) {
         photoStore.moveEntryPhotos(slug, fromDate, toDate);
     }
 
     /** 대기 중이던 스테이징 사진·버퍼를 함께 폐기한다 — 취소·pending 만료 경로(FR-10). */
-    void discard(String userId) {
+    public void discard(String userId) {
         photoStore.discard(userId);
         photoBufferStore.clear(userId);
     }
 
     /** 버퍼만 비운다 — 사진이 pending·노트로 이관된 뒤(스테이징 원본은 commit이 옮긴다). */
-    void clearBuffer(String userId) {
+    public void clearBuffer(String userId) {
         photoBufferStore.clear(userId);
     }
 

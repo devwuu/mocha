@@ -5,8 +5,8 @@ import com.devwuu.mocha.agent.conversation.ConversationTranscript;
 import com.devwuu.mocha.render.NoteRenderer;
 import com.devwuu.mocha.repository.NoteRepository;
 import com.devwuu.mocha.repository.PendingStore;
-import com.devwuu.mocha.slack.PreviewMessenger;
-import com.devwuu.mocha.slack.SlackResponder;
+import com.devwuu.mocha.slack.outbound.PreviewMessenger;
+import com.devwuu.mocha.slack.outbound.SlackResponder;
 import tools.jackson.databind.ObjectMapper;
 
 import java.nio.file.Path;

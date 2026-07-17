@@ -6,7 +6,7 @@ import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.render.NoteRenderer;
 import com.devwuu.mocha.repository.NoteRepository;
-import com.devwuu.mocha.slack.SlackResponder;
+import com.devwuu.mocha.slack.outbound.SlackResponder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.databind.ObjectMapper;

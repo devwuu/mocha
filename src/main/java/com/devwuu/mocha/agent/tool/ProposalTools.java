@@ -7,7 +7,7 @@ import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.repository.NoteRepository;
 import com.devwuu.mocha.repository.PendingStore;
-import com.devwuu.mocha.slack.PreviewMessenger;
+import com.devwuu.mocha.slack.outbound.PreviewMessenger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.databind.ObjectMapper;

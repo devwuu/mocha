@@ -1,13 +1,14 @@
 package com.devwuu.mocha.slack;
 
+import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
 import com.devwuu.mocha.domain.PendingNote;
+import com.devwuu.mocha.domain.PhotoBuffer;
 import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Sourced;
-import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.llm.AliasGenerator;
 import com.devwuu.mocha.llm.PhotoInfoExtractor;
@@ -18,7 +19,10 @@ import com.devwuu.mocha.repository.PendingStore;
 import com.devwuu.mocha.repository.PhotoBufferStore;
 import com.devwuu.mocha.repository.PhotoStore;
 import com.devwuu.mocha.repository.StagedImage;
-import com.devwuu.mocha.domain.PhotoBuffer;
+import com.devwuu.mocha.slack.inbound.IncomingAction;
+import com.devwuu.mocha.slack.inbound.SlackPhotoIntake;
+import com.devwuu.mocha.slack.outbound.MochaMessages;
+import com.devwuu.mocha.slack.outbound.SlackResponder;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
