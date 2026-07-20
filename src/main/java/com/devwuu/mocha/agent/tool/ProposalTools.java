@@ -1,10 +1,14 @@
 package com.devwuu.mocha.agent.tool;
 
 import com.devwuu.mocha.agent.conversation.ConversationTranscript;
+import com.devwuu.mocha.domain.Brew;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.PendingNote;
+import com.devwuu.mocha.domain.Rating;
+import com.devwuu.mocha.domain.Recipe;
+import com.devwuu.mocha.domain.Tasting;
 import com.devwuu.mocha.repository.NoteRepository;
 import com.devwuu.mocha.repository.PendingStore;
 import com.devwuu.mocha.slack.outbound.PreviewMessenger;
@@ -16,6 +20,7 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -182,8 +187,7 @@ class ProposalTools {
         }
 
         OffsetDateTime now = OffsetDateTime.now(clock);
-        Entry entry = new Entry(proposal.targetDate(), proposal.myTaste(), proposal.myTasteOriginal(),
-                proposal.rating(), proposal.recipe(), now);
+        Entry entry = new Entry(proposal.targetDate(), proposal.brews(), now);
         Note draft = new Note(
                 recordSlug(proposal, pending, now),
                 proposal.meta().coffeeName(), proposal.meta().roastery(), proposal.meta().beans(),
@@ -312,14 +316,7 @@ class ProposalTools {
     // patch(null=유지)를 base draft에 적용한 새 draft — coffee_name은 proposal에 없어 항상 유지된다(V-9).
     private static Note applyEditPatch(Note base, EditProposal proposal, LocalDate entryDate, OffsetDateTime now) {
         Entry baseEntry = latestEntry(base);
-        // my_taste 갱신은 원문과 함께 움직인다(V-11) — 감상을 안 바꾸는 patch는 양쪽 다 유지.
-        Entry entry = new Entry(
-                entryDate,
-                proposal.myTaste() != null ? proposal.myTaste() : baseEntry.myTaste(),
-                proposal.myTaste() != null ? proposal.myTasteOriginal() : baseEntry.myTasteOriginal(),
-                proposal.rating() != null ? proposal.rating() : baseEntry.rating(),
-                proposal.recipe() != null ? proposal.recipe() : baseEntry.recipe(),
-                now);
+        Entry entry = new Entry(entryDate, mergedBrews(baseEntry, proposal), now);
         return new Note(
                 base.slug(), base.coffeeName(),
                 proposal.roastery() != null ? proposal.roastery() : base.roastery(),
@@ -327,6 +324,26 @@ class ProposalTools {
                 proposal.roastLevel() != null ? proposal.roastLevel() : base.roastLevel(),
                 proposal.officialNotes() != null ? proposal.officialNotes() : base.officialNotes(),
                 base.sources(), List.of(entry), base.createdAt(), base.updatedAt());
+    }
+
+    // TΔ1b 과도기 shim: patch는 아직 엔트리 단일 my_taste/rating/recipe다(TΔ2b에서 brews 통째 교체로 개정).
+    // 구 필드별 병합(null=유지) 의미를 마지막 회차에 적용한다 — 감상 갱신은 원문과 함께 움직이고(V-11),
+    // rating은 명시 시만 갱신, recipe는 교체. 병합 결과가 빈 회차면 드롭한다(V-15).
+    private static List<Brew> mergedBrews(Entry baseEntry, EditProposal proposal) {
+        List<Brew> base = baseEntry.brews();
+        Brew last = base.isEmpty() ? new Brew(null, null) : base.getLast();
+        Tasting baseTasting = last.tasting();
+        String myTaste = proposal.myTaste() != null ? proposal.myTaste()
+                : baseTasting == null ? null : baseTasting.myTaste();
+        String original = proposal.myTaste() != null ? proposal.myTasteOriginal()
+                : baseTasting == null ? null : baseTasting.myTasteOriginal();
+        Rating rating = proposal.rating() != null ? proposal.rating()
+                : baseTasting == null ? null : baseTasting.rating();
+        Recipe recipe = proposal.recipe() != null ? proposal.recipe() : last.recipe();
+
+        List<Brew> merged = new ArrayList<>(base.isEmpty() ? List.of() : base.subList(0, base.size() - 1));
+        merged.addAll(Brew.normalize(List.of(new Brew(recipe, Tasting.normalize(myTaste, original, rating)))));
+        return merged;
     }
 
     // ---- 제안 공통: pending 영속 + 미리보기 전송 ----

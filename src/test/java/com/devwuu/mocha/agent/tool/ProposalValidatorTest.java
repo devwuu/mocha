@@ -1,5 +1,6 @@
 package com.devwuu.mocha.agent.tool;
 
+import com.devwuu.mocha.domain.Brew;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.PendingNote;
@@ -7,6 +8,7 @@ import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.domain.Sourced;
+import com.devwuu.mocha.domain.Tasting;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -50,7 +52,8 @@ class ProposalValidatorTest {
 
     private static Note note(String slug, String coffeeName, String roastery, LocalDate... entryDates) {
         List<com.devwuu.mocha.domain.Entry> entries = java.util.Arrays.stream(entryDates)
-                .map(d -> new com.devwuu.mocha.domain.Entry(d, "맛", Rating.GOOD, null, OffsetDateTime.now()))
+                .map(d -> new com.devwuu.mocha.domain.Entry(
+                        d, List.of(new Brew(null, new Tasting("맛", null, Rating.GOOD))), OffsetDateTime.now()))
                 .toList();
         return new Note(slug, Sourced.user(coffeeName),
                 roastery == null ? null : Sourced.user(roastery),
@@ -108,10 +111,10 @@ class ProposalValidatorTest {
             RecordProposal withNull = okOf(validator.validateRecord(
                     recordArgs("예가체프", null, TASTED.toString(),
                             new ProposeRecordArgs.MatchArg("new", null, null)), null));
-            assertThat(withNull.rating()).isNull();
+            assertThat(withNull.brews().getFirst().tasting().rating()).isNull();
 
             RecordProposal withLabel = okOf(validator.validateRecord(recordArgs(), null));
-            assertThat(withLabel.rating()).isEqualTo(Rating.GOOD);
+            assertThat(withLabel.brews().getFirst().tasting().rating()).isEqualTo(Rating.GOOD);
         }
     }
 
@@ -181,17 +184,46 @@ class ProposalValidatorTest {
                     null, null, null, new Recipe(-1.0, 240.0, "  "), TASTED.toString(),
                     new ProposeRecordArgs.MatchArg("new", null, null), null);
             RecordProposal proposal = okOf(validator.validateRecord(args, null));
-            assertThat(proposal.recipe()).isEqualTo(new Recipe(null, 240.0, null));
+            // 감상 없는 recipe만의 발화 = recipe만 담긴 회차 1개(V-15 허용).
+            assertThat(proposal.brews().getFirst().recipe()).isEqualTo(new Recipe(null, 240.0, null));
+            assertThat(proposal.brews().getFirst().tasting()).isNull();
         }
 
         @Test
-        @DisplayName("V-8: 3항목 전무면 recipe 자체가 null로 정규화된다(카드 레시피 영역 미표시 근거)")
+        @DisplayName("V-8: recipe 전 필드 전무면 recipe 자체가 null로 정규화된다(레시피 카드 미생성 근거)")
         void allInvalidNormalizedToNull() {
             ProposeRecordArgs args = new ProposeRecordArgs(
                     new SourcedArg<>("예가체프", "user"), null, null, null, null, null,
-                    null, null, null, new Recipe(0.0, null, ""), TASTED.toString(),
+                    "좋았음", null, null, new Recipe(0.0, null, ""), TASTED.toString(),
                     new ProposeRecordArgs.MatchArg("new", null, null), null);
-            assertThat(okOf(validator.validateRecord(args, null)).recipe()).isNull();
+            // recipe 전무 정규화가 저장 거부로 번지지 않는다 — 감상 tasting이 있어 회차는 성립(V-15).
+            assertThat(okOf(validator.validateRecord(args, null)).brews().getFirst().recipe()).isNull();
+        }
+    }
+
+    // ---- V-15 회차(brews) — changes/0021 ADR-59 ----
+
+    @Nested
+    class BrewsV15 {
+
+        @Test
+        @DisplayName("V-15: 감상·레시피가 전무한 제안(회차 0개)은 사유와 함께 거부된다 — 기록할 내용이 없음")
+        void emptyBrewsRejected() {
+            ProposeRecordArgs args = new ProposeRecordArgs(
+                    new SourcedArg<>("예가체프", "user"), null, null, null, null, null,
+                    null, null, null, null, TASTED.toString(),
+                    new ProposeRecordArgs.MatchArg("new", null, null), null);
+            assertThat(rejectionOf(validator.validateRecord(args, null)))
+                    .contains("회차").contains("V-15");
+        }
+
+        @Test
+        @DisplayName("V-15: 감상 발화 1건은 tasting을 담은 회차 1개로 정규화된다(V-11 원문 병존 포함)")
+        void tasteBecomesSingleBrew() {
+            RecordProposal proposal = okOf(validator.validateRecord(recordArgs(), null));
+            assertThat(proposal.brews()).containsExactly(new Brew(
+                    new Recipe(15.0, 240.0, null),
+                    new Tasting("새콤하고 좋았음", "새콤하고 좋았다", Rating.GOOD)));
         }
     }
 
@@ -208,16 +240,18 @@ class ProposalValidatorTest {
                     "맛있었음", null, null, null, TASTED.toString(),
                     new ProposeRecordArgs.MatchArg("new", null, null), null);
             RecordProposal proposal = okOf(validator.validateRecord(args, null));
-            assertThat(proposal.myTaste()).isEqualTo("맛있었음");
-            assertThat(proposal.myTasteOriginal()).isEqualTo("맛있었음");
+            Tasting tasting = proposal.brews().getFirst().tasting();
+            assertThat(tasting.myTaste()).isEqualTo("맛있었음");
+            assertThat(tasting.myTasteOriginal()).isEqualTo("맛있었음");
         }
 
         @Test
         @DisplayName("V-11: 원문이 오면 정규화본과 함께 보존된다(AC-47)")
         void originalPreservedWhenPresent() {
             RecordProposal proposal = okOf(validator.validateRecord(recordArgs(), null));
-            assertThat(proposal.myTaste()).isEqualTo("새콤하고 좋았음");
-            assertThat(proposal.myTasteOriginal()).isEqualTo("새콤하고 좋았다");
+            Tasting tasting = proposal.brews().getFirst().tasting();
+            assertThat(tasting.myTaste()).isEqualTo("새콤하고 좋았음");
+            assertThat(tasting.myTasteOriginal()).isEqualTo("새콤하고 좋았다");
         }
     }
 
@@ -307,10 +341,10 @@ class ProposalValidatorTest {
         void missingRoasteryFallsBackToNameOnly() {
             // 대기 draft에 로스터리가 아직 없고 재호출이 채워 오는 경우(FR-5 보강 갱신).
             okOf(validator.validateRecord(recordArgs(), recordPending("커피베라 예가체프 G1", null)));
-            // 반대로 재호출 쪽에 로스터리가 빠져 있어도 같은 커피다.
+            // 반대로 재호출 쪽에 로스터리가 빠져 있어도 같은 커피다. (감상은 V-15 회차 성립용으로 채운다.)
             ProposeRecordArgs withoutRoastery = new ProposeRecordArgs(
                     new SourcedArg<>("커피베라 예가체프 G1", "user"), null, null, null, null, null,
-                    null, null, null, null, TASTED.toString(),
+                    "좋았음", null, null, null, TASTED.toString(),
                     new ProposeRecordArgs.MatchArg("new", null, null), null);
             okOf(validator.validateRecord(withoutRoastery, recordPending("커피베라 예가체프 G1")));
         }

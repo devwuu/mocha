@@ -4,6 +4,7 @@ import com.devwuu.mocha.agent.conversation.ConversationTranscript;
 import com.devwuu.mocha.agent.conversation.TranscriptTurn;
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Bean;
+import com.devwuu.mocha.domain.Brew;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
@@ -11,6 +12,7 @@ import com.devwuu.mocha.domain.NoteMeta;
 import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Sourced;
+import com.devwuu.mocha.domain.Tasting;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.render.NoteRenderer;
 import com.devwuu.mocha.repository.NoteRepository;
@@ -125,7 +127,7 @@ class AgentToolkitTest {
         assertThat(pending.draft().slug()).isEqualTo("2026-07-16-102030"); // 시음일 + 생성 시각(V-2)
         assertThat(pending.draft().entries()).hasSize(1);
         assertThat(pending.draft().entries().get(0).date()).isEqualTo(LocalDate.of(2026, 7, 16));
-        assertThat(pending.draft().entries().get(0).rating()).isEqualTo(Rating.GOOD);
+        assertThat(pending.draft().entries().get(0).brews().getFirst().tasting().rating()).isEqualTo(Rating.GOOD);
         assertThat(pending.match().type()).isEqualTo(MatchInfo.MatchType.NEW);
         assertThat(pending.previewTs()).isEqualTo(previewMessenger.ts);
         // 미리보기 1회 전송 + 성공 결과 + 제안 성공 접힘(ADR-46 규칙 ①, AC-Δ6).
@@ -148,7 +150,7 @@ class AgentToolkitTest {
                 recordArgs("커피베라 예가체프 G1", "커피베라", "\"완전 내스타일\"", "2026-07-16", "{\"type\":\"new\",\"slug\":null,\"date\":null}")));
 
         PendingNote updated = pendingStore.get(USER).orElseThrow();
-        assertThat(updated.draft().entries().get(0).rating()).isEqualTo(Rating.PERFECT); // 수정 반영
+        assertThat(updated.draft().entries().get(0).brews().getFirst().tasting().rating()).isEqualTo(Rating.PERFECT); // 수정 반영
         assertThat(updated.draft().slug()).isEqualTo("2026-07-16-102030");               // slug 불변
         assertThat(updated.createdAt()).isEqualTo(firstCreatedAt);                       // TTL 기준 보존
         // 두 번째 발행은 preview_ts를 문 채로 — 재전송이 아니라 기존 미리보기 메시지 edit(data-model §2.3).
@@ -229,8 +231,8 @@ class AgentToolkitTest {
         assertThat(pending.target()).isEqualTo(
                 new PendingNote.EditTarget("2026-07-13-102030", LocalDate.of(2026, 7, 13)));
         assertThat(pending.draft().entries()).hasSize(1);
-        assertThat(pending.draft().entries().get(0).myTaste()).isEqualTo("더 새콤했음");   // patch 반영
-        assertThat(pending.draft().entries().get(0).rating()).isEqualTo(Rating.GOOD);      // null 필드는 유지
+        assertThat(pending.draft().entries().get(0).brews().getFirst().tasting().myTaste()).isEqualTo("더 새콤했음");   // patch 반영
+        assertThat(pending.draft().entries().get(0).brews().getFirst().tasting().rating()).isEqualTo(Rating.GOOD);      // null 필드는 유지
         assertThat(pending.dateConflict()).isFalse();
         assertThat(pending.previewTs()).isEqualTo(previewMessenger.ts);
         assertThat(previewMessenger.published).hasSize(1);
@@ -266,8 +268,8 @@ class AgentToolkitTest {
         execute("propose_edit", editArgs("2026-07-13-102030", "2026-07-13", "\"rating\":\"완전 내스타일\""));
 
         PendingNote updated = pendingStore.get(USER).orElseThrow();
-        assertThat(updated.draft().entries().get(0).myTaste()).isEqualTo("더 새콤했음"); // 직전 변경 유지
-        assertThat(updated.draft().entries().get(0).rating()).isEqualTo(Rating.PERFECT); // 이번 변경 반영
+        assertThat(updated.draft().entries().get(0).brews().getFirst().tasting().myTaste()).isEqualTo("더 새콤했음"); // 직전 변경 유지
+        assertThat(updated.draft().entries().get(0).brews().getFirst().tasting().rating()).isEqualTo(Rating.PERFECT); // 이번 변경 반영
         assertThat(updated.draft().entries().get(0).date()).isEqualTo(LocalDate.of(2026, 7, 10)); // 이동 유지
         assertThat(updated.dateConflict()).isTrue(); // new_date 없는 재호출에도 충돌 경고 유지(V-10)
         assertThat(updated.createdAt()).isEqualTo(firstCreatedAt);
@@ -344,7 +346,7 @@ class AgentToolkitTest {
         assertThat(result.get("coffee_name").get("value").asString()).isEqualTo("Ethiopia Chelbesa");
         assertThat(result.get("entries")).hasSize(1);
         assertThat(result.get("entries").get(0).get("date").asString()).isEqualTo("2026-07-13");
-        assertThat(result.get("entries").get(0).get("my_taste").asString()).isEqualTo("새콤하고 좋았음");
+        assertThat(result.get("entries").get(0).get("brews").get(0).get("tasting").get("my_taste").asString()).isEqualTo("새콤하고 좋았음");
     }
 
     @Test
@@ -454,7 +456,8 @@ class AgentToolkitTest {
                              LocalDate... entryDates) {
         List<Entry> entries = new ArrayList<>();
         for (LocalDate date : entryDates) {
-            entries.add(new Entry(date, "새콤하고 좋았음", Rating.GOOD, null,
+            entries.add(new Entry(date,
+                    List.of(new Brew(null, new Tasting("새콤하고 좋았음", null, Rating.GOOD))),
                     OffsetDateTime.parse("2026-07-14T10:00:00+09:00")));
         }
         return new Note(slug, Sourced.user(coffeeName), Sourced.user(roastery),

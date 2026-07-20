@@ -2,6 +2,7 @@ package com.devwuu.mocha.slack;
 
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Bean;
+import com.devwuu.mocha.domain.Brew;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
@@ -10,6 +11,7 @@ import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.domain.PhotoBuffer;
 import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Sourced;
+import com.devwuu.mocha.domain.Tasting;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.llm.AliasGenerator;
 import com.devwuu.mocha.llm.PhotoInfoExtractor;
@@ -138,7 +140,7 @@ class SlackCommitHandlerTest {
     void confirmSaveAccumulatesObservedAliasesForExistingNote() {
         NoteRepository repo = noteRepository();
         seedNote(repo, "ethiopia-chelbesa", "Ethiopia Chelbesa", "FroB", LocalDate.of(2026, 7, 1));
-        Entry entry = new Entry(LocalDate.of(2026, 7, 11), "새콤", Rating.GOOD, null, OffsetDateTime.now(clock));
+        Entry entry = entry(LocalDate.of(2026, 7, 11), "새콤", OffsetDateTime.now(clock));
         Note draft = new Note(
                 "ethiopia-chelbesa", Sourced.user("에티오피아 첼베사"), Sourced.user("프롭"),
                 List.of(), null, null, List.of(),
@@ -343,7 +345,7 @@ class SlackCommitHandlerTest {
         Note saved = repo.findBySlug("yirga").orElseThrow();
         assertEquals(1, saved.entries().size(), "이동이지 복제가 아니다 — 엔트리 총수 불변");
         assertEquals(LocalDate.of(2026, 7, 9), saved.entries().get(0).date(), "엔트리가 새 date로 이동");
-        assertEquals("고친 감상", saved.entries().get(0).myTaste(), "수정 내용 반영");
+        assertEquals("고친 감상", tasteOf(saved.entries().get(0)), "수정 내용 반영");
         assertEquals(1, pendingStore.clearCount, "커밋 후 pending 폐기");
         assertEquals(List.of("yirga/2026-07-08→2026-07-09"), photoStore.moves, "사진 폴더도 새 date로 이동");
         assertEquals(List.of("yirga/2026-07-08"), noteRenderer.removedCards, "옛 date 카드 삭제");
@@ -364,7 +366,7 @@ class SlackCommitHandlerTest {
         handler(repo).confirmSave(action(AgentConversationRouter.ACTION_SAVE));
 
         Note saved = repo.findBySlug("yirga").orElseThrow();
-        assertEquals("고친 감상", saved.entries().get(0).myTaste(), "필드 갱신 반영");
+        assertEquals("고친 감상", tasteOf(saved.entries().get(0)), "필드 갱신 반영");
         assertTrue(noteRenderer.removedCards.isEmpty(), "날짜가 그대로면 카드 삭제가 없다(같은 경로 덮어쓰기)");
         assertTrue(photoStore.moves.isEmpty(), "날짜가 그대로면 사진 폴더 이동도 없다");
         assertEquals(List.of("yirga/2026-07-08"), noteRenderer.entryCards, "해당 date 카드 재렌더");
@@ -465,16 +467,24 @@ class SlackCommitHandlerTest {
 
         handler(repo).confirmSave(action(AgentConversationRouter.ACTION_SAVE));
 
-        assertEquals("원래 감상", repo.findBySlug("yirga").orElseThrow().entries().get(0).myTaste(), "원본 무변화");
+        assertEquals("원래 감상", tasteOf(repo.findBySlug("yirga").orElseThrow().entries().get(0)), "원본 무변화");
         assertEquals(0, pendingStore.clearCount, "손상 pending은 커밋 clear 대상이 아니다");
         assertEquals(List.of(MochaMessages.BROKEN_PENDING), responder.messages);
     }
 
     // ---- 헬퍼 ----
 
+    // 회차 구조(changes/0021 ADR-59) 픽스처·접근 헬퍼 — 이 테스트의 엔트리는 회차 1개 전제.
+    private static Entry entry(LocalDate date, String taste, OffsetDateTime ts) {
+        return new Entry(date, List.of(new Brew(null, new Tasting(taste, null, Rating.GOOD))), ts);
+    }
+
+    private static String tasteOf(Entry entry) {
+        return entry.brews().getFirst().tasting().myTaste();
+    }
+
     private static PendingNote pendingWith(String slug) {
-        Entry entry = new Entry(
-                LocalDate.of(2026, 7, 11), "새콤하고 좋았다", Rating.GOOD, null, OffsetDateTime.now());
+        Entry entry = entry(LocalDate.of(2026, 7, 11), "새콤하고 좋았다", OffsetDateTime.now());
         Note draft = new Note(
                 slug, Sourced.user("커피베라 예가체프"),
                 Sourced.user("커피베라"), List.of(new Bean(Sourced.search("에티오피아"), null)), null,
@@ -485,7 +495,7 @@ class SlackCommitHandlerTest {
 
     // mode=edit pending — 원본 (slug, targetDate) 엔트리를 newDate·새 감상으로 고치는 단일 엔트리 draft.
     private static PendingNote editPending(String slug, LocalDate targetDate, LocalDate newDate, String myTaste) {
-        Entry entry = new Entry(newDate, myTaste, Rating.GOOD, null, OffsetDateTime.now());
+        Entry entry = entry(newDate, myTaste, OffsetDateTime.now());
         Note draft = new Note(
                 slug, Sourced.user("커피베라 예가체프"),
                 Sourced.user("커피베라"), List.of(new Bean(Sourced.search("에티오피아"), null)), null,
@@ -500,13 +510,13 @@ class SlackCommitHandlerTest {
                 Sourced.user("커피베라 예가체프"), Sourced.user("커피베라"),
                 List.of(new Bean(Sourced.search("에티오피아"), null)),
                 null, null, List.of());
-        repo.upsertEntry(slug, meta, new Entry(date, "원래 감상", Rating.GOOD, null, OffsetDateTime.now()));
+        repo.upsertEntry(slug, meta, entry(date, "원래 감상", OffsetDateTime.now()));
     }
 
     private void seedNote(NoteRepository repo, String slug, String coffeeName, String roastery, LocalDate date) {
         NoteMeta meta = new NoteMeta(
                 Sourced.user(coffeeName), Sourced.user(roastery), List.of(), null, null, List.of());
-        repo.upsertEntry(slug, meta, new Entry(date, "좋았다", Rating.GOOD, null, OffsetDateTime.now(clock)));
+        repo.upsertEntry(slug, meta, entry(date, "좋았다", OffsetDateTime.now(clock)));
     }
 
     private static IncomingAction action(String actionId) {

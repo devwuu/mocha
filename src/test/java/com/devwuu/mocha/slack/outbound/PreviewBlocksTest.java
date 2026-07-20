@@ -1,6 +1,7 @@
 package com.devwuu.mocha.slack.outbound;
 
 import com.devwuu.mocha.domain.Bean;
+import com.devwuu.mocha.domain.Brew;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
@@ -8,6 +9,7 @@ import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Sourced;
+import com.devwuu.mocha.domain.Tasting;
 import com.devwuu.mocha.slack.AgentConversationRouter;
 import com.slack.api.model.block.ActionsBlock;
 import com.slack.api.model.block.ContextBlock;
@@ -43,7 +45,9 @@ class PreviewBlocksTest {
     }
 
     private static Entry entry(String myTaste, Rating rating, Recipe recipe) {
-        return new Entry(LocalDate.of(2026, 7, 10), myTaste, rating, recipe, OffsetDateTime.now());
+        // 회차 구조(changes/0021 ADR-59) — 구 단일 감상·레시피를 회차 1개로 담는다.
+        return new Entry(LocalDate.of(2026, 7, 10),
+                List.of(new Brew(recipe, new Tasting(myTaste, null, rating))), OffsetDateTime.now());
     }
 
     private static String md(TextObject text) {
@@ -232,7 +236,7 @@ class PreviewBlocksTest {
                 Sourced.user("커피베라"),
                 List.of(), null, null,
                 List.of(),
-                List.of(entry("좋았다", Rating.GOOD, Recipe.normalize(15.0, 240.0, "중간"))),
+                List.of(entry("좋았다", Rating.GOOD, Recipe.normalize(new Recipe(15.0, 240.0, "중간")))),
                 OffsetDateTime.now(),
                 OffsetDateTime.now());
 
@@ -257,7 +261,7 @@ class PreviewBlocksTest {
                 Sourced.user("커피베라 예가체프 G1"),
                 Sourced.user("커피베라"),
                 List.of(), null, null, List.of(),
-                List.of(entry("좋았다", Rating.GOOD, Recipe.normalize(null, 240.0, null))),
+                List.of(entry("좋았다", Rating.GOOD, Recipe.normalize(new Recipe(null, 240.0, null)))),
                 OffsetDateTime.now(), OffsetDateTime.now());
         String recipeBlock = recipeSectionText(
                 previewBlocks.build(new PendingNote(partial, MatchInfo.newNote(), null, OffsetDateTime.now())));
@@ -362,7 +366,8 @@ class PreviewBlocksTest {
                 Sourced.user("커피베라"),
                 List.of(), null, null,
                 List.of(),
-                List.of(new Entry(entryDate, "산미가 좋았다", Rating.GOOD, null, OffsetDateTime.now())),
+                List.of(new Entry(entryDate,
+                        List.of(new Brew(null, new Tasting("산미가 좋았다", null, Rating.GOOD))), OffsetDateTime.now())),
                 OffsetDateTime.now(),
                 OffsetDateTime.now());
     }

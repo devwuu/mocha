@@ -27,9 +27,9 @@ class DomainSerializationTest {
         OffsetDateTime ts = OffsetDateTime.of(2026, 7, 10, 9, 30, 0, 0, ZoneOffset.ofHours(9));
         Entry entry = new Entry(
                 LocalDate.of(2026, 7, 10),
-                "새콤하고 좋았다",
-                Rating.GOOD,
-                new Recipe(15.0, 240.0, "중간"),   // 레시피 포함 — Note 왕복에 recipe도 실린다(FR-18)
+                List.of(new Brew(
+                        new Recipe(15.0, 240.0, "중간"),   // 레시피 포함 — Note 왕복에 회차 recipe도 실린다(FR-18)
+                        new Tasting("새콤하고 좋았다", null, Rating.GOOD))),
                 ts
         );
         return new Note(
@@ -84,8 +84,10 @@ class DomainSerializationTest {
                 .contains("\"coffee_name\"")
                 .contains("\"roast_level\"")
                 .contains("\"official_notes\"")
+                .contains("\"brews\"")              // 회차 배열(changes/0021 ADR-59)
+                .contains("\"tasting\"")
                 .contains("\"my_taste\"")
-                .contains("\"my_taste_original\"")  // 감상 원문 병존(V-11, changes/0013)
+                .contains("\"my_taste_original\"")  // 감상 원문 병존(V-11 — tasting 요소 단위)
                 .contains("\"created_at\"")
                 .contains("\"dose_g\"")     // recipe 필드 snake_case(FR-18)
                 .contains("\"water_ml\"");
@@ -105,23 +107,24 @@ class DomainSerializationTest {
     }
 
     @Test
-    @DisplayName("V-1: rating null 허용(미언급)")
+    @DisplayName("V-1: rating null 허용(미언급) — 회차 tasting 안에서")
     void nullRatingAllowed() throws Exception {
-        Entry entry = new Entry(LocalDate.of(2026, 7, 10), "무난", null, null, null);
+        Entry entry = new Entry(LocalDate.of(2026, 7, 10),
+                List.of(new Brew(null, new Tasting("무난", null, null))), null);
 
         String json = mapper.writeValueAsString(entry);
         Entry restored = mapper.readValue(json, Entry.class);
 
-        assertThat(restored.rating()).isNull();
+        assertThat(restored.brews().getFirst().tasting().rating()).isNull();
         assertThat(restored).isEqualTo(entry);
     }
 
     @Test
-    @DisplayName("AC-Δ1(changes/0014): photos 키가 든 기존 형식 JSON도 오류 없이 로드되고 재저장 시 photos 키가 사라진다")
+    @DisplayName("AC-Δ1(changes/0014): photos 키가 든 JSON도 오류 없이 로드되고 재저장 시 photos 키가 사라진다")
     void legacyPhotosKeyIgnoredOnRoundTrip() throws Exception {
         // 사진 아카이브 전용화(ADR-32) 이전에 저장된 엔트리 JSON — photos 배열을 품고 있다.
-        String legacy = "{\"date\":\"2026-07-10\",\"my_taste\":\"새콤\",\"my_taste_original\":\"새콤\","
-                + "\"rating\":\"맛있다\",\"recipe\":null,"
+        String legacy = "{\"date\":\"2026-07-10\",\"brews\":[{\"recipe\":null,"
+                + "\"tasting\":{\"my_taste\":\"새콤\",\"my_taste_original\":\"새콤\",\"rating\":\"맛있다\"}}],"
                 + "\"photos\":[\"photos/coffeevera/2026-07-10/a.jpg\"],\"updated_at\":null}";
 
         // 미지 키(photos)는 조용히 무시된다(findings-TΔ0 §1) — 마이그레이션·mapper 옵션 불필요.
@@ -129,87 +132,129 @@ class DomainSerializationTest {
         String reserialized = mapper.writeValueAsString(restored);
 
         assertThat(reserialized).doesNotContain("photos");
-        assertThat(restored.myTaste()).isEqualTo("새콤");
-        assertThat(restored.rating()).isEqualTo(Rating.GOOD);
+        assertThat(restored.brews().getFirst().tasting().myTaste()).isEqualTo("새콤");
+        assertThat(restored.brews().getFirst().tasting().rating()).isEqualTo(Rating.GOOD);
     }
 
-    // --- TΔ4: my_taste 정규화 + my_taste_original 병존 (ADR-30, V-11, changes/0013) ---
+    // --- TΔ4(changes/0013) → 0021 TΔ1b: my_taste 정규화 + 원문 병존 — tasting 요소 단위(V-11 개정) ---
 
     @Test
-    @DisplayName("AC-Δ5: my_taste(정규화)·my_taste_original(원문)이 둘 다 snake_case로 영속·왕복된다")
+    @DisplayName("AC-Δ5: my_taste(정규화)·my_taste_original(원문)이 tasting 안에 snake_case로 영속·왕복된다")
     void myTasteOriginalRoundTrip() throws Exception {
-        Entry entry = new Entry(
-                LocalDate.of(2026, 7, 10), "새콤하고 좋았음", "새콤하고 좋았다",
-                Rating.GOOD, null, null);
+        Entry entry = new Entry(LocalDate.of(2026, 7, 10),
+                List.of(new Brew(null, new Tasting("새콤하고 좋았음", "새콤하고 좋았다", Rating.GOOD))), null);
 
         String json = mapper.writeValueAsString(entry);
         Entry restored = mapper.readValue(json, Entry.class);
 
         assertThat(json).contains("\"my_taste\":\"새콤하고 좋았음\"")
                 .contains("\"my_taste_original\":\"새콤하고 좋았다\"");
-        assertThat(restored.myTaste()).isEqualTo("새콤하고 좋았음");
-        assertThat(restored.myTasteOriginal()).isEqualTo("새콤하고 좋았다");
+        assertThat(restored.brews().getFirst().tasting().myTaste()).isEqualTo("새콤하고 좋았음");
+        assertThat(restored.brews().getFirst().tasting().myTasteOriginal()).isEqualTo("새콤하고 좋았다");
         assertThat(restored).isEqualTo(entry);
     }
 
     @Test
-    @DisplayName("V-11: 커밋 시 my_taste만 있고 원문이 누락되면 정규화본을 원문에도 담아 영속한다")
+    @DisplayName("V-11: my_taste만 있고 원문이 누락되면 정규화본을 원문에도 담아 영속한다(tasting 요소 단위)")
     void persistsCopiedOriginalWhenMissing() throws Exception {
-        // 원문 도입 전 시그니처(6-arg)로 만든 엔트리 = 원문 누락 → V-11 복사가 걸린다.
-        Entry entry = new Entry(LocalDate.of(2026, 7, 10), "맛있었음", Rating.GOOD, null, null);
+        Tasting tasting = new Tasting("맛있었음", null, Rating.GOOD); // 원문 누락 → V-11 복사가 걸린다
 
-        assertThat(entry.myTasteOriginal()).isEqualTo("맛있었음"); // 도메인 불변 보장
-        Entry restored = mapper.readValue(mapper.writeValueAsString(entry), Entry.class);
+        assertThat(tasting.myTasteOriginal()).isEqualTo("맛있었음"); // 도메인 불변 보장
+        Tasting restored = mapper.readValue(mapper.writeValueAsString(tasting), Tasting.class);
         assertThat(restored.myTasteOriginal()).isEqualTo("맛있었음"); // JSON에도 병존
     }
 
-    // --- TΔ1: recipe (FR-18, V-8, changes/0010) ---
+    // --- 0021 TΔ1b: brews 회차 구조 + Recipe 10필드 (ADR-59, V-8·V-15) ---
+    // 기존 노트 JSON은 삭제·재등록하므로(ADR-28 관례) 구 엔트리 레벨 필드 로드 호환 테스트는 두지 않는다.
 
     @Test
-    @DisplayName("TΔ1/FR-18: recipe 직렬화 왕복(dose_g·water_ml·grind)")
-    void recipeRoundTrip() throws Exception {
+    @DisplayName("0021-TΔ1b: brews(회차 배열 — recipe 10필드·tasting)가 snake_case로 직렬화·왕복된다")
+    void brewsRoundTrip() throws Exception {
+        // ideas/sample.md 패턴: 같은 날 2회 시도 — 회차별 레시피·피드백·감상이 갈린다(배열 순서 = 회차 번호).
         Entry entry = new Entry(
-                LocalDate.of(2026, 7, 10), "새콤", Rating.GOOD,
-                new Recipe(15.0, 240.0, "중간"), null);
+                LocalDate.of(2026, 7, 18),
+                List.of(
+                        new Brew(
+                                new Recipe("에스프레소", 18.0, null, 10.0, 28.0, 93.0,
+                                        "210클릭 (매버릭 2.0)", "게이지아 클래식", null,
+                                        "퍽은 물퍽, 다음엔 220클릭으로"),
+                                new Tasting("새콤하고 좋았음", "새콤하고 좋았다", Rating.GOOD)),
+                        new Brew(
+                                new Recipe("핸드드립", 15.0, 240.0, null, 160.0, 92.0,
+                                        null, null, "뜸 40ml 30초 → 100ml → 100ml", null),
+                                null)),                             // 감상 없는 시도(recipe만) 허용(V-15)
+                null);
 
         String json = mapper.writeValueAsString(entry);
         Entry restored = mapper.readValue(json, Entry.class);
 
-        assertThat(json).contains("\"dose_g\":15").contains("\"water_ml\":240").contains("\"grind\":\"중간\"");
+        assertThat(json).contains("\"brews\"")
+                .contains("\"yield_ml\":10").contains("\"time_sec\":28")   // 신설 수치 필드 snake_case·number
+                .contains("\"grind\":\"210클릭 (매버릭 2.0)\"")
+                .contains("\"pouring\":\"뜸 40ml 30초 → 100ml → 100ml\"");
         assertThat(restored).isEqualTo(entry);
-        assertThat(restored.recipe()).isEqualTo(new Recipe(15.0, 240.0, "중간"));
+        assertThat(restored.brews()).hasSize(2);
+        assertThat(restored.brews().getFirst().recipe().feedback()).isEqualTo("퍽은 물퍽, 다음엔 220클릭으로");
+        assertThat(restored.brews().getLast().tasting()).isNull();
     }
 
     @Test
-    @DisplayName("TΔ1/AC-Δ8: recipe 미언급 엔트리는 recipe=null로 직렬화·왕복된다")
-    void recipeNullRoundTrip() throws Exception {
-        Entry entry = new Entry(LocalDate.of(2026, 7, 10), "무난", Rating.GOOD, null, null);
+    @DisplayName("0021-TΔ1b/V-15: brews 키 부재·null JSON도 빈 배열로 로드된다(null 불가 기본값)")
+    void brewsDefaultsToEmptyList() throws Exception {
+        String withoutBrews = "{\"date\":\"2026-07-10\",\"updated_at\":null}";
+        String nullBrews = "{\"date\":\"2026-07-10\",\"brews\":null,\"updated_at\":null}";
 
-        String json = mapper.writeValueAsString(entry);
-        Entry restored = mapper.readValue(json, Entry.class);
-
-        assertThat(json).contains("\"recipe\":null");
-        assertThat(restored.recipe()).isNull();
-        assertThat(restored).isEqualTo(entry);
+        assertThat(mapper.readValue(withoutBrews, Entry.class).brews()).isEmpty();
+        assertThat(mapper.readValue(nullBrews, Entry.class).brews()).isEmpty();
     }
 
     @Test
-    @DisplayName("TΔ1/V-8: recipe 3항목 전무면 normalize가 null로 정규화한다")
+    @DisplayName("0021-TΔ1b/V-15: normalize — recipe·tasting 둘 다 null인 회차와 빈 감상 tasting을 드롭한다")
+    void brewsNormalizeDropsEmptyElements() {
+        List<Brew> normalized = Brew.normalize(Arrays.asList(
+                new Brew(new Recipe(15.0, 240.0, "중간"), new Tasting("새콤", null, Rating.GOOD)),
+                new Brew(null, null),                                          // 빈 회차 → 드롭
+                null,                                                          // null 요소 → 드롭
+                new Brew(null, Tasting.normalize("  ", null, Rating.GOOD)),    // 빈 감상 tasting → null → 드롭
+                new Brew(new Recipe(0.0, null, "  "), null)));                 // recipe 전무 정규화 → null → 드롭
+
+        assertThat(normalized).containsExactly(
+                new Brew(new Recipe(15.0, 240.0, "중간"), new Tasting("새콤", "새콤", Rating.GOOD)));
+        assertThat(Brew.normalize(null)).isEmpty(); // null 배열은 빈 배열
+    }
+
+    @Test
+    @DisplayName("0021-TΔ1b/V-15: tasting.my_taste는 비어 있지 않아야 한다 — 빈 감상은 tasting 자체가 null로 드롭")
+    void tastingNormalizeRejectsBlankTaste() {
+        assertThat(Tasting.normalize(null, null, Rating.GOOD)).isNull();
+        assertThat(Tasting.normalize("   ", "원문", null)).isNull();
+        // 감상이 있으면 원문 병존(V-11) — 원문 누락 시 정규화본 복사.
+        assertThat(Tasting.normalize("새콤했음", null, Rating.GOOD))
+                .isEqualTo(new Tasting("새콤했음", "새콤했음", Rating.GOOD));
+    }
+
+    @Test
+    @DisplayName("0021-TΔ1b/V-8: recipe 전 필드 전무면 normalize가 null로 정규화한다")
     void recipeNormalizeAllNull() {
-        assertThat(Recipe.normalize(null, null, null)).isNull();
-        assertThat(Recipe.normalize(null, null, "  ")).isNull();  // 공백 grind도 전무로 간주
+        assertThat(Recipe.normalize(null)).isNull();
+        assertThat(Recipe.normalize(new Recipe(null, null, null))).isNull();
+        assertThat(Recipe.normalize(new Recipe(null, null, "  "))).isNull();  // 공백 grind도 전무로 간주
+        assertThat(Recipe.normalize(new Recipe(null, -18.0, null, 0.0, null, null, " ", "", null, null)))
+                .isNull(); // 위반 값만으로 채워진 recipe도 전무로 수렴
     }
 
     @Test
-    @DisplayName("TΔ1/V-8: 위반 값(음수·0·공백)은 해당 항목만 null로 드롭한다")
+    @DisplayName("0021-TΔ1b/V-8: 위반 값(음수·0·공백)은 해당 항목만 null로 드롭한다 — 10필드 확장형")
     void recipeNormalizeDropsInvalid() {
         // dose 음수·water 0 → 각 null 드롭, grind만 살아 Recipe는 유지(부속 정보라 저장 거부 아님).
-        Recipe dropped = Recipe.normalize(-15.0, 0.0, "굵게");
+        Recipe dropped = Recipe.normalize(new Recipe(-15.0, 0.0, "굵게"));
         assertThat(dropped).isEqualTo(new Recipe(null, null, "굵게"));
 
-        // 정상 양수는 보존, 공백 grind만 드롭.
-        Recipe partial = Recipe.normalize(15.0, 240.0, "   ");
-        assertThat(partial).isEqualTo(new Recipe(15.0, 240.0, null));
+        // 신설 수치(yield_ml·time_sec·temp_c)도 양수만 보존, 공백 텍스트(machine)는 드롭.
+        Recipe expanded = Recipe.normalize(new Recipe(
+                "에스프레소", 18.0, null, -10.0, 28.0, 0.0, "78클릭", "  ", null, "다음엔 78클릭"));
+        assertThat(expanded).isEqualTo(new Recipe(
+                "에스프레소", 18.0, null, null, 28.0, null, "78클릭", null, null, "다음엔 78클릭"));
     }
 
     // --- 0012 TΔ1: PendingNote mode·target (FR-21, changes/0012) ---

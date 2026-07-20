@@ -1,9 +1,12 @@
 package com.devwuu.mocha.render;
 
 import com.devwuu.mocha.domain.Bean;
+import com.devwuu.mocha.domain.Brew;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
+import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Sourced;
+import com.devwuu.mocha.domain.Tasting;
 import com.devwuu.mocha.repository.NoteRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -167,13 +170,14 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
 
     private NoteView.Row toRow(EntryRef ref) {
         Entry entry = ref.entry();
+        Tasting tasting = latestTasting(entry);
         return new NoteView.Row(
                 cardHref(ref.note().slug(), entry.date()),
                 value(ref.note().coffeeName()),
                 value(ref.note().roastery()),
                 value(beansDescriptionSummary(ref.note().beans())),
                 entry.date(),
-                entry.rating());
+                tasting == null ? null : tasting.rating());
     }
 
     // --- 엔트리 카드 (단일 엔트리 → JPG) ---
@@ -204,12 +208,35 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
 
     // POLICY: 렌더러는 사진을 읽지 않는다 — 사진은 아카이브 전용이라 카드/인덱스에 실리지 않는다
     //         (ref: specs/coffee-note-agent/changes/0014-photo-archive-only ADR-32, AC-Δ2).
+    // TΔ1b 과도기: 구 템플릿(note.html)은 엔트리 단일 감상·레시피 계약이라 마지막 회차의 tasting/recipe를
+    // 대표로 물린다 — TΔ4·TΔ5a에서 회차 파트별 카드 2종(taste/recipe)으로 대체된다(changes/0021 ADR-54·59).
     private NoteView.EntryView toEntryView(Entry entry) {
+        Tasting tasting = latestTasting(entry);
         return new NoteView.EntryView(
                 entry.date(),
-                entry.myTaste(),
-                entry.rating(),
-                entry.recipe()); // null이면 템플릿이 "이렇게 내렸어요" 영역을 숨긴다(AC-Δ2)
+                tasting == null ? null : tasting.myTaste(),
+                tasting == null ? null : tasting.rating(),
+                latestRecipe(entry)); // null이면 템플릿이 "이렇게 내렸어요" 영역을 숨긴다(AC-Δ2)
+    }
+
+    private static Tasting latestTasting(Entry entry) {
+        List<Brew> brews = entry.brews();
+        for (int i = brews.size() - 1; i >= 0; i--) {
+            if (brews.get(i).tasting() != null) {
+                return brews.get(i).tasting();
+            }
+        }
+        return null;
+    }
+
+    private static Recipe latestRecipe(Entry entry) {
+        List<Brew> brews = entry.brews();
+        for (int i = brews.size() - 1; i >= 0; i--) {
+            if (brews.get(i).recipe() != null) {
+                return brews.get(i).recipe();
+            }
+        }
+        return null;
     }
 
     // --- 공통 ---

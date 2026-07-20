@@ -1,11 +1,13 @@
 package com.devwuu.mocha.slack.outbound;
 
+import com.devwuu.mocha.domain.Brew;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Sourced;
+import com.devwuu.mocha.domain.Tasting;
 import com.slack.api.RequestConfigurator;
 import com.slack.api.methods.MethodsClient;
 import com.slack.api.methods.response.chat.ChatPostMessageResponse;
@@ -38,7 +40,8 @@ class PreviewMessengerTest {
         Note draft = new Note(
                 "coffeevera-yirgacheffe-g1", Sourced.user("커피베라 예가체프 G1"),
                 Sourced.user("커피베라"), List.of(), null, null, List.of(),
-                List.of(new Entry(LocalDate.of(2026, 7, 10), "새콤함", Rating.GOOD, null, OffsetDateTime.now())),
+                List.of(new Entry(LocalDate.of(2026, 7, 10),
+                        List.of(new Brew(null, new Tasting("새콤함", null, Rating.GOOD))), OffsetDateTime.now())),
                 OffsetDateTime.now(), OffsetDateTime.now());
         return new PendingNote(draft, MatchInfo.newNote(), previewTs, OffsetDateTime.now());
     }

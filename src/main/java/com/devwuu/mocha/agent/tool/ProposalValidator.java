@@ -2,6 +2,7 @@ package com.devwuu.mocha.agent.tool;
 
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Bean;
+import com.devwuu.mocha.domain.Brew;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
@@ -10,6 +11,7 @@ import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.domain.Sourced;
+import com.devwuu.mocha.domain.Tasting;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
@@ -22,6 +24,7 @@ import java.util.Set;
  * plan#ADR-45, changes/0018 TΔ1).
  * <ul>
  *   <li>V-1 rating 4범주, V-5 source enum 제약, V-8 recipe 정규화, V-11 my_taste 병존</li>
+ *   <li>V-14 beans 정규화, V-15 회차(brews) 정규화 — 빈 회차 드롭·회차 0개 거부(changes/0021)</li>
  *   <li>V-10 날짜 이동 충돌 계산(edit), 단일 대기 거부(FR-22/AC-30)</li>
  * </ul>
  * <p>POLICY: 제안 tool의 서버 검증 실패는 오류 사유를 tool 결과로 반환 — 조용한 드롭·서버 대행 금지
@@ -62,12 +65,17 @@ public class ProposalValidator {
             }
             MatchInfo match = toMatchInfo(args.match());
 
-            String myTaste = blankToNull(args.myTaste());
+            List<Brew> brews = legacyBrews(
+                    blankToNull(args.myTaste()), args.myTasteOriginal(),
+                    parseRating(args.rating()), args.recipe());
+            // V-15: 드롭 후 회차 0개인 엔트리는 저장을 거부한다 — 기록할 내용이 없음(사유는 tool 결과로).
+            if (brews.isEmpty()) {
+                throw new RejectedException("기록할 회차 내용이 없다 — 감상(my_taste)이나 레시피 중 최소 하나를 "
+                        + "채워야 저장할 수 있다(V-15). 사용자에게 그날의 감상이나 레시피를 물어봐라.");
+            }
             List<String> sources = dropBlanks(args.sources());
             NoteMeta meta = new NoteMeta(coffeeName, roastery, beans, roastLevel, officialNotes, sources);
-            return ToolValidation.ok(new RecordProposal(
-                    meta, targetDate, myTaste, originalOf(myTaste, args.myTasteOriginal()),
-                    parseRating(args.rating()), normalizeRecipe(args.recipe()), match));
+            return ToolValidation.ok(new RecordProposal(meta, targetDate, brews, match));
         } catch (RejectedException rejection) {
             return ToolValidation.rejected(rejection.getMessage());
         }
@@ -262,12 +270,17 @@ public class ProposalValidator {
         }
     }
 
-    // V-8: 위반 값(음수·0·공백)은 항목만 드롭, 3항목 전무면 recipe 자체가 null — 저장 거부 아님(부속 정보).
+    // TΔ1b 과도기 shim: 제안 tool 인자는 아직 엔트리 단일 my_taste/rating/recipe다(TΔ2a에서 brews 배열
+    // 인자로 개정). 발화 1건 = 회차 1개로 삼아 brews(V-15 정규화 — recipe V-8·tasting 빈 감상 드롭 포함)로
+    // 변환한다. V-11(원문 병존)은 Tasting 정규화·생성자가 강제한다.
+    private static List<Brew> legacyBrews(String myTaste, String myTasteOriginal, Rating rating, Recipe recipe) {
+        return Brew.normalize(List.of(new Brew(
+                recipe, Tasting.normalize(myTaste, blankToNull(myTasteOriginal), rating))));
+    }
+
+    // V-8: 위반 값(음수·0·공백)은 항목만 드롭, 전 필드 전무면 recipe 자체가 null — 저장 거부 아님(부속 정보).
     private static Recipe normalizeRecipe(Recipe raw) {
-        if (raw == null) {
-            return null;
-        }
-        return Recipe.normalize(raw.doseG(), raw.waterMl(), raw.grind());
+        return Recipe.normalize(raw);
     }
 
     // V-11: my_taste가 있으면 my_taste_original도 병존 — 원문 누락 시 정규화본을 양쪽에(감상 유실 방지 우선).

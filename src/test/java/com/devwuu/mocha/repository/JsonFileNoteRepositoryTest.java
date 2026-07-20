@@ -66,7 +66,15 @@ class JsonFileNoteRepositoryTest {
     }
 
     private static Entry entry(LocalDate date, String taste) {
-        return new Entry(date, taste, Rating.GOOD, null, OffsetDateTime.now(FIXED));
+        return new Entry(date,
+                List.of(new com.devwuu.mocha.domain.Brew(
+                        null, new com.devwuu.mocha.domain.Tasting(taste, null, Rating.GOOD))),
+                OffsetDateTime.now(FIXED));
+    }
+
+    // 회차 구조(changes/0021 ADR-59) 접근 헬퍼 — 이 테스트의 엔트리는 회차 1개 전제.
+    private static String tasteOf(Entry entry) {
+        return entry.brews().getFirst().tasting().myTaste();
     }
 
     // 관측 표기 축적(TΔ3) 검증용 — 커피명·로스터리만 지정한 최소 메타.
@@ -84,7 +92,7 @@ class JsonFileNoteRepositoryTest {
         Note note = repo.upsertEntry("coffeevera-yirgacheffe-g1", sampleMeta(), entry(today, "오늘은 좀 밍밍"));
 
         assertThat(note.entries()).hasSize(1);
-        assertThat(note.entries().getFirst().myTaste()).isEqualTo("오늘은 좀 밍밍");
+        assertThat(tasteOf(note.entries().getFirst())).isEqualTo("오늘은 좀 밍밍");
         // 파일에서도 1개로 로드
         assertThat(repo.findBySlug("coffeevera-yirgacheffe-g1")).get()
                 .extracting(n -> n.entries().size()).isEqualTo(1);
@@ -168,7 +176,7 @@ class JsonFileNoteRepositoryTest {
         Note updated = repo.applyEdit(slug, target, draft);
 
         assertThat(updated.entries()).hasSize(1);
-        assertThat(updated.entries().getFirst().myTaste()).isEqualTo("다시 보니 복숭아향");
+        assertThat(tasteOf(updated.entries().getFirst())).isEqualTo("다시 보니 복숭아향");
         assertThat(updated.roastery().value()).isEqualTo("커피베라 성수점");
         // 파일에서도 동일 복원(원자적 쓰기 왕복)
         assertThat(repo.findBySlug(slug)).contains(updated);
@@ -188,7 +196,7 @@ class JsonFileNoteRepositoryTest {
         assertThat(updated.entries())
                 .extracting(Entry::date)
                 .containsExactly(LocalDate.of(2026, 7, 9), LocalDate.of(2026, 7, 11));
-        assertThat(updated.entries().getLast().myTaste()).isEqualTo("사실 11일에 마심");
+        assertThat(tasteOf(updated.entries().getLast())).isEqualTo("사실 11일에 마심");
         assertThat(repo.findBySlug(slug)).contains(updated);
     }
 
@@ -206,7 +214,7 @@ class JsonFileNoteRepositoryTest {
 
         assertThat(updated.entries()).hasSize(1); // 총수 2 → 1
         assertThat(updated.entries().getFirst().date()).isEqualTo(LocalDate.of(2026, 7, 10));
-        assertThat(updated.entries().getFirst().myTaste()).isEqualTo("이동해 온 9일 기록");
+        assertThat(tasteOf(updated.entries().getFirst())).isEqualTo("이동해 온 9일 기록");
         assertThat(repo.findBySlug(slug)).get()
                 .extracting(n -> n.entries().size()).isEqualTo(1);
     }

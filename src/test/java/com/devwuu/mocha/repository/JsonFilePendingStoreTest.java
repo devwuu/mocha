@@ -1,6 +1,7 @@
 package com.devwuu.mocha.repository;
 
 import com.devwuu.mocha.domain.Bean;
+import com.devwuu.mocha.domain.Brew;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
@@ -8,6 +9,7 @@ import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.domain.Sourced;
+import com.devwuu.mocha.domain.Tasting;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -45,7 +47,8 @@ class JsonFilePendingStoreTest {
                 new Sourced<>(null, Source.SEARCH),
                 Sourced.search(List.of("자스민", "베르가못")),
                 List.of("https://example.com/coffeevera"),
-                List.of(new Entry(LocalDate.of(2026, 7, 10), "새콤하고 좋았다", Rating.GOOD, null, createdAt)),
+                List.of(new Entry(LocalDate.of(2026, 7, 10),
+                        List.of(new Brew(null, new Tasting("새콤하고 좋았다", null, Rating.GOOD))), createdAt)),
                 createdAt,
                 createdAt
         );

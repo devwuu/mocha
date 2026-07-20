@@ -1,6 +1,7 @@
 package com.devwuu.mocha.slack.outbound;
 
 import com.devwuu.mocha.domain.Bean;
+import com.devwuu.mocha.domain.Brew;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
@@ -8,6 +9,7 @@ import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.domain.Sourced;
+import com.devwuu.mocha.domain.Tasting;
 import com.devwuu.mocha.slack.AgentConversationRouter;
 import com.slack.api.model.block.LayoutBlock;
 import com.slack.api.model.block.composition.TextObject;
@@ -133,8 +135,10 @@ public class PreviewBlocks {
         addSourcedField(fields, LABEL_ROASTERY, draft.roastery());
         addBeanFields(fields, draft.beans()); // 원두별 1필드 — 서브필드(설명·가공) 출처 표기 포함(V-14, changes/0021)
         addSourcedField(fields, LABEL_ROAST, draft.roastLevel());
-        if (entry != null && entry.rating() != null) {
-            addField(fields, LABEL_RATING, entry.rating().label(), null);
+        // TΔ1b 과도기: 마지막 회차 tasting/recipe로 구 단일 표시를 유지한다 — 회차별 요약은 TΔ3c에서 개정.
+        Tasting tasting = entry == null ? null : latestTasting(entry);
+        if (tasting != null && tasting.rating() != null) {
+            addField(fields, LABEL_RATING, tasting.rating().label(), null);
         }
         if (!fields.isEmpty()) {
             blocks.add(section(s -> s.fields(fields)));
@@ -146,12 +150,12 @@ public class PreviewBlocks {
             blocks.add(section(s -> s.text(markdownText("*" + OFFICIAL_NOTES_LABEL + "*\n" + officialNotes))));
         }
         // 이렇게 내렸어요(레시피) — 있는 항목만·전무 시 미출력(FR-18, AC-24/25). 수정 가능하도록 미리보기 포함(FR-12).
-        String recipe = entry == null ? null : recipeText(entry.recipe());
+        String recipe = entry == null ? null : recipeText(latestRecipe(entry));
         if (recipe != null) {
             blocks.add(section(s -> s.text(markdownText("*" + RECIPE_LABEL + "*\n" + recipe))));
         }
-        if (entry != null && entry.myTaste() != null && !entry.myTaste().isBlank()) {
-            blocks.add(section(s -> s.text(markdownText("*" + MY_TASTE_LABEL + "*\n" + entry.myTaste()))));
+        if (tasting != null && tasting.myTaste() != null && !tasting.myTaste().isBlank()) {
+            blocks.add(section(s -> s.text(markdownText("*" + MY_TASTE_LABEL + "*\n" + tasting.myTaste()))));
         }
 
         // 출처 링크(FR-12) — context 블록에 <url|n> 형식 링크.
@@ -185,6 +189,28 @@ public class PreviewBlocks {
 
     private static String value(Sourced<String> sourced) {
         return sourced == null ? null : sourced.value();
+    }
+
+    // TΔ1b 과도기: 구 단일 감상·레시피 표시 계약을 위해 마지막 회차의 tasting/recipe를 대표로 삼는다 —
+    // 미리보기의 회차별 요약 표시는 TΔ3c(FR-4)에서 개정된다(changes/0021 ADR-59).
+    private static Tasting latestTasting(Entry entry) {
+        List<Brew> brews = entry.brews();
+        for (int i = brews.size() - 1; i >= 0; i--) {
+            if (brews.get(i).tasting() != null) {
+                return brews.get(i).tasting();
+            }
+        }
+        return null;
+    }
+
+    private static Recipe latestRecipe(Entry entry) {
+        List<Brew> brews = entry.brews();
+        for (int i = brews.size() - 1; i >= 0; i--) {
+            if (brews.get(i).recipe() != null) {
+                return brews.get(i).recipe();
+            }
+        }
+        return null;
     }
 
     // beans는 원두당 1필드 — "설명 (출처) · 가공 (출처)" 표기로 서브필드 단위 출처(V-6)를 살린다.

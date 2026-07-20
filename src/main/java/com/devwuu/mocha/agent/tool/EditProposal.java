@@ -20,10 +20,11 @@ import java.util.List;
  * @param beans           원두 구성 새 값(V-14 정규화, 통째 교체) — null이면 유지 (changes/0021 ADR-53).
  * @param roastLevel      로스팅 정도.
  * @param officialNotes   공식 테이스팅 노트.
- * @param myTaste         내 느낌(정규화본) — 갱신 시 원문과 병존(V-11).
+ * @param myTaste         내 느낌(정규화본) — 갱신 시 원문과 병존(V-11). <b>TΔ1b 과도기</b>: 엔트리 단일 감상
+ *                        인자를 마지막 회차 tasting에 병합한다 — TΔ2b에서 brews 통째 교체 인자로 대체(ADR-59).
  * @param myTasteOriginal 말한 그대로의 감상.
- * @param rating          4범주 평가(V-1) — null이면 유지.
- * @param recipe          V-8 정규화된 레시피 — null이면 유지.
+ * @param rating          4범주 평가(V-1) — null이면 유지(마지막 회차 tasting에 병합, 과도기 동일).
+ * @param recipe          V-8 정규화된 레시피 — null이면 유지(마지막 회차 recipe 교체, 과도기 동일).
  * @param newDate         날짜 이동처 — 이동 없으면 null(대상 자신의 날짜로의 "이동"도 null로 정규화).
  * @param dateConflict    이동처에 대상 노트의 기존 엔트리가 있는지 — 서버 계산(V-10), 미리보기 경고 근거.
  */

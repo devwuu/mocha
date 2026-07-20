@@ -10,6 +10,7 @@ import com.devwuu.mocha.agent.prompt.AgentTurnInput;
 import com.devwuu.mocha.agent.tool.AgentTool;
 import com.devwuu.mocha.agent.tool.AgentToolkit;
 import com.devwuu.mocha.agent.tool.ProposalValidator;
+import com.devwuu.mocha.domain.Brew;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
@@ -17,6 +18,7 @@ import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.domain.PhotoBuffer;
 import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Sourced;
+import com.devwuu.mocha.domain.Tasting;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.llm.PhotoInfoExtractor;
 import com.devwuu.mocha.llm.VisionExtraction;
@@ -227,7 +229,8 @@ class AgentConversationRouterTest {
 
     private static PendingNote pendingNote() {
         OffsetDateTime at = OffsetDateTime.parse("2026-07-16T10:00:00+09:00");
-        Entry entry = new Entry(LocalDate.of(2026, 7, 16), "새콤하고 좋았음", Rating.GOOD, null, at);
+        Entry entry = new Entry(LocalDate.of(2026, 7, 16),
+                List.of(new Brew(null, new Tasting("새콤하고 좋았음", null, Rating.GOOD))), at);
         Note draft = new Note("2026-07-16-102030", Sourced.user("커피베라 예가체프 G1"), Sourced.user("커피베라"),
                 List.of(), null, null, List.of(), List.of(entry), at, at);
         return new PendingNote(draft, MatchInfo.newNote(), "1720000000.000789", at);
