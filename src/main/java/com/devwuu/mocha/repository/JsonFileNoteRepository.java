@@ -98,8 +98,8 @@ public class JsonFileNoteRepository implements NoteRepository {
     }
 
     // 기존 노트에 엔트리 병합: 같은 date는 갱신, 다른 date는 추가 후 날짜 오름차순 정렬(ADR-4).
-    // POLICY: 노트 단위 메타(원산지·가공 등 커피의 사실)는 커피 1종 단위로 안정적이므로
-    //         재기록 시 갱신하지 않고 보존한다 — 재기록은 그날의 엔트리를 쌓는 일이다(ADR-4).
+    // POLICY: 노트 단위 메타(원두 구성·로스팅 등 커피의 사실)는 커피 1종 단위로 안정적이므로
+    //         재기록 시 갱신하지 않고 보존한다 — 재기록은 그날의 엔트리를 쌓는 일이다(ADR-4, beans 승계).
     private Note withMergedEntry(Note existing, NoteMeta meta, Entry entry) {
         List<Entry> merged = new ArrayList<>();
         boolean replaced = false;
@@ -117,7 +117,7 @@ public class JsonFileNoteRepository implements NoteRepository {
         merged.sort(Comparator.comparing(Entry::date));
         // TΔ3: EXISTING 매칭 커밋 — 이번 기록의 커피명·로스터리 관측 표기(meta 유래, 추출·OCR)를 별칭에
         //      무콜 축적한다. 노트 표시값과 같은 표기는 넣지 않고, 다른 표기만 정규화 중복 제거로 더한다.
-        //      노트 단위 메타(원산지·가공 등)는 종전대로 갱신하지 않고 보존한다(ADR-4, V-13, ADR-37).
+        //      노트 단위 메타(원두 구성 등)는 종전대로 갱신하지 않고 보존한다(ADR-4, V-13, ADR-37).
         Aliases accumulated = existing.aliases().accumulate(
                 displayValue(meta.coffeeName()), displayValue(existing.coffeeName()),
                 displayValue(meta.roastery()), displayValue(existing.roastery()));
@@ -125,8 +125,7 @@ public class JsonFileNoteRepository implements NoteRepository {
                 existing.slug(),
                 existing.coffeeName(),
                 existing.roastery(),
-                existing.origin(),
-                existing.process(),
+                existing.beans(),
                 existing.roastLevel(),
                 existing.officialNotes(),
                 accumulated,
@@ -172,8 +171,7 @@ public class JsonFileNoteRepository implements NoteRepository {
                 existing.slug(),
                 existing.coffeeName(), // V-9 이중 방어: draft 값이 아니라 원본을 쓴다
                 draft.roastery(),
-                draft.origin(),
-                draft.process(),
+                draft.beans(),
                 draft.roastLevel(),
                 draft.officialNotes(),
                 existing.aliases(), // 수정 세션은 별칭을 건드리지 않는다 — 원본 존치(V-13)
@@ -192,8 +190,7 @@ public class JsonFileNoteRepository implements NoteRepository {
                 slug,
                 meta.coffeeName(),
                 meta.roastery(),
-                meta.origin(),
-                meta.process(),
+                meta.beans(),
                 meta.roastLevel(),
                 meta.officialNotes(),
                 aliases == null ? Aliases.empty() : aliases,

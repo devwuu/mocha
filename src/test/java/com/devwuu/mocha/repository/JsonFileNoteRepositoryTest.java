@@ -1,5 +1,6 @@
 package com.devwuu.mocha.repository;
 
+import com.devwuu.mocha.domain.Bean;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
@@ -57,8 +58,7 @@ class JsonFileNoteRepositoryTest {
         return new NoteMeta(
                 Sourced.user("커피베라 예가체프 G1"),
                 Sourced.user("커피베라"),
-                Sourced.search("에티오피아 예가체프"),
-                Sourced.search("워시드"),
+                List.of(new Bean(Sourced.search("에티오피아 예가체프"), Sourced.search("워시드"))),
                 new Sourced<>(null, com.devwuu.mocha.domain.Source.SEARCH),
                 Sourced.search(List.of("자스민", "베르가못")),
                 List.of("https://example.com/coffeevera")
@@ -73,7 +73,7 @@ class JsonFileNoteRepositoryTest {
     private static NoteMeta metaWithNames(String coffeeName, String roastery) {
         return new NoteMeta(
                 Sourced.user(coffeeName), Sourced.user(roastery),
-                null, null, null, null, List.of());
+                List.of(), null, null, List.of());
     }
 
     @Test
@@ -145,7 +145,7 @@ class JsonFileNoteRepositoryTest {
     /** 저장된 노트에서 대상 엔트리 1건만 실은 edit draft를 만든다(data-model §2.3). */
     private static Note editDraft(Note base, Entry edited) {
         return new Note(
-                base.slug(), base.coffeeName(), base.roastery(), base.origin(), base.process(),
+                base.slug(), base.coffeeName(), base.roastery(), base.beans(),
                 base.roastLevel(), base.officialNotes(), base.sources(),
                 List.of(edited), base.createdAt(), base.updatedAt()
         );
@@ -161,7 +161,7 @@ class JsonFileNoteRepositoryTest {
         Note draft = new Note(
                 saved.slug(), saved.coffeeName(),
                 Sourced.user("커피베라 성수점"), // 노트 단위 필드도 수정 범위(커피명 제외 전부)
-                saved.origin(), saved.process(), saved.roastLevel(), saved.officialNotes(),
+                saved.beans(), saved.roastLevel(), saved.officialNotes(),
                 saved.sources(), List.of(entry(target, "다시 보니 복숭아향")),
                 saved.createdAt(), saved.updatedAt()
         );
@@ -222,7 +222,7 @@ class JsonFileNoteRepositoryTest {
         Note seeded = new Note(
                 slug,
                 Sourced.user("Ethiopia Chelbesa"), Sourced.user("FroB"),
-                Sourced.search("에티오피아"), new com.devwuu.mocha.domain.Sourced<>(null, com.devwuu.mocha.domain.Source.SEARCH),
+                List.of(new Bean(Sourced.search("에티오피아"), null)),
                 new com.devwuu.mocha.domain.Sourced<>(null, com.devwuu.mocha.domain.Source.SEARCH),
                 Sourced.search(List.of()),
                 new com.devwuu.mocha.domain.Aliases(List.of("에티오피아 첼베사"), List.of("프롭")),
@@ -240,7 +240,7 @@ class JsonFileNoteRepositoryTest {
         // 다른 날 재기록(withMergedEntry) — 표시값과 같은 표기로 기록하면 별칭 존치(관측 축적은 미발생)
         NoteMeta sameNotation = new NoteMeta(
                 Sourced.user("Ethiopia Chelbesa"), Sourced.user("FroB"),
-                null, null, null, null, List.of());
+                List.of(), null, null, List.of());
         Note reRecorded = repo.upsertEntry(slug, sameNotation, entry(LocalDate.of(2026, 7, 10), "10일"));
         assertThat(reRecorded.aliases()).isEqualTo(seeded.aliases());
         assertThat(repo.findBySlug(slug)).get()
@@ -257,8 +257,7 @@ class JsonFileNoteRepositoryTest {
         Note seeded = new Note(
                 slug,
                 Sourced.user("Ethiopia Chelbesa"), Sourced.user("FroB"),
-                new Sourced<>(null, com.devwuu.mocha.domain.Source.SEARCH),
-                new Sourced<>(null, com.devwuu.mocha.domain.Source.SEARCH),
+                List.of(),
                 new Sourced<>(null, com.devwuu.mocha.domain.Source.SEARCH),
                 Sourced.search(List.of()),
                 new com.devwuu.mocha.domain.Aliases(List.of("에티오피아 첼베사"), List.of("프롭")),
@@ -296,7 +295,7 @@ class JsonFileNoteRepositoryTest {
         Note draft = new Note(
                 saved.slug(),
                 Sourced.user("커피베라 예가체프 G2"), // 오타 정정 포함 예외 없이 거부(V-9)
-                saved.roastery(), saved.origin(), saved.process(), saved.roastLevel(),
+                saved.roastery(), saved.beans(), saved.roastLevel(),
                 saved.officialNotes(), saved.sources(),
                 List.of(entry(target, "감상 수정")),
                 saved.createdAt(), saved.updatedAt()

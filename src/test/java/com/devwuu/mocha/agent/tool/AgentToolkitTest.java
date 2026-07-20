@@ -3,6 +3,7 @@ package com.devwuu.mocha.agent.tool;
 import com.devwuu.mocha.agent.conversation.ConversationTranscript;
 import com.devwuu.mocha.agent.conversation.TranscriptTurn;
 import com.devwuu.mocha.domain.Aliases;
+import com.devwuu.mocha.domain.Bean;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
@@ -457,7 +458,8 @@ class AgentToolkitTest {
                     OffsetDateTime.parse("2026-07-14T10:00:00+09:00")));
         }
         return new Note(slug, Sourced.user(coffeeName), Sourced.user(roastery),
-                Sourced.search("에티오피아"), null, null, Sourced.search(List.of("자스민")),
+                List.of(new Bean(Sourced.search("에티오피아"), null)),
+                null, Sourced.search(List.of("자스민")),
                 aliases, List.of(), entries,
                 OffsetDateTime.parse("2026-07-13T10:20:30+09:00"),
                 OffsetDateTime.parse("2026-07-14T10:00:00+09:00"));

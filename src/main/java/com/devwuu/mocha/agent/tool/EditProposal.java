@@ -1,5 +1,6 @@
 package com.devwuu.mocha.agent.tool;
 
+import com.devwuu.mocha.domain.Bean;
 import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Sourced;
@@ -16,8 +17,7 @@ import java.util.List;
  * @param slug            수정 대상 노트.
  * @param targetDate      수정 대상 엔트리 날짜 — pending target의 근거.
  * @param roastery        로스터리 새 값 — null이면 유지. 이하 동일.
- * @param origin          원산지.
- * @param process         가공 방식.
+ * @param beans           원두 구성 새 값(V-14 정규화, 통째 교체) — null이면 유지 (changes/0021 ADR-53).
  * @param roastLevel      로스팅 정도.
  * @param officialNotes   공식 테이스팅 노트.
  * @param myTaste         내 느낌(정규화본) — 갱신 시 원문과 병존(V-11).
@@ -31,8 +31,7 @@ public record EditProposal(
         String slug,
         LocalDate targetDate,
         Sourced<String> roastery,
-        Sourced<String> origin,
-        Sourced<String> process,
+        List<Bean> beans,
         Sourced<String> roastLevel,
         Sourced<List<String>> officialNotes,
         String myTaste,

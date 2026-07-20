@@ -1,5 +1,6 @@
 package com.devwuu.mocha.repository;
 
+import com.devwuu.mocha.domain.Bean;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
@@ -40,8 +41,7 @@ class JsonFilePendingStoreTest {
                 "coffeevera-yirgacheffe-g1",
                 Sourced.user("커피베라 예가체프 G1"),
                 Sourced.user("커피베라"),
-                Sourced.search("에티오피아 예가체프"),
-                Sourced.search("워시드"),
+                List.of(new Bean(Sourced.search("에티오피아 예가체프"), Sourced.search("워시드"))),
                 new Sourced<>(null, Source.SEARCH),
                 Sourced.search(List.of("자스민", "베르가못")),
                 List.of("https://example.com/coffeevera"),

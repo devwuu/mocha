@@ -54,7 +54,7 @@ class ProposalValidatorTest {
                 .toList();
         return new Note(slug, Sourced.user(coffeeName),
                 roastery == null ? null : Sourced.user(roastery),
-                null, null, null, null, List.of(), entries,
+                List.of(), null, null, List.of(), entries,
                 OffsetDateTime.now(), OffsetDateTime.now());
     }
 
@@ -159,9 +159,10 @@ class ProposalValidatorTest {
         @DisplayName("V-5: 빈 값 필드는 source와 무관하게 null Sourced로 정규화된다(추측 금지)")
         void emptyValueNormalizedToNull() {
             RecordProposal proposal = okOf(validator.validateRecord(recordArgs(), null));
-            assertThat(proposal.meta().process()).isNull();
             assertThat(proposal.meta().roastLevel()).isNull();
-            assertThat(proposal.meta().origin()).isEqualTo(Sourced.search("에티오피아"));
+            // 과도기 shim(TΔ1a): origin/process 인자는 beans 요소로 변환된다 — 빈 process는 null 정규화(V-14).
+            assertThat(proposal.meta().beans())
+                    .containsExactly(new com.devwuu.mocha.domain.Bean(Sourced.search("에티오피아"), null));
             assertThat(proposal.meta().officialNotes().value()).containsExactly("자스민", "베르가못");
             assertThat(proposal.meta().officialNotes().source()).isEqualTo(Source.SEARCH);
         }

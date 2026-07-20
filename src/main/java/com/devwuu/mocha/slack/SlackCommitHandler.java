@@ -235,8 +235,7 @@ class SlackCommitHandler {
         return new NoteMeta(
                 draft.coffeeName(),
                 draft.roastery(),
-                draft.origin(),
-                draft.process(),
+                draft.beans(),
                 draft.roastLevel(),
                 draft.officialNotes(),
                 draft.sources());
@@ -247,7 +246,7 @@ class SlackCommitHandler {
         List<Entry> entries = new java.util.ArrayList<>(draft.entries());
         entries.set(entries.size() - 1, entry);
         return new Note(
-                draft.slug(), draft.coffeeName(), draft.roastery(), draft.origin(), draft.process(),
+                draft.slug(), draft.coffeeName(), draft.roastery(), draft.beans(),
                 draft.roastLevel(), draft.officialNotes(), draft.sources(),
                 entries, draft.createdAt(), draft.updatedAt());
     }

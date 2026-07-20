@@ -1,5 +1,6 @@
 package com.devwuu.mocha.slack.outbound;
 
+import com.devwuu.mocha.domain.Bean;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
@@ -66,8 +67,7 @@ public class PreviewBlocks {
     // 필드 라벨(출처 표시 필드)
     private static final String LABEL_COFFEE = "커피"; // 커피
     private static final String LABEL_ROASTERY = "로스터리"; // 로스터리
-    private static final String LABEL_ORIGIN = "원산지"; // 원산지
-    private static final String LABEL_PROCESS = "가공"; // 가공
+    private static final String LABEL_BEAN = "원두"; // 원두 (beans 요소당 1필드, changes/0021)
     private static final String LABEL_ROAST = "로스팅"; // 로스팅
     private static final String LABEL_RATING = "평가"; // 평가
 
@@ -131,8 +131,7 @@ public class PreviewBlocks {
         List<TextObject> fields = new ArrayList<>();
         addSourcedField(fields, LABEL_COFFEE, draft.coffeeName()); // 커피명도 source=photo면 (사진) 표기(AC-26)
         addSourcedField(fields, LABEL_ROASTERY, draft.roastery());
-        addSourcedField(fields, LABEL_ORIGIN, draft.origin());
-        addSourcedField(fields, LABEL_PROCESS, draft.process());
+        addBeanFields(fields, draft.beans()); // 원두별 1필드 — 서브필드(설명·가공) 출처 표기 포함(V-14, changes/0021)
         addSourcedField(fields, LABEL_ROAST, draft.roastLevel());
         if (entry != null && entry.rating() != null) {
             addField(fields, LABEL_RATING, entry.rating().label(), null);
@@ -186,6 +185,25 @@ public class PreviewBlocks {
 
     private static String value(Sourced<String> sourced) {
         return sourced == null ? null : sourced.value();
+    }
+
+    // beans는 원두당 1필드 — "설명 (출처) · 가공 (출처)" 표기로 서브필드 단위 출처(V-6)를 살린다.
+    // (미리보기 beans·brews 바인딩의 본 개정은 TΔ3c — 여기서는 필드 나열만.)
+    private static void addBeanFields(List<TextObject> fields, List<Bean> beans) {
+        if (beans == null) {
+            return;
+        }
+        for (Bean bean : beans) {
+            if (bean.description() == null || bean.description().value() == null
+                    || bean.description().value().isBlank()) {
+                continue;
+            }
+            String text = bean.description().value() + sourceTag(bean.description().source());
+            if (bean.process() != null && bean.process().value() != null && !bean.process().value().isBlank()) {
+                text += RECIPE_SEP + bean.process().value() + sourceTag(bean.process().source());
+            }
+            fields.add(markdownText("*" + LABEL_BEAN + "*\n" + text));
+        }
     }
 
     private static void addSourcedField(List<TextObject> fields, String label, Sourced<String> sourced) {

@@ -1,6 +1,7 @@
 package com.devwuu.mocha.agent.tool;
 
 import com.devwuu.mocha.domain.Aliases;
+import com.devwuu.mocha.domain.Bean;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
@@ -48,8 +49,9 @@ public class ProposalValidator {
             }
             Sourced<String> roastery = sourced("roastery", args.roastery(), ENRICHABLE_SOURCES);
             requireUpdatableOrFree(pending, coffeeName.value(), roastery == null ? null : roastery.value());
-            Sourced<String> origin = sourced("origin", args.origin(), ENRICHABLE_SOURCES);
-            Sourced<String> process = sourced("process", args.process(), ENRICHABLE_SOURCES);
+            List<Bean> beans = legacyBeans(
+                    sourced("origin", args.origin(), ENRICHABLE_SOURCES),
+                    sourced("process", args.process(), ENRICHABLE_SOURCES));
             Sourced<String> roastLevel = sourced("roast_level", args.roastLevel(), ENRICHABLE_SOURCES);
             Sourced<List<String>> officialNotes = sourcedNotes(args.officialNotes());
 
@@ -62,7 +64,7 @@ public class ProposalValidator {
 
             String myTaste = blankToNull(args.myTaste());
             List<String> sources = dropBlanks(args.sources());
-            NoteMeta meta = new NoteMeta(coffeeName, roastery, origin, process, roastLevel, officialNotes, sources);
+            NoteMeta meta = new NoteMeta(coffeeName, roastery, beans, roastLevel, officialNotes, sources);
             return ToolValidation.ok(new RecordProposal(
                     meta, targetDate, myTaste, originalOf(myTaste, args.myTasteOriginal()),
                     parseRating(args.rating()), normalizeRecipe(args.recipe()), match));
@@ -93,8 +95,9 @@ public class ProposalValidator {
 
             ProposeEditArgs.Patch patch = args.patch() == null ? ProposeEditArgs.Patch.empty() : args.patch();
             Sourced<String> roastery = sourced("roastery", patch.roastery(), ENRICHABLE_SOURCES);
-            Sourced<String> origin = sourced("origin", patch.origin(), ENRICHABLE_SOURCES);
-            Sourced<String> process = sourced("process", patch.process(), ENRICHABLE_SOURCES);
+            List<Bean> beans = legacyBeansPatch(
+                    sourced("origin", patch.origin(), ENRICHABLE_SOURCES),
+                    sourced("process", patch.process(), ENRICHABLE_SOURCES));
             Sourced<String> roastLevel = sourced("roast_level", patch.roastLevel(), ENRICHABLE_SOURCES);
             Sourced<List<String>> officialNotes = sourcedNotes(patch.officialNotes());
 
@@ -110,7 +113,7 @@ public class ProposalValidator {
 
             String myTaste = blankToNull(patch.myTaste());
             return ToolValidation.ok(new EditProposal(
-                    note.slug(), targetDate, roastery, origin, process, roastLevel, officialNotes,
+                    note.slug(), targetDate, roastery, beans, roastLevel, officialNotes,
                     myTaste, originalOf(myTaste, patch.myTasteOriginal()),
                     parseRating(patch.rating()), normalizeRecipe(patch.recipe()), newDate, dateConflict));
         } catch (RejectedException rejection) {
@@ -225,6 +228,25 @@ public class ProposalValidator {
             }
         }
         return labels.toString();
+    }
+
+    // TΔ1a 과도기 shim: 제안 tool 인자는 아직 origin/process다(TΔ2a에서 beans 요소 인자로 개정).
+    // origin을 원두 1종의 description으로 삼아 beans(V-14 정규화)로 변환한다 — origin 없이 process만
+    // 온 인자는 description 없는 요소라 V-14가 드롭한다(과도기 한정 동작).
+    private static List<Bean> legacyBeans(Sourced<String> origin, Sourced<String> process) {
+        if (origin == null) {
+            return List.of();
+        }
+        return Bean.normalize(List.of(new Bean(origin, process)));
+    }
+
+    // edit patch 변형 — origin 인자 부재 = beans 유지(null). process 단독 patch는 description을 만들 수
+    // 없어 유지로 수렴한다(과도기 한정, TΔ2a의 beans 통째 교체 인자로 대체).
+    private static List<Bean> legacyBeansPatch(Sourced<String> origin, Sourced<String> process) {
+        if (origin == null) {
+            return null;
+        }
+        return Bean.normalize(List.of(new Bean(origin, process)));
     }
 
     // V-1: rating ∈ 4범주 enum 또는 null — 위반 시 오류 사유를 tool 결과로 반환해 루프 안에서 정정(AC-9).

@@ -1,5 +1,6 @@
 package com.devwuu.mocha.slack.inbound;
 
+import com.devwuu.mocha.domain.Bean;
 import com.devwuu.mocha.domain.NoteMeta;
 import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.domain.PhotoBuffer;
@@ -136,11 +137,24 @@ public class SlackPhotoIntake {
         return new NoteMeta(
                 fillPhoto(user.coffeeName(), photo.coffeeName()),
                 fillPhoto(user.roastery(), photo.roastery()),
-                fillPhoto(user.origin(), photo.origin()),
-                fillPhoto(user.process(), photo.process()),
+                overlayBeans(user.beans(), photo),
                 fillPhoto(user.roastLevel(), photo.roastLevel()),
                 fillPhotoList(user.officialNotes(), photo.officialNotes()),
                 user.sources());
+    }
+
+    // TΔ1a 과도기 shim: vision 계약은 아직 origin/process다(TΔ3a에서 beans로 개정). OCR origin을 원두
+    // 1종의 description으로 삼아 beans로 변환하되, 사용자 beans가 있으면 배열 단위로 불가침(V-6 user > photo).
+    private static List<Bean> overlayBeans(List<Bean> userBeans, VisionExtraction photo) {
+        if (userBeans != null && !userBeans.isEmpty()) {
+            return userBeans;
+        }
+        if (photo.origin() == null || photo.origin().isBlank()) {
+            return List.of();
+        }
+        return Bean.normalize(List.of(new Bean(
+                Sourced.photo(photo.origin()),
+                photo.process() == null || photo.process().isBlank() ? null : Sourced.photo(photo.process()))));
     }
 
     /** 스테이징 원본을 photos/&lt;slug&gt;/&lt;date&gt;/로 이동해 확정하고 상대 경로 목록을 돌려준다(V-4, FR-10). */

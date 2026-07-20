@@ -37,8 +37,10 @@ public final class NoteView {
     }
 
     /**
-     * 시음 엔트리 카드 뷰 (ref: FR-7, ADR-10). 노트 메타(로스터리·원산지·official_notes·출처) + 대상 엔트리 1건.
+     * 시음 엔트리 카드 뷰 (ref: FR-7, ADR-10). 노트 메타(로스터리·원두 구성·official_notes·출처) + 대상 엔트리 1건.
      * 출처 표시 필드는 {@link Sourced} 그대로 넘겨 {@code (검색)} 표기 분기(AC-2).
+     * <p>TΔ1a 과도기: {@code origin}/{@code process}는 beans 요약(설명·가공 나열)을 물린 표시용 필드다 —
+     * TΔ4 카드 2종 이식에서 beans 네이티브 바인딩으로 대체된다(changes/0021 ADR-54).
      * <p>카드는 커피의 <b>그 한 잔</b>만 담는다 — 노트 전체 타임라인이 아니라 {@code entry} 1건(AC-Δ4).
      * "로스터리가 말하길"(officialNotes)은 노트 단위, "내가 느끼길"(entry.myTaste)은 그 엔트리 1건(FR-7).
      * <p>{@code coffeeName}은 {@link Sourced}로 승격됐지만(source ∈ {user, photo}) 카드 제목은 <b>출처 무표기</b>다 —

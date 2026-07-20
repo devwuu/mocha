@@ -1,5 +1,6 @@
 package com.devwuu.mocha.slack.outbound;
 
+import com.devwuu.mocha.domain.Bean;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
@@ -56,8 +57,7 @@ class PreviewBlocksTest {
                 "coffeevera-yirgacheffe-g1",
                 Sourced.user("커피베라 예가체프 G1"),
                 Sourced.user("커피베라"),          // 사용자 값 — (검색) 없음
-                Sourced.search("에티오피아"),        // 검색 보강 — (검색)
-                Sourced.search("워시드"),
+                List.of(new Bean(Sourced.search("에티오피아"), Sourced.search("워시드"))), // 검색 보강 — (검색)
                 null,                               // 미언급 — 필드 생략
                 Sourced.search(List.of("자몽", "홍차")), // official_notes 검색
                 List.of("https://roastery.example/yirga", "https://coffee.example/wiki"),
@@ -84,9 +84,9 @@ class PreviewBlocksTest {
         SectionBlock fieldsSection = firstFieldsSection(blocks);
         assertNotNull(fieldsSection);
         String roastery = fieldByLabel(fieldsSection, "로스터리");
-        String origin = fieldByLabel(fieldsSection, "원산지");
+        String bean = fieldByLabel(fieldsSection, "원두");
         assertFalse(roastery.contains("(검색)"), "사용자 값에는 (검색) 표기 없음: " + roastery);
-        assertTrue(origin.contains("(검색)"), "검색 값에는 (검색) 표기: " + origin);
+        assertTrue(bean.contains("(검색)"), "검색 값에는 (검색) 표기: " + bean);
         // 미언급 필드(roast_level)는 생략
         assertTrue(fieldsSection.getFields().stream().map(PreviewBlocksTest::md)
                 .noneMatch(f -> f.contains("로스팅")));
@@ -122,7 +122,7 @@ class PreviewBlocksTest {
                 "coffeevera-yirgacheffe-g1",
                 Sourced.user("커피베라 예가체프 G1"),
                 Sourced.user("커피베라"),
-                null, null, null,
+                List.of(), null,
                 null,
                 List.of(),                          // 출처 없음
                 List.of(entry("새콤함", Rating.PERFECT)),
@@ -151,8 +151,7 @@ class PreviewBlocksTest {
                 "coffeevera-yirgacheffe-g1",
                 Sourced.user("커피베라 예가체프 G1"),
                 Sourced.user("커피베라"),
-                Sourced.search("에티오피아"),
-                Sourced.search("워시드"),
+                List.of(new Bean(Sourced.search("에티오피아"), Sourced.search("워시드"))),
                 null,
                 Sourced.search(List.of("자몽", "홍차")),
                 List.of("https://roastery.example/yirga"),
@@ -172,7 +171,7 @@ class PreviewBlocksTest {
         SectionBlock fieldsSection = firstFieldsSection(blocks);
         assertNotNull(fieldsSection);
         assertFalse(fieldByLabel(fieldsSection, "로스터리").contains("(검색)"));
-        assertTrue(fieldByLabel(fieldsSection, "원산지").contains("(검색)"));
+        assertTrue(fieldByLabel(fieldsSection, "원두").contains("(검색)"));
         assertTrue(blocks.stream().anyMatch(b -> b instanceof SectionBlock s
                 && s.getText() instanceof MarkdownTextObject t && t.getText().contains("내가 느끼길")),
                 "내가 느끼길 내용이 유지된다");
@@ -193,8 +192,8 @@ class PreviewBlocksTest {
                 "coffeevera-yirgacheffe-g1",
                 Sourced.photo("커피베라 예가체프 G1"),
                 Sourced.photo("커피베라"),
-                Sourced.search("에티오피아"),
-                null, null, null,
+                List.of(new Bean(Sourced.search("에티오피아"), null)),
+                null, null,
                 List.of(),
                 List.of(entry("좋았다", Rating.GOOD)),
                 OffsetDateTime.now(),
@@ -205,14 +204,14 @@ class PreviewBlocksTest {
                 "사진 유래 커피명엔 (사진) 표기");
         assertFalse(fieldByLabel(photoFields, "커피").contains("(검색)"));
         assertTrue(fieldByLabel(photoFields, "로스터리").contains("(사진)"), "photo 값엔 (사진) 표기");
-        assertTrue(fieldByLabel(photoFields, "원산지").contains("(검색)"), "search 값엔 (검색) 표기");
+        assertTrue(fieldByLabel(photoFields, "원두").contains("(검색)"), "search 값엔 (검색) 표기");
 
         // user 유래 커피명 — 표기 없음
         Note userDraft = new Note(
                 "coffeevera-yirgacheffe-g1",
                 Sourced.user("커피베라 예가체프 G1"),
                 Sourced.user("커피베라"),
-                null, null, null, null,
+                List.of(), null, null,
                 List.of(),
                 List.of(entry("좋았다", Rating.GOOD)),
                 OffsetDateTime.now(),
@@ -231,7 +230,7 @@ class PreviewBlocksTest {
                 "coffeevera-yirgacheffe-g1",
                 Sourced.user("커피베라 예가체프 G1"),
                 Sourced.user("커피베라"),
-                null, null, null, null,
+                List.of(), null, null,
                 List.of(),
                 List.of(entry("좋았다", Rating.GOOD, Recipe.normalize(15.0, 240.0, "중간"))),
                 OffsetDateTime.now(),
@@ -257,7 +256,7 @@ class PreviewBlocksTest {
                 "coffeevera-yirgacheffe-g1",
                 Sourced.user("커피베라 예가체프 G1"),
                 Sourced.user("커피베라"),
-                null, null, null, null, List.of(),
+                List.of(), null, null, List.of(),
                 List.of(entry("좋았다", Rating.GOOD, Recipe.normalize(null, 240.0, null))),
                 OffsetDateTime.now(), OffsetDateTime.now());
         String recipeBlock = recipeSectionText(
@@ -272,7 +271,7 @@ class PreviewBlocksTest {
                 "coffeevera-yirgacheffe-g1",
                 Sourced.user("커피베라 예가체프 G1"),
                 Sourced.user("커피베라"),
-                null, null, null, null, List.of(),
+                List.of(), null, null, List.of(),
                 List.of(entry("좋았다", Rating.GOOD, null)),
                 OffsetDateTime.now(), OffsetDateTime.now());
         assertNull(recipeSectionText(
@@ -361,7 +360,7 @@ class PreviewBlocksTest {
                 "coffeevera-yirgacheffe-g1",
                 Sourced.user("커피베라 예가체프 G1"),
                 Sourced.user("커피베라"),
-                null, null, null, null,
+                List.of(), null, null,
                 List.of(),
                 List.of(new Entry(entryDate, "산미가 좋았다", Rating.GOOD, null, OffsetDateTime.now())),
                 OffsetDateTime.now(),

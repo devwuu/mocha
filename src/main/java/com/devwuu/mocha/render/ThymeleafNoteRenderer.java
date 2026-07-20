@@ -1,5 +1,6 @@
 package com.devwuu.mocha.render;
 
+import com.devwuu.mocha.domain.Bean;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.Sourced;
@@ -21,6 +22,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
@@ -169,7 +171,7 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
                 cardHref(ref.note().slug(), entry.date()),
                 value(ref.note().coffeeName()),
                 value(ref.note().roastery()),
-                value(ref.note().origin()),
+                value(beansDescriptionSummary(ref.note().beans())),
                 entry.date(),
                 entry.rating());
     }
@@ -184,8 +186,8 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
                 note.slug(),
                 note.coffeeName(), // Sourced 그대로 — 제목은 value만 쓰되 (사진) 무표기(제목=정체성, TΔ6)
                 note.roastery(),
-                note.origin(),
-                note.process(),
+                beansDescriptionSummary(note.beans()),
+                beansProcessSummary(note.beans()),
                 note.roastLevel(),
                 note.officialNotes() == null ? List.of() : note.officialNotes().value(),
                 note.sources() == null ? List.of() : note.sources(),
@@ -243,6 +245,29 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
 
     private static String cardHref(String slug, LocalDate date) {
         return CARDS_DIR + "/" + slug + "/" + date + ".jpg";
+    }
+
+    // TΔ1a 과도기: 구 템플릿(note.html·index.html)은 origin/process 표시 계약이라 beans를 요약해 물린다.
+    // 출처 배지는 첫 요소 서브필드의 출처로 대표한다 — TΔ4(카드 2종 이식)·TΔ6(index 폐기)에서
+    // beans 네이티브 바인딩으로 대체된다(changes/0021 ADR-54).
+    private static Sourced<String> beansDescriptionSummary(List<Bean> beans) {
+        if (beans == null || beans.isEmpty()) {
+            return null;
+        }
+        String joined = beans.stream().map(b -> b.description().value()).collect(Collectors.joining(", "));
+        return new Sourced<>(joined, beans.getFirst().description().source());
+    }
+
+    private static Sourced<String> beansProcessSummary(List<Bean> beans) {
+        List<Sourced<String>> processes = beans == null ? List.<Sourced<String>>of() : beans.stream()
+                .map(Bean::process)
+                .filter(p -> p != null && p.value() != null && !p.value().isBlank())
+                .toList();
+        if (processes.isEmpty()) {
+            return null;
+        }
+        String joined = processes.stream().map(Sourced::value).collect(Collectors.joining(", "));
+        return new Sourced<>(joined, processes.getFirst().source());
     }
 
     private static String value(Sourced<String> sourced) {

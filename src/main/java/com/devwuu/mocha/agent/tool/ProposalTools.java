@@ -186,8 +186,8 @@ class ProposalTools {
                 proposal.rating(), proposal.recipe(), now);
         Note draft = new Note(
                 recordSlug(proposal, pending, now),
-                proposal.meta().coffeeName(), proposal.meta().roastery(), proposal.meta().origin(),
-                proposal.meta().process(), proposal.meta().roastLevel(), proposal.meta().officialNotes(),
+                proposal.meta().coffeeName(), proposal.meta().roastery(), proposal.meta().beans(),
+                proposal.meta().roastLevel(), proposal.meta().officialNotes(),
                 proposal.meta().sources(), List.of(entry), now, now);
 
         // FR-5 갱신 경로: 검증을 통과한 대기 중 재호출(같은 커피)은 preview_ts·created_at을 보존해 같은
@@ -304,7 +304,7 @@ class ProposalTools {
                 .filter(e -> targetDate.equals(e.date()))
                 .findFirst().orElseThrow(); // 실존은 검증(validateEdit)이 이미 보장했다.
         return new Note(
-                note.slug(), note.coffeeName(), note.roastery(), note.origin(), note.process(),
+                note.slug(), note.coffeeName(), note.roastery(), note.beans(),
                 note.roastLevel(), note.officialNotes(), note.sources(),
                 List.of(target), note.createdAt(), note.updatedAt());
     }
@@ -323,8 +323,7 @@ class ProposalTools {
         return new Note(
                 base.slug(), base.coffeeName(),
                 proposal.roastery() != null ? proposal.roastery() : base.roastery(),
-                proposal.origin() != null ? proposal.origin() : base.origin(),
-                proposal.process() != null ? proposal.process() : base.process(),
+                proposal.beans() != null ? proposal.beans() : base.beans(),
                 proposal.roastLevel() != null ? proposal.roastLevel() : base.roastLevel(),
                 proposal.officialNotes() != null ? proposal.officialNotes() : base.officialNotes(),
                 base.sources(), List.of(entry), base.createdAt(), base.updatedAt());

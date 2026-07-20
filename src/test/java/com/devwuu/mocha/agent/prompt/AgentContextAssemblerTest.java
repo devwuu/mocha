@@ -1,6 +1,7 @@
 package com.devwuu.mocha.agent.prompt;
 
 import com.devwuu.mocha.agent.conversation.TranscriptTurn;
+import com.devwuu.mocha.domain.Bean;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
@@ -45,8 +46,9 @@ class AgentContextAssemblerTest {
         Entry entry = new Entry(LocalDate.of(2026, 7, 16), "새콤하고 좋았음", "새콤하고 좋았다",
                 Rating.GOOD, null, NOW);
         return new Note("2026-07-16-100000",
-                Sourced.user("Ethiopia Chelbesa"), Sourced.user("FroB"), Sourced.search("에티오피아"),
-                null, null, null, List.of(), List.of(entry), NOW, NOW);
+                Sourced.user("Ethiopia Chelbesa"), Sourced.user("FroB"),
+                List.of(new Bean(Sourced.search("에티오피아"), null)),
+                null, null, List.of(), List.of(entry), NOW, NOW);
     }
 
     @Test

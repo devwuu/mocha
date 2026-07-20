@@ -229,7 +229,7 @@ class AgentConversationRouterTest {
         OffsetDateTime at = OffsetDateTime.parse("2026-07-16T10:00:00+09:00");
         Entry entry = new Entry(LocalDate.of(2026, 7, 16), "새콤하고 좋았음", Rating.GOOD, null, at);
         Note draft = new Note("2026-07-16-102030", Sourced.user("커피베라 예가체프 G1"), Sourced.user("커피베라"),
-                null, null, null, null, List.of(), List.of(entry), at, at);
+                List.of(), null, null, List.of(), List.of(entry), at, at);
         return new PendingNote(draft, MatchInfo.newNote(), "1720000000.000789", at);
     }
 

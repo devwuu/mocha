@@ -36,8 +36,7 @@ class DomainSerializationTest {
                 "coffeevera-yirgacheffe-g1",
                 Sourced.user("커피베라 예가체프 G1"),
                 Sourced.user("커피베라"),
-                Sourced.search("에티오피아 예가체프"),
-                Sourced.search("워시드"),
+                List.of(new Bean(Sourced.user("에티오피아 예가체프"), Sourced.search("워시드"))),
                 new Sourced<>(null, Source.SEARCH),          // 미확정 값 + source 마킹
                 Sourced.search(List.of("자스민", "베르가못")),  // Sourced<List<String>>
                 List.of("https://example.com/coffeevera"),
@@ -277,8 +276,7 @@ class DomainSerializationTest {
                 "ethiopia-chelbesa",
                 Sourced.user("Ethiopia Chelbesa"),
                 Sourced.user("FroB"),
-                Sourced.search("에티오피아"),
-                new Sourced<>(null, Source.SEARCH),
+                List.of(new Bean(Sourced.search("에티오피아"), null)),
                 new Sourced<>(null, Source.SEARCH),
                 Sourced.search(List.of()),
                 new Aliases(List.of("에티오피아 첼베사"), List.of("프롭", "프로브")),
@@ -317,6 +315,74 @@ class DomainSerializationTest {
         assertThat(Aliases.normalize("  프롭  커피 ")).isEqualTo("프롭커피");
         assertThat(Aliases.normalize(null)).isEmpty();
         assertThat(Aliases.normalize("   ")).isEmpty();
+    }
+
+    // --- 0021 TΔ1a: beans 원두 구성 배열 (ADR-53, V-14, changes/0021) ---
+    // 기존 노트 JSON은 삭제·재등록하므로(ADR-28 관례) 구 origin/process 형식 로드 호환 테스트는 두지 않는다.
+
+    @Test
+    @DisplayName("0021-TΔ1a: beans(원두별 description·process, 서브필드 출처)가 snake_case로 직렬화·왕복된다")
+    void beansRoundTrip() throws Exception {
+        // 블렌드: 원두별 가공방식이 각 요소에 붙는다(ADR-53 동기) — process 없는 원두는 null.
+        Note original = new Note(
+                "blend-note",
+                Sourced.user("시그니처 블렌드"),
+                Sourced.user("커피베라"),
+                List.of(
+                        new Bean(Sourced.user("에티오피아 예가체프"), Sourced.search("워시드")),
+                        new Bean(Sourced.search("콜롬비아 후일라"), Sourced.search("내추럴")),
+                        new Bean(Sourced.user("브라질"), null)),
+                null,
+                null,
+                List.of(),
+                List.of(),
+                OffsetDateTime.of(2026, 7, 18, 9, 0, 0, 0, ZoneOffset.ofHours(9)),
+                OffsetDateTime.of(2026, 7, 18, 9, 0, 0, 0, ZoneOffset.ofHours(9))
+        );
+
+        String json = mapper.writeValueAsString(original);
+        Note restored = mapper.readValue(json, Note.class);
+
+        assertThat(json).contains("\"beans\"")
+                .contains("\"description\":{\"value\":\"에티오피아 예가체프\",\"source\":\"user\"}")
+                .contains("\"process\":{\"value\":\"워시드\",\"source\":\"search\"}")
+                .doesNotContain("\"origin\"");   // 구 노트 레벨 필드 폐지(ADR-53)
+        assertThat(restored).isEqualTo(original);
+        assertThat(restored.beans()).hasSize(3);
+    }
+
+    @Test
+    @DisplayName("0021-TΔ1a/V-14: beans 키 부재·null JSON도 빈 배열로 로드된다(null 불가 기본값)")
+    void beansDefaultsToEmptyList() throws Exception {
+        String withoutBeans = "{\"slug\":\"s\",\"coffee_name\":{\"value\":\"커피\",\"source\":\"user\"},"
+                + "\"roastery\":null,\"roast_level\":null,\"official_notes\":null,"
+                + "\"aliases\":{\"coffee_name\":[],\"roastery\":[]},"
+                + "\"sources\":[],\"entries\":[],\"created_at\":null,\"updated_at\":null}";
+        String nullBeans = withoutBeans.replace("\"roastery\":null", "\"beans\":null,\"roastery\":null");
+
+        assertThat(mapper.readValue(withoutBeans, Note.class).beans()).isEmpty();
+        assertThat(mapper.readValue(nullBeans, Note.class).beans()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("0021-TΔ1a/V-14: normalize — description이 빈 요소만 드롭하고 나머지 원두는 유지한다(저장 거부 아님)")
+    void beansNormalizeDropsEmptyDescription() {
+        List<Bean> normalized = Bean.normalize(Arrays.asList(
+                new Bean(Sourced.user("  에티오피아 예가체프 "), Sourced.search("  워시드 ")),
+                new Bean(new Sourced<>("   ", Source.USER), Sourced.search("내추럴")), // 빈 설명 → 드롭
+                new Bean(null, Sourced.search("허니")),                                  // 설명 자체 부재 → 드롭
+                null,                                                                    // null 요소 → 드롭
+                new Bean(Sourced.user("브라질"), new Sourced<>("  ", Source.SEARCH)))); // 빈 process → null 정규화
+
+        assertThat(normalized).containsExactly(
+                new Bean(Sourced.user("에티오피아 예가체프"), Sourced.search("워시드")),
+                new Bean(Sourced.user("브라질"), null));
+    }
+
+    @Test
+    @DisplayName("0021-TΔ1a/V-14: normalize — null 배열은 빈 배열로 정규화된다")
+    void beansNormalizeNullToEmpty() {
+        assertThat(Bean.normalize(null)).isEmpty();
     }
 
     @Test

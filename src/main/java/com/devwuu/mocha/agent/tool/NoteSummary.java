@@ -13,7 +13,7 @@ import java.util.List;
  * @param coffeeName    커피 이름 표시값.
  * @param roastery      로스터리 표시값 — 없으면 null.
  * @param aliases       내부 별칭(커피명·로스터리 통합) — 사용자 미표시 값이지만 매칭 재료로 페이로드에 싣는다.
- * @param origin        원산지 — 없으면 null.
+ * @param origin        원두 구성 요약(beans 설명 쉼표 나열, changes/0021) — 없으면 null.
  * @param officialNotes 공식 테이스팅 노트 — 없으면 빈 목록.
  * @param lastTasted    최근 시음일 — 상대 날짜 단서("엊그제 마신 거") 해석 재료.
  */

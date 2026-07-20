@@ -2,6 +2,7 @@ package com.devwuu.mocha.render;
 
 import com.devwuu.mocha.config.RenderConfig;
 import com.devwuu.mocha.domain.Aliases;
+import com.devwuu.mocha.domain.Bean;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
@@ -52,8 +53,8 @@ class ThymeleafNoteRendererTest {
         NoteMeta meta1 = new NoteMeta(
                 Sourced.user("예가체프 G1 워시드"),
                 Sourced.user("커피베라"),
-                Sourced.search("에티오피아 예가체프"),   // origin = 검색 → (검색) 표기 대상(AC-2)
-                Sourced.user("워시드"),
+                // description = 검색 → (검색) 표기 대상(AC-2)
+                List.of(new Bean(Sourced.search("에티오피아 예가체프"), Sourced.user("워시드"))),
                 Sourced.search("라이트"),
                 Sourced.search(List.of("자몽", "베르가못", "홍차")),
                 List.of("https://coffeevera.example/yirgacheffe"));
@@ -63,8 +64,8 @@ class ThymeleafNoteRendererTest {
         NoteMeta meta2 = new NoteMeta(
                 Sourced.user("콜롬비아 게이샤 워시드"),
                 Sourced.user("프릳츠"),
-                Sourced.search("콜롬비아"),
-                null, null, Sourced.search(List.of()), List.of());
+                List.of(new Bean(Sourced.search("콜롬비아"), null)),
+                null, Sourced.search(List.of()), List.of());
         repo.upsertEntry("2026-07-04", meta2,
                 new Entry(LocalDate.parse("2026-07-04"), "화사하다.", Rating.PERFECT, null, now));
         return repo;
@@ -134,8 +135,8 @@ class ThymeleafNoteRendererTest {
         OffsetDateTime now = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
                 Sourced.user("예가체프 G1"),
-                Sourced.user("커피베라"), Sourced.search("에티오피아"),
-                null, null, Sourced.search(List.of()), List.of());
+                Sourced.user("커피베라"), List.of(new Bean(Sourced.search("에티오피아"), null)),
+                null, Sourced.search(List.of()), List.of());
         // 정규화본(음슴체)과 발화 원문을 서로 다른 문자열로 둔다 — 원문 유출을 판별 가능하게.
         repo.upsertEntry("2026-07-10", meta,
                 new Entry(LocalDate.parse("2026-07-10"), "새콤하고 좋았음", "새콤하고 좋았다구우",
@@ -156,8 +157,9 @@ class ThymeleafNoteRendererTest {
         OffsetDateTime now = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
                 Sourced.user("예가체프 G1 워시드"),
-                Sourced.user("커피베라"), Sourced.search("에티오피아 예가체프"),
-                Sourced.user("워시드"), Sourced.search("라이트"),
+                Sourced.user("커피베라"),
+                List.of(new Bean(Sourced.search("에티오피아 예가체프"), Sourced.user("워시드"))),
+                Sourced.search("라이트"),
                 Sourced.search(List.of("자몽", "홍차")),
                 List.of("https://coffeevera.example/yirgacheffe"));
         // 같은 노트(slug)에 다른 날짜 엔트리 2건.
@@ -195,8 +197,8 @@ class ThymeleafNoteRendererTest {
         OffsetDateTime now = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
                 Sourced.user("예가체프 G1 워시드"),
-                Sourced.user("커피베라"), Sourced.search("에티오피아"),
-                null, null, Sourced.search(List.of()), List.of());
+                Sourced.user("커피베라"), List.of(new Bean(Sourced.search("에티오피아"), null)),
+                null, Sourced.search(List.of()), List.of());
         // 렌더는 사진을 읽지 않는다 — 엔트리에 사진 필드가 없고 템플릿에도 사진 슬롯이 없다(changes/0014 ADR-32, AC-Δ2).
         repo.upsertEntry("2026-07-10", meta,
                 new Entry(LocalDate.parse("2026-07-10"), "새콤하다.", Rating.GOOD, null, now));
@@ -226,8 +228,9 @@ class ThymeleafNoteRendererTest {
         OffsetDateTime now = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
                 Sourced.user("예가체프 G1 워시드"),
-                Sourced.user("커피베라"), Sourced.search("에티오피아 예가체프"),
-                Sourced.user("워시드"), Sourced.search("라이트"),
+                Sourced.user("커피베라"),
+                List.of(new Bean(Sourced.search("에티오피아 예가체프"), Sourced.user("워시드"))),
+                Sourced.search("라이트"),
                 Sourced.search(List.of("자몽", "홍차")), List.of());
         // 별칭은 표시값(커피명·로스터리)과 명확히 다른 마커 문자열 — 렌더에 새면 반드시 검출된다(V-13).
         Aliases aliases = new Aliases(
@@ -265,8 +268,8 @@ class ThymeleafNoteRendererTest {
         OffsetDateTime now = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
                 Sourced.user("예가체프 G1 워시드"),
-                Sourced.user("커피베라"), Sourced.search("에티오피아"),
-                null, null, Sourced.search(List.of()), List.of());
+                Sourced.user("커피베라"), List.of(new Bean(Sourced.search("에티오피아"), null)),
+                null, Sourced.search(List.of()), List.of());
         // 엔트리 + 실제 사진 파일을 data/photos/에 둔다 — 사진은 노트가 아닌 폴더에만 존재(리렌더 입력 후보로서의 파일 존재를 재현).
         repo.upsertEntry("2026-07-10", meta,
                 new Entry(LocalDate.parse("2026-07-10"), "새콤하다.", Rating.GOOD, null, now));
@@ -365,8 +368,9 @@ class ThymeleafNoteRendererTest {
         OffsetDateTime now = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
                 coffeeName,
-                Sourced.user("커피베라"), Sourced.search("에티오피아 예가체프"),
-                Sourced.user("워시드"), Sourced.search("라이트"),
+                Sourced.user("커피베라"),
+                List.of(new Bean(Sourced.search("에티오피아 예가체프"), Sourced.user("워시드"))),
+                Sourced.search("라이트"),
                 Sourced.search(List.of("자몽", "홍차")), List.of());
         repo.upsertEntry("2026-07-10", meta,
                 new Entry(LocalDate.parse("2026-07-10"), "새콤하다.", Rating.GOOD, recipe, now));
@@ -444,8 +448,8 @@ class ThymeleafNoteRendererTest {
     private static Note moveDateDraft(Note origin, LocalDate newDate) {
         Entry e = origin.entries().get(0);
         Entry moved = new Entry(newDate, e.myTaste(), e.rating(), e.recipe(), e.updatedAt());
-        return new Note(origin.slug(), origin.coffeeName(), origin.roastery(), origin.origin(),
-                origin.process(), origin.roastLevel(), origin.officialNotes(), origin.sources(),
+        return new Note(origin.slug(), origin.coffeeName(), origin.roastery(), origin.beans(),
+                origin.roastLevel(), origin.officialNotes(), origin.sources(),
                 List.of(moved), origin.createdAt(), origin.updatedAt());
     }
 
