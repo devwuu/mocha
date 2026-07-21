@@ -176,15 +176,35 @@ class NoteLookupTools {
         if (!reused) {
             cards = noteRenderer.renderEntryCard(note.get().slug(), date);
         }
-        // TΔ5a 과도기: 첫 회차 카드만 전송 — 회차 카드 전량 재전송은 TΔ5b에서 개정(FR-20).
-        responder.postImage(channelId, cards.getFirst(), CARD_CAPTION);
-        log.info("검색 카드 재전송: slug={} date={} cards={} reused={}",
-                note.get().slug(), date, cards.size(), reused);
+        // 회차 카드 전부를 순서대로 재전송한다(FR-20, changes/0021 TΔ5b). 일부만 실패하면 성공분은 배달하고
+        // 실패분을 결과에 명시한다(부분 폴백 — plan §7, tool 결과는 실제 처리 결과를 명시(FR-22)).
+        int delivered = 0;
+        List<String> failedCards = new ArrayList<>();
+        for (Path card : cards) {
+            try {
+                // 캡션은 첫 성공 카드에만 싣는다 — 같은 안내를 카드 수만큼 반복하지 않는다(TΔ5b).
+                responder.postImage(channelId, card, delivered == 0 ? CARD_CAPTION : null);
+                delivered++;
+            } catch (RuntimeException e) {
+                log.warn("검색 카드 재전송 실패: slug={} card={}", note.get().slug(), card.getFileName(), e);
+                failedCards.add(card.getFileName().toString());
+            }
+        }
+        log.info("검색 카드 재전송: slug={} date={} cards={} delivered={} reused={}",
+                note.get().slug(), date, cards.size(), delivered, reused);
+        if (delivered == 0) {
+            return ToolSupport.errorOutput(mapper, "카드 전송에 전부 실패했다 — 채널에 도착한 카드가 없다. "
+                    + "사용자에게 카드를 보내지 못했다고 안내해라.");
+        }
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("sent", true);
         result.put("slug", note.get().slug());
         result.put("date", date.toString());
+        result.put("cards_sent", delivered);
+        if (!failedCards.isEmpty()) {
+            result.put("cards_failed", failedCards);
+        }
         return mapper.writeValueAsString(result);
     }
 }

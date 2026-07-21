@@ -10,8 +10,9 @@ public final class MochaMessages {
     private MochaMessages() {
     }
 
-    public static final String SAVE_DONE_CAPTION = "저장했어요 멍! 🐾"; // 배달하는 카드 JPG의 캡션(AC-Δ1)
+    public static final String SAVE_DONE_CAPTION = "저장했어요 멍! 🐾"; // 배달하는 카드 JPG의 캡션(AC-Δ1) — 첫 카드에만 싣는다(TΔ5b)
     public static final String SAVE_DONE_NO_IMAGE = "저장했어요 멍! 카드 이미지는 잠시 뒤에 다시 만들어 볼게요 🐾"; // 카드 렌더/전송 실패 폴백(AC-18)
+    public static final String SAVE_DONE_PARTIAL_IMAGE = "그런데 카드 몇 장은 배달하지 못했어요 멍… 나중에 다시 찾아주시면 보내드릴게요 🐾"; // 회차 카드 일부 전송 실패 — 성공분은 배달됨(부분 폴백, plan §7·FR-16)
     public static final String NOTHING_TO_SAVE = "저장할 기록을 못 찾았어요 멍… 만료됐거나 이미 처리됐나 봐요 🐾"; // 만료/부재 안내(V-7)
     public static final String CANCELED = "이번 기록은 지웠어요 멍! 다음에 또 마시면 불러주세요 🐾"; // 취소 안내
     public static final String BROKEN_PENDING = "기록이 뭔가 이상해요 멍… 다시 보내주시겠어요? 🐾"; // 방어(엔트리/슬러그 결손)

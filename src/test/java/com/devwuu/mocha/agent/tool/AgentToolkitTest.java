@@ -11,6 +11,7 @@ import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
 import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.domain.Rating;
+import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.domain.Tasting;
 import com.devwuu.mocha.json.MochaObjectMapper;
@@ -38,10 +39,12 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -456,6 +459,61 @@ class AgentToolkitTest {
         assertThat(responder.postedImages).isEmpty();
     }
 
+    @Test
+    @DisplayName("FR-20/AC-Δ6: 회차 2개 엔트리는 회차 카드 4장 전부를 순서대로 재전송한다 — 캡션은 첫 카드에만(TΔ5b)")
+    void sendEntryCardSendsAllBrewCards() throws IOException {
+        noteRepository.put(twoBrewNote("2026-07-18-102030", LocalDate.of(2026, 7, 18)));
+        List<Path> existing = seedCards("2026-07-18-102030",
+                "2026-07-18-taste-1.jpg", "2026-07-18-recipe-1.jpg",
+                "2026-07-18-taste-2.jpg", "2026-07-18-recipe-2.jpg");
+
+        JsonNode result = mapper.readTree(execute("send_entry_card",
+                "{\"slug\":\"2026-07-18-102030\",\"date\":\"2026-07-18\"}"));
+
+        assertThat(renderer.rendered).isEmpty(); // 전부 존재 → 재사용(§3.5)
+        assertThat(responder.postedImages).extracting(PostedImage::path)
+                .containsExactlyElementsOf(existing); // 회차 오름차순, 회차 안에서 감상 → 레시피
+        assertThat(responder.postedImages.get(0).caption()).isEqualTo(NoteLookupTools.CARD_CAPTION);
+        assertThat(responder.postedImages).filteredOn(img -> img.caption() != null).hasSize(1);
+        assertThat(result.get("sent").asBoolean()).isTrue();
+        assertThat(result.get("cards_sent").asInt()).isEqualTo(4);
+        assertThat(result.has("cards_failed")).isFalse();
+    }
+
+    @Test
+    @DisplayName("plan §7: 일부 카드 전송 실패 → 성공분은 배달하고 실패분을 결과에 명시한다(부분 폴백)")
+    void sendEntryCardReportsPartialFailure() throws IOException {
+        noteRepository.put(twoBrewNote("2026-07-18-102030", LocalDate.of(2026, 7, 18)));
+        seedCards("2026-07-18-102030",
+                "2026-07-18-taste-1.jpg", "2026-07-18-recipe-1.jpg",
+                "2026-07-18-taste-2.jpg", "2026-07-18-recipe-2.jpg");
+        responder.failFilenames.add("2026-07-18-recipe-1.jpg");
+
+        JsonNode result = mapper.readTree(execute("send_entry_card",
+                "{\"slug\":\"2026-07-18-102030\",\"date\":\"2026-07-18\"}"));
+
+        assertThat(responder.postedImages).hasSize(3);
+        assertThat(result.get("sent").asBoolean()).isTrue();
+        assertThat(result.get("cards_sent").asInt()).isEqualTo(3);
+        assertThat(result.get("cards_failed")).hasSize(1);
+        assertThat(result.get("cards_failed").get(0).asString()).isEqualTo("2026-07-18-recipe-1.jpg");
+    }
+
+    @Test
+    @DisplayName("plan §7: 카드 전송 전부 실패 → 오류 사유 반환(에이전트가 미도착을 안내할 근거)")
+    void sendEntryCardReturnsErrorWhenAllSendsFail() throws IOException {
+        noteRepository.put(note("2026-07-13-102030", "Ethiopia Chelbesa", "FroB",
+                Aliases.empty(), LocalDate.of(2026, 7, 13)));
+        seedCards("2026-07-13-102030", "2026-07-13-taste-1.jpg");
+        responder.failFilenames.add("2026-07-13-taste-1.jpg");
+
+        JsonNode result = mapper.readTree(execute("send_entry_card",
+                "{\"slug\":\"2026-07-13-102030\",\"date\":\"2026-07-13\"}"));
+
+        assertThat(responder.postedImages).isEmpty();
+        assertThat(result.get("error").asString()).contains("카드");
+    }
+
     // ---- 헬퍼 ----
 
     private String execute(String toolName, String argumentsJson) {
@@ -522,6 +580,32 @@ class AgentToolkitTest {
                 aliases, List.of(), entries,
                 OffsetDateTime.parse("2026-07-13T10:20:30+09:00"),
                 OffsetDateTime.parse("2026-07-14T10:00:00+09:00"));
+    }
+
+    /** 회차 2개(각각 recipe+tasting) 엔트리 1건 노트 — 기대 카드 4장(taste·recipe × 회차 2)의 픽스처(AC-Δ6). */
+    private static Note twoBrewNote(String slug, LocalDate date) {
+        Entry entry = new Entry(date, List.of(
+                new Brew(new Recipe(15.0, 250.0, "210클릭 (매버릭 2.0)"), new Tasting("새콤하고 좋았음", null, Rating.GOOD)),
+                new Brew(new Recipe(15.0, 250.0, "205클릭 (매버릭 2.0)"), new Tasting("더 새콤했음", null, Rating.PERFECT))),
+                OffsetDateTime.parse("2026-07-18T10:00:00+09:00"));
+        return new Note(slug, Sourced.user("Ethiopia Chelbesa"), Sourced.user("FroB"),
+                List.of(new Bean(Sourced.search("에티오피아"), null)),
+                null, Sourced.search(List.of("자스민")),
+                Aliases.empty(), List.of(), List.of(entry),
+                OffsetDateTime.parse("2026-07-18T10:00:00+09:00"),
+                OffsetDateTime.parse("2026-07-18T10:00:00+09:00"));
+    }
+
+    /** artifact/cards/<slug>/ 아래에 기존 카드 파일을 심는다 — 재사용(§3.5) 분기 픽스처. */
+    private List<Path> seedCards(String slug, String... filenames) throws IOException {
+        List<Path> cards = new ArrayList<>();
+        for (String filename : filenames) {
+            Path card = artifactDir.resolve("cards").resolve(slug).resolve(filename);
+            Files.createDirectories(card.getParent());
+            Files.write(card, new byte[]{1});
+            cards.add(card);
+        }
+        return cards;
     }
 
     // ---- fakes (모듈 CLAUDE.md §5.2 — 외부 의존은 인터페이스 stub/fake) ----
@@ -662,6 +746,7 @@ class AgentToolkitTest {
 
     private static final class RecordingResponder implements SlackResponder {
         private final List<PostedImage> postedImages = new ArrayList<>();
+        private final Set<String> failFilenames = new HashSet<>(); // 파일명 단위 업로드 실패 주입(부분 폴백 검증)
 
         @Override
         public void post(String channelId, String text) {
@@ -670,6 +755,9 @@ class AgentToolkitTest {
 
         @Override
         public void postImage(String channelId, Path imagePath, String caption) {
+            if (failFilenames.contains(imagePath.getFileName().toString())) {
+                throw new IllegalStateException("files.upload 실패: " + imagePath.getFileName());
+            }
             postedImages.add(new PostedImage(channelId, imagePath, caption));
         }
 

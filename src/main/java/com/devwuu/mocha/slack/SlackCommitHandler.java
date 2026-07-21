@@ -119,17 +119,7 @@ class SlackCommitHandler {
         log.info("[저장] 커밋 완료: slug={} entries={}", saved.slug(), saved.entries().size());
 
         // 저장은 이미 커밋됨 — 카드 렌더·전송 실패는 데이터 손실이 아니다. 실패해도 저장은 유지하고 안내 텍스트로 폴백한다.
-        // POLICY: 저장 시점 렌더는 증분 — 방금 그 (slug,date) 엔트리의 회차 카드만 굽는다(전체 재래스터화는 --rerender)
-        //         (ref: plan.md#ADR-10·ADR-59, AC-Δ7).
-        // POLICY: 카드 이미지 생성·전송 실패는 저장을 되돌리지 않는다 — 안내 텍스트로 폴백 (ref: plan.md §7, AC-18).
-        try {
-            List<Path> cards = noteRenderer.renderEntryCard(slug, committedEntry.date());
-            // TΔ5a 과도기: 첫 회차 카드만 배달 — 카드 전량 배달·부분 폴백은 TΔ5b에서 개정(FR-16, plan §7).
-            responder.postImage(action.channelId(), cards.getFirst(), MochaMessages.SAVE_DONE_CAPTION);
-        } catch (RuntimeException e) {
-            log.warn("카드 배달 실패(노트는 저장됨, --rerender로 복구 가능): slug={} date={}", saved.slug(), date, e);
-            responder.post(action.channelId(), MochaMessages.SAVE_DONE_NO_IMAGE);
-        }
+        deliverEntryCards(action.channelId(), slug, committedEntry);
 
         // 커밋·배달 이후 미리보기 버튼을 1회 소진한다 — 실패해도 저장·배달 결과는 유지된다(ADR-20, AC-Δ2).
         finalizePreviewQuietly(action.channelId(), pending, MochaMessages.FINALIZE_SAVED);
@@ -201,19 +191,43 @@ class SlackCommitHandler {
                         slug, target.date(), e);
             }
         }
-        // 새 date 회차 카드 증분 렌더(+index 갱신) → 갱신 카드 배달(AC-37).
-        // POLICY: 카드 이미지 생성·전송 실패는 저장을 되돌리지 않는다 — 안내 텍스트로 폴백 (ref: plan.md §7, AC-18 준용).
-        try {
-            List<Path> cards = noteRenderer.renderEntryCard(slug, committedEntry.date());
-            // TΔ5a 과도기: 첫 회차 카드만 배달 — 카드 전량 배달·부분 폴백은 TΔ5b에서 개정(FR-16, plan §7).
-            responder.postImage(action.channelId(), cards.getFirst(), MochaMessages.SAVE_DONE_CAPTION);
-        } catch (RuntimeException e) {
-            log.warn("카드 배달 실패(수정은 저장됨, --rerender로 복구 가능): slug={} date={}", slug, date, e);
-            responder.post(action.channelId(), MochaMessages.SAVE_DONE_NO_IMAGE);
-        }
+        // 새 date 회차 카드 증분 렌더 → 갱신 카드 배달(AC-37).
+        deliverEntryCards(action.channelId(), slug, committedEntry);
 
         // 커밋·배달 이후 미리보기 버튼을 1회 소진한다(0009 재사용) — 실패해도 저장·배달 결과는 유지된다(ADR-20).
         finalizePreviewQuietly(action.channelId(), pending, MochaMessages.FINALIZE_SAVED);
+    }
+
+    // 커밋 직후 카드 배달 — 방금 그 엔트리의 회차 카드 전부를 순서대로 배달한다(FR-16, changes/0021 TΔ5b).
+    // POLICY: 저장 시점 렌더는 증분 — 방금 그 (slug,date) 엔트리의 회차 카드만 굽는다(전체 재래스터화는 --rerender)
+    //         (ref: plan.md#ADR-10·ADR-59, AC-Δ7).
+    // POLICY: 카드 이미지 생성·전송 실패는 저장을 되돌리지 않는다 — 렌더 실패는 안내 텍스트로 폴백하고,
+    //         전송은 일부만 실패하면 성공분은 배달하며 실패분만 안내한다(부분 폴백) (ref: plan.md §7, AC-18, FR-16).
+    private void deliverEntryCards(String channelId, String slug, Entry entry) {
+        List<Path> cards;
+        try {
+            cards = noteRenderer.renderEntryCard(slug, entry.date());
+        } catch (RuntimeException e) {
+            log.warn("카드 렌더 실패(저장은 유지됨, --rerender로 복구 가능): slug={} date={}", slug, entry.date(), e);
+            responder.post(channelId, MochaMessages.SAVE_DONE_NO_IMAGE);
+            return;
+        }
+        int delivered = 0;
+        for (Path card : cards) {
+            try {
+                // 캡션은 첫 성공 카드에만 싣는다 — 같은 안내를 카드 수만큼 반복하지 않는다(TΔ5b).
+                responder.postImage(channelId, card, delivered == 0 ? MochaMessages.SAVE_DONE_CAPTION : null);
+                delivered++;
+            } catch (RuntimeException e) {
+                log.warn("카드 배달 실패(저장은 유지됨, --rerender로 복구 가능): slug={} card={}",
+                        slug, card.getFileName(), e);
+            }
+        }
+        if (delivered == 0) {
+            responder.post(channelId, MochaMessages.SAVE_DONE_NO_IMAGE);
+        } else if (delivered < cards.size()) {
+            responder.post(channelId, MochaMessages.SAVE_DONE_PARTIAL_IMAGE);
+        }
     }
 
     // 버튼 1회 소진 — 커밋·배달 이후 미리보기 버튼을 제거하고 상태 문구로 교체한다.

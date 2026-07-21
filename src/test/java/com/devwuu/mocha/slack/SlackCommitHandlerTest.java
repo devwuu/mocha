@@ -159,6 +159,48 @@ class SlackCommitHandlerTest {
     }
 
     @Test
+    @DisplayName("AC-Δ6/FR-16: 회차 2개 [저장] → 그 엔트리의 회차 카드 4장 전부를 순서대로 배달한다 — 캡션은 첫 카드에만")
+    void confirmSaveDeliversAllBrewCards() {
+        NoteRepository repo = noteRepository();
+        pendingStore.setPending(pendingWith("coffeevera-yirgacheffe"));
+        noteRenderer.cardSuffixes = List.of("taste-1", "recipe-1", "taste-2", "recipe-2");
+
+        handler(repo).confirmSave(action(AgentConversationRouter.ACTION_SAVE));
+
+        assertEquals(List.of(
+                        Path.of("cards", "coffeevera-yirgacheffe", "2026-07-11-taste-1.jpg"),
+                        Path.of("cards", "coffeevera-yirgacheffe", "2026-07-11-recipe-1.jpg"),
+                        Path.of("cards", "coffeevera-yirgacheffe", "2026-07-11-taste-2.jpg"),
+                        Path.of("cards", "coffeevera-yirgacheffe", "2026-07-11-recipe-2.jpg")),
+                responder.images, "회차 카드 전부가 렌더 순서 그대로 배달된다");
+        assertEquals(MochaMessages.SAVE_DONE_CAPTION, responder.captions.get(0), "캡션은 첫 카드에만 싣는다");
+        assertEquals(1, responder.captions.stream().filter(c -> c != null).count(),
+                "같은 안내를 카드 수만큼 반복하지 않는다");
+        assertTrue(responder.messages.isEmpty(), "전량 배달이면 폴백·부분 안내 텍스트가 없다");
+    }
+
+    @Test
+    @DisplayName("plan §7/FR-16: 카드 일부 전송 실패 → 저장 유지, 성공분은 배달하고 실패분만 안내한다(부분 폴백)")
+    void confirmSaveDeliversSuccessfulCardsOnPartialFailure() {
+        NoteRepository repo = noteRepository();
+        pendingStore.setPending(pendingWith("coffeevera-yirgacheffe"));
+        noteRenderer.cardSuffixes = List.of("taste-1", "recipe-1", "taste-2", "recipe-2");
+        responder.failPaths.add(Path.of("cards", "coffeevera-yirgacheffe", "2026-07-11-recipe-1.jpg"));
+
+        handler(repo).confirmSave(action(AgentConversationRouter.ACTION_SAVE));
+
+        assertTrue(repo.findBySlug("coffeevera-yirgacheffe").isPresent(), "일부 실패해도 저장은 유지된다");
+        assertEquals(List.of(
+                        Path.of("cards", "coffeevera-yirgacheffe", "2026-07-11-taste-1.jpg"),
+                        Path.of("cards", "coffeevera-yirgacheffe", "2026-07-11-taste-2.jpg"),
+                        Path.of("cards", "coffeevera-yirgacheffe", "2026-07-11-recipe-2.jpg")),
+                responder.images, "성공분은 배달된다");
+        assertEquals(List.of(MochaMessages.SAVE_DONE_PARTIAL_IMAGE), responder.messages,
+                "전량 폴백이 아니라 실패분만 안내한다");
+        assertEquals(List.of(MochaMessages.FINALIZE_SAVED), responder.finalizeStatuses, "버튼 소진은 그대로 진행된다");
+    }
+
+    @Test
     @DisplayName("AC-18: 카드 렌더 실패 → 노트 JSON 저장은 유지되고 안내 텍스트로 폴백한다")
     void confirmSaveKeepsCommitWhenRenderFails() {
         NoteRepository repo = noteRepository();
@@ -562,6 +604,8 @@ class SlackCommitHandlerTest {
         final List<String> removedCards = new ArrayList<>();
         RuntimeException renderFailure;
         RuntimeException removeFailure;
+        // 산출 카드 접미 — 기본은 감상 회차 1개, 다장 배달 테스트(TΔ5b)는 회차 2개 형태로 바꾼다.
+        List<String> cardSuffixes = List.of("taste-1");
 
         @Override
         public void renderAll() {
@@ -574,8 +618,10 @@ class SlackCommitHandlerTest {
                 throw renderFailure;
             }
             entryCards.add(slug + "/" + date);
-            // 회차화(changes/0021 TΔ5a) — 감상 회차 1개 엔트리의 산출 형태.
-            return List.of(Path.of("cards", slug, date + "-taste-1.jpg"));
+            // 회차화(changes/0021 TΔ5a) 산출 형태 — CardFiles.expectedCards 순서(회차 오름차순, 감상 → 레시피).
+            return cardSuffixes.stream()
+                    .map(suffix -> Path.of("cards", slug, date + "-" + suffix + ".jpg"))
+                    .toList();
         }
 
         @Override
@@ -595,6 +641,7 @@ class SlackCommitHandlerTest {
         final List<String> finalizeStatuses = new ArrayList<>();
         final List<PendingNote> finalizePendings = new ArrayList<>();
         RuntimeException imageFailure;
+        final List<Path> failPaths = new ArrayList<>(); // 특정 카드만 업로드 실패 주입(부분 폴백 검증, TΔ5b)
         RuntimeException finalizeFailure;
         List<String> order; // 커밋 흐름 순서 회귀 가드용 공용 로그(비면 무시).
 
@@ -607,6 +654,9 @@ class SlackCommitHandlerTest {
         public void postImage(String channelId, Path imagePath, String caption) {
             if (imageFailure != null) {
                 throw imageFailure;
+            }
+            if (failPaths.contains(imagePath)) {
+                throw new IllegalStateException("files.upload 실패: " + imagePath.getFileName());
             }
             images.add(imagePath);
             captions.add(caption);
