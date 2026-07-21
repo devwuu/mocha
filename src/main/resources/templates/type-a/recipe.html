@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+<meta charset="utf-8">
+<title th:text="${card.coffeeName} + ' · 모카'">커피 레시피</title>
+<style>
+  /* 로컬 번들 폰트(ADR-11, ADR-54 편차②) — 시안의 Google Fonts CDN 대체. artifact/fonts/는 렌더러가 채운다. */
+  @font-face{font-family:'Gowun Batang';src:url('fonts/GowunBatang-Regular.ttf') format('truetype');font-weight:400;font-display:swap}
+  @font-face{font-family:'Gowun Batang';src:url('fonts/GowunBatang-Bold.ttf') format('truetype');font-weight:700;font-display:swap}
+  html,body{margin:0;padding:0}
+  /* 카드 = 4:5(1080×1350) 뷰포트 스크린샷. 시안 실측 460×575(동일 4:5)를 치수 무환산으로 이식하고
+     스케일 래퍼(×1080/460)로 실 규격을 채운다 — 시안이 디자인 원본이라 환산 전사 오류를 없앤다(ADR-54).
+     autofit 측정은 레이아웃 좌표라 하한도 시안 값(10.5) 그대로다. */
+  body{width:1080px;height:1350px;overflow:hidden;background:#efe9e2}
+  .scale{width:460px;height:575px;transform:scale(2.3478260870);transform-origin:top left}
+  /* 시안의 수치 타일 구분선(1px div)은 타일이 조건부라 인접 선택자로 이식 — 값 없는 타일이 빠져도 성립. */
+  .tiles{display:flex;justify-content:space-between;padding:16px 6px;border-bottom:1px solid #d3c9bb;text-align:center}
+  .tile{flex:1;padding:0 5px}
+  .tile + .tile{border-left:1px solid #d3c9bb}
+</style>
+</head>
+<body>
+<div class="scale">
+<div style="width:460px;height:575px;background:#d9cfc4;border-radius:6px;box-shadow:0 2px 12px rgba(43,31,22,.12);display:flex;box-sizing:border-box;padding:16px;font-family:'Gowun Batang',serif;color:#3a3128">
+  <div style="flex:1;border:1px solid #7a6a5c;display:flex;flex-direction:column;padding:22px 30px 14px;box-sizing:border-box;background:#f1ece4">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid #b3a595;padding-bottom:10px">
+      <div style="font-size:10.5px;letter-spacing:3px;color:#7c6b5b">BREW RECIPE</div>
+      <div style="font-size:10.5px;letter-spacing:1px;color:#7c6b5b" th:text="${fmt.dotted(card.date)}">2026. 7. 10</div>
+    </div>
+    <!--/* FR-7 ②: 로스터리·커피명 + 방식 뱃지(method 그대로, 없으면 생략) */-->
+    <div style="padding:14px 0 12px;border-bottom:1px solid #d3c9bb;text-align:center">
+      <div style="font-size:11.5px;color:#64564a;margin-bottom:4px"
+           th:text="${card.roastery != null ? card.roastery + ' · ' + card.coffeeName : card.coffeeName}">커피베라 · 봄맞이 블렌드</div>
+      <div style="display:flex;justify-content:center;align-items:center;gap:10px">
+        <div style="font-size:22px;font-weight:700;line-height:1.35;color:#2e261f">레시피</div>
+        <div style="font-size:10.5px;letter-spacing:2px;color:#64564a;border:1px solid #b0a494;border-radius:999px;padding:2px 12px"
+             th:if="${card.recipe.method != null}" th:text="${card.recipe.method}">핸드드립</div>
+      </div>
+    </div>
+    <!--/* FR-7 ③ 수치 그리드(타일) — 변형은 espressoLayout 분기(NoteView.RecipeCard POLICY), 값 있는 항목만(구 AC-25 승계).
+         비율·시간은 렌더 계산 파생 표기(ADR-54), 추출량은 yield_ml 기준 ml 표기(시안 "36g"은 예시 데이터 — 편차③). */-->
+    <div class="tiles" th:if="${card.hasNumericTiles()}">
+      <th:block th:unless="${card.espressoLayout()}">
+        <div class="tile" th:if="${card.recipe.doseG != null}">
+          <div style="font-size:9.5px;letter-spacing:2px;color:#8d7d6c;margin-bottom:6px">원두</div>
+          <div style="font-size:22px;font-weight:700;color:#2e261f" th:text="${amt.num(card.recipe.doseG)} + 'g'">15g</div>
+        </div>
+        <div class="tile" th:if="${card.recipe.waterMl != null}">
+          <div style="font-size:9.5px;letter-spacing:2px;color:#8d7d6c;margin-bottom:6px">물</div>
+          <div style="font-size:22px;font-weight:700;color:#2e261f" th:text="${amt.num(card.recipe.waterMl)} + 'ml'">240ml</div>
+        </div>
+        <div class="tile" style="flex:1.3" th:if="${card.recipe.grind != null}">
+          <div style="font-size:9.5px;letter-spacing:2px;color:#8d7d6c;margin-bottom:6px">분쇄도</div>
+          <div style="font-size:22px;font-weight:700;color:#2e261f" th:text="${amt.grindValue(card.recipe.grind)}">210클릭</div>
+          <div style="font-size:10px;color:#7c6b5b;margin-top:3px" th:if="${amt.grindGrinder(card.recipe.grind) != null}"
+               th:text="${amt.grindGrinder(card.recipe.grind)} + ' 기준'">매버릭 2.0 기준</div>
+        </div>
+      </th:block>
+      <th:block th:if="${card.espressoLayout()}">
+        <div class="tile" th:if="${card.recipe.doseG != null}">
+          <div style="font-size:9.5px;letter-spacing:2px;color:#8d7d6c;margin-bottom:6px">도징</div>
+          <div style="font-size:22px;font-weight:700;color:#2e261f" th:text="${amt.num(card.recipe.doseG)} + 'g'">18g</div>
+        </div>
+        <div class="tile" th:if="${card.recipe.yieldMl != null}">
+          <div style="font-size:9.5px;letter-spacing:2px;color:#8d7d6c;margin-bottom:6px">추출량</div>
+          <div style="font-size:22px;font-weight:700;color:#2e261f" th:text="${amt.num(card.recipe.yieldMl)} + 'ml'">36ml</div>
+          <div style="font-size:10px;color:#7c6b5b;margin-top:3px" th:if="${amt.ratio(card.recipe.doseG, card.recipe.yieldMl) != null}"
+               th:text="'비율 ' + ${amt.ratio(card.recipe.doseG, card.recipe.yieldMl)}">비율 1 : 2</div>
+        </div>
+        <div class="tile" th:if="${card.recipe.timeSec != null}">
+          <div style="font-size:9.5px;letter-spacing:2px;color:#8d7d6c;margin-bottom:6px">추출 시간</div>
+          <div style="font-size:22px;font-weight:700;color:#2e261f" th:text="${amt.time(card.recipe.timeSec)}">28초</div>
+        </div>
+      </th:block>
+    </div>
+    <!--/* FR-7 ③ 상세 행 — 타일에 못 오른 값 있는 항목만. 시안에 없는 조합(핸드드립의 추출량·머신 등)도 행으로 수용. */-->
+    <div style="display:grid;grid-template-columns:56px 1fr;align-items:baseline;gap:6px 12px;padding:12px 0;border-bottom:1px solid #d3c9bb;font-size:12.5px;color:#4a4036"
+         th:if="${card.hasDetailRows()}">
+      <th:block th:unless="${card.espressoLayout()}">
+        <div style="font-size:9.5px;letter-spacing:2px;color:#8d7d6c;text-align:right" th:if="${card.recipe.tempC != null}">물온도</div>
+        <div th:if="${card.recipe.tempC != null}" th:text="${amt.num(card.recipe.tempC)} + '℃'">92℃</div>
+        <div style="font-size:9.5px;letter-spacing:2px;color:#8d7d6c;text-align:right" th:if="${card.recipe.machine != null}">머신</div>
+        <div th:if="${card.recipe.machine != null}" th:text="${card.recipe.machine}">기구</div>
+        <div style="font-size:9.5px;letter-spacing:2px;color:#8d7d6c;text-align:right" th:if="${card.recipe.yieldMl != null}">추출량</div>
+        <div th:if="${card.recipe.yieldMl != null}"><span th:text="${amt.num(card.recipe.yieldMl)} + 'ml'">36ml</span> <span
+             style="font-size:10px;color:#7c6b5b" th:if="${amt.ratio(card.recipe.doseG, card.recipe.yieldMl) != null}"
+             th:text="'비율 ' + ${amt.ratio(card.recipe.doseG, card.recipe.yieldMl)}">비율 1 : 2</span></div>
+        <div style="font-size:9.5px;letter-spacing:2px;color:#8d7d6c;text-align:right" th:if="${card.recipe.pouring != null}">푸어링</div>
+        <!--/* 총 추출 시간은 시안대로 푸어링 행에 병기(findings-TΔ0 §5.3), 푸어링이 없으면 단독 행으로. */-->
+        <div style="line-height:1.7" th:if="${card.recipe.pouring != null}"
+             th:text="${card.recipe.pouring + (card.recipe.timeSec != null ? ' · 총 ' + amt.time(card.recipe.timeSec) : '')}">뜸 40ml 30초 → 100ml → 100ml · 총 2분 40초</div>
+        <div style="font-size:9.5px;letter-spacing:2px;color:#8d7d6c;text-align:right" th:if="${card.recipe.pouring == null and card.recipe.timeSec != null}">추출 시간</div>
+        <div th:if="${card.recipe.pouring == null and card.recipe.timeSec != null}" th:text="'총 ' + ${amt.time(card.recipe.timeSec)}">총 2분 40초</div>
+      </th:block>
+      <th:block th:if="${card.espressoLayout()}">
+        <div style="font-size:9.5px;letter-spacing:2px;color:#8d7d6c;text-align:right" th:if="${card.recipe.grind != null}">분쇄도</div>
+        <div th:if="${card.recipe.grind != null}"><span th:text="${amt.grindValue(card.recipe.grind)}">90클릭</span> <span
+             style="font-size:10px;color:#7c6b5b" th:if="${amt.grindGrinder(card.recipe.grind) != null}"
+             th:text="${amt.grindGrinder(card.recipe.grind)} + ' 기준'">매버릭 2.0 기준</span></div>
+        <!--/* 머신 행은 시안대로 온도 병기("게이지아 클래식 · 93℃"), 머신 없이 온도만 있으면 물온도 단독 행. */-->
+        <div style="font-size:9.5px;letter-spacing:2px;color:#8d7d6c;text-align:right" th:if="${card.recipe.machine != null}">머신</div>
+        <div style="line-height:1.7" th:if="${card.recipe.machine != null}"
+             th:text="${card.recipe.machine + (card.recipe.tempC != null ? ' · ' + amt.num(card.recipe.tempC) + '℃' : '')}">게이지아 클래식 · 93℃</div>
+        <div style="font-size:9.5px;letter-spacing:2px;color:#8d7d6c;text-align:right" th:if="${card.recipe.machine == null and card.recipe.tempC != null}">물온도</div>
+        <div th:if="${card.recipe.machine == null and card.recipe.tempC != null}" th:text="${amt.num(card.recipe.tempC)} + '℃'">93℃</div>
+        <div style="font-size:9.5px;letter-spacing:2px;color:#8d7d6c;text-align:right" th:if="${card.recipe.waterMl != null}">물</div>
+        <div th:if="${card.recipe.waterMl != null}" th:text="${amt.num(card.recipe.waterMl)} + 'ml'">43ml</div>
+        <div style="font-size:9.5px;letter-spacing:2px;color:#8d7d6c;text-align:right" th:if="${card.recipe.pouring != null}">푸어링</div>
+        <div style="line-height:1.7" th:if="${card.recipe.pouring != null}" th:text="${card.recipe.pouring}">과정</div>
+      </th:block>
+    </div>
+    <!--/* FR-7 ④: 레시피 피드백(autofit — FR-13). 없으면 내용만 숨기고 골격은 유지해 푸터를 바닥에 고정한다. */-->
+    <div style="flex:1;min-height:0;overflow:hidden;padding-top:14px;display:flex;flex-direction:column;gap:8px">
+      <div style="font-size:10px;letter-spacing:2px;color:#8d7d6c" th:if="${card.recipe.feedback != null}">레시피 피드백</div>
+      <!--/* white-space:pre-line — 피드백의 줄바꿈 보존(데이터 충실 — 시안 예시는 단문이라 무영향) */-->
+      <div data-autofit="10.5" style="flex:1;min-height:0;overflow:hidden;font-size:15.5px;line-height:1.8;color:#2e261f;white-space:pre-line"
+           th:if="${card.recipe.feedback != null}" th:text="${card.recipe.feedback}">피드백</div>
+    </div>
+    <div style="border-top:1px solid #b3a595;margin-top:12px;padding:10px 0 2px;text-align:center;font-size:10px;letter-spacing:3px;color:#a09283">— 커피 독후감 · 모카 —</div>
+  </div>
+</div>
+</div>
+<script>
+/* 시안 autofit 이식(ADR-54 — 피드백 영역만, 하한 = data-autofit 값). 정적 1회 렌더라 시안의
+   MutationObserver·resize 트리거는 제외하고 즉시 1회 + fonts.ready 재실행으로 단순화했다.
+   완료(data-autofit-done)·하한 도달(data-autofit-floor) 마커는 래스터화 대기·로깅 배선(TΔ5a, plan §6)의 입력. */
+(function(){
+  function fit(el){
+    if(!el.dataset.fitBase)el.dataset.fitBase=getComputedStyle(el).fontSize;
+    el.style.fontSize=el.dataset.fitBase;
+    el.removeAttribute('data-autofit-floor');
+    var s=parseFloat(el.dataset.fitBase);
+    var min=parseFloat(el.getAttribute('data-autofit'))||10;
+    while(s>min && el.scrollHeight>el.clientHeight+1){s-=.5;el.style.fontSize=s+'px';}
+    if(el.scrollHeight>el.clientHeight+1)el.setAttribute('data-autofit-floor','');
+  }
+  function all(){document.querySelectorAll('[data-autofit]').forEach(fit);}
+  all();
+  function done(){document.documentElement.setAttribute('data-autofit-done','');}
+  if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){all();done();});}
+  else{done();}
+})();
+</script>
+</body>
+</html>
