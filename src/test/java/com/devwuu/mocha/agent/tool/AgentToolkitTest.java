@@ -242,6 +242,44 @@ class AgentToolkitTest {
     }
 
     @Test
+    @DisplayName("data-model §3.4/ADR-59: patch의 brews는 통째 교체 — 회차 수가 다른 배열(회차 append 반영)로도 그대로 교체된다")
+    void proposeEditReplacesBrewsWholesale() {
+        noteRepository.put(note("2026-07-13-102030", "Ethiopia Chelbesa", "FroB",
+                Aliases.empty(), LocalDate.of(2026, 7, 13)));
+
+        // 회차를 하나 더 기록하는 수정 발화 — 에이전트가 기존 회차를 포함해 append한 전체 배열을 구성한다(V-15).
+        execute("propose_edit", editArgs("2026-07-13-102030", "2026-07-13",
+                "\"brews\": [%s, %s]".formatted(
+                        tastingBrewJson("새콤하고 좋았음", "새콤하고 좋았다", "\"맛있다\""),
+                        tastingBrewJson("식으니까 더 맛있음", "식으니까 더 맛있네", "\"완전 내스타일\""))));
+
+        // 서버는 회차 단위 병합 없이 배열을 신뢰해 통째 교체한다 — 배열 순서 = 회차 번호 유지(ADR-59).
+        Entry draftEntry = pendingStore.get(USER).orElseThrow().draft().entries().get(0);
+        assertThat(draftEntry.brews()).hasSize(2);
+        assertThat(draftEntry.brews())
+                .extracting(brew -> brew.tasting().myTaste())
+                .containsExactly("새콤하고 좋았음", "식으니까 더 맛있음");
+        assertThat(draftEntry.brews().get(1).tasting().rating()).isEqualTo(Rating.PERFECT);
+    }
+
+    @Test
+    @DisplayName("data-model §3.4: brews 없는 patch(null=유지)는 기존 회차를 건드리지 않는다")
+    void proposeEditKeepsBrewsWhenPatchOmitsThem() {
+        noteRepository.put(note("2026-07-13-102030", "Ethiopia Chelbesa", "FroB",
+                Aliases.empty(), LocalDate.of(2026, 7, 13)));
+
+        execute("propose_edit", editArgs("2026-07-13-102030", "2026-07-13",
+                "\"roastery\": {\"value\": \"프롭\", \"source\": \"user\"}"));
+
+        PendingNote pending = pendingStore.get(USER).orElseThrow();
+        assertThat(pending.draft().roastery().value()).isEqualTo("프롭"); // 지정 필드만 반영
+        Entry draftEntry = pending.draft().entries().get(0);
+        assertThat(draftEntry.brews()).hasSize(1); // 회차 유지 — brews 부재는 교체 아님
+        assertThat(draftEntry.brews().getFirst().tasting().myTaste()).isEqualTo("새콤하고 좋았음");
+        assertThat(draftEntry.brews().getFirst().tasting().rating()).isEqualTo(Rating.GOOD);
+    }
+
+    @Test
     @DisplayName("V-10/AC-39: 날짜 이동처에 기존 엔트리가 있으면 date_conflict를 서버가 계산해 pending에 싣는다 — 경고 표기 근거")
     void proposeEditFlagsDateMoveConflict() {
         noteRepository.put(note("2026-07-13-102030", "Ethiopia Chelbesa", "FroB",

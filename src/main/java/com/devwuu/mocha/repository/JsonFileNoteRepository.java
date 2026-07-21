@@ -100,6 +100,9 @@ public class JsonFileNoteRepository implements NoteRepository {
     // 기존 노트에 엔트리 병합: 같은 date는 갱신, 다른 date는 추가 후 날짜 오름차순 정렬(ADR-4).
     // POLICY: 노트 단위 메타(원두 구성·로스팅 등 커피의 사실)는 커피 1종 단위로 안정적이므로
     //         재기록 시 갱신하지 않고 보존한다 — 재기록은 그날의 엔트리를 쌓는 일이다(ADR-4, beans 승계).
+    // POLICY: 감상·레시피는 회차(brews) 안에만 — 회차 병합은 append 기본, 기존 회차 수정은 명시 지칭 시에만.
+    //         그 병합 배열은 에이전트가 구성하고(V-15 검증 통과분) 서버는 신뢰해 같은 date 엔트리를 통째
+    //         교체한다 — 회차 단위 서버 병합 없음 (ref: plan.md#ADR-59, data-model.md#2.2, V-15).
     private Note withMergedEntry(Note existing, NoteMeta meta, Entry entry) {
         List<Entry> merged = new ArrayList<>();
         boolean replaced = false;

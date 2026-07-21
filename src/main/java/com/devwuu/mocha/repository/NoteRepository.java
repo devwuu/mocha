@@ -31,12 +31,15 @@ public interface NoteRepository {
     String nextAvailableSlug(String base);
 
     /**
-     * 날짜 엔트리 병합 저장 (ref: plan.md#ADR-4, [6]).
+     * 날짜 엔트리 병합 저장 (ref: plan.md#ADR-4·59, [6]).
      * <ul>
      *   <li>slug 노트가 없으면 {@code meta}로 새 노트를 만들고 {@code entry}를 첫 엔트리로 둔다.</li>
-     *   <li>있으면 같은 date 엔트리는 갱신(덮어쓰기), 다른 date는 추가 후 날짜 오름차순 정렬한다.</li>
+     *   <li>있으면 같은 date 엔트리는 갱신(엔트리 통째 교체), 다른 date는 추가 후 날짜 오름차순 정렬한다.</li>
+     *   <li>같은 date 갱신에서 회차 append·기존 회차 지칭 병합은 에이전트가 구성한 {@code entry.brews}
+     *       배열(V-15 검증 통과분)을 신뢰한다 — 서버는 회차 단위 병합을 하지 않는다(changes/0021 ADR-59).</li>
      * </ul>
-     * POLICY: 같은 날짜 엔트리는 갱신만 — 하루 2엔트리 금지 (ref: data-model.md#2.2, AC-14).
+     * POLICY: 같은 날짜 엔트리는 갱신만 — 하루 2엔트리 금지, 다회 시도는 brews 회차로
+     * (ref: data-model.md#2.2, AC-14, ADR-4·59).
      *
      * @return 저장된 최종 노트.
      */

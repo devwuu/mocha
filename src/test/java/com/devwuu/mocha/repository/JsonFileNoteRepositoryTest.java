@@ -1,11 +1,14 @@
 package com.devwuu.mocha.repository;
 
 import com.devwuu.mocha.domain.Bean;
+import com.devwuu.mocha.domain.Brew;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
 import com.devwuu.mocha.domain.Rating;
+import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Sourced;
+import com.devwuu.mocha.domain.Tasting;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -66,10 +69,12 @@ class JsonFileNoteRepositoryTest {
     }
 
     private static Entry entry(LocalDate date, String taste) {
-        return new Entry(date,
-                List.of(new com.devwuu.mocha.domain.Brew(
-                        null, new com.devwuu.mocha.domain.Tasting(taste, null, Rating.GOOD))),
-                OffsetDateTime.now(FIXED));
+        return entry(date, List.of(new Brew(null, new Tasting(taste, null, Rating.GOOD))));
+    }
+
+    // 회차 배열을 직접 지정하는 변형 — 커밋 병합(append·병합) 검증용(ADR-59).
+    private static Entry entry(LocalDate date, List<Brew> brews) {
+        return new Entry(date, brews, OffsetDateTime.now(FIXED));
     }
 
     // 회차 구조(changes/0021 ADR-59) 접근 헬퍼 — 이 테스트의 엔트리는 회차 1개 전제.
@@ -96,6 +101,59 @@ class JsonFileNoteRepositoryTest {
         // 파일에서도 1개로 로드
         assertThat(repo.findBySlug("coffeevera-yirgacheffe-g1")).get()
                 .extracting(n -> n.entries().size()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("ADR-59/AC-14: 같은 날 재기록 커밋 — 회차 append: 에이전트 구성 배열로 통째 교체, 엔트리 수 불변·회차 증가")
+    void sameDayCommitAppendsBrewRound() {
+        String slug = "coffeevera-yirgacheffe-g1";
+        LocalDate today = LocalDate.of(2026, 7, 18);
+        Brew first = new Brew(
+                new Recipe("핸드드립", 15.0, 240.0, null, 160.0, 92.0, "210클릭 (매버릭 2.0)", null, null,
+                        "첫 모금이 살짝 떫었으니 다음엔 220클릭으로"),
+                new Tasting("새콤하고 좋았음", "새콤하고 좋았다", Rating.GOOD));
+        repo.upsertEntry(slug, sampleMeta(), entry(today, List.of(first)));
+
+        // 같은 날 2번째 시도 발화 — 에이전트가 기존 회차를 포함해 append한 전체 배열을 구성한다(V-15 검증 통과분).
+        Brew second = new Brew(
+                new Recipe("핸드드립", 15.0, 240.0, null, 150.0, 92.0, "220클릭 (매버릭 2.0)", null, null, null),
+                new Tasting("떫은맛 사라지고 단맛 올라옴", "떫은맛이 사라지고 단맛이 올라온다", Rating.PERFECT));
+        Note note = repo.upsertEntry(slug, sampleMeta(), entry(today, List.of(first, second)));
+
+        // 엔트리 수 불변(AC-14) + 회차만 2개로 — 서버는 회차 단위 병합 없이 배열을 신뢰해 통째 교체한다.
+        assertThat(note.entries()).hasSize(1);
+        assertThat(note.entries().getFirst().brews()).hasSize(2);
+        assertThat(note.entries().getFirst().brews().getFirst().recipe().grind()).isEqualTo("210클릭 (매버릭 2.0)");
+        assertThat(note.entries().getFirst().brews().get(1).tasting().rating()).isEqualTo(Rating.PERFECT);
+        // 파일 왕복 후에도 회차 순서(= 회차 번호) 유지.
+        assertThat(repo.findBySlug(slug).orElseThrow().entries().getFirst().brews())
+                .extracting(b -> b.tasting().myTaste())
+                .containsExactly("새콤하고 좋았음", "떫은맛 사라지고 단맛 올라옴");
+    }
+
+    @Test
+    @DisplayName("ADR-59/AC-79: 기존 회차 지칭 병합 커밋 — 그 회차 tasting에 병합된 배열로 교체, 회차 수 불변")
+    void sameDayCommitMergesIntoReferredBrewRound() {
+        String slug = "coffeevera-yirgacheffe-g1";
+        LocalDate today = LocalDate.of(2026, 7, 18);
+        Recipe recipe = new Recipe("핸드드립", 15.0, 240.0, null, 160.0, 92.0, "210클릭 (매버릭 2.0)", null, null, null);
+        repo.upsertEntry(slug, sampleMeta(), entry(today,
+                List.of(new Brew(recipe, new Tasting("새콤하고 좋았음", "새콤하고 좋았다", Rating.GOOD)))));
+
+        // "아까 내린 거 식으니까 더 맛있네" — 에이전트가 그 회차 tasting에 병합(텍스트 통합·원문 이어붙임·
+        // rating은 명시 시만 갱신)한 배열을 구성한다. 서버는 append 없이 그대로 교체한다(회차 수 불변).
+        Note note = repo.upsertEntry(slug, sampleMeta(), entry(today,
+                List.of(new Brew(recipe, new Tasting(
+                        "새콤하고 좋았음. 식으니까 더 맛있음",
+                        "새콤하고 좋았다 / 식으니까 더 맛있네", Rating.GOOD)))));
+
+        assertThat(note.entries()).hasSize(1);
+        assertThat(note.entries().getFirst().brews()).hasSize(1);
+        Brew merged = note.entries().getFirst().brews().getFirst();
+        assertThat(merged.tasting().myTaste()).isEqualTo("새콤하고 좋았음. 식으니까 더 맛있음");
+        assertThat(merged.tasting().myTasteOriginal()).isEqualTo("새콤하고 좋았다 / 식으니까 더 맛있네");
+        assertThat(merged.tasting().rating()).isEqualTo(Rating.GOOD); // 새 평가 미명시 — 기존 유지
+        assertThat(merged.recipe().grind()).isEqualTo("210클릭 (매버릭 2.0)"); // 명시 안 한 기존 회차 값 불변
     }
 
     @Test
