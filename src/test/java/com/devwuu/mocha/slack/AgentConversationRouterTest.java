@@ -167,7 +167,7 @@ class AgentConversationRouterTest {
     @DisplayName("FR-19/ADR-44: 윈도우 안 버퍼 사진은 루프 전 OCR 1콜 — 결과가 턴 컨텍스트에 실린다")
     void bufferedPhotosArePreprocessedIntoContext() {
         bufferPhoto("bag.jpg");
-        photoInfoExtractor.canned = new VisionExtraction("Kenya AA", "FroB", null, null, null, List.of());
+        photoInfoExtractor.canned = new VisionExtraction("Kenya AA", "FroB", List.of(), null, List.of());
 
         router.onMessage(message("이거 마셨어"));
 

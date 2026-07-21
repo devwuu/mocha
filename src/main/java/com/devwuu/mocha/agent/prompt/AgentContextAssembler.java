@@ -100,7 +100,7 @@ public class AgentContextAssembler {
         if (ocr == null) {
             return false;
         }
-        return ocr.coffeeName() != null || ocr.roastery() != null || ocr.origin() != null
-                || ocr.process() != null || ocr.roastLevel() != null || !ocr.officialNotes().isEmpty();
+        return ocr.coffeeName() != null || ocr.roastery() != null || !ocr.beans().isEmpty()
+                || ocr.roastLevel() != null || !ocr.officialNotes().isEmpty();
     }
 }

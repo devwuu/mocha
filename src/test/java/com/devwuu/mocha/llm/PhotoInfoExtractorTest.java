@@ -18,7 +18,8 @@ class PhotoInfoExtractorTest {
     /** vision 호출 여부·전달 이미지·힌트를 기록하는 fake. */
     private static final class RecordingVision implements VisionClient {
         VisionExtraction canned = new VisionExtraction(
-                "와이키키", "모모스", "에티오피아", "워시드", "라이트", List.of("자스민"));
+                "와이키키", "모모스", List.of(new VisionExtraction.Bean("에티오피아", "워시드")),
+                "라이트", List.of("자스민"));
         RuntimeException toThrow = null;
         int calls = 0;
         List<String> lastImageUrls = List.of();

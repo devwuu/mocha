@@ -134,9 +134,23 @@ class OpenAiVisionClientTest {
 
         assertThat(instructions).contains("coffee_name·roastery는 이미지의 원문 표기를 그대로 유지");
         assertThat(instructions).contains("음차·번역하지 않는다");
-        // origin 한국어 지명 통일 + process·roast_level 표준 어휘 예시.
+        // description 한국어 지명 통일 + process·roast_level 표준 어휘 예시.
         assertThat(instructions).contains("한국어 지명으로 통일");
         assertThat(instructions).contains("워시드/내추럴/허니/무산소");
+    }
+
+    // covers ADR-53/AC-64: 블렌드는 구성 원두마다 beans 요소 — 구 "origin 쉼표 나열" 폐기.
+    @Test
+    @DisplayName("ADR-53: INSTRUCTIONS가 beans 원두별 요소 구성(쉼표 나열 금지·품종 포함)을 강제한다")
+    void instructionsEncodeBeansPerBeanRule() {
+        OpenAiVisionClient client =
+                new OpenAiVisionClient(null, "gpt-4o", MochaObjectMapper.create());
+
+        String instructions = client.buildParams(images(), hint()).instructions().orElseThrow();
+
+        assertThat(instructions).contains("블렌드는 구성 원두마다 요소를 만들어");
+        assertThat(instructions).contains("원산지를 한 문자열에 쉼표로 나열하지 않는다");
+        assertThat(instructions).contains("품종은 확인되면 그 원두의 description에 포함");
     }
 
     @Test
@@ -155,20 +169,39 @@ class OpenAiVisionClientTest {
     }
 
     @Test
-    @DisplayName("응답 JSON이 snake_case 필드로 VisionExtraction에 매핑된다(coffee_name 포함)")
+    @DisplayName("AC-64/ADR-53: 블렌드 응답 JSON이 beans 원두별 요소로 VisionExtraction에 매핑된다")
     void mapsJsonResponse() {
         String json = """
-                {"coffee_name": "와이키키", "roastery": null, "origin": "에티오피아, 에콰도르", "process": null,
+                {"coffee_name": "와이키키", "roastery": null,
+                 "beans": [{"description": "에티오피아 예가체프", "process": "워시드"},
+                           {"description": "에콰도르", "process": null}],
                  "roast_level": "미디엄 라이트", "official_notes": ["패션프루트","베르가못"]}
                 """;
 
         VisionExtraction result = new StubVisionClient(json).read(images(), hint());
 
         assertThat(result.coffeeName()).isEqualTo("와이키키");
-        assertThat(result.origin()).isEqualTo("에티오피아, 에콰도르");
-        assertThat(result.process()).isNull();
+        assertThat(result.beans()).containsExactly(
+                new VisionExtraction.Bean("에티오피아 예가체프", "워시드"),
+                new VisionExtraction.Bean("에콰도르", null));
         assertThat(result.roastLevel()).isEqualTo("미디엄 라이트");
         assertThat(result.officialNotes()).containsExactly("패션프루트", "베르가못");
+    }
+
+    // covers V-14 준용: description 없는 요소는 후보 단계에서 이미 드롭 — 도메인 진입 전 위생.
+    @Test
+    @DisplayName("ADR-53: description이 빈 beans 요소는 드롭되고 빈 process는 null로 정규화된다")
+    void dropsBlankBeanDescriptions() {
+        String json = """
+                {"coffee_name": null, "roastery": null,
+                 "beans": [{"description": "  ", "process": "워시드"},
+                           {"description": "콜롬비아 핑크 버번", "process": " "}],
+                 "roast_level": null, "official_notes": []}
+                """;
+
+        VisionExtraction result = new StubVisionClient(json).read(images(), hint());
+
+        assertThat(result.beans()).containsExactly(new VisionExtraction.Bean("콜롬비아 핑크 버번", null));
     }
 
     @Test
@@ -183,6 +216,22 @@ class OpenAiVisionClientTest {
         Object properties = format.schema()._additionalProperties().get("properties");
         assertThat(properties.toString()).contains("coffee_name");
         assertThat(format.schema()._additionalProperties().get("required").toString()).contains("coffee_name");
+    }
+
+    // covers ADR-53(changes/0021): vision 계약의 원두 구성이 beans 배열(요소 strict)로 개정됐다.
+    @Test
+    @DisplayName("ADR-53: strict schema에 beans가 required 배열로, 요소는 description·process strict 객체로 실린다")
+    void schemaIncludesBeansArray() {
+        OpenAiVisionClient client =
+                new OpenAiVisionClient(null, "gpt-4o", MochaObjectMapper.create());
+
+        ResponseFormatTextJsonSchemaConfig format =
+                client.buildParams(images(), hint()).text().orElseThrow().format().orElseThrow().asJsonSchema();
+
+        String properties = format.schema()._additionalProperties().get("properties").toString();
+        assertThat(properties).contains("beans").contains("description").contains("process");
+        assertThat(properties).doesNotContain("origin"); // 구 origin/process 노트 레벨 필드 폐기
+        assertThat(format.schema()._additionalProperties().get("required").toString()).contains("beans");
     }
 
     @Test
@@ -203,15 +252,14 @@ class OpenAiVisionClientTest {
         String noisy = """
                 이미지에서 읽은 정보입니다:
                 ```json
-                {"roastery": null, "origin": "콜롬비아", "process": "워시드", "roast_level": null,
-                 "official_notes": []}
+                {"roastery": null, "beans": [{"description": "콜롬비아", "process": "워시드"}],
+                 "roast_level": null, "official_notes": []}
                 ```
                 """;
 
         VisionExtraction result = new StubVisionClient(noisy).read(images(), hint());
 
-        assertThat(result.origin()).isEqualTo("콜롬비아");
-        assertThat(result.process()).isEqualTo("워시드");
+        assertThat(result.beans()).containsExactly(new VisionExtraction.Bean("콜롬비아", "워시드"));
         assertThat(result.officialNotes()).isEmpty();
     }
 

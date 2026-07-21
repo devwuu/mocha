@@ -10,6 +10,9 @@ package com.devwuu.mocha.agent.prompt;
  * <p>POLICY: coffee_name·roastery는 원문 표기 유지(음차·번역 금지) — 언어 규칙은 에이전트 시스템
  * 프롬프트·vision 프롬프트에 동일 문구로 인코딩하고, 한 곳만 고치는 부분 수정을 금지한다
  * (ref: plan.md#ADR-38, spec FR-2 — 동일성은 LanguagePolicyParityTest가 가드).
+ * <p>POLICY: beans는 원두별 요소다 — 블렌드는 구성 원두마다 요소를 만들어 가공방식을 나눠 담고(쉼표 나열
+ * 폐기), 품종은 확인되면 description에 포함한다(필수 보강 대상 아님). 발화 추출·검색 보강·vision 동일 규칙
+ * (ref: plan.md#ADR-53, spec FR-2/FR-3/AC-64 — vision과의 동일성은 LanguagePolicyParityTest가 가드).
  * <p>POLICY: sources에는 로스터리+원두명 동시 확인 출처만 — 값 채움과 동일 가드
  * (ref: plan.md#ADR-49, spec AC-58).
  * <p>POLICY: source 우선순위 user &gt; photo &gt; search — 시스템 프롬프트·스키마 제약·미리보기 확인으로
@@ -40,7 +43,8 @@ public final class AgentSystemPrompt {
 
             ## 필드 값 규칙 (언어 정책)
             - coffee_name·roastery는 발화·사진의 원문 표기를 그대로 유지한다 — 음차·번역하지 않는다("Ethiopia Chelbesa"는 그대로). 한국어 음차·이표기는 내부에서 따로 만드니 여기서 만들지 마라.
-            - origin·process·roast_level·official_notes는 한국어로 기록한다(영문 표기는 한국어로 옮겨 적는다). origin은 한국어 지명으로 통일(영문·한글 혼용 금지: "게데오, Gedeb" ❌ → "게데오"), process·roast_level은 한국어 관용 표기로 옮긴다(예: 가공방식 "워시드/내추럴/허니/무산소", 로스팅 "라이트/미디엄/다크" — 고정 목록 아님).
+            - beans의 description·process·roast_level·official_notes는 한국어로 기록한다(영문 표기는 한국어로 옮겨 적는다). description의 지명은 한국어 지명으로 통일(영문·한글 혼용 금지: "게데오, Gedeb" ❌ → "게데오"), process·roast_level은 한국어 관용 표기로 옮긴다(예: 가공방식 "워시드/내추럴/허니/무산소", 로스팅 "라이트/미디엄/다크" — 고정 목록 아님).
+            - beans에는 원두 구성을 원두별 요소로 담는다 — 요소의 description은 원산지·품종 등을 묶은 자유 텍스트("에티오피아 예가체프 헤어룸"), process는 그 원두의 가공방식이다. 단일 원두도 요소 1개짜리 배열로 담고, 블렌드는 구성 원두마다 요소를 만들어 가공방식이 원두별로 다르면 각 요소에 나눠 담는다(원산지를 한 문자열에 쉼표로 나열하지 않는다). 품종은 확인되면 그 원두의 description에 포함하고, 없으면 생략한다.
             - my_taste는 감상을 요약·축약하지 않고, 문장 끝 어미만 한국어 음슴체로 바꿔 담는다("맛있더라"→"맛있었음", 영어 감상은 한국어로 번역). 맛 묘사·수식어·뉘앙스를 하나도 빼지 말고 그대로 보존한다. 말한 그대로의 원문은 my_taste_original에 항상 함께 담는다.
             - 고유명사 필드에는 조사·연결어미를 제거한 이름만 담는다 — "로스터리는 카페 화고"의 로스터리는 "카페 화"다.
 
@@ -51,8 +55,8 @@ public final class AgentSystemPrompt {
 
             ## 검색 보강 (web_search)
             - 사용자가 말하지 않은 고정 필드와 official_notes는 web_search로 보강한다 — 로스터리 공식 페이지를 우선하고, 착지한 결과가 대상 원두의 것인지 스스로 확인한 뒤 아니면 재검색한다.
-            - origin·process·roast_level은 공식 페이지가 없으면 신뢰할 만한 일반 출처로 보강해도 된다. official_notes는 로스터리 출처 한정이다 — 없으면 빈 채로 둔다.
-            - 블렌드는 여러 구성 원산지를 origin 한 문자열에 쉼표로 나열한다(예: "에티오피아, 콜롬비아").
+            - beans(원두별 설명·가공방식)·roast_level은 공식 페이지가 없으면 신뢰할 만한 일반 출처로 보강해도 된다 — 블렌드 보강도 구성 원두마다 요소를 만들어 담는다. official_notes는 로스터리 출처 한정이다 — 없으면 빈 채로 둔다.
+            - 품종은 필수 보강 대상이 아니다 — 검색에서 확인되면 그 원두의 description에 포함하는 것으로 충분하고, 품종만 찾으러 재검색하지 않는다.
             - 동일성 가드: 값 채움이든 sources 수록이든 로스터리와 원두명이 함께 확인된 출처만 쓴다 — 동명의 다른 대상(타 로스터리의 동명 상품)은 배제하고, 확신이 없으면 공란으로 둔다.
             - 추측 금지 — 못 찾은 값은 공란(null)으로 둔다. 검색이 아무것도 못 찾아도 사용자 입력만으로 제안을 진행한다(검색 때문에 기록이 막히지 않는다).
             """;

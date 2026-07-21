@@ -128,8 +128,10 @@ class AgentContextAssemblerTest {
     @Test
     @DisplayName("FR-19: OCR 결과가 source=photo 재료로 컨텍스트에 실린다")
     void includesOcrExtraction() {
-        VisionExtraction ocr = new VisionExtraction("Waikiki", "모모스 커피", "과테말라, 에티오피아",
-                "워시드", null, List.of("청포도"));
+        VisionExtraction ocr = new VisionExtraction("Waikiki", "모모스 커피",
+                List.of(new VisionExtraction.Bean("과테말라", "워시드"),
+                        new VisionExtraction.Bean("에티오피아", null)),
+                null, List.of("청포도"));
 
         AgentTurnInput context = assembler.assemble("이거 마셨는데 좋았어", List.of(), null, ocr);
 
@@ -137,6 +139,9 @@ class AgentContextAssemblerTest {
         assertThat(context.instructions()).contains("source=photo");
         assertThat(context.instructions()).contains("\"coffee_name\":\"Waikiki\"");
         assertThat(context.instructions()).contains("\"roastery\":\"모모스 커피\"");
+        // beans는 원두별 요소로 직렬화돼 실린다(ADR-53) — 블렌드 원두 2종이 모두 보인다.
+        assertThat(context.instructions()).contains("\"beans\"");
+        assertThat(context.instructions()).contains("과테말라").contains("에티오피아");
         assertThat(context.instructions()).contains("청포도");
     }
 

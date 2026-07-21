@@ -66,11 +66,14 @@ class AgentSystemPromptTest {
     }
 
     @Test
-    @DisplayName("ADR-49/AC-16·58: 보강 정책 — 공식 우선·블렌드 쉼표·official_notes 한정·동일성 가드·추측 금지")
+    @DisplayName("ADR-49·53/AC-16·58·64: 보강 정책 — 공식 우선·블렌드 원두별 beans·official_notes 한정·동일성 가드·추측 금지")
     void encodesEnrichmentPolicy() {
         assertThat(PROMPT).contains("로스터리 공식 페이지를 우선");
         assertThat(PROMPT).contains("대상 원두의 것인지 스스로 확인한 뒤 아니면 재검색한다");
-        assertThat(PROMPT).contains("origin 한 문자열에 쉼표로 나열한다");
+        // ADR-53: 블렌드는 원두별 beans 요소 — 구 "origin 쉼표 나열"은 폐기됐다.
+        assertThat(PROMPT).contains("블렌드는 구성 원두마다 요소를 만들어");
+        assertThat(PROMPT).contains("원산지를 한 문자열에 쉼표로 나열하지 않는다");
+        assertThat(PROMPT).contains("품종은 필수 보강 대상이 아니다");
         assertThat(PROMPT).contains("official_notes는 로스터리 출처 한정이다");
         assertThat(PROMPT).contains("로스터리와 원두명이 함께 확인된 출처만 쓴다");
         assertThat(PROMPT).contains("추측 금지");

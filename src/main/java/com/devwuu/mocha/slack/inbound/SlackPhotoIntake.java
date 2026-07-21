@@ -143,18 +143,17 @@ public class SlackPhotoIntake {
                 user.sources());
     }
 
-    // TΔ1a 과도기 shim: vision 계약은 아직 origin/process다(TΔ3a에서 beans로 개정). OCR origin을 원두
-    // 1종의 description으로 삼아 beans로 변환하되, 사용자 beans가 있으면 배열 단위로 불가침(V-6 user > photo).
+    // OCR beans(원두별 설명·가공방식, ADR-53)를 요소 그대로 source=photo Bean으로 변환한다.
+    // 사용자 beans가 있으면 배열 단위로 불가침(V-6 user > photo) — 원두 요소 간 대응이 모호해 요소 병합은 안 한다.
     private static List<Bean> overlayBeans(List<Bean> userBeans, VisionExtraction photo) {
         if (userBeans != null && !userBeans.isEmpty()) {
             return userBeans;
         }
-        if (photo.origin() == null || photo.origin().isBlank()) {
-            return List.of();
-        }
-        return Bean.normalize(List.of(new Bean(
-                Sourced.photo(photo.origin()),
-                photo.process() == null || photo.process().isBlank() ? null : Sourced.photo(photo.process()))));
+        return Bean.normalize(photo.beans().stream()
+                .map(b -> new Bean(
+                        Sourced.photo(b.description()),
+                        b.process() == null ? null : Sourced.photo(b.process())))
+                .toList());
     }
 
     /** 스테이징 원본을 photos/&lt;slug&gt;/&lt;date&gt;/로 이동해 확정하고 상대 경로 목록을 돌려준다(V-4, FR-10). */
