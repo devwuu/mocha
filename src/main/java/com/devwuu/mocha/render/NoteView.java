@@ -10,30 +10,11 @@ import java.util.List;
  * 렌더 템플릿에 넘기는 표시용 뷰 모델 — 도메인 {@link com.devwuu.mocha.domain.Note}를 화면 표현으로 축약한다
  * (날짜 포맷은 {@link KoreanDates}, 파생 수치 표기는 {@link RecipeAmounts}가 렌더 시 계산).
  * <p>카드 단위 = <b>회차 파트 1건</b>(감상 {@link TasteCard} / 레시피 {@link RecipeCard} — changes/0021
- * ADR-54·59). 인덱스 행({@link Row})은 엔트리 1건을 최신순으로 요약해 첫 회차 카드 JPG로 링크한다
- * (index는 TΔ6에서 폐기 예정 — ADR-55).
+ * ADR-54·59). 인덱스 뷰는 index 폐기(ADR-55, TΔ6)와 함께 소멸했다.
  */
 public final class NoteView {
 
     private NoteView() {
-    }
-
-    /** 인덱스 페이지 뷰 (ref: FR-8). rows는 엔트리 기록일 내림차순. */
-    public record Index(int noteCount, int recordCount, List<Row> rows) {
-    }
-
-    /**
-     * 인덱스의 시음 엔트리 1행 (ref: FR-8, ADR-10). {@code href}는 그 엔트리의 <b>첫 회차 카드</b>
-     * ({@code cards/<slug>/<date>-taste-1.jpg} 등) 상대 링크(AC-Δ5, 회차화 — changes/0021 TΔ5a).
-     * <p>같은 커피를 여러 날 기록하면 엔트리마다 별도 행이 생긴다 — 노트당 1행이 아니라 엔트리당 1행.
-     */
-    public record Row(
-            String href,
-            String coffeeName,
-            String roastery,
-            String origin,
-            LocalDate date,
-            Rating rating) {
     }
 
     /**

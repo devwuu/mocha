@@ -26,7 +26,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
@@ -39,7 +38,8 @@ import java.util.stream.Stream;
  *   <li>{@code artifact/cards/<slug>/<date>-recipe-<n>.jpg} — 회차 n의 레시피 카드(recipe 있는 회차만, AC-78).</li>
  *   <li>{@code artifact/mascot-face.png}·{@code artifact/fonts/*.ttf} — 카드가 참조하는 로컬 자산(ADR-11).</li>
  * </ul>
- * <p>index.html은 TΔ6(ADR-55)에서 폐기 예정 — 그때까지 과도기로 유지하며 행 링크는 엔트리의 첫 카드를 가리킨다.
+ * <p>POLICY: 렌더 산출물은 cards/&lt;slug&gt;/&lt;date&gt;-taste-&lt;n&gt;.jpg·&lt;date&gt;-recipe-&lt;n&gt;.jpg뿐 —
+ * artifact/ 아래 HTML 산출 금지 (ADR-55·59, AC-67). index.html은 폐기됐다(changes/0021 TΔ6).
  * <p>카드 HTML은 <b>파일로 남기지 않는다</b> — 카드를 굽는 순간의 중간 입력일 뿐이다(ADR-10).
  * <p>디자인은 {@link Theme}(type-a 세리프 / type-b 귀여운)로 고르며 {@code templates/<theme>/} 폴더를 탄다.
  * 카드 디자인 원본은 {@code design/} 시안 — 변경은 시안 갱신 → 템플릿 재이식, 이식 편차는 델타 명시분만(ADR-54 POLICY).
@@ -85,7 +85,6 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
         // 카드가 참조하는 로컬 자산을 base(artifact 루트)에 먼저 깔아야 래스터화 시 폰트·이미지가 해석된다(ADR-11).
         copyMascot();
         copyFonts();
-        writeIndex(ordered);
         Set<Path> baked = new HashSet<>();
         for (EntryRef ref : ordered) {
             baked.addAll(bakeEntryCards(ref));
@@ -97,8 +96,7 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
 
     @Override
     public List<Path> renderEntryCard(String slug, LocalDate date) {
-        List<Note> notes = noteRepository.findAll();
-        Note note = notes.stream().filter(n -> n.slug().equals(slug)).findFirst()
+        Note note = noteRepository.findAll().stream().filter(n -> n.slug().equals(slug)).findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("카드 렌더 대상 노트 없음: slug=" + slug));
         Entry entry = note.entries() == null ? null : note.entries().stream()
                 .filter(e -> e.date().equals(date)).findFirst().orElse(null);
@@ -106,13 +104,12 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
             throw new IllegalArgumentException("카드 렌더 대상 엔트리 없음: slug=" + slug + " date=" + date);
         }
 
-        // 증분 렌더라도 base 자산과 index는 최신 상태여야 한다 — 방금 엔트리의 카드만 새로 굽되 목록은 전체 갱신(AC-Δ7).
+        // 증분 렌더라도 base 자산은 최신 상태여야 한다 — 카드가 참조하는 폰트·이미지의 해석 기준(AC-Δ7).
         copyMascot();
         copyFonts();
         List<Path> cards = bakeEntryCards(new EntryRef(note, entry));
         // 회차 감소·파트 소멸 재저장의 옛 번호 카드가 남지 않게, 방금 산출 집합 외의 그 엔트리 카드를 지운다(TΔ5a).
         pruneEntryCards(slug, date, Set.copyOf(cards));
-        writeIndex(orderedEntries(notes));
         log.info("엔트리 카드 렌더: slug={} date={} → {}장", slug, date, cards.size());
         return cards;
     }
@@ -172,40 +169,6 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
         try (Stream<Path> entries = Files.list(dir)) {
             return entries.findAny().isEmpty();
         }
-    }
-
-    // --- 인덱스 (엔트리 최신순 목록 — TΔ6에서 폐기 예정(ADR-55), 과도기 유지) ---
-
-    private void writeIndex(List<EntryRef> ordered) {
-        // 헤더 집계는 노트(원두) 수·전체 기록(엔트리) 수 — 행은 엔트리당 1행이지만 집계는 유지(delta FR-8).
-        long noteCount = ordered.stream().map(r -> r.note().slug()).distinct().count();
-        List<NoteView.Row> rows = ordered.stream().map(this::toRow).toList();
-        NoteView.Index index = new NoteView.Index((int) noteCount, ordered.size(), rows);
-
-        Context ctx = baseContext();
-        ctx.setVariable("index", index);
-        writeHtml(artifactDir.resolve("index.html"), render("index", ctx));
-    }
-
-    private NoteView.Row toRow(EntryRef ref) {
-        Entry entry = ref.entry();
-        Tasting tasting = latestTasting(entry);
-        return new NoteView.Row(
-                cardHref(ref),
-                value(ref.note().coffeeName()),
-                value(ref.note().roastery()),
-                value(beansDescriptionSummary(ref.note().beans())),
-                entry.date(),
-                tasting == null ? null : tasting.rating());
-    }
-
-    // index 행 링크는 그 엔트리의 첫 회차 카드로 — 회차화(TΔ5a) 후 단일 <date>.jpg가 사라졌다.
-    private String cardHref(EntryRef ref) {
-        List<Path> expected = CardFiles.expectedCards(artifactDir, ref.note().slug(), ref.entry());
-        if (expected.isEmpty()) {
-            return null;
-        }
-        return CardFiles.CARDS_DIR + "/" + ref.note().slug() + "/" + expected.getFirst().getFileName();
     }
 
     // --- 회차 카드 (회차 파트 1건 → JPG, ADR-54·59) ---
@@ -270,16 +233,6 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
                 .toList();
     }
 
-    private static Tasting latestTasting(Entry entry) {
-        List<Brew> brews = entry.brews();
-        for (int i = brews.size() - 1; i >= 0; i--) {
-            if (brews.get(i).tasting() != null) {
-                return brews.get(i).tasting();
-            }
-        }
-        return null;
-    }
-
     // --- 공통 ---
 
     // 모든 (노트,엔트리)를 엔트리 date 내림차순 + slug 오름차순으로 평탄화한다(결정론적 재현성, AC-Δ7).
@@ -303,7 +256,7 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
         ctx.setVariable("fmt", dates);
         ctx.setVariable("rs", ratingStyle);
         ctx.setVariable("amt", recipeAmounts);
-        ctx.setVariable("mascotHref", MASCOT_NAME); // 카드·인덱스 모두 artifact 루트 기준 상대 경로
+        ctx.setVariable("mascotHref", MASCOT_NAME); // artifact 루트 기준 상대 경로
         return ctx;
     }
 
@@ -311,27 +264,8 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
         return templateEngine.process(theme.id() + "/" + templateName, ctx);
     }
 
-    // TΔ1a 과도기: 구 index.html은 origin 표시 계약이라 beans를 요약해 물린다.
-    // 출처 배지는 첫 요소 서브필드의 출처로 대표한다 — TΔ6(index 폐기)에서 함께 소멸한다(changes/0021 ADR-55).
-    private static Sourced<String> beansDescriptionSummary(List<Bean> beans) {
-        if (beans == null || beans.isEmpty()) {
-            return null;
-        }
-        String joined = beans.stream().map(b -> b.description().value()).collect(Collectors.joining(", "));
-        return new Sourced<>(joined, beans.getFirst().description().source());
-    }
-
     private static String value(Sourced<String> sourced) {
         return sourced == null ? null : sourced.value();
-    }
-
-    private void writeHtml(Path target, String html) {
-        try {
-            Files.createDirectories(target.getParent());
-            Files.writeString(target, html, java.nio.charset.StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            throw new UncheckedIOException("HTML 저장 실패: " + target, e);
-        }
     }
 
     // 템플릿이 참조하는 마스코트 자산을 artifact/ 루트로 복사한다(상대 경로 참조 대상, AC-Δ5).
@@ -367,7 +301,7 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
         }
     }
 
-    /** 평탄화된 (노트, 엔트리) 한 쌍 — 카드 산출/인덱스 행의 단위. */
+    /** 평탄화된 (노트, 엔트리) 한 쌍 — 카드 산출의 단위. */
     private record EntryRef(Note note, Entry entry) {
     }
 }

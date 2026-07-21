@@ -43,6 +43,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *   <li>AC-78: 레시피/감상 없는 회차는 해당 카드 미생성</li>
  *   <li>회차 감소 재저장 → 옛 번호 카드 잔존 없음, AC-39: 날짜 이동 시 옛 날짜 카드 전부 삭제</li>
  *   <li>AC-Δ7: artifact/ 삭제 후 재렌더 동일 산출(재현성), 고아 카드 정리</li>
+ *   <li>AC-67(TΔ6, ADR-55): 저장·--rerender 어느 경로로도 index.html 미생성 — artifact/ 아래 HTML 산출 0건</li>
  *   <li>템플릿 계약: 4:5(1080×1350)·로컬 폰트·회차 파트 1건·note.html 폐기(ADR-54)</li>
  * </ul>
  */
@@ -200,28 +201,19 @@ class ThymeleafNoteRendererTest {
                 "옛 2회차 레시피 카드 잔존 없음");
     }
 
-    // --- 인덱스(TΔ6 폐기 전 과도기)·기본 산출 구조 ---
+    // --- index 폐기(TΔ6, ADR-55)·기본 산출 구조 ---
 
     @Test
-    @DisplayName("AC-Δ5: index가 엔트리별 첫 회차 카드로 링크하고 notes/<slug>.html은 남지 않는다")
-    void indexLinksEntryCardsAndDropsNoteHtml(@TempDir Path dataDir, @TempDir Path artifactDir) {
+    @DisplayName("AC-67: renderAll(--rerender)이 index.html을 생성하지 않는다 — artifact/ 아래 HTML 산출 0건, 산출은 cards/ JPG뿐")
+    void renderAllProducesNoIndexHtml(@TempDir Path dataDir, @TempDir Path artifactDir) {
         NoteRepository repo = seedRepository(dataDir);
         FakeCardImageRenderer cards = new FakeCardImageRenderer();
         new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_B, cards).renderAll();
 
-        // 노트 상세 HTML은 파일로 남지 않는다(중간 입력).
+        // artifact/ 아래 HTML 산출 금지(ADR-55 POLICY) — index.html도, 노트 상세 HTML도 없다.
+        assertFalse(Files.exists(artifactDir.resolve("index.html")), "index.html 미생성(AC-67)");
         assertFalse(Files.exists(artifactDir.resolve("notes")), "notes/ 디렉터리 미생성");
-
-        // index.html 존재 + 엔트리별 첫 회차 카드 JPG 링크(상대 경로).
-        Path index = artifactDir.resolve("index.html");
-        assertTrue(Files.isRegularFile(index), "index.html 생성");
-        String indexHtml = read(index);
-        assertTrue(indexHtml.contains("href=\"cards/2026-07-10/2026-07-10-taste-1.jpg\""), "엔트리1 카드 링크");
-        assertTrue(indexHtml.contains("href=\"cards/2026-07-04/2026-07-04-taste-1.jpg\""), "엔트리2 카드 링크");
-        assertFalse(indexHtml.contains("notes/"), "노트 HTML 링크 없음");
-        assertFalse(indexHtml.contains("file:"), "file:// 없음");
-        assertFalse(indexHtml.contains(artifactDir.toString()), "절대 경로 유출 없음");
-        assertTrue(indexHtml.contains("원두 2개 · 기록 2번"), "헤더 집계 유지");
+        assertEquals(java.util.Set.of(), htmlFiles(artifactDir), "artifact/ 아래 HTML 파일 0건");
 
         // 감상만 있는 회차 1개 엔트리 2건 → 감상 카드 2장(레시피 카드 없음 — AC-78).
         assertTrue(Files.isRegularFile(artifactDir.resolve("cards/2026-07-10/2026-07-10-taste-1.jpg")), "엔트리1 감상 카드");
@@ -282,7 +274,7 @@ class ThymeleafNoteRendererTest {
     }
 
     @Test
-    @DisplayName("AC-Δ4: 같은 커피를 다른 날 기록하면 엔트리마다 별도 카드가 생기고, 카드 HTML은 자기 날짜 회차만 담는다")
+    @DisplayName("같은 커피를 다른 날 기록하면 엔트리마다 별도 카드가 생기고, 카드 HTML은 자기 날짜 회차만 담는다")
     void sameCoffeeDifferentDatesYieldSeparateCards(@TempDir Path dataDir, @TempDir Path artifactDir) {
         NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create());
         OffsetDateTime now = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
@@ -313,17 +305,11 @@ class ThymeleafNoteRendererTest {
         assertFalse(firstCard.contains("둘째 날"), "첫날 카드에 둘째 날 감상 없음");
         assertTrue(secondCard.contains("둘째 날: 물 온도를 낮추니 부드럽다."), "둘째 날 카드에 둘째 날 감상");
         assertFalse(secondCard.contains("첫날"), "둘째 날 카드에 첫날 감상 없음");
-
-        // index: 노트 1개지만 엔트리 2행, 최신순(07-10 먼저).
-        String indexHtml = read(artifactDir.resolve("index.html"));
-        assertTrue(indexHtml.contains("원두 1개 · 기록 2번"), "원두 1·기록 2 집계");
-        assertTrue(indexHtml.indexOf("cards/yirgacheffe/2026-07-10-taste-1.jpg")
-                < indexHtml.indexOf("cards/yirgacheffe/2026-07-04-taste-1.jpg"), "엔트리 최신순(07-10 먼저)");
     }
 
     @Test
-    @DisplayName("AC-Δ2(changes/0014): 사진이 있는 엔트리도 카드·인덱스 HTML에 사진·썸네일 요소가 없다(아카이브 전용)")
-    void cardAndIndexHaveNoPhotoOrThumbElements(@TempDir Path dataDir, @TempDir Path artifactDir) {
+    @DisplayName("AC-Δ2(changes/0014): 사진이 있는 엔트리도 카드 HTML에 사진·썸네일 요소가 없다(아카이브 전용)")
+    void cardHasNoPhotoOrThumbElements(@TempDir Path dataDir, @TempDir Path artifactDir) {
         NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create());
         OffsetDateTime now = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
@@ -345,15 +331,10 @@ class ThymeleafNoteRendererTest {
         assertFalse(cardHtml.contains("alt=\"사진\""), "카드에 사진 img 없음");
         // 감상 텍스트는 그대로 렌더된다(사진만 빠짐).
         assertTrue(cardHtml.contains("새콤하다."), "감상 텍스트는 유지");
-
-        String indexHtml = read(artifactDir.resolve("index.html"));
-        assertFalse(indexHtml.contains("photos/"), "index에 사진 경로 없음");
-        assertFalse(indexHtml.contains("thumbs/"), "index에 썸네일 경로 없음");
-        assertFalse(indexHtml.contains("class=\"thumb\""), "index에 썸네일 요소 없음");
     }
 
     @Test
-    @DisplayName("AC-Δ10⑥/V-13(changes/0016): aliases를 채운 노트도 카드·인덱스 HTML에 별칭 문자열이 나타나지 않는다")
+    @DisplayName("AC-Δ10⑥/V-13(changes/0016): aliases를 채운 노트도 카드 HTML에 별칭 문자열이 나타나지 않는다")
     void aliasesNeverAppearInRenderedOutput(@TempDir Path dataDir, @TempDir Path artA, @TempDir Path artB) {
         NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create());
         OffsetDateTime now = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
@@ -381,10 +362,8 @@ class ThymeleafNoteRendererTest {
             new ThymeleafNoteRenderer(repo, engine, artifactDir, theme, cards).renderAll();
 
             String cardHtml = capturedHtml(cards, "cards/2026-07-10/2026-07-10-taste-1.jpg");
-            String indexHtml = read(artifactDir.resolve("index.html"));
             for (String marker : markers) {
                 assertFalse(cardHtml.contains(marker), theme + " 카드에 별칭 미출현(V-13): " + marker);
-                assertFalse(indexHtml.contains(marker), theme + " index에 별칭 미출현(V-13): " + marker);
             }
             // 별칭만 빠진 것이지 노트 자체가 안 나오는 게 아니다 — 표시값은 정상 렌더.
             assertTrue(cardHtml.contains("예가체프 G1 워시드"), theme + ": 커피명 표시값은 정상 렌더");
@@ -392,7 +371,7 @@ class ThymeleafNoteRendererTest {
     }
 
     @Test
-    @DisplayName("AC-Δ3(changes/0014): data/photos/를 통째로 옮겨둬도 renderAll 산출(인덱스·카드)이 동일하다 — 리렌더 입력은 JSON뿐")
+    @DisplayName("AC-Δ3(changes/0014): data/photos/를 통째로 옮겨둬도 renderAll 산출(카드)이 동일하다 — 리렌더 입력은 JSON뿐")
     void renderAllIsIndependentOfPhotosDirectory(
             @TempDir Path dataDir, @TempDir Path withPhotosDir, @TempDir Path withoutPhotosDir) throws IOException {
         NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create());
@@ -411,51 +390,47 @@ class ThymeleafNoteRendererTest {
         // (1) 사진 폴더가 있는 상태로 렌더.
         FakeCardImageRenderer cardsWith = new FakeCardImageRenderer();
         new ThymeleafNoteRenderer(repo, engine, withPhotosDir, Theme.TYPE_B, cardsWith).renderAll();
-        String indexWith = read(withPhotosDir.resolve("index.html"));
         String cardWith = capturedHtml(cardsWith, "cards/2026-07-10/2026-07-10-taste-1.jpg");
 
         // data/photos/를 통째로 옮겨둔다(삭제로 갈음) — 리렌더 입력에서 사진이 사라진 상태.
         deleteRecursively(dataDir.resolve("photos"));
         assertFalse(Files.exists(dataDir.resolve("photos")), "photos/ 옮겨둠");
 
-        // (2) 사진 폴더가 없는 상태로 재렌더 — JSON만으로 인덱스·카드가 생성돼야 한다(NFR-3, AC-6).
+        // (2) 사진 폴더가 없는 상태로 재렌더 — JSON만으로 카드가 생성돼야 한다(NFR-3, AC-6).
         FakeCardImageRenderer cardsWithout = new FakeCardImageRenderer();
         new ThymeleafNoteRenderer(repo, engine, withoutPhotosDir, Theme.TYPE_B, cardsWithout).renderAll();
-        assertTrue(Files.isRegularFile(withoutPhotosDir.resolve("index.html")), "사진 없이도 인덱스 생성");
         assertTrue(Files.isRegularFile(withoutPhotosDir.resolve("cards/2026-07-10/2026-07-10-taste-1.jpg")),
                 "사진 없이도 카드 생성");
-        String indexWithout = read(withoutPhotosDir.resolve("index.html"));
         String cardWithout = capturedHtml(cardsWithout, "cards/2026-07-10/2026-07-10-taste-1.jpg");
 
         // 산출 동일 — 렌더는 JSON만 읽고 data/photos/ 존재 여부에 의존하지 않는다(AC-Δ3).
-        assertEquals(indexWith, indexWithout, "인덱스 산출이 사진 폴더 유무와 무관하게 동일");
         assertEquals(cardWith, cardWithout, "카드 HTML이 사진 폴더 유무와 무관하게 동일");
         assertEquals(cardFiles(withPhotosDir), cardFiles(withoutPhotosDir), "카드 파일 집합 동일");
     }
 
     @Test
-    @DisplayName("AC-Δ7/AC-6: artifact/ 삭제 후 재렌더하면 index·회차 카드 산출이 동일하게 복원된다")
+    @DisplayName("AC-Δ7/AC-6(개정형): artifact/ 삭제 후 재렌더하면 JSON만으로 전체 회차 카드가 동일하게 복원된다")
     void reRenderIsReproducible(@TempDir Path dataDir, @TempDir Path artifactDir) {
         NoteRepository repo = seedRepository(dataDir);
 
         FakeCardImageRenderer cards1 = new FakeCardImageRenderer();
         ThymeleafNoteRenderer renderer1 = new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_A, cards1);
         renderer1.renderAll();
-        String indexFirst = read(artifactDir.resolve("index.html"));
+        java.util.Set<String> cardFilesFirst = cardFiles(artifactDir);
         String cardFirst = capturedHtml(cards1, "cards/2026-07-10/2026-07-10-taste-1.jpg");
 
         deleteRecursively(artifactDir);
-        assertFalse(Files.exists(artifactDir.resolve("index.html")), "artifact/ 비워짐");
+        assertFalse(Files.exists(artifactDir.resolve("cards")), "artifact/ 비워짐");
 
         FakeCardImageRenderer cards2 = new FakeCardImageRenderer();
         new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_A, cards2).renderAll();
-        assertEquals(indexFirst, read(artifactDir.resolve("index.html")), "인덱스 재현성");
+        assertEquals(cardFilesFirst, cardFiles(artifactDir), "카드 파일 집합 재현성");
         assertEquals(cardFirst, capturedHtml(cards2, "cards/2026-07-10/2026-07-10-taste-1.jpg"), "카드 HTML 재현성");
         assertEquals(cards1.calls.size(), cards2.calls.size(), "카드 굽기 횟수 재현성");
     }
 
     @Test
-    @DisplayName("AC-Δ7(증분): renderEntryCard는 대상 엔트리 카드만 새로 굽고 경로 목록을 반환하며 index를 갱신한다")
+    @DisplayName("AC-Δ7(증분)/AC-67: renderEntryCard는 대상 엔트리 카드만 새로 굽고 경로 목록을 반환하며 index.html을 만들지 않는다")
     void renderEntryCardBakesEntryCardsAndReturnsPaths(@TempDir Path dataDir, @TempDir Path artifactDir) {
         NoteRepository repo = seedRepository(dataDir);
         FakeCardImageRenderer cards = new FakeCardImageRenderer();
@@ -467,10 +442,9 @@ class ThymeleafNoteRendererTest {
                 "반환 목록 = 그 엔트리 회차 카드(감상 회차 1개 → 1장)");
         assertTrue(Files.isRegularFile(baked.getFirst()), "카드 JPG 존재");
         assertEquals(1, cards.calls.size(), "증분: 대상 엔트리 카드만 굽는다(전체 재래스터화 없음)");
-        // index는 전체 엔트리 최신순으로 갱신된다(방금 것 포함).
-        String indexHtml = read(artifactDir.resolve("index.html"));
-        assertTrue(indexHtml.contains("href=\"cards/2026-07-10/2026-07-10-taste-1.jpg\""), "index에 방금 카드 링크");
-        assertTrue(indexHtml.contains("href=\"cards/2026-07-04/2026-07-04-taste-1.jpg\""), "index에 다른 엔트리도 유지");
+        // 저장([저장] 커밋 → 증분 렌더) 경로에서도 HTML 산출이 없다(AC-67).
+        assertFalse(Files.exists(artifactDir.resolve("index.html")), "index.html 미생성(AC-67)");
+        assertEquals(java.util.Set.of(), htmlFiles(artifactDir), "artifact/ 아래 HTML 파일 0건");
     }
 
     @Test
@@ -596,15 +570,15 @@ class ThymeleafNoteRendererTest {
     }
 
     @Test
-    @DisplayName("AC-39: 날짜 이동 커밋 후 옛 카드 삭제→새 카드 증분 렌더 → 옛 날짜 카드 부재·새 카드 존재·index 갱신")
-    void dateMoveCleansOldCardsAndRefreshesIndex(@TempDir Path dataDir, @TempDir Path artifactDir) {
+    @DisplayName("AC-39: 날짜 이동 커밋 후 옛 카드 삭제→새 카드 증분 렌더 → 옛 날짜 카드 부재·새 카드 존재")
+    void dateMoveCleansOldCards(@TempDir Path dataDir, @TempDir Path artifactDir) {
         NoteRepository repo = seedRepository(dataDir);
         ThymeleafNoteRenderer renderer =
                 new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_B, new FakeCardImageRenderer());
         renderer.renderAll();
         assertTrue(Files.isRegularFile(artifactDir.resolve("cards/2026-07-10/2026-07-10-taste-1.jpg")), "이동 전 카드 존재");
 
-        // edit 커밋(07-10 → 07-11) 후 파생물 정리 순서: 옛 카드 삭제 → 새 카드 증분 렌더(index 갱신 흡수).
+        // edit 커밋(07-10 → 07-11) 후 파생물 정리 순서: 옛 카드 삭제 → 새 카드 증분 렌더.
         Note origin = repo.findBySlug("2026-07-10").orElseThrow();
         repo.applyEdit("2026-07-10", LocalDate.parse("2026-07-10"), moveDateDraft(origin, LocalDate.parse("2026-07-11")));
         renderer.removeEntryCard("2026-07-10", LocalDate.parse("2026-07-10"));
@@ -612,10 +586,7 @@ class ThymeleafNoteRendererTest {
 
         assertFalse(Files.exists(artifactDir.resolve("cards/2026-07-10/2026-07-10-taste-1.jpg")), "옛 date 카드 부재");
         assertTrue(Files.isRegularFile(artifactDir.resolve("cards/2026-07-10/2026-07-11-taste-1.jpg")), "새 date 카드 존재");
-        String indexHtml = read(artifactDir.resolve("index.html"));
-        assertTrue(indexHtml.contains("href=\"cards/2026-07-10/2026-07-11-taste-1.jpg\""), "index가 새 카드로 링크");
-        assertFalse(indexHtml.contains("cards/2026-07-10/2026-07-10-taste-1.jpg"), "index에서 옛 카드 링크 제거");
-        assertTrue(indexHtml.contains("href=\"cards/2026-07-04/2026-07-04-taste-1.jpg\""), "다른 엔트리 링크는 유지");
+        assertTrue(Files.isRegularFile(artifactDir.resolve("cards/2026-07-04/2026-07-04-taste-1.jpg")), "다른 엔트리 카드는 유지");
     }
 
     @Test
@@ -668,10 +639,21 @@ class ThymeleafNoteRendererTest {
         renderer.renderAll(); // --rerender
 
         assertFalse(Files.exists(artifactDir.resolve("cards/2026-07-10/2026-07-10-taste-1.jpg")), "renderAll이 고아 카드를 정리(plan §7)");
-        // 재현 동일성(AC-Δ7): 같은 JSON을 빈 디렉토리에 새로 렌더한 산출과 카드 집합·index가 동일하다.
+        // 재현 동일성(AC-Δ7): 같은 JSON을 빈 디렉토리에 새로 렌더한 산출과 카드 집합이 동일하다.
         new ThymeleafNoteRenderer(repo, engine, freshDir, Theme.TYPE_B, new FakeCardImageRenderer()).renderAll();
         assertEquals(cardFiles(freshDir), cardFiles(artifactDir), "카드 파일 집합 동일");
-        assertEquals(read(freshDir.resolve("index.html")), read(artifactDir.resolve("index.html")), "index 동일");
+    }
+
+    // artifact/ 하위 전체에서 .html 파일의 상대 경로 집합 — HTML 산출 금지(AC-67, ADR-55 POLICY) 가드.
+    private static java.util.Set<String> htmlFiles(Path artifactDir) {
+        try (Stream<Path> walk = Files.walk(artifactDir)) {
+            return walk.filter(Files::isRegularFile)
+                    .filter(p -> p.getFileName().toString().endsWith(".html"))
+                    .map(p -> artifactDir.relativize(p).toString().replace(java.io.File.separatorChar, '/'))
+                    .collect(java.util.stream.Collectors.toSet());
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     // artifact/cards 하위 실제 카드 파일들의 상대 경로 집합.
@@ -694,14 +676,6 @@ class ThymeleafNoteRendererTest {
                 .map(FakeCardImageRenderer.Call::html)
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("카드 굽기 호출 없음: " + relOut));
-    }
-
-    private static String read(Path p) {
-        try {
-            return Files.readString(p);
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
     }
 
     private static void deleteRecursively(Path dir) {
