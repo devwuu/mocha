@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+<meta charset="utf-8">
+<title th:text="${card.coffeeName} + ' · 모카'">커피 노트</title>
+<style>
+  /* 로컬 번들 폰트(ADR-11, ADR-54 편차②) — 시안의 Google Fonts CDN 대체. artifact/fonts/는 렌더러가 채운다. */
+  @font-face{font-family:'Gowun Batang';src:url('fonts/GowunBatang-Regular.ttf') format('truetype');font-weight:400;font-display:swap}
+  @font-face{font-family:'Gowun Batang';src:url('fonts/GowunBatang-Bold.ttf') format('truetype');font-weight:700;font-display:swap}
+  html,body{margin:0;padding:0}
+  /* 카드 = 4:5(1080×1350) 뷰포트 스크린샷. 시안 실측 460×575(동일 4:5)를 치수 무환산으로 이식하고
+     스케일 래퍼(×1080/460)로 실 규격을 채운다 — 시안이 디자인 원본이라 환산 전사 오류를 없앤다(ADR-54).
+     autofit 측정은 레이아웃 좌표라 하한도 시안 값(10.5) 그대로다. */
+  body{width:1080px;height:1350px;overflow:hidden;background:#efe9e2}
+  .scale{width:460px;height:575px;transform:scale(2.3478260870);transform-origin:top left}
+</style>
+</head>
+<body>
+<div class="scale">
+<div style="width:460px;height:575px;background:#d9cfc4;border-radius:6px;box-shadow:0 2px 12px rgba(43,31,22,.12);display:flex;box-sizing:border-box;padding:16px;font-family:'Gowun Batang',serif;color:#3a3128">
+  <div style="flex:1;border:1px solid #7a6a5c;display:flex;flex-direction:column;padding:22px 30px 14px;box-sizing:border-box;background:#f1ece4">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid #b3a595;padding-bottom:10px">
+      <div style="font-size:10.5px;letter-spacing:3px;color:#7c6b5b">COFFEE NOTE</div>
+      <div style="font-size:10.5px;letter-spacing:1px;color:#7c6b5b" th:text="${fmt.dotted(card.date)}">2026. 7. 10</div>
+    </div>
+    <div style="padding:14px 0 12px;border-bottom:1px solid #d3c9bb;text-align:center">
+      <div style="font-size:11.5px;color:#64564a;margin-bottom:4px" th:if="${card.roastery != null}" th:text="${card.roastery}">커피베라</div>
+      <div style="font-size:22px;font-weight:700;line-height:1.35;color:#2e261f" th:text="${card.coffeeName}">봄맞이 블렌드</div>
+    </div>
+    <!-- FR-7 ③④⑤: beans 원두별 설명+가공방식 병기·roast_level·official_notes. 값 없는 행은 숨긴다(구 AC-25 규칙 승계). -->
+    <div style="display:grid;grid-template-columns:56px 1fr;align-items:baseline;gap:5px 12px;padding:9px 0;border-bottom:1px solid #d3c9bb;font-size:12px;color:#4a4036">
+      <div style="font-size:9.5px;letter-spacing:2px;color:#8d7d6c;text-align:right;line-height:1.7" th:if="${!card.beans.isEmpty()}">원두</div>
+      <div style="display:flex;align-items:baseline;column-gap:9px;row-gap:3px;flex-wrap:wrap;line-height:1.7" th:if="${!card.beans.isEmpty()}">
+        <span style="white-space:nowrap" th:each="b : ${card.beans}"><span th:text="${b.description}">에티오피아 예가체프 헤어룸</span> <span style="font-size:10.5px;color:#7c6b5b" th:if="${b.process != null}" th:text="${b.process}">워시드</span></span>
+      </div>
+      <div style="font-size:9.5px;letter-spacing:2px;color:#8d7d6c;text-align:right" th:if="${card.roastLevel != null}">로스팅</div>
+      <div th:if="${card.roastLevel != null}" th:text="${card.roastLevel}">라이트</div>
+      <div style="font-size:9.5px;letter-spacing:2px;color:#8d7d6c;text-align:right" th:if="${!card.officialNotes.isEmpty()}">노트</div>
+      <div style="display:flex;align-items:baseline;column-gap:8px;row-gap:4px;flex-wrap:wrap;line-height:1.6" th:if="${!card.officialNotes.isEmpty()}">
+        <span style="white-space:nowrap" th:each="n, st : ${card.officialNotes}"><span th:text="${n}">자몽</span> <span style="color:#b0a494" th:if="${!st.last}">·</span></span>
+      </div>
+    </div>
+    <!-- FR-7 ⑥: 그 회차의 my_taste(autofit — FR-13) + rating 뱃지(이모티콘 없는 텍스트 — ADR-54 편차①, 없으면 생략) -->
+    <div style="flex:1;min-height:0;overflow:hidden;padding-top:14px;display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline">
+        <div style="font-size:10px;letter-spacing:2px;color:#8d7d6c">내가 느끼길</div>
+        <div style="font-size:10.5px;color:#64564a;border:1px solid #b0a494;border-radius:999px;padding:2px 11px" th:if="${card.rating != null}" th:text="${card.rating.label()}">맛있다</div>
+      </div>
+      <!-- white-space:pre-line — 감상의 줄바꿈 보존(데이터 충실 — 시안 예시는 단문이라 무영향) -->
+      <div data-autofit="10.5" style="flex:1;min-height:0;overflow:hidden;font-size:16.5px;line-height:1.8;color:#2e261f;white-space:pre-line" th:text="${card.myTaste}">감상</div>
+    </div>
+    <div style="border-top:1px solid #b3a595;margin-top:12px;padding:10px 0 2px;text-align:center;font-size:10px;letter-spacing:3px;color:#a09283">— 커피 독후감 · 모카 —</div>
+  </div>
+</div>
+</div>
+<script>
+/* 시안 autofit 이식(ADR-54 — 감상 영역만, 하한 = data-autofit 값). 정적 1회 렌더라 시안의
+   MutationObserver·resize 트리거는 제외하고 즉시 1회 + fonts.ready 재실행으로 단순화했다.
+   완료(data-autofit-done)·하한 도달(data-autofit-floor) 마커는 래스터화 대기·로깅 배선(TΔ5a, plan §6)의 입력. */
+(function(){
+  function fit(el){
+    if(!el.dataset.fitBase)el.dataset.fitBase=getComputedStyle(el).fontSize;
+    el.style.fontSize=el.dataset.fitBase;
+    el.removeAttribute('data-autofit-floor');
+    var s=parseFloat(el.dataset.fitBase);
+    var min=parseFloat(el.getAttribute('data-autofit'))||10;
+    while(s>min && el.scrollHeight>el.clientHeight+1){s-=.5;el.style.fontSize=s+'px';}
+    if(el.scrollHeight>el.clientHeight+1)el.setAttribute('data-autofit-floor','');
+  }
+  function all(){document.querySelectorAll('[data-autofit]').forEach(fit);}
+  all();
+  function done(){document.documentElement.setAttribute('data-autofit-done','');}
+  if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){all();done();});}
+  else{done();}
+})();
+</script>
+</body>
+</html>

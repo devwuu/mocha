@@ -38,4 +38,14 @@ public final class RatingStyle {
             case BAD -> "#9a5148";
         };
     }
+
+    /** 배지 테두리색(귀여운 감상 카드, TΔ4a) — GOOD은 시안 실측값, 나머지는 각 bg 계열을 어둡게 맞춘 파생. */
+    public String border(Rating r) {
+        return switch (r) {
+            case PERFECT -> "#ecc9c4";
+            case GOOD -> "#d3e0c2";
+            case OKAY_NOT_MINE -> "#e3d3b8";
+            case BAD -> "#ddc4c4";
+        };
+    }
 }
