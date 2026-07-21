@@ -8,13 +8,13 @@ import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
 import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.domain.Rating;
-import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.domain.Tasting;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
@@ -52,9 +52,7 @@ public class ProposalValidator {
             }
             Sourced<String> roastery = sourced("roastery", args.roastery(), ENRICHABLE_SOURCES);
             requireUpdatableOrFree(pending, coffeeName.value(), roastery == null ? null : roastery.value());
-            List<Bean> beans = legacyBeans(
-                    sourced("origin", args.origin(), ENRICHABLE_SOURCES),
-                    sourced("process", args.process(), ENRICHABLE_SOURCES));
+            List<Bean> beans = beans(args.beans());
             Sourced<String> roastLevel = sourced("roast_level", args.roastLevel(), ENRICHABLE_SOURCES);
             Sourced<List<String>> officialNotes = sourcedNotes(args.officialNotes());
 
@@ -65,13 +63,11 @@ public class ProposalValidator {
             }
             MatchInfo match = toMatchInfo(args.match());
 
-            List<Brew> brews = legacyBrews(
-                    blankToNull(args.myTaste()), args.myTasteOriginal(),
-                    parseRating(args.rating()), args.recipe());
+            List<Brew> brews = brews(args.brews());
             // V-15: 드롭 후 회차 0개인 엔트리는 저장을 거부한다 — 기록할 내용이 없음(사유는 tool 결과로).
             if (brews.isEmpty()) {
-                throw new RejectedException("기록할 회차 내용이 없다 — 감상(my_taste)이나 레시피 중 최소 하나를 "
-                        + "채워야 저장할 수 있다(V-15). 사용자에게 그날의 감상이나 레시피를 물어봐라.");
+                throw new RejectedException("기록할 회차 내용이 없다 — brews에 감상(tasting)이나 레시피(recipe) 중 "
+                        + "최소 하나를 담은 회차를 채워야 저장할 수 있다(V-15). 사용자에게 그날의 감상이나 레시피를 물어봐라.");
             }
             List<String> sources = dropBlanks(args.sources());
             NoteMeta meta = new NoteMeta(coffeeName, roastery, beans, roastLevel, officialNotes, sources);
@@ -83,6 +79,7 @@ public class ProposalValidator {
 
     /**
      * {@code propose_edit} 검증 — 통과 시 도메인 타입으로 정규화된 {@link EditProposal}(V-10 충돌 계산 포함).
+     * patch의 beans·brews는 배열 통째 교체 의미다 — null만 유지(data-model §3.4).
      *
      * @param args    strict schema를 통과한 미검증 인자.
      * @param note    slug로 리졸브된 대상 노트 — 미존재 오류는 호출부(tool 구현)가 이미 반환했다.
@@ -103,11 +100,16 @@ public class ProposalValidator {
 
             ProposeEditArgs.Patch patch = args.patch() == null ? ProposeEditArgs.Patch.empty() : args.patch();
             Sourced<String> roastery = sourced("roastery", patch.roastery(), ENRICHABLE_SOURCES);
-            List<Bean> beans = legacyBeansPatch(
-                    sourced("origin", patch.origin(), ENRICHABLE_SOURCES),
-                    sourced("process", patch.process(), ENRICHABLE_SOURCES));
+            // patch의 beans·brews는 통째 교체 — 인자 부재(null)만 유지다(data-model §3.4).
+            List<Bean> beans = patch.beans() == null ? null : beans(patch.beans());
             Sourced<String> roastLevel = sourced("roast_level", patch.roastLevel(), ENRICHABLE_SOURCES);
             Sourced<List<String>> officialNotes = sourcedNotes(patch.officialNotes());
+            List<Brew> brews = patch.brews() == null ? null : brews(patch.brews());
+            // V-15: 교체 결과 회차 0개인 엔트리는 만들 수 없다 — 기록이 통째로 비게 되는 patch는 거부.
+            if (brews != null && brews.isEmpty()) {
+                throw new RejectedException("brews 교체 결과 회차가 0개가 된다 — 엔트리에는 감상(tasting)이나 "
+                        + "레시피(recipe)를 담은 회차가 최소 1개 있어야 한다(V-15). 회차를 남기거나 brews를 빼고 보내라.");
+            }
 
             // 대상 자신의 날짜로는 이동이 아니다 — null로 정규화(구 수정 flow의 충돌 판정 승계).
             LocalDate newDate = parseDate("new_date", patch.newDate());
@@ -119,11 +121,9 @@ public class ProposalValidator {
             boolean dateConflict = movedTo != null
                     && note.entries().stream().anyMatch(e -> movedTo.equals(e.date()));
 
-            String myTaste = blankToNull(patch.myTaste());
             return ToolValidation.ok(new EditProposal(
                     note.slug(), targetDate, roastery, beans, roastLevel, officialNotes,
-                    myTaste, originalOf(myTaste, patch.myTasteOriginal()),
-                    parseRating(patch.rating()), normalizeRecipe(patch.recipe()), newDate, dateConflict));
+                    brews, newDate, dateConflict));
         } catch (RejectedException rejection) {
             return ToolValidation.rejected(rejection.getMessage());
         }
@@ -238,23 +238,43 @@ public class ProposalValidator {
         return labels.toString();
     }
 
-    // TΔ1a 과도기 shim: 제안 tool 인자는 아직 origin/process다(TΔ2a에서 beans 요소 인자로 개정).
-    // origin을 원두 1종의 description으로 삼아 beans(V-14 정규화)로 변환한다 — origin 없이 process만
-    // 온 인자는 description 없는 요소라 V-14가 드롭한다(과도기 한정 동작).
-    private static List<Bean> legacyBeans(Sourced<String> origin, Sourced<String> process) {
-        if (origin == null) {
+    // V-14: beans 인자 → 도메인 Bean 배열. 서브필드 source는 V-5로 검증(위반은 사유 있는 거부)하고,
+    // 빈 description 요소 드롭·빈 process null 정규화는 Bean.normalize가 맡는다(저장 거부 아님).
+    private static List<Bean> beans(List<BeanArg> raw) {
+        if (raw == null) {
             return List.of();
         }
-        return Bean.normalize(List.of(new Bean(origin, process)));
+        List<Bean> converted = new ArrayList<>();
+        for (int i = 0; i < raw.size(); i++) {
+            BeanArg arg = raw.get(i);
+            if (arg == null) {
+                continue;
+            }
+            converted.add(new Bean(
+                    sourced("beans[" + i + "].description", arg.description(), ENRICHABLE_SOURCES),
+                    sourced("beans[" + i + "].process", arg.process(), ENRICHABLE_SOURCES)));
+        }
+        return Bean.normalize(converted);
     }
 
-    // edit patch 변형 — origin 인자 부재 = beans 유지(null). process 단독 patch는 description을 만들 수
-    // 없어 유지로 수렴한다(과도기 한정, TΔ2a의 beans 통째 교체 인자로 대체).
-    private static List<Bean> legacyBeansPatch(Sourced<String> origin, Sourced<String> process) {
-        if (origin == null) {
-            return null;
+    // V-15: brews 인자 → 도메인 Brew 배열(배열 순서 = 회차 번호). rating은 V-1로 검증(위반은 거부)하고,
+    // recipe V-8 정규화·빈 감상 tasting 드롭·빈 회차 드롭은 Brew.normalize가 맡는다. 드롭 후 0개 처리
+    // (record 거부·edit patch 거부)는 호출부의 몫이다.
+    private static List<Brew> brews(List<BrewArg> raw) {
+        if (raw == null) {
+            return List.of();
         }
-        return Bean.normalize(List.of(new Bean(origin, process)));
+        List<Brew> converted = new ArrayList<>();
+        for (BrewArg arg : raw) {
+            if (arg == null) {
+                continue;
+            }
+            BrewArg.TastingArg tasting = arg.tasting();
+            converted.add(new Brew(arg.recipe(), tasting == null ? null : Tasting.normalize(
+                    blankToNull(tasting.myTaste()), blankToNull(tasting.myTasteOriginal()),
+                    parseRating(tasting.rating()))));
+        }
+        return Brew.normalize(converted);
     }
 
     // V-1: rating ∈ 4범주 enum 또는 null — 위반 시 오류 사유를 tool 결과로 반환해 루프 안에서 정정(AC-9).
@@ -268,28 +288,6 @@ public class ProposalValidator {
             throw new RejectedException("rating '" + raw + "'는 4범주를 벗어난다 — "
                     + "완전 내스타일|맛있다|맛은 있는데 내스타일은 아님|맛이 없다 중 하나이거나, 미언급이면 null이어야 한다(V-1).");
         }
-    }
-
-    // TΔ1b 과도기 shim: 제안 tool 인자는 아직 엔트리 단일 my_taste/rating/recipe다(TΔ2a에서 brews 배열
-    // 인자로 개정). 발화 1건 = 회차 1개로 삼아 brews(V-15 정규화 — recipe V-8·tasting 빈 감상 드롭 포함)로
-    // 변환한다. V-11(원문 병존)은 Tasting 정규화·생성자가 강제한다.
-    private static List<Brew> legacyBrews(String myTaste, String myTasteOriginal, Rating rating, Recipe recipe) {
-        return Brew.normalize(List.of(new Brew(
-                recipe, Tasting.normalize(myTaste, blankToNull(myTasteOriginal), rating))));
-    }
-
-    // V-8: 위반 값(음수·0·공백)은 항목만 드롭, 전 필드 전무면 recipe 자체가 null — 저장 거부 아님(부속 정보).
-    private static Recipe normalizeRecipe(Recipe raw) {
-        return Recipe.normalize(raw);
-    }
-
-    // V-11: my_taste가 있으면 my_taste_original도 병존 — 원문 누락 시 정규화본을 양쪽에(감상 유실 방지 우선).
-    private static String originalOf(String myTaste, String rawOriginal) {
-        if (myTaste == null) {
-            return null; // 감상이 없으면 원문만 따로 두지 않는다 — 항상 병존(V-11).
-        }
-        String original = blankToNull(rawOriginal);
-        return original != null ? original : myTaste;
     }
 
     private static MatchInfo toMatchInfo(ProposeRecordArgs.MatchArg match) {

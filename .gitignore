@@ -12,6 +12,7 @@
 /docs
 !/docs/sample-card.jpg
 !/docs/architecture-classes-and-flows.md
+/review
 
 .gradle
 build/

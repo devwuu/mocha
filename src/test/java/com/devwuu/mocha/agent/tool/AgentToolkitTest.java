@@ -224,15 +224,16 @@ class AgentToolkitTest {
 
         JsonNode result = mapper.readTree(execute("propose_edit",
                 editArgs("2026-07-13-102030", "2026-07-13",
-                        "\"my_taste\":\"더 새콤했음\",\"my_taste_original\":\"더 새콤했다\"")));
+                        brewsPatchJson("더 새콤했음", "더 새콤했다", "\"맛있다\""))));
 
         PendingNote pending = pendingStore.get(USER).orElseThrow();
         assertThat(pending.mode()).isEqualTo(PendingNote.Mode.EDIT);
         assertThat(pending.target()).isEqualTo(
                 new PendingNote.EditTarget("2026-07-13-102030", LocalDate.of(2026, 7, 13)));
         assertThat(pending.draft().entries()).hasSize(1);
-        assertThat(pending.draft().entries().get(0).brews().getFirst().tasting().myTaste()).isEqualTo("더 새콤했음");   // patch 반영
-        assertThat(pending.draft().entries().get(0).brews().getFirst().tasting().rating()).isEqualTo(Rating.GOOD);      // null 필드는 유지
+        // brews는 통째 교체(§3.4) — 에이전트가 rating까지 반영한 전체 배열을 구성해 보낸다(ADR-59).
+        assertThat(pending.draft().entries().get(0).brews().getFirst().tasting().myTaste()).isEqualTo("더 새콤했음");
+        assertThat(pending.draft().entries().get(0).brews().getFirst().tasting().rating()).isEqualTo(Rating.GOOD);
         assertThat(pending.dateConflict()).isFalse();
         assertThat(pending.previewTs()).isEqualTo(previewMessenger.ts);
         assertThat(previewMessenger.published).hasSize(1);
@@ -261,11 +262,13 @@ class AgentToolkitTest {
         noteRepository.put(note("2026-07-13-102030", "Ethiopia Chelbesa", "FroB",
                 Aliases.empty(), LocalDate.of(2026, 7, 10), LocalDate.of(2026, 7, 13)));
         execute("propose_edit", editArgs("2026-07-13-102030", "2026-07-13",
-                "\"my_taste\":\"더 새콤했음\",\"my_taste_original\":\"더 새콤했다\",\"new_date\":\"2026-07-10\""));
+                brewsPatchJson("더 새콤했음", "더 새콤했다", "null") + ",\"new_date\":\"2026-07-10\""));
         OffsetDateTime firstCreatedAt = pendingStore.get(USER).orElseThrow().createdAt();
         clock.advanceMinutes(10);
 
-        execute("propose_edit", editArgs("2026-07-13-102030", "2026-07-13", "\"rating\":\"완전 내스타일\""));
+        // rating만 고치는 발화 — 에이전트는 직전 감상을 포함한 전체 brews 배열을 다시 구성한다(§3.4 통째 교체).
+        execute("propose_edit", editArgs("2026-07-13-102030", "2026-07-13",
+                brewsPatchJson("더 새콤했음", "더 새콤했다", "\"완전 내스타일\"")));
 
         PendingNote updated = pendingStore.get(USER).orElseThrow();
         assertThat(updated.draft().entries().get(0).brews().getFirst().tasting().myTaste()).isEqualTo("더 새콤했음"); // 직전 변경 유지
@@ -282,10 +285,12 @@ class AgentToolkitTest {
     void proposeEditRejectsDifferentTargetWhilePending() {
         noteRepository.put(note("2026-07-13-102030", "Ethiopia Chelbesa", "FroB",
                 Aliases.empty(), LocalDate.of(2026, 7, 10), LocalDate.of(2026, 7, 13)));
-        execute("propose_edit", editArgs("2026-07-13-102030", "2026-07-13", "\"rating\":\"맛있다\""));
+        execute("propose_edit", editArgs("2026-07-13-102030", "2026-07-13",
+                brewsPatchJson("새콤했음", "새콤했다", "\"맛있다\"")));
 
         JsonNode result = mapper.readTree(execute("propose_edit",
-                editArgs("2026-07-13-102030", "2026-07-10", "\"rating\":\"맛이 없다\"")));
+                editArgs("2026-07-13-102030", "2026-07-10",
+                        brewsPatchJson("밍밍했음", "밍밍했다", "\"맛이 없다\""))));
 
         assertThat(result.get("error").asString()).contains("단일 대기");
         assertThat(pendingStore.get(USER).orElseThrow().target().date()).isEqualTo(LocalDate.of(2026, 7, 13));
@@ -299,9 +304,9 @@ class AgentToolkitTest {
                 Aliases.empty(), LocalDate.of(2026, 7, 13)));
 
         JsonNode unknownSlug = mapper.readTree(execute("propose_edit",
-                editArgs("ghost-note", "2026-07-13", "\"rating\":\"맛있다\"")));
+                editArgs("ghost-note", "2026-07-13", brewsPatchJson("새콤했음", "새콤했다", "\"맛있다\""))));
         JsonNode unknownDate = mapper.readTree(execute("propose_edit",
-                editArgs("2026-07-13-102030", "2026-07-01", "\"rating\":\"맛있다\"")));
+                editArgs("2026-07-13-102030", "2026-07-01", brewsPatchJson("새콤했음", "새콤했다", "\"맛있다\""))));
 
         assertThat(unknownSlug.get("error").asString()).contains("ghost-note", "list_notes");
         assertThat(unknownDate.get("error").asString()).contains("2026-07-01", "get_note");
@@ -431,14 +436,14 @@ class AgentToolkitTest {
                 {
                   "coffee_name": {"value": "%s", "source": "user"},
                   "roastery": {"value": "%s", "source": "user"},
-                  "origin": null, "process": null, "roast_level": null, "official_notes": null,
-                  "my_taste": "새콤하고 좋았음", "my_taste_original": "새콤하고 좋았다",
-                  "rating": %s, "recipe": null,
+                  "beans": [], "roast_level": null, "official_notes": null,
+                  "brews": [%s],
                   "target_date": "%s",
                   "match": %s,
                   "sources": []
                 }
-                """.formatted(coffeeName, roastery, ratingJson, targetDate, matchJson);
+                """.formatted(coffeeName, roastery, tastingBrewJson("새콤하고 좋았음", "새콤하고 좋았다", ratingJson),
+                targetDate, matchJson);
     }
 
     /** propose_edit 인자 JSON — patch에 바꿀 필드 조각만 싣는다(strict 전 필드 전송은 SDK 몫, null=유지 계약 검증). */
@@ -446,6 +451,18 @@ class AgentToolkitTest {
         return """
                 {"slug": "%s", "date": "%s", "patch": {%s}}
                 """.formatted(slug, date, patchFieldsJson);
+    }
+
+    /** 감상만 담은 회차 1개 JSON 조각 — brews 배열 요소(data-model §3.3, changes/0021). */
+    private static String tastingBrewJson(String myTaste, String original, String ratingJson) {
+        return """
+                {"recipe": null, "tasting": {"my_taste": "%s", "my_taste_original": "%s", "rating": %s}}"""
+                .formatted(myTaste, original, ratingJson);
+    }
+
+    /** patch의 brews 통째 교체 조각 — 특정 필드만 고치는 발화도 에이전트가 전체 배열을 구성한다(§3.4). */
+    private static String brewsPatchJson(String myTaste, String original, String ratingJson) {
+        return "\"brews\": [%s]".formatted(tastingBrewJson(myTaste, original, ratingJson));
     }
 
     private static List<String> required(JsonNode schema) {

@@ -1,14 +1,10 @@
 package com.devwuu.mocha.agent.tool;
 
 import com.devwuu.mocha.agent.conversation.ConversationTranscript;
-import com.devwuu.mocha.domain.Brew;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.PendingNote;
-import com.devwuu.mocha.domain.Rating;
-import com.devwuu.mocha.domain.Recipe;
-import com.devwuu.mocha.domain.Tasting;
 import com.devwuu.mocha.repository.NoteRepository;
 import com.devwuu.mocha.repository.PendingStore;
 import com.devwuu.mocha.slack.outbound.PreviewMessenger;
@@ -20,7 +16,6 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,7 +26,7 @@ import java.util.Optional;
  * (ref: specs/coffee-note-agent/data-model.md#3.3~3.4, plan#ADR-45; changes/0018 TΔ6).
  * <p>{@link AgentToolkit}(façade)가 조립하는 내부 협력자라 Spring 빈이 아니다.
  * <p>strict schema(전 필드 required·additionalProperties=false)가 인자 <b>형태</b>를 보장하고, 값 수준
- * 규칙(V-1·5·8·10·11, 단일 대기)은 {@link ProposalValidator}가 결정론으로 강제한다 — 위반은 예외가 아니라
+ * 규칙(V-1·5·8·10·11·14·15, 단일 대기)은 {@link ProposalValidator}가 결정론으로 강제한다 — 위반은 예외가 아니라
  * <b>사유를 담은 오류 결과</b>로 돌려줘 에이전트가 루프 안에서 정정한다(ADR-45, findings-TΔ0 §SDK).
  * <p>POLICY: 노트·pending 쓰기는 제안 tool 2종(propose_record/propose_edit)과 버튼 커밋뿐 — 읽기 tool·
  * 최종 텍스트는 파일 무변화 (ref: specs/coffee-note-agent/plan.md#ADR-45, AC-59).
@@ -44,32 +39,50 @@ class ProposalTools {
     private static final DateTimeFormatter SLUG_TIME = DateTimeFormatter.ofPattern("HHmmss");
 
     // 제안 tool 공통 인자 조각 — strict 계약(전 필드 required, additionalProperties=false)을 조각 단위로 지킨다.
-    private static final String MY_TASTE_SCHEMA = """
-            {"type":["string","null"],"description":"내 느낌 — 한국어 음슴체 정규화본(ADR-30). 미언급이면 null"}""";
-    private static final String MY_TASTE_ORIGINAL_SCHEMA = """
-            {"type":["string","null"],"description":"말한 그대로의 감상 원문 — my_taste를 채웠으면 함께 채운다(V-11)"}""";
     private static final String RATING_SCHEMA = """
             {"type":["string","null"],"enum":["완전 내스타일","맛있다","맛은 있는데 내스타일은 아님","맛이 없다",null],
              "description":"4범주 평가 — 미언급이면 null(V-1)"}""";
+    private static final String TASTING_SCHEMA = """
+            {"type":["object","null"],"description":"그 회차의 맛 감상 — 감상 없는 시도면 null(V-15). 맛 감상·평가는 여기, 추출 관찰·진단·계획은 recipe.feedback에(ADR-59 분리 규칙)","properties":{
+              "my_taste":{"type":"string","description":"내 느낌 — 한국어 음슴체 정규화본(ADR-30), 키워드화 금지"},
+              "my_taste_original":{"type":["string","null"],"description":"말한 그대로의 감상 원문 — my_taste와 함께 채운다(V-11)"},
+              "rating":%s
+            },"required":["my_taste","my_taste_original","rating"],"additionalProperties":false}""".formatted(RATING_SCHEMA);
     private static final String RECIPE_SCHEMA = """
-            {"type":["object","null"],"description":"발화 속 추출 레시피 — 사용자 발화 전용(검색·OCR 보강 금지), 전무면 null(V-8)","properties":{
-              "dose_g":{"type":["number","null"],"description":"원두량(g)"},
-              "water_ml":{"type":["number","null"],"description":"물량(ml)"},
-              "grind":{"type":["string","null"],"description":"분쇄도"}
-            },"required":["dose_g","water_ml","grind"],"additionalProperties":false}""";
+            {"type":["object","null"],"description":"그 시도의 추출 레시피 — 사용자 발화 전용(검색·OCR 보강 금지), 전무면 null(V-8)","properties":{
+              "method":{"type":["string","null"],"description":"추출 방식(\\"핸드드립\\"·\\"에스프레소\\" 등) — 미언급이면 null"},
+              "dose_g":{"type":["number","null"],"description":"원두량(g) — 양수"},
+              "water_ml":{"type":["number","null"],"description":"부은 물량(ml) — 양수"},
+              "yield_ml":{"type":["number","null"],"description":"추출량(ml) — 대략 발화(\\"10ml정도\\")는 숫자만(ADR-59)"},
+              "time_sec":{"type":["number","null"],"description":"총 추출 시간(초) — \\"2분 40초\\"는 160. 과정 시간은 pouring에"},
+              "temp_c":{"type":["number","null"],"description":"물/머신 온도(℃)"},
+              "grind":{"type":["string","null"],"description":"분쇄도 — \\"<분쇄값> (<그라인더명>)\\" 형식, 그라인더 언급 없으면 값만(FR-18)"},
+              "machine":{"type":["string","null"],"description":"머신·기구명"},
+              "pouring":{"type":["string","null"],"description":"푸어링·과정 자유 텍스트 — 구조화하지 않는다"},
+              "feedback":{"type":["string","null"],"description":"그 시도의 관찰·진단·다음 계획 — 한국어 음슴체"}
+            },"required":["method","dose_g","water_ml","yield_ml","time_sec","temp_c","grind","machine","pouring","feedback"],"additionalProperties":false}""";
+    private static final String BEAN_SCHEMA = """
+            {"type":"object","description":"원두 1종 — 단일 원두도 요소 1개, 블렌드는 구성 원두마다 요소를 만들어 원두별 가공방식을 담는다(V-14)","properties":{
+              "description":%s,
+              "process":%s
+            },"required":["description","process"],"additionalProperties":false}"""
+            .formatted(
+                    sourcedSchema("원산지·품종 등을 묶은 자유 텍스트(한국어 표기) — 품종은 알면 포함", true),
+                    sourcedSchema("그 원두의 가공방식(한국어 관용 표기) — 모르면 null", true));
+    private static final String BREW_SCHEMA = """
+            {"type":"object","description":"회차 1개(한 번 내려 마신 단위) — recipe·tasting 중 최소 하나를 채운다(V-15)","properties":{
+              "recipe":%s,
+              "tasting":%s
+            },"required":["recipe","tasting"],"additionalProperties":false}""".formatted(RECIPE_SCHEMA, TASTING_SCHEMA);
 
     private static final String PROPOSE_RECORD_SCHEMA = """
             {"type":"object","properties":{
               "coffee_name":%s,
               "roastery":%s,
-              "origin":%s,
-              "process":%s,
+              "beans":{"type":"array","description":"원두 구성 — 요소=원두 1종. 정보 전무면 빈 배열(V-14)","items":%s},
               "roast_level":%s,
               "official_notes":%s,
-              "my_taste":%s,
-              "my_taste_original":%s,
-              "rating":%s,
-              "recipe":%s,
+              "brews":{"type":"array","description":"회차 배열 — 배열 순서 = 회차 번호. 시도를 나눠 말했으면 시도마다 요소(V-15)","items":%s},
               "target_date":{"type":"string","description":"시음일 YYYY-MM-DD — 상대 날짜(\\"어제\\")는 컨텍스트의 today 기준으로 절대화해 보낸다"},
               "match":{"type":"object","description":"신규/기존 판정 — 기존 노트의 시음 기록이면 existing(list_notes로 대조)","properties":{
                 "type":{"type":"string","enum":["new","existing"]},
@@ -77,15 +90,14 @@ class ProposalTools {
                 "date":{"type":["string","null"],"description":"existing일 때 대상 날짜 YYYY-MM-DD"}
               },"required":["type","slug","date"],"additionalProperties":false},
               "sources":{"type":"array","items":{"type":"string"},"description":"검색 참조 링크 — 동일성 가드를 통과한 출처만(AC-58)"}
-            },"required":["coffee_name","roastery","origin","process","roast_level","official_notes","my_taste","my_taste_original","rating","recipe","target_date","match","sources"],"additionalProperties":false}"""
+            },"required":["coffee_name","roastery","beans","roast_level","official_notes","brews","target_date","match","sources"],"additionalProperties":false}"""
             .formatted(
                     sourcedSchema("커피 이름 — 기록의 정체성이자 검색 앵커(검색 보강 금지)", false),
                     sourcedSchema("로스터리", true),
-                    sourcedSchema("원산지 — 블렌드는 여러 원산지를 쉼표로 나열한 한 문자열", true),
-                    sourcedSchema("가공 방식", true),
+                    BEAN_SCHEMA,
                     sourcedSchema("로스팅 정도", true),
                     sourcedNotesSchema("로스터리 전시 테이스팅 노트 — 로스터리 공식 출처 한정(FR-3)"),
-                    MY_TASTE_SCHEMA, MY_TASTE_ORIGINAL_SCHEMA, RATING_SCHEMA, RECIPE_SCHEMA);
+                    BREW_SCHEMA);
 
     // POLICY: 수정에서 coffee_name은 바뀌지 않는다 — 이 patch 스키마에 필드 자체가 없다(구조 차단) + 거부 안내
     //         (ref: specs/coffee-note-agent/plan.md#ADR-45, data-model.md#V-9, spec AC-38).
@@ -95,24 +107,19 @@ class ProposalTools {
               "date":{"type":"string","description":"수정 대상 엔트리 날짜 YYYY-MM-DD — get_note 응답의 entries[].date"},
               "patch":{"type":"object","description":"바꿀 필드만 채우는 부분 패치 — null은 유지. 커피 이름은 바꿀 수 없다(다른 커피는 새 기록)","properties":{
                 "roastery":%s,
-                "origin":%s,
-                "process":%s,
+                "beans":{"type":["array","null"],"description":"원두 구성 새 값 — 배열 통째 교체, null이면 유지(V-14)","items":%s},
                 "roast_level":%s,
                 "official_notes":%s,
-                "my_taste":%s,
-                "my_taste_original":%s,
-                "rating":%s,
-                "recipe":%s,
+                "brews":{"type":["array","null"],"description":"회차 배열 새 값 — 통째 교체, null이면 유지. 특정 회차만 고칠 때도 대상 회차를 반영한 전체 배열을 구성한다(V-15)","items":%s},
                 "new_date":{"type":["string","null"],"description":"날짜 이동처 YYYY-MM-DD — 이동 없으면 null. 충돌은 서버가 계산해 경고한다(V-10)"}
-              },"required":["roastery","origin","process","roast_level","official_notes","my_taste","my_taste_original","rating","recipe","new_date"],"additionalProperties":false}
+              },"required":["roastery","beans","roast_level","official_notes","brews","new_date"],"additionalProperties":false}
             },"required":["slug","date","patch"],"additionalProperties":false}"""
             .formatted(
                     sourcedSchema("로스터리 새 값", true),
-                    sourcedSchema("원산지 새 값", true),
-                    sourcedSchema("가공 방식 새 값", true),
+                    BEAN_SCHEMA,
                     sourcedSchema("로스팅 정도 새 값", true),
                     sourcedNotesSchema("공식 테이스팅 노트 새 값"),
-                    MY_TASTE_SCHEMA, MY_TASTE_ORIGINAL_SCHEMA, RATING_SCHEMA, RECIPE_SCHEMA);
+                    BREW_SCHEMA);
 
     private final NoteRepository noteRepository;
     private final PendingStore pendingStore;
@@ -314,9 +321,12 @@ class ProposalTools {
     }
 
     // patch(null=유지)를 base draft에 적용한 새 draft — coffee_name은 proposal에 없어 항상 유지된다(V-9).
+    // brews는 배열 통째 교체다(data-model §3.4) — 회차 append·기존 회차 지칭 병합은 에이전트가 구성한 전체
+    // 배열을 신뢰하고(V-15 검증 통과분), 서버는 회차 단위 병합을 하지 않는다(ADR-59).
     private static Note applyEditPatch(Note base, EditProposal proposal, LocalDate entryDate, OffsetDateTime now) {
         Entry baseEntry = latestEntry(base);
-        Entry entry = new Entry(entryDate, mergedBrews(baseEntry, proposal), now);
+        Entry entry = new Entry(entryDate,
+                proposal.brews() != null ? proposal.brews() : baseEntry.brews(), now);
         return new Note(
                 base.slug(), base.coffeeName(),
                 proposal.roastery() != null ? proposal.roastery() : base.roastery(),
@@ -324,26 +334,6 @@ class ProposalTools {
                 proposal.roastLevel() != null ? proposal.roastLevel() : base.roastLevel(),
                 proposal.officialNotes() != null ? proposal.officialNotes() : base.officialNotes(),
                 base.sources(), List.of(entry), base.createdAt(), base.updatedAt());
-    }
-
-    // TΔ1b 과도기 shim: patch는 아직 엔트리 단일 my_taste/rating/recipe다(TΔ2b에서 brews 통째 교체로 개정).
-    // 구 필드별 병합(null=유지) 의미를 마지막 회차에 적용한다 — 감상 갱신은 원문과 함께 움직이고(V-11),
-    // rating은 명시 시만 갱신, recipe는 교체. 병합 결과가 빈 회차면 드롭한다(V-15).
-    private static List<Brew> mergedBrews(Entry baseEntry, EditProposal proposal) {
-        List<Brew> base = baseEntry.brews();
-        Brew last = base.isEmpty() ? new Brew(null, null) : base.getLast();
-        Tasting baseTasting = last.tasting();
-        String myTaste = proposal.myTaste() != null ? proposal.myTaste()
-                : baseTasting == null ? null : baseTasting.myTaste();
-        String original = proposal.myTaste() != null ? proposal.myTasteOriginal()
-                : baseTasting == null ? null : baseTasting.myTasteOriginal();
-        Rating rating = proposal.rating() != null ? proposal.rating()
-                : baseTasting == null ? null : baseTasting.rating();
-        Recipe recipe = proposal.recipe() != null ? proposal.recipe() : last.recipe();
-
-        List<Brew> merged = new ArrayList<>(base.isEmpty() ? List.of() : base.subList(0, base.size() - 1));
-        merged.addAll(Brew.normalize(List.of(new Brew(recipe, Tasting.normalize(myTaste, original, rating)))));
-        return merged;
     }
 
     // ---- 제안 공통: pending 영속 + 미리보기 전송 ----
