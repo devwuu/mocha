@@ -82,8 +82,8 @@ class ProposalTools {
               "beans":{"type":"array","description":"원두 구성 — 요소=원두 1종. 정보 전무면 빈 배열(V-14)","items":%s},
               "roast_level":%s,
               "official_notes":%s,
-              "brews":{"type":"array","description":"회차 배열 — 배열 순서 = 회차 번호. 시도를 나눠 말했으면 시도마다 요소(V-15)","items":%s},
-              "target_date":{"type":"string","description":"시음일 YYYY-MM-DD — 상대 날짜(\\"어제\\")는 컨텍스트의 today 기준으로 절대화해 보낸다"},
+              "brews":{"type":"array","description":"회차 배열 — 배열 순서 = 회차 번호. 시도를 나눠 말했으면 시도마다 요소(V-15). target_date 하루의 시도만 담는다 — 다른 날짜의 시도를 이 날짜의 회차로 합치지 않는다(ADR-59)","items":%s},
+              "target_date":{"type":"string","description":"시음일 YYYY-MM-DD — 상대 날짜(\\"어제\\")는 컨텍스트의 today 기준으로 절대화해 보낸다. 발화에 시음 날짜가 2개 이상 섞여 있으면 이 tool을 호출하지 말고 한 날짜씩 나눠 보내달라고 안내한다(FR-15)"},
               "match":{"type":"object","description":"신규/기존 판정 — 기존 노트의 시음 기록이면 existing(list_notes로 대조)","properties":{
                 "type":{"type":"string","enum":["new","existing"]},
                 "slug":{"type":["string","null"],"description":"existing일 때 대상 노트 slug"},

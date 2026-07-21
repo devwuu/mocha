@@ -21,12 +21,12 @@ import java.time.Duration;
 @Configuration
 public class AgentConfig {
 
-    // 에이전트 루프 모델 초기값 gpt-5.4-mini는 TΔ0a 실측으로 확정(findings-TΔ0 §3) —
-    // web_search 가용·다중 tool 체인 품질을 경량이 충족. 품질 부족 관측 시 yml에서 상위 모델로 교체.
+    // 에이전트 루프 모델: 초기값 gpt-5.4-mini(0018 TΔ0a 실측)에서 gpt-5.4로 교체(2026-07-21 사용자 확정) —
+    // 경량이 다중 날짜 분리 규칙(AC-77)을 프롬프트·스키마 보강에도 반복 위반(changes/0021 TΔ3b 스모크 관측).
     @Bean
     public AgentClient agentClient(
             OpenAIClient openAiClient,
-            @Value("${mocha.agent.model:gpt-5.4-mini}") String model,
+            @Value("${mocha.agent.model:gpt-5.4}") String model,
             @Value("${mocha.agent.max-tool-calls:8}") int maxToolCalls) {
         return new OpenAiAgentClient(openAiClient, model, maxToolCalls, MochaObjectMapper.create());
     }

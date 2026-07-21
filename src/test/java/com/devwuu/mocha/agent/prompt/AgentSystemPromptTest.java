@@ -7,8 +7,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * 시스템 프롬프트의 정책 문구 포함 단언 — 프롬프트가 단일 소유하는 결정(페르소나·대화 경계·보강 정책·
- * 출처 우선순위·my_taste 정규화·대기 중 수정 우선·즉시 propose)이 빠지지 않았는지 가드한다
- * (ref: changes/0018 tasks.md TΔ7a; plan.md#ADR-47/#ADR-49/#ADR-30, data-model.md#V-6, spec FR-5/FR-21).
+ * 출처 우선순위·my_taste 정규화·대기 중 수정 우선·즉시 propose·회차 분리/병합·수치 정규화·다중 날짜
+ * 안내)이 빠지지 않았는지 가드한다 (ref: changes/0018 tasks.md TΔ7a, changes/0021 TΔ3b;
+ * plan.md#ADR-47/#ADR-49/#ADR-30/#ADR-59, data-model.md#V-6, spec FR-5/FR-15/FR-18/FR-21/FR-22).
  * <p>언어 정책(ADR-38)의 vision 프롬프트와의 동일 문구 비교는 llm 패키지의 LanguagePolicyParityTest가 맡는다.
  */
 class AgentSystemPromptTest {
@@ -54,7 +55,46 @@ class AgentSystemPromptTest {
     void encodesSourcePriority() {
         assertThat(PROMPT).contains("user > photo > search");
         assertThat(PROMPT).contains("사진 값은 user 값을, 검색 값은 user·photo 값을 덮지 않는다");
-        assertThat(PROMPT).contains("레시피(dose_g·water_ml·grind)는 사용자 발화 전용이다");
+        // changes/0021 ADR-59: 레시피가 회차 10필드로 확장 — 발화 전용 규칙은 전 필드로 승계.
+        assertThat(PROMPT).contains("회차의 레시피(recipe 전 필드)는 사용자 발화 전용이다");
+    }
+
+    @Test
+    @DisplayName("ADR-59/AC-74·75: 회차 규칙 — 시도 분리·감상↔피드백 분리·마시는 방식은 같은 회차 감상")
+    void encodesBrewSplitRules() {
+        assertThat(PROMPT).contains("한 번 내려서 마신 단위가 회차 1개다");
+        assertThat(PROMPT).contains("시도마다 회차 요소를 만든다");
+        assertThat(PROMPT).contains("커피 맛의 감상·평가는 그 회차의 tasting에");
+        assertThat(PROMPT).contains("그 회차의 recipe.feedback에 담는다");
+        assertThat(PROMPT).contains("feedback이 아니라 그 회차의 tasting이다");
+        assertThat(PROMPT).contains("마시는 방식 차이는 레시피가 아니다");
+        assertThat(PROMPT).contains("같은 회차의 감상 텍스트 하나에 담는다");
+    }
+
+    @Test
+    @DisplayName("ADR-59/AC-79: 회차 병합 — append 기본, 명시 지칭 시만 그 회차 tasting에 병합·rating은 명시 시만 갱신")
+    void encodesBrewMergeRules() {
+        assertThat(PROMPT).contains("새 시도·새 감상은 새 회차로 append한다");
+        assertThat(PROMPT).contains("그 회차의 tasting에 병합한다");
+        assertThat(PROMPT).contains("my_taste_original은 원문을 이어붙여 보존");
+        assertThat(PROMPT).contains("rating은 새 평가가 명시될 때만 갱신한다");
+        assertThat(PROMPT).contains("대상 회차를 반영한 전체 배열로 구성해 보낸다");
+    }
+
+    @Test
+    @DisplayName("FR-18/AC-66·76: 수치 정규화 — grind 형식·대략 표기는 숫자만·총 시간 초 환산")
+    void encodesRecipeNumericNormalization() {
+        assertThat(PROMPT).contains("대략 표기는 숫자만 취한다");
+        assertThat(PROMPT).contains("\"2분 40초\" → 160");
+        assertThat(PROMPT).contains("\"210클릭 (매버릭 2.0)\"");
+        assertThat(PROMPT).contains("그라인더 언급이 없으면 분쇄값만 담는다");
+    }
+
+    @Test
+    @DisplayName("FR-15·22/AC-77: 다중 날짜 발화는 제안 tool 없이 날짜별 분리 안내")
+    void encodesMultiDateGuidance() {
+        assertThat(PROMPT).contains("여러 시음 날짜가 섞이면 제안 tool을 호출하지 않는다");
+        assertThat(PROMPT).contains("한 날짜씩 나눠 보내달라고 안내한다");
     }
 
     @Test

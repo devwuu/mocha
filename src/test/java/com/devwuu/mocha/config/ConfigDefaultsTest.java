@@ -37,7 +37,8 @@ class ConfigDefaultsTest {
         runner.run(context -> {
             AgentClient agentClient = context.getBean(AgentClient.class);
             assertThat(agentClient).isInstanceOf(OpenAiAgentClient.class);
-            assertThat(ReflectionTestUtils.getField(agentClient, "model")).isEqualTo("gpt-5.4-mini");
+            // changes/0021 TΔ3b: 경량(gpt-5.4-mini)의 AC-77 반복 위반 관측으로 gpt-5.4 교체(사용자 확정).
+            assertThat(ReflectionTestUtils.getField(agentClient, "model")).isEqualTo("gpt-5.4");
             assertThat(ReflectionTestUtils.getField(agentClient, "maxToolCalls")).isEqualTo(8);
 
             ConversationTranscript transcript = context.getBean(ConversationTranscript.class);
