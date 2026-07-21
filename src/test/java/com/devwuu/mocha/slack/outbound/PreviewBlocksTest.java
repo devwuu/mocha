@@ -284,6 +284,106 @@ class PreviewBlocksTest {
     }
 
     @Test
+    @DisplayName("FR-4/AC-Δ6: 회차 2개 draft는 회차별 레시피·감상 요약이 구분 표시되고, 평가는 각 회차 섹션에 담긴다")
+    void multiBrewPerBrewSummary() {
+        Recipe first = Recipe.normalize(new Recipe(
+                "에스프레소", 18.0, null, 36.0, 28.0, 93.0, "210클릭 (매버릭 2.0)", null, null, "퍽이 물퍽이었음"));
+        Recipe second = Recipe.normalize(new Recipe(
+                "에스프레소", 18.0, null, 40.0, 30.0, null, "205클릭 (매버릭 2.0)", null, null, "다음엔 78클릭으로"));
+        Entry entry = new Entry(LocalDate.of(2026, 7, 18), List.of(
+                new Brew(first, new Tasting("텁텁했음", null, Rating.OKAY_NOT_MINE)),
+                new Brew(second, new Tasting("훨씬 나았음", null, Rating.GOOD))), OffsetDateTime.now());
+        Note draft = new Note(
+                "coffeevera-yirgacheffe-g1",
+                Sourced.user("커피베라 예가체프 G1"),
+                Sourced.user("커피베라"),
+                List.of(), null, null, List.of(),
+                List.of(entry),
+                OffsetDateTime.now(), OffsetDateTime.now());
+
+        List<LayoutBlock> blocks = previewBlocks.build(
+                new PendingNote(draft, MatchInfo.newNote(), null, OffsetDateTime.now()));
+
+        // 회차 구분 헤더가 회차 수만큼, 각 회차 섹션에 그 회차의 레시피·감상·피드백·평가가 담긴다.
+        String brew1 = brewSectionText(blocks, 1);
+        String brew2 = brewSectionText(blocks, 2);
+        assertTrue(brew1.contains("추출량 36ml"), brew1);
+        assertTrue(brew1.contains("분쇄도 210클릭 (매버릭 2.0)"), brew1);
+        assertTrue(brew1.contains("피드백: 퍽이 물퍽이었음"), brew1);
+        assertTrue(brew1.contains("텁텁했음"), brew1);
+        assertTrue(brew1.contains(Rating.OKAY_NOT_MINE.label()), brew1);
+        assertTrue(brew2.contains("추출량 40ml"), brew2);
+        assertTrue(brew2.contains("훨씬 나았음"), brew2);
+        assertTrue(brew2.contains(Rating.GOOD.label()), brew2);
+        // 교차 오염 없음 — 1회차 섹션에 2회차 내용이 섞이지 않는다.
+        assertFalse(brew1.contains("훨씬 나았음"), brew1);
+        assertFalse(brew2.contains("텁텁했음"), brew2);
+
+        // 회차별 요약에서는 필드 영역에 단일 '평가' 필드를 두지 않는다(회차마다 평가가 다를 수 있음).
+        SectionBlock fieldsSection = firstFieldsSection(blocks);
+        assertTrue(fieldsSection.getFields().stream().map(PreviewBlocksTest::md)
+                .noneMatch(f -> f.contains("*평가*")), "복수 회차에서는 평가 필드 미출력");
+    }
+
+    @Test
+    @DisplayName("FR-4/FR-18: 확장 레시피 10필드가 미리보기에 표기된다 — 방식·추출량·시간(2분 40초)·온도·기구·푸어링·피드백")
+    void extendedRecipeFieldsShown() {
+        Recipe recipe = Recipe.normalize(new Recipe(
+                "핸드드립", 15.0, 240.0, 200.0, 160.0, 92.0, "중간", "하리오 V60",
+                "뜸 40ml 30초 → 100ml → 100ml", "다음엔 조금 굵게"));
+        Note draft = new Note(
+                "coffeevera-yirgacheffe-g1",
+                Sourced.user("커피베라 예가체프 G1"),
+                Sourced.user("커피베라"),
+                List.of(), null, null, List.of(),
+                List.of(entry("좋았다", Rating.GOOD, recipe)),
+                OffsetDateTime.now(), OffsetDateTime.now());
+
+        String recipeBlock = recipeSectionText(
+                previewBlocks.build(new PendingNote(draft, MatchInfo.newNote(), null, OffsetDateTime.now())));
+
+        assertNotNull(recipeBlock);
+        assertTrue(recipeBlock.contains("핸드드립"), recipeBlock);
+        assertTrue(recipeBlock.contains("원두 15g"), recipeBlock);
+        assertTrue(recipeBlock.contains("물 240ml"), recipeBlock);
+        assertTrue(recipeBlock.contains("추출량 200ml"), recipeBlock);
+        assertTrue(recipeBlock.contains("시간 2분 40초"), recipeBlock); // AC-76 파생 표기 — 저장값은 160
+        assertTrue(recipeBlock.contains("온도 92℃"), recipeBlock);
+        assertTrue(recipeBlock.contains("분쇄도 중간"), recipeBlock);
+        assertTrue(recipeBlock.contains("기구 하리오 V60"), recipeBlock);
+        assertTrue(recipeBlock.contains("푸어링: 뜸 40ml 30초 → 100ml → 100ml"), recipeBlock);
+        assertTrue(recipeBlock.contains("피드백: 다음엔 조금 굵게"), recipeBlock);
+    }
+
+    @Test
+    @DisplayName("FR-4/AC-78: 레시피만·감상만인 회차도 회차별 요약에 있는 쪽만 담긴다")
+    void multiBrewPartialBrews() {
+        Recipe onlyRecipe = Recipe.normalize(new Recipe(18.0, null, "210클릭"));
+        Entry entry = new Entry(LocalDate.of(2026, 7, 18), List.of(
+                new Brew(onlyRecipe, null),                                      // 감상 없는 시도
+                new Brew(null, new Tasting("식으니까 더 맛있었음", null, null))), // 레시피 없이 마신 회차
+                OffsetDateTime.now());
+        Note draft = new Note(
+                "coffeevera-yirgacheffe-g1",
+                Sourced.user("커피베라 예가체프 G1"),
+                Sourced.user("커피베라"),
+                List.of(), null, null, List.of(),
+                List.of(entry),
+                OffsetDateTime.now(), OffsetDateTime.now());
+
+        List<LayoutBlock> blocks = previewBlocks.build(
+                new PendingNote(draft, MatchInfo.newNote(), null, OffsetDateTime.now()));
+
+        String brew1 = brewSectionText(blocks, 1);
+        String brew2 = brewSectionText(blocks, 2);
+        assertTrue(brew1.contains(PreviewBlocks.RECIPE_LABEL), brew1);
+        assertFalse(brew1.contains(PreviewBlocks.MY_TASTE_LABEL), "감상 없는 회차엔 감상 라벨 없음: " + brew1);
+        assertTrue(brew2.contains("식으니까 더 맛있었음"), brew2);
+        assertFalse(brew2.contains(PreviewBlocks.RECIPE_LABEL), "레시피 없는 회차엔 레시피 라벨 없음: " + brew2);
+        assertFalse(brew2.contains("평가:"), "rating 없으면 평가 표기 없음: " + brew2);
+    }
+
+    @Test
     @DisplayName("AC-15/AC-37: edit 모드는 ✏️ 헤더 + '기존 노트 수정' 표기, 충돌 없으면 경고 미출력, [저장]/[취소] 버튼 유지")
     void editModeHeaderWithoutConflict() {
         Note draft = editDraft(LocalDate.of(2026, 7, 10));
@@ -370,6 +470,16 @@ class PreviewBlocksTest {
                         List.of(new Brew(null, new Tasting("산미가 좋았다", null, Rating.GOOD))), OffsetDateTime.now())),
                 OffsetDateTime.now(),
                 OffsetDateTime.now());
+    }
+
+    // "{n}회차" 헤더로 시작하는 회차 요약 섹션 텍스트 — 없으면 단언 실패.
+    private static String brewSectionText(List<LayoutBlock> blocks, int number) {
+        String header = String.format(PreviewBlocks.BREW_HEADER_FMT, number);
+        return blocks.stream()
+                .filter(b -> b instanceof SectionBlock s && s.getText() instanceof MarkdownTextObject t
+                        && t.getText().startsWith(header))
+                .map(b -> md(((SectionBlock) b).getText()))
+                .findFirst().orElseThrow(() -> new AssertionError("회차 요약 섹션 없음: " + header));
     }
 
     // "이렇게 내렸어요" 섹션 텍스트 또는 null(영역 없음).
