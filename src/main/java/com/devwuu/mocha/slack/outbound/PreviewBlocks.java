@@ -38,6 +38,8 @@ import static com.slack.api.model.block.element.BlockElements.button;
  *   <li>매칭 표시: "새 노트" 또는 "기존 노트 {이름}의 {날짜} 기록" (AC-15).
  *   <li>수정 세션(mode=edit)은 ✏️ 헤더 + "기존 노트 수정" 표기, 날짜 이동 충돌 시 덮어쓰기 경고 섹션 필수
  *       (AC-15/AC-37/AC-39, V-10; changes/0012 TΔ6).
+ *   <li>회차가 여럿이면 회차별 레시피·감상 요약을 구분 표시한다 — 회차 분리가 눈에 보여야 확인 역할을 한다
+ *       (FR-4, changes/0021 ADR-59). 회차 1개면 종전 단일 표시를 유지한다.
  *   <li>[저장]/[취소] 버튼 — action_id는 {@link AgentConversationRouter}의 계약을 따른다.
  * </ul>
  * <p>멘트(모카 톤)는 구현 디테일이라 상수로 분리한다 — spec의 비즈니스 결정이 아니다.
@@ -73,11 +75,22 @@ public class PreviewBlocks {
     private static final String LABEL_ROAST = "로스팅"; // 로스팅
     private static final String LABEL_RATING = "평가"; // 평가
 
-    // 레시피 항목 표기(있는 항목만·전무 시 영역 미출력, ADR-22) — 원두 15g · 물 240ml · 분쇄도 중간
+    // 레시피 항목 표기(있는 항목만·전무 시 영역 미출력, ADR-22) — 10필드 flat 스키마(FR-18, changes/0021)
+    // 수치·단문은 " · " 한 줄, 과정 서술(푸어링)·피드백은 줄 분리. 시간은 카드와 동일하게 60초 기준 포맷(AC-76).
     private static final String RECIPE_DOSE_FMT = "원두 %sg"; // 원두 {dose}g
     private static final String RECIPE_WATER_FMT = "물 %sml"; // 물 {water}ml
+    private static final String RECIPE_YIELD_FMT = "추출량 %sml"; // 추출량 {yield}ml
+    private static final String RECIPE_TIME_FMT = "시간 %s"; // 시간 2분 40초
+    private static final String RECIPE_TEMP_FMT = "온도 %s℃"; // 온도 {temp}℃
     private static final String RECIPE_GRIND_FMT = "분쇄도 %s"; // 분쇄도 {grind}
+    private static final String RECIPE_MACHINE_FMT = "기구 %s"; // 기구 {machine}
+    private static final String RECIPE_POURING_FMT = "푸어링: %s"; // 푸어링 과정 서술(자유 텍스트)
+    private static final String RECIPE_FEEDBACK_FMT = "피드백: %s"; // 그 시도의 관찰·진단·계획
     private static final String RECIPE_SEP = " · "; // 항목 구분
+
+    // 회차별 요약(FR-4, changes/0021 TΔ3c) — 회차 2개 이상일 때 회차마다 섹션 1개로 구분 표시.
+    static final String BREW_HEADER_FMT = "*%d회차*"; // 회차 구분 헤더
+    private static final String BREW_RATING_FMT = "평가: %s"; // 회차 감상에 붙는 rating 표기
 
     /**
      * pending을 확인 미리보기 블록 목록으로 조립한다.
@@ -135,10 +148,12 @@ public class PreviewBlocks {
         addSourcedField(fields, LABEL_ROASTERY, draft.roastery());
         addBeanFields(fields, draft.beans()); // 원두별 1필드 — 서브필드(설명·가공) 출처 표기 포함(V-14, changes/0021)
         addSourcedField(fields, LABEL_ROAST, draft.roastLevel());
-        // TΔ1b 과도기: 마지막 회차 tasting/recipe로 구 단일 표시를 유지한다 — 회차별 요약은 TΔ3c에서 개정.
-        Tasting tasting = entry == null ? null : latestTasting(entry);
-        if (tasting != null && tasting.rating() != null) {
-            addField(fields, LABEL_RATING, tasting.rating().label(), null);
+        List<Brew> brews = entry == null || entry.brews() == null ? List.of() : entry.brews();
+        boolean multiBrew = brews.size() >= 2;
+        // 회차 1개면 rating을 필드 영역에 종전대로 표기 — 회차별 요약(복수)에서는 각 회차 섹션에 담는다.
+        Tasting singleTasting = brews.size() == 1 ? brews.get(0).tasting() : null;
+        if (singleTasting != null && singleTasting.rating() != null) {
+            addField(fields, LABEL_RATING, singleTasting.rating().label(), null);
         }
         if (!fields.isEmpty()) {
             blocks.add(section(s -> s.fields(fields)));
@@ -149,13 +164,23 @@ public class PreviewBlocks {
         if (officialNotes != null) {
             blocks.add(section(s -> s.text(markdownText("*" + OFFICIAL_NOTES_LABEL + "*\n" + officialNotes))));
         }
-        // 이렇게 내렸어요(레시피) — 있는 항목만·전무 시 미출력(FR-18, AC-24/25). 수정 가능하도록 미리보기 포함(FR-12).
-        String recipe = entry == null ? null : recipeText(latestRecipe(entry));
-        if (recipe != null) {
-            blocks.add(section(s -> s.text(markdownText("*" + RECIPE_LABEL + "*\n" + recipe))));
-        }
-        if (tasting != null && tasting.myTaste() != null && !tasting.myTaste().isBlank()) {
-            blocks.add(section(s -> s.text(markdownText("*" + MY_TASTE_LABEL + "*\n" + tasting.myTaste()))));
+        // POLICY: 회차가 여럿이면 회차별 레시피·감상 요약을 구분 표시한다 — 회차 분리가 눈에 보여야 확인
+        //         역할을 한다 (ref: specs/coffee-note-agent/spec.md#FR-4, changes/0021 ADR-59).
+        if (multiBrew) {
+            for (int i = 0; i < brews.size(); i++) {
+                String brewSummary = brewText(i + 1, brews.get(i));
+                blocks.add(section(s -> s.text(markdownText(brewSummary))));
+            }
+        } else {
+            // 회차 1개(또는 0개) — 종전 단일 표시. 레시피는 있는 항목만·전무 시 미출력(FR-18, AC-24/25),
+            // 수정 가능하도록 미리보기 포함(FR-12).
+            String recipe = brews.isEmpty() ? null : recipeText(brews.get(0).recipe());
+            if (recipe != null) {
+                blocks.add(section(s -> s.text(markdownText("*" + RECIPE_LABEL + "*\n" + recipe))));
+            }
+            if (singleTasting != null && singleTasting.myTaste() != null && !singleTasting.myTaste().isBlank()) {
+                blocks.add(section(s -> s.text(markdownText("*" + MY_TASTE_LABEL + "*\n" + singleTasting.myTaste()))));
+            }
         }
 
         // 출처 링크(FR-12) — context 블록에 <url|n> 형식 링크.
@@ -191,30 +216,25 @@ public class PreviewBlocks {
         return sourced == null ? null : sourced.value();
     }
 
-    // TΔ1b 과도기: 구 단일 감상·레시피 표시 계약을 위해 마지막 회차의 tasting/recipe를 대표로 삼는다 —
-    // 미리보기의 회차별 요약 표시는 TΔ3c(FR-4)에서 개정된다(changes/0021 ADR-59).
-    private static Tasting latestTasting(Entry entry) {
-        List<Brew> brews = entry.brews();
-        for (int i = brews.size() - 1; i >= 0; i--) {
-            if (brews.get(i).tasting() != null) {
-                return brews.get(i).tasting();
+    // 회차 1개의 요약 — 헤더("{n}회차") + 레시피 + 감상(+평가)을 섹션 1개 텍스트로 구성한다(FR-4).
+    // 레시피만/감상만인 회차도 있는 쪽만 담는다(V-15 — 둘 다 없는 회차는 저장 전에 드롭됨).
+    private static String brewText(int number, Brew brew) {
+        StringBuilder text = new StringBuilder(String.format(BREW_HEADER_FMT, number));
+        String recipe = recipeText(brew.recipe());
+        if (recipe != null) {
+            text.append("\n*").append(RECIPE_LABEL).append("*\n").append(recipe);
+        }
+        Tasting tasting = brew.tasting();
+        if (tasting != null && tasting.myTaste() != null && !tasting.myTaste().isBlank()) {
+            text.append("\n*").append(MY_TASTE_LABEL).append("*\n").append(tasting.myTaste());
+            if (tasting.rating() != null) {
+                text.append("\n").append(String.format(BREW_RATING_FMT, tasting.rating().label()));
             }
         }
-        return null;
+        return text.toString();
     }
 
-    private static Recipe latestRecipe(Entry entry) {
-        List<Brew> brews = entry.brews();
-        for (int i = brews.size() - 1; i >= 0; i--) {
-            if (brews.get(i).recipe() != null) {
-                return brews.get(i).recipe();
-            }
-        }
-        return null;
-    }
-
-    // beans는 원두당 1필드 — "설명 (출처) · 가공 (출처)" 표기로 서브필드 단위 출처(V-6)를 살린다.
-    // (미리보기 beans·brews 바인딩의 본 개정은 TΔ3c — 여기서는 필드 나열만.)
+    // beans는 원두당 1필드 — "설명 (출처) · 가공 (출처)" 표기로 서브필드 단위 출처(V-6)를 살린다(changes/0021).
     private static void addBeanFields(List<TextObject> fields, List<Bean> beans) {
         if (beans == null) {
             return;
@@ -263,22 +283,59 @@ public class PreviewBlocks {
         return joined + sourceTag(officialNotes.source());
     }
 
-    // 레시피 표기 — 있는 항목만 " · "로 이어 붙이고, 전무(null)면 null 반환(영역 미출력, ADR-22).
+    // 레시피 표기 — 10필드 중 있는 항목만(FR-4 "채워진 내용 전체"·FR-18), 전무(null)면 null 반환(영역 미출력, ADR-22).
+    // 수치·단문 항목은 " · " 한 줄, 과정 서술(푸어링)·피드백은 각각 줄을 나눈다.
     private static String recipeText(Recipe recipe) {
         if (recipe == null) {
             return null;
         }
         List<String> parts = new ArrayList<>();
+        if (recipe.method() != null) {
+            parts.add(recipe.method());
+        }
         if (recipe.doseG() != null) {
             parts.add(String.format(RECIPE_DOSE_FMT, number(recipe.doseG())));
         }
         if (recipe.waterMl() != null) {
             parts.add(String.format(RECIPE_WATER_FMT, number(recipe.waterMl())));
         }
-        if (recipe.grind() != null && !recipe.grind().isBlank()) {
+        if (recipe.yieldMl() != null) {
+            parts.add(String.format(RECIPE_YIELD_FMT, number(recipe.yieldMl())));
+        }
+        if (recipe.timeSec() != null) {
+            parts.add(String.format(RECIPE_TIME_FMT, timeText(recipe.timeSec())));
+        }
+        if (recipe.tempC() != null) {
+            parts.add(String.format(RECIPE_TEMP_FMT, number(recipe.tempC())));
+        }
+        if (recipe.grind() != null) {
             parts.add(String.format(RECIPE_GRIND_FMT, recipe.grind()));
         }
-        return parts.isEmpty() ? null : String.join(RECIPE_SEP, parts);
+        if (recipe.machine() != null) {
+            parts.add(String.format(RECIPE_MACHINE_FMT, recipe.machine()));
+        }
+        List<String> lines = new ArrayList<>();
+        if (!parts.isEmpty()) {
+            lines.add(String.join(RECIPE_SEP, parts));
+        }
+        if (recipe.pouring() != null) {
+            lines.add(String.format(RECIPE_POURING_FMT, recipe.pouring()));
+        }
+        if (recipe.feedback() != null) {
+            lines.add(String.format(RECIPE_FEEDBACK_FMT, recipe.feedback()));
+        }
+        return lines.isEmpty() ? null : String.join("\n", lines);
+    }
+
+    // 시간(초)을 60초 기준으로 "2분 40초"/"45초"/"2분" 표기 — 카드 렌더와 동일한 파생 계산(AC-76, 저장 안 함).
+    private static String timeText(double sec) {
+        long total = Math.round(sec);
+        long minutes = total / 60;
+        long seconds = total % 60;
+        if (minutes == 0) {
+            return seconds + "초";
+        }
+        return seconds == 0 ? minutes + "분" : minutes + "분 " + seconds + "초";
     }
 
     // 정수면 소수점 없이(15.0 → "15"), 아니면 그대로(15.5 → "15.5") 표기.
