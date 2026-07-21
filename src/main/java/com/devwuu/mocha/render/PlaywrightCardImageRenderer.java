@@ -5,6 +5,8 @@ import com.microsoft.playwright.BrowserContext;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.Playwright;
 import com.microsoft.playwright.options.ScreenshotType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -25,6 +27,15 @@ import java.nio.file.Path;
  */
 @Component
 public class PlaywrightCardImageRenderer implements CardImageRenderer {
+
+    private static final Logger log = LoggerFactory.getLogger(PlaywrightCardImageRenderer.class);
+
+    // 카드 템플릿의 autofit 스크립트가 축소 완료 시 <html>에 남기는 마커 — 없는 HTML(autofit 요소 부재)은
+    // 즉시 통과한다. navigate의 load 대기만으론 fonts.ready 후에 도는 축소가 스크린샷보다 늦을 수 있어
+    // 마커를 명시적으로 기다린다(changes/0021 TΔ5a, findings-TΔ0 §5.2 래스터화 타이밍 리스크).
+    private static final String AUTOFIT_READY_PREDICATE =
+            "() => !document.querySelector('[data-autofit]')"
+                    + " || document.documentElement.hasAttribute('data-autofit-done')";
 
     private final int width;
     private final int height;
@@ -66,6 +77,15 @@ public class PlaywrightCardImageRenderer implements CardImageRenderer {
                             .setDeviceScaleFactor(1));
                     Page page = ctx.newPage();
                     page.navigate(tmpHtml.toUri().toString());
+                    // autofit(감상·피드백 축소)이 끝난 뒤에 찍는다 — 완료 마커 대기(ADR-54, TΔ5a).
+                    page.waitForFunction(AUTOFIT_READY_PREDICATE);
+                    // POLICY: autofit 하한 도달(하한에서도 넘침 = 잘림 가능)은 로깅으로 관측한다 —
+                    //         반복 관측되면 하한·레이아웃 재론 (ref: plan.md §6, ADR-54, spec §8).
+                    Object floorCount = page.evaluate(
+                            "() => document.querySelectorAll('[data-autofit-floor]').length");
+                    if (floorCount instanceof Number n && n.intValue() > 0) {
+                        log.warn("카드 autofit 하한 도달 — 잘림 가능(plan §6 관측 대상): out={}", out);
+                    }
                     // 뷰포트 스크린샷(fullPage 아님) → 정확히 width×height(4:5) JPG. 초과 내용 클램프는 템플릿 책임(TΔ3).
                     page.screenshot(new Page.ScreenshotOptions()
                             .setType(ScreenshotType.JPEG)

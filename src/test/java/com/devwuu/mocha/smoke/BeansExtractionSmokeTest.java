@@ -176,8 +176,8 @@ class BeansExtractionSmokeTest {
         }
 
         @Override
-        public Path renderEntryCard(String slug, LocalDate date) {
-            return Path.of("build/smoke-artifact/unused.jpg");
+        public List<Path> renderEntryCard(String slug, LocalDate date) {
+            return List.of(Path.of("build/smoke-artifact/unused.jpg"));
         }
 
         @Override

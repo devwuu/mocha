@@ -5,6 +5,7 @@ import com.devwuu.mocha.domain.Bean;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.Sourced;
+import com.devwuu.mocha.render.CardFiles;
 import com.devwuu.mocha.render.NoteRenderer;
 import com.devwuu.mocha.repository.NoteRepository;
 import com.devwuu.mocha.slack.outbound.SlackResponder;
@@ -160,20 +161,25 @@ class NoteLookupTools {
         }
         // 환각 필터(get_note 미존재 오류와 같은 정신): 실존하지 않는 엔트리의 카드를 굽지 않는다.
         LocalDate target = date;
-        if (note.get().entries().stream().noneMatch(entry -> target.equals(entry.date()))) {
+        Optional<Entry> entry = note.get().entries().stream()
+                .filter(e -> target.equals(e.date())).findFirst();
+        if (entry.isEmpty()) {
             return ToolSupport.errorOutput(mapper, "노트 '" + note.get().slug() + "'에는 " + date
                     + " 시음 엔트리가 없다 — get_note로 실제 엔트리 날짜를 확인해라.");
         }
 
-        // POLICY: 검색 응답은 새 파생물을 최소화한다 — 기존 카드 JPG 재사용, 파일 부재 시에만 그 엔트리 1장
-        //         증분 렌더 (ref: specs/coffee-note-agent/data-model.md#3.5, 구 ADR-25 정신 승계).
-        Path card = artifactDir.resolve("cards").resolve(note.get().slug()).resolve(date + ".jpg");
-        boolean reused = Files.exists(card);
+        // POLICY: 검색 응답은 새 파생물을 최소화한다 — 그 엔트리의 회차 카드 전부가 이미 있으면 재사용,
+        //         하나라도 없으면 그 엔트리만 증분 렌더 (ref: specs/coffee-note-agent/data-model.md#3.5,
+        //         구 ADR-25 정신 승계, changes/0021 ADR-59 회차화).
+        List<Path> cards = CardFiles.expectedCards(artifactDir, note.get().slug(), entry.get());
+        boolean reused = !cards.isEmpty() && cards.stream().allMatch(Files::exists);
         if (!reused) {
-            card = noteRenderer.renderEntryCard(note.get().slug(), date);
+            cards = noteRenderer.renderEntryCard(note.get().slug(), date);
         }
-        responder.postImage(channelId, card, CARD_CAPTION);
-        log.info("검색 카드 재전송: slug={} date={} reused={}", note.get().slug(), date, reused);
+        // TΔ5a 과도기: 첫 회차 카드만 전송 — 회차 카드 전량 재전송은 TΔ5b에서 개정(FR-20).
+        responder.postImage(channelId, cards.getFirst(), CARD_CAPTION);
+        log.info("검색 카드 재전송: slug={} date={} cards={} reused={}",
+                note.get().slug(), date, cards.size(), reused);
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("sent", true);

@@ -6,12 +6,17 @@ import com.devwuu.mocha.agent.conversation.ConversationTranscript;
 import com.devwuu.mocha.llm.AliasGenerator;
 import com.devwuu.mocha.llm.OpenAiAliasGenerator;
 import com.devwuu.mocha.llm.VisionClient;
+import com.devwuu.mocha.render.CardImageRenderer;
+import com.devwuu.mocha.render.NoteRenderer;
+import com.devwuu.mocha.render.Theme;
+import com.devwuu.mocha.repository.NoteRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.convert.ApplicationConversionService;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.lang.reflect.Proxy;
 import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -57,12 +62,26 @@ class ConfigDefaultsTest {
     }
 
     @Test
-    @DisplayName("ADR-50/TΔ8b: mocha.alias.model 미설정 시 별칭 경계가 최경량 default 전용 어댑터로 뜬다")
-    void aliasGeneratorDefaultsToDedicatedAdapter() {
-        runner.run(context -> {
-            AliasGenerator aliasGenerator = context.getBean(AliasGenerator.class);
-            assertThat(aliasGenerator).isInstanceOf(OpenAiAliasGenerator.class);
-            assertThat(ReflectionTestUtils.getField(aliasGenerator, "model")).isEqualTo("gpt-5.4-nano");
-        });
+    @DisplayName("ADR-50/ADR-54(changes/0021 TΔ5a): mocha.artifact.theme 미설정 시 기본 테마 type-a(세리프)로 렌더러가 뜬다")
+    void rendererDefaultsToTypeATheme() {
+        new ApplicationContextRunner()
+                .withUserConfiguration(RenderConfig.class)
+                .withPropertyValues("mocha.artifact.dir=build/test-artifact")
+                .withBean(NoteRepository.class, ConfigDefaultsTest::noteRepositoryStub)
+                .withBean(CardImageRenderer.class, () -> (html, baseDir, out) -> {
+                })
+                .run(context -> {
+                    NoteRenderer renderer = context.getBean(NoteRenderer.class);
+                    assertThat(ReflectionTestUtils.getField(renderer, "theme")).isEqualTo(Theme.TYPE_A);
+                });
+    }
+
+    // 렌더러 빈 배선에만 필요한 무동작 스텁 — 이 테스트에서 어떤 저장소 메서드도 불리지 않는다.
+    private static NoteRepository noteRepositoryStub() {
+        return (NoteRepository) Proxy.newProxyInstance(
+                NoteRepository.class.getClassLoader(), new Class<?>[]{NoteRepository.class},
+                (proxy, method, args) -> {
+                    throw new UnsupportedOperationException(method.getName());
+                });
     }
 }

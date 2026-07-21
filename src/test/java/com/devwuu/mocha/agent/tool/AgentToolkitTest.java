@@ -401,11 +401,12 @@ class AgentToolkitTest {
     }
 
     @Test
-    @DisplayName("data-model §3.5/AC-31: 기존 카드 파일이 있으면 그대로 postImage — 새 렌더 없음(파생물 재사용)")
+    @DisplayName("data-model §3.5/AC-31: 그 엔트리의 회차 카드가 전부 있으면 그대로 postImage — 새 렌더 없음(파생물 재사용)")
     void sendEntryCardReusesExistingCard() throws IOException {
         noteRepository.put(note("2026-07-13-102030", "Ethiopia Chelbesa", "FroB",
                 Aliases.empty(), LocalDate.of(2026, 7, 13)));
-        Path existingCard = artifactDir.resolve("cards/2026-07-13-102030/2026-07-13.jpg");
+        // 픽스처 엔트리 = 감상 회차 1개 → 기대 카드 집합 = <date>-taste-1.jpg 1장(changes/0021 TΔ5a).
+        Path existingCard = artifactDir.resolve("cards/2026-07-13-102030/2026-07-13-taste-1.jpg");
         Files.createDirectories(existingCard.getParent());
         Files.write(existingCard, new byte[]{1});
 
@@ -420,7 +421,7 @@ class AgentToolkitTest {
     }
 
     @Test
-    @DisplayName("data-model §3.5: 카드 파일 부재 시에만 그 엔트리 1장 증분 렌더 후 전송")
+    @DisplayName("data-model §3.5: 카드 파일 부재 시에만 그 엔트리만 증분 렌더 후 전송")
     void sendEntryCardRendersIncrementallyWhenCardMissing() {
         noteRepository.put(note("2026-07-13-102030", "Ethiopia Chelbesa", "FroB",
                 Aliases.empty(), LocalDate.of(2026, 7, 13)));
@@ -431,7 +432,7 @@ class AgentToolkitTest {
         assertThat(renderer.rendered).containsExactly("2026-07-13-102030/2026-07-13");
         assertThat(responder.postedImages).hasSize(1);
         assertThat(responder.postedImages.get(0).path())
-                .isEqualTo(artifactDir.resolve("cards/2026-07-13-102030/2026-07-13.jpg"));
+                .isEqualTo(artifactDir.resolve("cards/2026-07-13-102030/2026-07-13-taste-1.jpg"));
         assertThat(result.get("sent").asBoolean()).isTrue();
     }
 
@@ -637,16 +638,17 @@ class AgentToolkitTest {
         }
 
         @Override
-        public Path renderEntryCard(String slug, LocalDate date) {
+        public List<Path> renderEntryCard(String slug, LocalDate date) {
             rendered.add(slug + "/" + date);
-            Path card = artifactDir.resolve("cards").resolve(slug).resolve(date + ".jpg");
+            // 회차화(changes/0021 TΔ5a) — 픽스처 엔트리(감상 회차 1개)의 산출 형태.
+            Path card = artifactDir.resolve("cards").resolve(slug).resolve(date + "-taste-1.jpg");
             try {
                 Files.createDirectories(card.getParent());
                 Files.write(card, new byte[]{1});
             } catch (IOException e) {
                 throw new UncheckedIOException(e);
             }
-            return card;
+            return List.of(card);
         }
 
         @Override

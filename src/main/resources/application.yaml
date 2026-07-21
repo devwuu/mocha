@@ -59,10 +59,10 @@ mocha:
     # 노트 JSON·사진·pending 원본 루트 (커밋 금지).
     dir: ./data
   artifact:
-    # 산출물(파생물) 루트 — 엔트리 카드 JPG·index HTML (커밋 금지, 전체 재생성 가능).
+    # 산출물(파생물) 루트 — 회차 카드 JPG (커밋 금지, 전체 재생성 가능).
     dir: ./artifact
-    # 노트/인덱스 디자인 테마 (ref: tasks T5-1). type-a=세리프(명조·액자), type-b=귀여운(고딕·카드·마스코트).
-    # 값은 templates/<theme>/ 폴더명이자 렌더 선택자다. 기본은 썸네일 카드 인덱스(FR-8)를 갖춘 type-b.
+    # 카드 디자인 테마. type-a=세리프(명조·액자), type-b=귀여운(고딕·카드·마스코트).
+    # 값은 templates/<theme>/ 폴더명이자 렌더 선택자다. 미설정 시 코드 default = type-a(세리프 — ADR-54).
     theme: type-a
   card:
     # 시음 엔트리 카드 이미지(JPG) 뷰포트 (ref: plan.md#ADR-10/ADR-11 §5). 인스타 4:5 = 1080×1350.

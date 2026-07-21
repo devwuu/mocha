@@ -119,12 +119,13 @@ class SlackCommitHandler {
         log.info("[저장] 커밋 완료: slug={} entries={}", saved.slug(), saved.entries().size());
 
         // 저장은 이미 커밋됨 — 카드 렌더·전송 실패는 데이터 손실이 아니다. 실패해도 저장은 유지하고 안내 텍스트로 폴백한다.
-        // POLICY: 저장 시점 렌더는 증분 — 방금 그 (slug,date) 엔트리 카드 1장만 굽는다(전체 재래스터화는 --rerender)
-        //         (ref: plan.md#ADR-10, AC-Δ7).
+        // POLICY: 저장 시점 렌더는 증분 — 방금 그 (slug,date) 엔트리의 회차 카드만 굽는다(전체 재래스터화는 --rerender)
+        //         (ref: plan.md#ADR-10·ADR-59, AC-Δ7).
         // POLICY: 카드 이미지 생성·전송 실패는 저장을 되돌리지 않는다 — 안내 텍스트로 폴백 (ref: plan.md §7, AC-18).
         try {
-            Path card = noteRenderer.renderEntryCard(slug, committedEntry.date());
-            responder.postImage(action.channelId(), card, MochaMessages.SAVE_DONE_CAPTION);
+            List<Path> cards = noteRenderer.renderEntryCard(slug, committedEntry.date());
+            // TΔ5a 과도기: 첫 회차 카드만 배달 — 카드 전량 배달·부분 폴백은 TΔ5b에서 개정(FR-16, plan §7).
+            responder.postImage(action.channelId(), cards.getFirst(), MochaMessages.SAVE_DONE_CAPTION);
         } catch (RuntimeException e) {
             log.warn("카드 배달 실패(노트는 저장됨, --rerender로 복구 가능): slug={} date={}", saved.slug(), date, e);
             responder.post(action.channelId(), MochaMessages.SAVE_DONE_NO_IMAGE);
@@ -200,11 +201,12 @@ class SlackCommitHandler {
                         slug, target.date(), e);
             }
         }
-        // 새 date 카드 증분 렌더(+index 갱신) → 갱신 카드 배달(AC-37).
+        // 새 date 회차 카드 증분 렌더(+index 갱신) → 갱신 카드 배달(AC-37).
         // POLICY: 카드 이미지 생성·전송 실패는 저장을 되돌리지 않는다 — 안내 텍스트로 폴백 (ref: plan.md §7, AC-18 준용).
         try {
-            Path card = noteRenderer.renderEntryCard(slug, committedEntry.date());
-            responder.postImage(action.channelId(), card, MochaMessages.SAVE_DONE_CAPTION);
+            List<Path> cards = noteRenderer.renderEntryCard(slug, committedEntry.date());
+            // TΔ5a 과도기: 첫 회차 카드만 배달 — 카드 전량 배달·부분 폴백은 TΔ5b에서 개정(FR-16, plan §7).
+            responder.postImage(action.channelId(), cards.getFirst(), MochaMessages.SAVE_DONE_CAPTION);
         } catch (RuntimeException e) {
             log.warn("카드 배달 실패(수정은 저장됨, --rerender로 복구 가능): slug={} date={}", slug, date, e);
             responder.post(action.channelId(), MochaMessages.SAVE_DONE_NO_IMAGE);

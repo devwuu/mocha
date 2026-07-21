@@ -18,7 +18,7 @@ import java.nio.file.Path;
 /**
  * 렌더 계층 빈 배선 (ref: plan.md#ADR-7, tasks T5-1).
  * <p>Thymeleaf를 <b>오프라인 정적 생성기</b>로 쓴다 — starter-web 없이 클래스패스 템플릿을 직접 처리한다.
- * 템플릿은 {@code templates/<theme>/{index,note}.html}에 있고 테마({@code mocha.artifact.theme})가 폴더를 고른다.
+ * 템플릿은 {@code templates/<theme>/{taste,recipe,index}.html}에 있고 테마({@code mocha.artifact.theme})가 폴더를 고른다.
  * <p>{@link ThymeleafNoteRenderer}는 프레임워크 의존이 없는 순수 렌더러라 {@code @Component} 스캔 대신 여기서
  * 명시적으로 조립한다(RepositoryConfig·LlmConfig와 동일 방침).
  */
@@ -49,7 +49,9 @@ public class RenderConfig {
             SpringTemplateEngine noteTemplateEngine,
             CardImageRenderer cardImageRenderer,
             @Value("${mocha.artifact.dir}") String artifactDir,
-            @Value("${mocha.artifact.theme}") String theme) {
+            // POLICY: mocha.* 키는 코드 default를 갖는다(ADR-50) — 기본 테마는 type-a 세리프
+            //         (ref: plan.md#ADR-54, changes/0021 TΔ5a 사용자 확정).
+            @Value("${mocha.artifact.theme:type-a}") String theme) {
         return new ThymeleafNoteRenderer(
                 noteRepository, noteTemplateEngine, Path.of(artifactDir), Theme.from(theme), cardImageRenderer);
     }

@@ -99,7 +99,7 @@ class SlackCommitHandlerTest {
                 "커밋 후 방금 엔트리 카드만 증분 렌더한다");
         assertEquals(0, noteRenderer.renderAllCount, "저장 시점은 전체 리렌더를 트리거하지 않는다");
         assertEquals(1, responder.images.size(), "방금 엔트리 카드 JPG를 채널에 올린다");
-        assertEquals(Path.of("cards", "coffeevera-yirgacheffe", "2026-07-11.jpg"), responder.images.get(0));
+        assertEquals(Path.of("cards", "coffeevera-yirgacheffe", "2026-07-11-taste-1.jpg"), responder.images.get(0));
         assertEquals(List.of(MochaMessages.SAVE_DONE_CAPTION), responder.captions);
         assertTrue(responder.messages.isEmpty(), "정상 배달이면 폴백 텍스트가 없다");
     }
@@ -351,7 +351,7 @@ class SlackCommitHandlerTest {
         assertEquals(List.of("yirga/2026-07-08"), noteRenderer.removedCards, "옛 date 카드 삭제");
         assertEquals(List.of("yirga/2026-07-09"), noteRenderer.entryCards, "새 date 카드만 증분 렌더");
         assertEquals(0, noteRenderer.renderAllCount, "edit 저장도 전체 리렌더를 트리거하지 않는다");
-        assertEquals(List.of(Path.of("cards", "yirga", "2026-07-09.jpg")), responder.images, "갱신 카드 배달");
+        assertEquals(List.of(Path.of("cards", "yirga", "2026-07-09-taste-1.jpg")), responder.images, "갱신 카드 배달");
         assertEquals(List.of(MochaMessages.FINALIZE_SAVED), responder.finalizeStatuses, "버튼 1회 소진");
         assertTrue(responder.messages.isEmpty(), "정상 배달이면 폴백 텍스트가 없다");
     }
@@ -569,12 +569,13 @@ class SlackCommitHandlerTest {
         }
 
         @Override
-        public Path renderEntryCard(String slug, LocalDate date) {
+        public List<Path> renderEntryCard(String slug, LocalDate date) {
             if (renderFailure != null) {
                 throw renderFailure;
             }
             entryCards.add(slug + "/" + date);
-            return Path.of("cards", slug, date + ".jpg");
+            // 회차화(changes/0021 TΔ5a) — 감상 회차 1개 엔트리의 산출 형태.
+            return List.of(Path.of("cards", slug, date + "-taste-1.jpg"));
         }
 
         @Override
