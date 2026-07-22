@@ -8,8 +8,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * 시스템 프롬프트의 정책 문구 포함 단언 — 프롬프트가 단일 소유하는 결정(페르소나·대화 경계·보강 정책·
  * 출처 우선순위·my_taste 정규화·대기 중 수정 우선·즉시 propose·회차 분리/병합·수치 정규화·다중 날짜
- * 안내)이 빠지지 않았는지 가드한다 (ref: changes/0018 tasks.md TΔ7a, changes/0021 TΔ3b;
- * plan.md#ADR-47/#ADR-49/#ADR-30/#ADR-59, data-model.md#V-6, spec FR-5/FR-15/FR-18/FR-21/FR-22).
+ * 순차 제안)이 빠지지 않았는지 가드한다 (ref: changes/0018 tasks.md TΔ7a, changes/0021 TΔ3b,
+ * changes/0023 TΔ3d; plan.md#ADR-47/#ADR-49/#ADR-30/#ADR-59/#ADR-61, data-model.md#V-6,
+ * spec FR-5/FR-15/FR-18/FR-21/FR-22).
  * <p>언어 정책(ADR-38)의 vision 프롬프트와의 동일 문구 비교는 llm 패키지의 LanguagePolicyParityTest가 맡는다.
  */
 class AgentSystemPromptTest {
@@ -91,10 +92,23 @@ class AgentSystemPromptTest {
     }
 
     @Test
-    @DisplayName("FR-15·22/AC-77: 다중 날짜 발화는 제안 tool 없이 날짜별 분리 안내")
-    void encodesMultiDateGuidance() {
-        assertThat(PROMPT).contains("여러 시음 날짜가 섞이면 제안 tool을 호출하지 않는다");
-        assertThat(PROMPT).contains("한 날짜씩 나눠 보내달라고 안내한다");
+    @DisplayName("FR-15·22/AC-77·AC-Δ2: 다중 날짜 발화는 순차 제안 — 이른 날짜만 제안 + 나머지 저장 후 이어서 안내, 근거 포함")
+    void encodesMultiDateSequentialProposal() {
+        // changes/0023 ADR-61: 구 "분리 안내"에서 개정 — 문구는 명령이 아니라 근거(pending 단일 대기 →
+        // 한 번에 하나만 저장 가능 → 가장 이른 날짜부터)를 담는다(ADR-60 사유 정보량 원칙의 프롬프트 측 적용).
+        assertThat(PROMPT).contains("한 번에 하나만 저장할 수 있으니");
+        assertThat(PROMPT).contains("active_date(가장 이른 날짜) 세그먼트");
+        assertThat(PROMPT).contains("나머지 날짜는 저장 후 이어서 제안하겠다는 안내를 담는다");
+        assertThat(PROMPT).contains("다른 날짜의 시도를 한 날짜의 회차로 합치지도 마라");
+        assertThat(PROMPT).contains("남은 날짜 중 가장 이른 것부터 같은 방식으로 제안한다");
+    }
+
+    @Test
+    @DisplayName("AC-Δ2/ADR-61: 세그먼트 부재(분해 실패) 턴만 분리 안내 폴백 — 구 문구는 폴백으로 축소")
+    void encodesSegmenterFailureFallback() {
+        assertThat(PROMPT).contains("세그먼트 컨텍스트가 없으면(분해 실패) 제안 tool을 호출하지 않는다");
+        assertThat(PROMPT).contains("한 날짜씩 나눠 보내달라고 안내한다(폴백)");
+        // AC-Δ1 재확인(우회 거부)은 프롬프트가 아니라 서버 게이트 몫 — ProposalValidatorTest.MultiDateGateV16이 가드.
     }
 
     @Test

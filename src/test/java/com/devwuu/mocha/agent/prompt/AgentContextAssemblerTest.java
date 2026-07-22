@@ -169,7 +169,9 @@ class AgentContextAssemblerTest {
     void omitsAbsentSegments() {
         AgentTurnInput context = assembler.assemble("이거 마셨어", List.of(), null, null, null);
 
-        assertThat(context.instructions()).doesNotContain("세그먼트");
+        // 주입 블록의 bullet 마커로 부재를 단언한다 — 시스템 프롬프트 정책 문구에도 "세그먼트"가
+        // 등장하므로(TΔ3d 순차 제안 개정) 낱말 단위 단언은 못 쓴다.
+        assertThat(context.instructions()).doesNotContain("- 다중 날짜 자동 분해 세그먼트(");
     }
 
     @Test

@@ -241,7 +241,8 @@ class AgentConversationRouterTest {
         assertThat(segmenter.calls).isEqualTo(1);
         assertThat(agentClient.calls).isEqualTo(1);                 // 기록 흐름이 막히지 않는다
         assertThat(responder.posted).containsExactly(agentClient.reply); // AGENT_TURN_FAILED 아님
-        assertThat(agentClient.lastContext.instructions()).doesNotContain("세그먼트");
+        // 주입 블록 bullet 마커로 부재 단언 — 프롬프트 정책 문구의 "세그먼트"(TΔ3d)와 구분한다.
+        assertThat(agentClient.lastContext.instructions()).doesNotContain("- 다중 날짜 자동 분해 세그먼트(");
     }
 
     @Test
@@ -250,7 +251,8 @@ class AgentConversationRouterTest {
         router.onMessage(message("7/16에 마신 케냐 진했어"));
 
         assertThat(segmenter.calls).isZero();
-        assertThat(agentClient.lastContext.instructions()).doesNotContain("세그먼트");
+        // 주입 블록 bullet 마커로 부재 단언 — 프롬프트 정책 문구의 "세그먼트"(TΔ3d)와 구분한다.
+        assertThat(agentClient.lastContext.instructions()).doesNotContain("- 다중 날짜 자동 분해 세그먼트(");
     }
 
     // ---- 헬퍼 ----
