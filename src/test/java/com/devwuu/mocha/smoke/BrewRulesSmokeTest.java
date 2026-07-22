@@ -100,7 +100,7 @@ class BrewRulesSmokeTest {
         AgentTurnInput input = new AgentContextAssembler(mapper, clock)
                 .assemble(message, List.of(), null, null);
 
-        String reply = new OpenAiAgentClient(client, model, 10, mapper)
+        String reply = new OpenAiAgentClient(client, model, 10, 100_000, Duration.ofSeconds(60), mapper)
                 .runTurn(input, toolkit.forTurn(USER, CHANNEL, new TurnUtterance(message, null)));
 
         System.out.println("=== BREW RULES SMOKE (TΔ3b, " + label + ") model=" + model + " ===");

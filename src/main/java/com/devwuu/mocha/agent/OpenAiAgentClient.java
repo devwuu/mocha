@@ -18,6 +18,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.databind.ObjectMapper;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -38,16 +39,23 @@ public class OpenAiAgentClient implements AgentClient {
     private final OpenAIClient client;
     private final String model;
     private final int maxToolCalls;
+    private final int maxTurnTokens;
+    private final Duration turnTimeout;
     private final ObjectMapper mapper;
 
     /**
-     * @param model        에이전트 루프 모델(mocha.agent.model — web_search·다중 tool 호출 품질 필요, ADR-50)
-     * @param maxToolCalls function tool 실행 횟수 상한(mocha.agent.max-tool-calls, ADR-44)
+     * @param model         에이전트 루프 모델(mocha.agent.model — web_search·다중 tool 호출 품질 필요, ADR-50)
+     * @param maxToolCalls  function tool 실행 횟수 상한(mocha.agent.max-tool-calls, ADR-44)
+     * @param maxTurnTokens 턴 누적 토큰 상한 — 이터레이션별 usage(in+out) 합산(mocha.agent.max-turn-tokens, ADR-62)
+     * @param turnTimeout   턴 경과 시간 상한 — 이터레이션 경계 판정(mocha.agent.turn-timeout, ADR-62)
      */
-    public OpenAiAgentClient(OpenAIClient client, String model, int maxToolCalls, ObjectMapper mapper) {
+    public OpenAiAgentClient(OpenAIClient client, String model, int maxToolCalls,
+                             int maxTurnTokens, Duration turnTimeout, ObjectMapper mapper) {
         this.client = client;
         this.model = model;
         this.maxToolCalls = maxToolCalls;
+        this.maxTurnTokens = maxTurnTokens;
+        this.turnTimeout = turnTimeout;
         this.mapper = mapper;
     }
 
@@ -61,12 +69,20 @@ public class OpenAiAgentClient implements AgentClient {
         context.messages().forEach(message -> pendingInput.add(toInputItem(message)));
         String previousResponseId = null;
         int executedToolCalls = 0;
+        long cumulativeInputTokens = 0;
+        long cumulativeOutputTokens = 0;
         List<String> toolSequence = new ArrayList<>();
 
         while (true) {
             Response response = send(buildParams(context.instructions(), tools, pendingInput, previousResponseId));
             previousResponseId = response.id();
             pendingInput.clear();
+
+            // 누적 usage 합산 — 이터레이션별 in+out을 합쳐 토큰 상한 판정·관측에 쓴다(ADR-62 튜닝 근거).
+            if (response.usage().isPresent()) {
+                cumulativeInputTokens += response.usage().get().inputTokens();
+                cumulativeOutputTokens += response.usage().get().outputTokens();
+            }
 
             List<ResponseFunctionToolCall> calls = new ArrayList<>();
             StringBuilder finalText = new StringBuilder();
@@ -84,18 +100,37 @@ public class OpenAiAgentClient implements AgentClient {
             }
 
             if (calls.isEmpty()) {
-                logTurnObservation("완료", toolSequence, executedToolCalls, started, response);
+                logTurnObservation("완료", toolSequence, executedToolCalls, started,
+                        cumulativeInputTokens, cumulativeOutputTokens);
                 if (finalText.isEmpty()) {
                     throw new AgentException("에이전트 턴이 최종 텍스트 없이 끝남 (response.id=" + response.id() + ")");
                 }
                 return finalText.toString();
             }
 
+            // POLICY: 턴 상한 3종(tool 호출·누적 토큰·경과 시간) 도달 시 루프 중단 + 폴백 — 상한 없는 루프 금지
+            // (ref: specs/coffee-note-agent/plan.md#ADR-44·ADR-62 POLICY)
+            // 판정은 턴이 계속될 때만(이터레이션 경계) — 이미 완결된 응답은 위에서 반환됐다(비용은 기지불,
+            // 상한의 목적은 폭주 차단이지 완결 턴 폐기가 아니다). 진행 중 HTTP 호출은 중단하지 않는다(ADR-62).
+            long cumulativeTokens = cumulativeInputTokens + cumulativeOutputTokens;
+            if (cumulativeTokens >= maxTurnTokens) {
+                logTurnObservation("누적 토큰 상한 도달", toolSequence, executedToolCalls, started,
+                        cumulativeInputTokens, cumulativeOutputTokens);
+                throw new AgentException("턴 누적 토큰 상한(" + maxTurnTokens + ") 도달 — 누적 "
+                        + cumulativeTokens + ", 턴 중단");
+            }
+            long elapsedMs = System.currentTimeMillis() - started;
+            if (elapsedMs >= turnTimeout.toMillis()) {
+                logTurnObservation("턴 타임아웃 도달", toolSequence, executedToolCalls, started,
+                        cumulativeInputTokens, cumulativeOutputTokens);
+                throw new AgentException("턴 경과 시간 상한(" + turnTimeout.toSeconds() + "s) 도달 — 경과 "
+                        + elapsedMs + "ms, 턴 중단");
+            }
+
             for (ResponseFunctionToolCall call : calls) {
-                // POLICY: tool 호출 상한 도달 시 루프를 중단하고 폴백한다 — 상한 없는 루프 금지
-                // (ref: specs/coffee-note-agent/plan.md#ADR-44 POLICY)
                 if (executedToolCalls >= maxToolCalls) {
-                    logTurnObservation("상한 도달", toolSequence, executedToolCalls, started, response);
+                    logTurnObservation("tool 호출 상한 도달", toolSequence, executedToolCalls, started,
+                            cumulativeInputTokens, cumulativeOutputTokens);
                     throw new AgentException("tool 호출 상한(" + maxToolCalls + ") 도달 — 턴 중단");
                 }
                 executedToolCalls++;
@@ -211,13 +246,12 @@ public class OpenAiAgentClient implements AgentClient {
         }
     }
 
-    // AC-Δ9: 턴 관측 — tool 시퀀스·호출 수·상한 도달이 파일 로그에서 구분 확인된다(plan §6).
+    // AC-Δ9·AC-Δ3: 턴 관측 — tool 시퀀스·호출 수·상한 도달(사유 구분)·누적 usage가 파일 로그에서
+    // 확인된다(plan §6 — 상한 기본값 튜닝 근거, ADR-62).
     private void logTurnObservation(String outcome, List<String> toolSequence, int executedToolCalls,
-                                    long started, Response response) {
-        log.info("에이전트 턴 관측: outcome={} toolSequence={} functionCalls={} elapsedMs={} usage={}",
+                                    long started, long cumulativeInputTokens, long cumulativeOutputTokens) {
+        log.info("에이전트 턴 관측: outcome={} toolSequence={} functionCalls={} elapsedMs={} cumulativeUsage=in:{} out:{}",
                 outcome, toolSequence, executedToolCalls, System.currentTimeMillis() - started,
-                response.usage()
-                        .map(u -> "in:" + u.inputTokens() + " out:" + u.outputTokens())
-                        .orElse("?"));
+                cumulativeInputTokens, cumulativeOutputTokens);
     }
 }

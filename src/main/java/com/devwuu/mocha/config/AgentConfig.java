@@ -23,12 +23,17 @@ public class AgentConfig {
 
     // 에이전트 루프 모델: 초기값 gpt-5.4-mini(0018 TΔ0a 실측)에서 gpt-5.4로 교체(2026-07-21 사용자 확정) —
     // 경량이 다중 날짜 분리 규칙(AC-77)을 프롬프트·스키마 보강에도 반복 위반(changes/0021 TΔ3b 스모크 관측).
+    // 턴 상한 3종(ADR-44·62): tool 호출 수 + 누적 토큰 + 경과 시간 — 기본값은 관측 표본 부족(6건)으로
+    // 보수적 시작, 누적 usage 관측 축적 후 yml 조정(plan §5·§6).
     @Bean
     public AgentClient agentClient(
             OpenAIClient openAiClient,
             @Value("${mocha.agent.model:gpt-5.4}") String model,
-            @Value("${mocha.agent.max-tool-calls:8}") int maxToolCalls) {
-        return new OpenAiAgentClient(openAiClient, model, maxToolCalls, MochaObjectMapper.create());
+            @Value("${mocha.agent.max-tool-calls:8}") int maxToolCalls,
+            @Value("${mocha.agent.max-turn-tokens:100000}") int maxTurnTokens,
+            @Value("${mocha.agent.turn-timeout:60s}") Duration turnTimeout) {
+        return new OpenAiAgentClient(openAiClient, model, maxToolCalls, maxTurnTokens, turnTimeout,
+                MochaObjectMapper.create());
     }
 
     @Bean

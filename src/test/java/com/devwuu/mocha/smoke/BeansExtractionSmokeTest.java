@@ -78,7 +78,7 @@ class BeansExtractionSmokeTest {
         AgentTurnInput input = new AgentContextAssembler(mapper, clock)
                 .assemble(message, List.of(), null, null);
 
-        String reply = new OpenAiAgentClient(client, model, 10, mapper)
+        String reply = new OpenAiAgentClient(client, model, 10, 100_000, Duration.ofSeconds(60), mapper)
                 .runTurn(input, toolkit.forTurn(USER, CHANNEL, new TurnUtterance(message, null)));
 
         System.out.println("=== BEANS EXTRACTION SMOKE (TΔ3a, AC-64) model=" + model + " ===");

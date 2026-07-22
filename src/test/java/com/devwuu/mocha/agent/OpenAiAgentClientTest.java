@@ -16,6 +16,7 @@ import com.openai.models.responses.ResponseInputItem;
 import com.openai.models.responses.ResponseOutputItem;
 import com.openai.models.responses.ResponseOutputMessage;
 import com.openai.models.responses.ResponseOutputText;
+import com.openai.models.responses.ResponseUsage;
 import com.openai.models.responses.Tool;
 import com.openai.models.responses.ToolChoiceOptions;
 import com.openai.models.responses.WebSearchTool;
@@ -25,6 +26,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -48,7 +50,12 @@ class OpenAiAgentClientTest {
         final List<ResponseCreateParams> sent = new ArrayList<>();
 
         ScriptedAgentClient(int maxToolCalls, List<Response> script) {
-            super(null, "test-model", maxToolCalls, MochaObjectMapper.create());
+            // 토큰·타임아웃 상한은 운영 기본값 — 상한 무관 테스트가 걸리지 않게 넉넉히 둔다.
+            this(maxToolCalls, 100_000, Duration.ofSeconds(60), script);
+        }
+
+        ScriptedAgentClient(int maxToolCalls, int maxTurnTokens, Duration turnTimeout, List<Response> script) {
+            super(null, "test-model", maxToolCalls, maxTurnTokens, turnTimeout, MochaObjectMapper.create());
             this.script = new ArrayDeque<>(script);
         }
 
@@ -126,6 +133,67 @@ class OpenAiAgentClientTest {
         // AC-Δ9: 상한 도달이 관측 로그에서 구분된다.
         assertThat(logs.list).anySatisfy(event ->
                 assertThat(event.getFormattedMessage()).contains("에이전트 턴 관측").contains("상한 도달"));
+    }
+
+    @Test
+    @DisplayName("AC-Δ3 (ADR-62): 누적 토큰 상한 도달 시 AgentException 폴백 — tool 미실행·사유 구분 로그")
+    void abortsWhenCumulativeTokenCapReached() {
+        AtomicInteger executions = new AtomicInteger();
+        AgentTool tool = getNoteTool(args -> {
+            executions.incrementAndGet();
+            return "{}";
+        });
+        // 첫 이터레이션 usage(80+30=110)가 상한(100)을 넘고 턴이 계속되려 한다 → 이터레이션 경계에서 중단.
+        ScriptedAgentClient client = new ScriptedAgentClient(8, 100, Duration.ofSeconds(60), List.of(
+                responseWithUsage("resp_1", 80, 30, functionCall("call_1", "get_note", "{\"slug\":\"x\"}"))));
+
+        assertThatThrownBy(() -> client.runTurn(context("기록해줘"), List.of(tool)))
+                .isInstanceOf(AgentException.class)
+                .hasMessageContaining("누적 토큰 상한");
+        // 상한 초과 판정은 tool 실행 전 — 초과분 tool은 실행되지 않는다.
+        assertThat(executions).hasValue(0);
+        assertThat(logs.list).anySatisfy(event -> assertThat(event.getFormattedMessage())
+                .contains("에이전트 턴 관측")
+                .contains("누적 토큰 상한 도달")
+                .contains("cumulativeUsage=in:80 out:30"));
+    }
+
+    @Test
+    @DisplayName("AC-Δ3 (ADR-62): 턴 경과 시간 상한 도달 시 AgentException 폴백 — 이터레이션 경계 판정·사유 구분 로그")
+    void abortsWhenTurnTimeoutReached() {
+        AtomicInteger executions = new AtomicInteger();
+        AgentTool tool = getNoteTool(args -> {
+            executions.incrementAndGet();
+            return "{}";
+        });
+        // timeout=0 — 첫 이터레이션 경계에서 즉시 도달(실제 대기 없는 결정론 판정).
+        ScriptedAgentClient client = new ScriptedAgentClient(8, 100_000, Duration.ZERO, List.of(
+                response("resp_1", functionCall("call_1", "get_note", "{\"slug\":\"x\"}"))));
+
+        assertThatThrownBy(() -> client.runTurn(context("기록해줘"), List.of(tool)))
+                .isInstanceOf(AgentException.class)
+                .hasMessageContaining("경과 시간 상한");
+        assertThat(executions).hasValue(0);
+        assertThat(logs.list).anySatisfy(event -> assertThat(event.getFormattedMessage())
+                .contains("에이전트 턴 관측")
+                .contains("턴 타임아웃 도달"));
+    }
+
+    @Test
+    @DisplayName("AC-Δ3 (ADR-62): 상한 미달 시 동작 불변 — 턴 완료 + 관측 로그에 이터레이션별 usage 합산")
+    void accumulatesUsageAcrossIterationsWhenUnderCaps() {
+        ScriptedAgentClient client = new ScriptedAgentClient(8, 100_000, Duration.ofSeconds(60), List.of(
+                responseWithUsage("resp_1", 80, 30, functionCall("call_1", "get_note", "{\"slug\":\"x\"}")),
+                responseWithUsage("resp_2", 120, 50, message("찾았다멍"))));
+
+        String result = client.runTurn(context("와이키키 보여줘"), List.of(getNoteTool(args -> "{}")));
+
+        assertThat(result).isEqualTo("찾았다멍");
+        // 누적 usage(in+out 이터레이션 합산)가 관측 로그에 남는다 — 상한 기본값 튜닝 근거(plan §6).
+        assertThat(logs.list).anySatisfy(event -> assertThat(event.getFormattedMessage())
+                .contains("에이전트 턴 관측")
+                .contains("outcome=완료")
+                .contains("cumulativeUsage=in:200 out:80"));
     }
 
     @Test
@@ -219,7 +287,8 @@ class OpenAiAgentClientTest {
     @DisplayName("ADR-48: 모델 호출 실패는 AgentException으로 수렴한다(폴백 대상)")
     void wrapsModelCallFailureAsAgentException() {
         // client=null인 실 send 경로 — SDK 호출 시도가 RuntimeException으로 실패한다.
-        OpenAiAgentClient client = new OpenAiAgentClient(null, "test-model", 8, MochaObjectMapper.create());
+        OpenAiAgentClient client = new OpenAiAgentClient(null, "test-model", 8,
+                100_000, Duration.ofSeconds(60), MochaObjectMapper.create());
 
         assertThatThrownBy(() -> client.runTurn(context("안녕"), List.of()))
                 .isInstanceOf(AgentException.class)
@@ -263,6 +332,24 @@ class OpenAiAgentClientTest {
                 .toolChoice(ToolChoiceOptions.AUTO)
                 .tools(List.of())
                 .topP(Optional.empty())
+                .build();
+    }
+
+    private static Response responseWithUsage(String id, long inputTokens, long outputTokens,
+                                              ResponseOutputItem... items) {
+        return response(id, items).toBuilder()
+                .usage(ResponseUsage.builder()
+                        .inputTokens(inputTokens)
+                        .inputTokensDetails(ResponseUsage.InputTokensDetails.builder()
+                                .cachedTokens(0)
+                                .cacheWriteTokens(0)
+                                .build())
+                        .outputTokens(outputTokens)
+                        .outputTokensDetails(ResponseUsage.OutputTokensDetails.builder()
+                                .reasoningTokens(0)
+                                .build())
+                        .totalTokens(inputTokens + outputTokens)
+                        .build())
                 .build();
     }
 
