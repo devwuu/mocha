@@ -152,8 +152,10 @@ public class ProposalValidator {
     // POLICY: 다중 날짜 게이트는 record 전용 — propose_edit 경로에 날짜 수 게이트 금지(날짜 이동·정정
     //         발화는 날짜 2개가 정당하고, 스키마+단일 대기가 이미 강제) (ref: plan.md#ADR-60, data-model.md#V-16).
     // V-16: 분해(ADR-61)를 우회한 뭉뚱그림 제안의 최종 방어선. 원문에서 서로 다른 절대 날짜 2개 이상이
-    // 탐지되면, 세그먼트 분해가 수행됐고 target_date가 탐지 집합 안에 있을 때만 통과한다(통과 분기의
-    // 실전 활성화는 TΔ3b 세그먼트 주입 이후 — 그전엔 세그먼트 항상 부재 = 다중 날짜 전부 거부).
+    // 탐지되면, 세그먼트 분해가 수행됐고 target_date가 탐지 집합 안에 있을 때만 통과한다. 세그먼트는
+    // 라우터의 턴 전처리(TΔ3b)가 주입한다 — 세그먼터 실패 턴은 컨텍스트 부재 = 전부 거부로, 분리 안내
+    // 폴백(ADR-61)과 정합한다. 통과 기준은 집합 소속뿐 — 가장 이른 날짜 강제는 프롬프트의 몫이라
+    // "저장 후 이어서" 턴의 나중 날짜 제안을 게이트가 막지 않는다.
     // 거부 사유는 판단 근거(탐지 집합·위반 이유·다음 행동)를 담아 루프 내 자가 정정을 돕는다 —
     // bare rejection 금지(ADR-60 POLICY).
     private void requireSingleDateOrSegmented(TurnUtterance utterance, LocalDate targetDate) {

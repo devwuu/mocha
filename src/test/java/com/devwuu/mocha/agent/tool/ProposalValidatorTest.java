@@ -128,7 +128,7 @@ class ProposalValidatorTest {
         }
     }
 
-    // ---- V-16 다중 날짜 게이트 (TΔ2c) ----
+    // ---- V-16 다중 날짜 게이트 (TΔ2c 거부 분기 · TΔ3c 세그먼트 통과 분기) ----
 
     @Nested
     class MultiDateGateV16 {
@@ -163,6 +163,27 @@ class ProposalValidatorTest {
                     .contains("2026-07-20")                          // 위반 이유 — 집합 밖 target_date
                     .contains("2026-07-16").contains("2026-07-17")   // 탐지 날짜 집합
                     .contains("가장 이른 날짜(2026-07-16)");           // 다음 행동
+        }
+
+        @Test
+        @DisplayName("AC-Δ2: 세그먼트 분해가 수행되고 target_date가 탐지 집합 안이면 통과한다 — V-16 완성형(TΔ3c)")
+        void segmentedProposalWithinDetectedSetPasses() {
+            List<TurnUtterance.Segment> segments = List.of(
+                    new TurnUtterance.Segment(LocalDate.of(2026, 7, 16), "7월 16일은 새콤했음"),
+                    new TurnUtterance.Segment(LocalDate.of(2026, 7, 17), "7월 17일은 고소했음"));
+            TurnUtterance utterance = new TurnUtterance("7월 16일은 새콤했고 7월 17일은 고소했음", segments);
+
+            // 순차 제안의 첫 턴 — 가장 이른 날짜 세그먼트의 제안이 통과한다.
+            RecordProposal earliest = okOf(gateValidator.validateRecord(recordArgs(), null, utterance));
+            assertThat(earliest.targetDate()).isEqualTo(LocalDate.of(2026, 7, 16));
+
+            // 게이트 기준은 집합 소속뿐 — 이른 날짜 강제는 프롬프트 몫이라 "저장 후 이어서" 턴의
+            // 나중 날짜 제안도 게이트에 막히지 않는다(ADR-60).
+            RecordProposal later = okOf(gateValidator.validateRecord(
+                    recordArgs("커피베라 예가체프 G1", "맛있다", "2026-07-17",
+                            new ProposeRecordArgs.MatchArg("new", null, null)),
+                    null, utterance));
+            assertThat(later.targetDate()).isEqualTo(LocalDate.of(2026, 7, 17));
         }
 
         @Test
