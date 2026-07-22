@@ -59,6 +59,8 @@ class AgentToolkitTest {
 
     private static final String USER = "U-dev";
     private static final String CHANNEL = "C-mocha";
+    // TΔ2b 배선: 원문은 아직 판정에 쓰이지 않는다 — 기존 단언 전부 원문 실린 조립으로 검증(동작 불변).
+    private static final TurnUtterance UTTERANCE = new TurnUtterance("7월 16일 새콤하고 좋았음", null);
 
     @TempDir
     Path artifactDir;
@@ -86,7 +88,7 @@ class AgentToolkitTest {
     @Test
     @DisplayName("plan §3/ADR-44: forTurn은 function tool 5종을 strict 스키마(additionalProperties=false)로 장착한다")
     void forTurnExposesFiveStrictTools() {
-        List<AgentTool> tools = agentTools.forTurn(USER, CHANNEL);
+        List<AgentTool> tools = agentTools.forTurn(USER, CHANNEL, UTTERANCE);
 
         assertThat(tools).extracting(AgentTool::name)
                 .containsExactly("list_notes", "get_note", "propose_record", "propose_edit", "send_entry_card");
@@ -537,7 +539,7 @@ class AgentToolkitTest {
     }
 
     private AgentTool tool(String toolName) {
-        return agentTools.forTurn(USER, CHANNEL).stream()
+        return agentTools.forTurn(USER, CHANNEL, UTTERANCE).stream()
                 .filter(tool -> tool.name().equals(toolName))
                 .findFirst().orElseThrow();
     }

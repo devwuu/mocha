@@ -163,22 +163,25 @@ class ProposalTools {
 
     // ---- propose_record (data-model §3.3, FR-2/FR-5) ----
 
-    AgentTool proposeRecord(String userId, String channelId) {
+    // 턴 원문(utterance)은 클로저 캡처로만 유입된다 — 턴 시작 시점 고정 값이라 pending처럼 재조회하지
+    // 않고, FR-5 갱신 재호출도 같은 턴 클로저를 써 턴 안에서 일관된다(TΔ2b, findings-TΔ0 §C-2·C-5).
+    AgentTool proposeRecord(String userId, String channelId, TurnUtterance utterance) {
         return new AgentTool(
                 "propose_record",
                 "신규 시음 기록(또는 기존 노트에 더하는 새 시음)을 제안한다 — 검증 통과 시 확인 대기(pending)가 "
                         + "만들어지고 미리보기가 전송된다. 저장은 사용자의 [저장] 버튼만 한다. 확인 대기 중 같은 커피의 "
                         + "재호출은 대기 내용 갱신이다(수정 발화 반영). 검증 거부는 사유를 돌려주니 정정해 재호출해라.",
                 PROPOSE_RECORD_SCHEMA,
-                argumentsJson -> executeProposeRecord(userId, channelId, argumentsJson));
+                argumentsJson -> executeProposeRecord(userId, channelId, utterance, argumentsJson));
     }
 
-    private String executeProposeRecord(String userId, String channelId, String argumentsJson) {
+    private String executeProposeRecord(String userId, String channelId, TurnUtterance utterance,
+                                        String argumentsJson) {
         ProposeRecordArgs args = mapper.readValue(argumentsJson, ProposeRecordArgs.class);
         PendingNote pending = pendingStore.get(userId).orElse(null);
         // POLICY: 제안 tool의 서버 검증 실패는 오류 사유를 tool 결과로 반환 — 조용한 드롭·서버 대행 금지
         //         (ref: specs/coffee-note-agent/plan.md#ADR-45, AC-9). 단일 대기 거부(AC-30)도 여기 수렴한다.
-        ToolValidation<RecordProposal> validation = validator.validateRecord(args, pending);
+        ToolValidation<RecordProposal> validation = validator.validateRecord(args, pending, utterance);
         if (validation instanceof ToolValidation.Rejected<RecordProposal>(String reason)) {
             log.info("propose_record 검증 거부: user={} reason={}", userId, reason);
             return ToolSupport.errorOutput(mapper, reason);

@@ -7,6 +7,7 @@ import com.devwuu.mocha.agent.prompt.AgentContextAssembler;
 import com.devwuu.mocha.agent.prompt.AgentTurnInput;
 import com.devwuu.mocha.agent.tool.AgentToolkit;
 import com.devwuu.mocha.agent.tool.ProposalValidator;
+import com.devwuu.mocha.agent.tool.TurnUtterance;
 import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.llm.AliasGenerator;
@@ -171,7 +172,10 @@ public class AgentConversationRouter implements ConversationRouter {
 
             log.info("에이전트 턴 진입: user={} buffered={} pending={}",
                     userId, bufferNames.size(), pendingBefore != null);
-            String reply = agentClient.runTurn(context, agentTools.forTurn(userId, channelId));
+            // TΔ2b 배선: 턴 원문을 제안 검증기까지 나른다(다중 날짜 게이트 V-16의 판정 입력, ADR-60).
+            // 세그먼트는 자동 분해(TΔ3b) 전까지 null — 라우터가 1회 만들어 넘겨 턴 안에서 값이 일관된다.
+            TurnUtterance utterance = new TurnUtterance(message.text(), null);
+            String reply = agentClient.runTurn(context, agentTools.forTurn(userId, channelId, utterance));
 
             // 모델의 최종 텍스트가 곧 Slack 응답이다(ADR-44) — 미리보기·카드는 tool 구현체가 이미 보냈다.
             responder.post(channelId, reply);

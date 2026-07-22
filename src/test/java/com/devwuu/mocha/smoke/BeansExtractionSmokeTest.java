@@ -6,6 +6,7 @@ import com.devwuu.mocha.agent.prompt.AgentContextAssembler;
 import com.devwuu.mocha.agent.prompt.AgentTurnInput;
 import com.devwuu.mocha.agent.tool.AgentToolkit;
 import com.devwuu.mocha.agent.tool.ProposalValidator;
+import com.devwuu.mocha.agent.tool.TurnUtterance;
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
@@ -78,7 +79,7 @@ class BeansExtractionSmokeTest {
                 .assemble(message, List.of(), null, null);
 
         String reply = new OpenAiAgentClient(client, model, 10, mapper)
-                .runTurn(input, toolkit.forTurn(USER, CHANNEL));
+                .runTurn(input, toolkit.forTurn(USER, CHANNEL, new TurnUtterance(message, null)));
 
         System.out.println("=== BEANS EXTRACTION SMOKE (TΔ3a, AC-64) model=" + model + " ===");
         System.out.println("입력      = " + message);

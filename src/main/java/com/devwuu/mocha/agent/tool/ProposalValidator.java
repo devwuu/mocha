@@ -40,10 +40,13 @@ public class ProposalValidator {
     /**
      * {@code propose_record} 검증 — 통과 시 도메인 타입으로 정규화된 {@link RecordProposal}.
      *
-     * @param args    strict schema를 통과한 미검증 인자.
-     * @param pending 현재 확인 대기 — 없으면 null. 단일 대기 판정 입력.
+     * @param args      strict schema를 통과한 미검증 인자.
+     * @param pending   현재 확인 대기 — 없으면 null. 단일 대기 판정 입력.
+     * @param utterance 이번 턴의 사용자 원문·세그먼트 컨텍스트 — 다중 날짜 게이트(V-16, TΔ2c)의 판정
+     *                  입력. TΔ2b는 배선만 — 아직 판정에 쓰지 않는다(동작 불변, ADR-60).
      */
-    public ToolValidation<RecordProposal> validateRecord(ProposeRecordArgs args, PendingNote pending) {
+    public ToolValidation<RecordProposal> validateRecord(ProposeRecordArgs args, PendingNote pending,
+                                                         TurnUtterance utterance) {
         try {
             Sourced<String> coffeeName = sourced("coffee_name", args.coffeeName(), COFFEE_NAME_SOURCES);
             if (coffeeName == null) {
