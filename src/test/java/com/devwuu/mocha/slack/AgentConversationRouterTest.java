@@ -21,6 +21,7 @@ import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.domain.Tasting;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.llm.PhotoInfoExtractor;
+import com.devwuu.mocha.llm.UtteranceSegmenter;
 import com.devwuu.mocha.llm.VisionExtraction;
 import com.devwuu.mocha.llm.VisionHint;
 import com.devwuu.mocha.repository.PendingStore;
@@ -46,6 +47,7 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -74,6 +76,7 @@ class AgentConversationRouterTest {
     private final FakePhotoStore photoStore = new FakePhotoStore();
     private final FakePhotoBufferStore photoBufferStore = new FakePhotoBufferStore();
     private final StubPhotoInfoExtractor photoInfoExtractor = new StubPhotoInfoExtractor();
+    private final FakeSegmenter segmenter = new FakeSegmenter();
     private AgentConversationRouter router;
 
     @BeforeEach
@@ -85,7 +88,7 @@ class AgentConversationRouterTest {
         AgentToolkit agentTools = new AgentToolkit(null, null, responder, Path.of("unused-artifact"),
                 MochaObjectMapper.create(), pendingStore, null, new ProposalValidator(), transcript, clock);
         router = new AgentConversationRouter(pendingStore, transcript, agentClient, agentTools,
-                new AgentContextAssembler(MochaObjectMapper.create(), clock), photoIntake,
+                new AgentContextAssembler(MochaObjectMapper.create(), clock), segmenter, photoIntake,
                 responder, commitHandler, clock);
     }
 
@@ -205,6 +208,49 @@ class AgentConversationRouterTest {
 
         assertThat(photoBufferStore.get(USER)).isPresent();
         assertThat(responder.posted).containsExactly(MochaMessages.AGENT_TURN_FAILED);
+    }
+
+    @Test
+    @DisplayName("ADR-61/TΔ3b: 다중 날짜 발화 = 탐지→세그먼터 1콜→세그먼트 컨텍스트 주입(가장 이른 날짜 활성)")
+    void multiDateUtteranceInjectsSegments() {
+        segmenter.canned = List.of(
+                new UtteranceSegmenter.Segment(LocalDate.of(2026, 7, 15), "7/15 에티오피아 새콤했음"),
+                new UtteranceSegmenter.Segment(LocalDate.of(2026, 7, 16), "7/16 케냐 진했음"));
+
+        router.onMessage(message("7/15 에티오피아 새콤했음. 7/16 케냐 진했음"));
+
+        // 탐지 날짜 집합이 세그먼터에 그대로 전달된다(ADR-60·61 탐지기 공유).
+        assertThat(segmenter.calls).isEqualTo(1);
+        assertThat(segmenter.lastUtterance).isEqualTo("7/15 에티오피아 새콤했음. 7/16 케냐 진했음");
+        assertThat(segmenter.lastDates).containsExactly(LocalDate.of(2026, 7, 15), LocalDate.of(2026, 7, 16));
+        // 세그먼트가 턴 컨텍스트에 실리고(가장 이른 날짜 활성) 턴은 정상 진행된다.
+        assertThat(agentClient.calls).isEqualTo(1);
+        assertThat(agentClient.lastContext.instructions())
+                .contains("다중 날짜 자동 분해 세그먼트")
+                .contains("\"active_date\":\"2026-07-15\"")
+                .contains("7/16 케냐 진했음");
+    }
+
+    @Test
+    @DisplayName("AC-Δ2/ADR-61: 세그먼터 실패 = 주입 없이 턴 정상 진행 — 턴 폴백 아님(뭉뚱그림은 게이트 V-16이 방어)")
+    void segmenterFailureProceedsWithoutInjection() {
+        segmenter.failure = new IllegalStateException("세그먼터 응답 스키마 위반");
+
+        router.onMessage(message("7/15 에티오피아 새콤했음. 7/16 케냐 진했음"));
+
+        assertThat(segmenter.calls).isEqualTo(1);
+        assertThat(agentClient.calls).isEqualTo(1);                 // 기록 흐름이 막히지 않는다
+        assertThat(responder.posted).containsExactly(agentClient.reply); // AGENT_TURN_FAILED 아님
+        assertThat(agentClient.lastContext.instructions()).doesNotContain("세그먼트");
+    }
+
+    @Test
+    @DisplayName("ADR-61: 단일 날짜(탐지 2개 미만) 발화는 무개입 — 세그먼터 미호출, 컨텍스트 무변화")
+    void singleDateUtteranceSkipsSegmenter() {
+        router.onMessage(message("7/16에 마신 케냐 진했어"));
+
+        assertThat(segmenter.calls).isZero();
+        assertThat(agentClient.lastContext.instructions()).doesNotContain("세그먼트");
     }
 
     // ---- 헬퍼 ----
@@ -372,6 +418,26 @@ class AgentConversationRouterTest {
         @Override
         public List<String> stagedUserIds() {
             return List.copyOf(staged.keySet());
+        }
+    }
+
+    /** 분리 결과·실패를 지정하는 fake 세그먼터 — LLM 미접촉, 호출 입력을 캡처한다(ADR-61 배선 단언용). */
+    private static final class FakeSegmenter implements UtteranceSegmenter {
+        List<Segment> canned = List.of();
+        RuntimeException failure;
+        int calls;
+        String lastUtterance;
+        Collection<LocalDate> lastDates;
+
+        @Override
+        public List<Segment> segment(String utterance, Collection<LocalDate> dates) {
+            calls++;
+            lastUtterance = utterance;
+            lastDates = dates;
+            if (failure != null) {
+                throw failure;
+            }
+            return canned;
         }
     }
 

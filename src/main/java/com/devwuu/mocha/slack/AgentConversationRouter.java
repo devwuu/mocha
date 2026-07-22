@@ -7,11 +7,13 @@ import com.devwuu.mocha.agent.prompt.AgentContextAssembler;
 import com.devwuu.mocha.agent.prompt.AgentTurnInput;
 import com.devwuu.mocha.agent.tool.AgentToolkit;
 import com.devwuu.mocha.agent.tool.ProposalValidator;
+import com.devwuu.mocha.agent.tool.TastingDateDetector;
 import com.devwuu.mocha.agent.tool.TurnUtterance;
 import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.llm.AliasGenerator;
 import com.devwuu.mocha.llm.PhotoInfoExtractor;
+import com.devwuu.mocha.llm.UtteranceSegmenter;
 import com.devwuu.mocha.llm.VisionExtraction;
 import com.devwuu.mocha.llm.VisionHint;
 import com.devwuu.mocha.render.NoteRenderer;
@@ -38,9 +40,11 @@ import org.springframework.stereotype.Component;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.NavigableSet;
 import java.util.Objects;
 
 /**
@@ -77,6 +81,7 @@ public class AgentConversationRouter implements ConversationRouter {
     private final AgentClient agentClient;
     private final AgentToolkit agentTools;
     private final AgentContextAssembler contextAssembler;
+    private final UtteranceSegmenter segmenter;
     private final SlackPhotoIntake photoIntake;
     private final SlackResponder responder;
     private final SlackCommitHandler commitHandler;
@@ -87,6 +92,7 @@ public class AgentConversationRouter implements ConversationRouter {
             PendingStore pendingStore,
             ConversationTranscript transcript,
             AgentClient agentClient,
+            UtteranceSegmenter segmenter,
             NoteRepository noteRepository,
             NoteRenderer noteRenderer,
             SlackResponder responder,
@@ -104,6 +110,7 @@ public class AgentConversationRouter implements ConversationRouter {
                         MochaObjectMapper.create(), pendingStore, previewMessenger, new ProposalValidator(),
                         transcript, Clock.system(SEOUL)),
                 new AgentContextAssembler(MochaObjectMapper.create(), Clock.system(SEOUL)),
+                segmenter,
                 new SlackPhotoIntake(pendingStore, responder, photoDownloader, photoStore, photoBufferStore,
                         photoInfoExtractor, bufferWindow, Clock.system(SEOUL)),
                 responder, noteRepository, noteRenderer, aliasGenerator, Clock.system(SEOUL));
@@ -117,13 +124,15 @@ public class AgentConversationRouter implements ConversationRouter {
             AgentClient agentClient,
             AgentToolkit agentTools,
             AgentContextAssembler contextAssembler,
+            UtteranceSegmenter segmenter,
             SlackPhotoIntake photoIntake,
             SlackResponder responder,
             NoteRepository noteRepository,
             NoteRenderer noteRenderer,
             AliasGenerator aliasGenerator,
             Clock clock) {
-        this(pendingStore, transcript, agentClient, agentTools, contextAssembler, photoIntake, responder,
+        this(pendingStore, transcript, agentClient, agentTools, contextAssembler, segmenter, photoIntake,
+                responder,
                 new SlackCommitHandler(pendingStore, noteRepository, noteRenderer, responder,
                         aliasGenerator, photoIntake),
                 clock);
@@ -136,6 +145,7 @@ public class AgentConversationRouter implements ConversationRouter {
             AgentClient agentClient,
             AgentToolkit agentTools,
             AgentContextAssembler contextAssembler,
+            UtteranceSegmenter segmenter,
             SlackPhotoIntake photoIntake,
             SlackResponder responder,
             SlackCommitHandler commitHandler,
@@ -145,6 +155,7 @@ public class AgentConversationRouter implements ConversationRouter {
         this.agentClient = agentClient;
         this.agentTools = agentTools;
         this.contextAssembler = contextAssembler;
+        this.segmenter = segmenter;
         this.photoIntake = photoIntake;
         this.responder = responder;
         this.commitHandler = commitHandler;
@@ -166,15 +177,20 @@ public class AgentConversationRouter implements ConversationRouter {
             // 실패·무정보는 빈 결과로 컨텍스트에서 빠진다(FR-19, AC-28 — 조립기가 거른다).
             VisionExtraction ocr = photoIntake.readPhotoInfo(userId, bufferNames, new VisionHint(null, null));
 
+            // 다중 날짜 자동 분해(ADR-61) — OCR과 동렬의 루프 전 전처리. 탐지기가 절대 날짜 2개 이상을
+            // 찾은 턴에만 세그먼터 1콜, 그 외·실패 턴은 null(주입 없음 — 게이트 V-16이 뭉뚱그림을 방어).
+            List<TurnUtterance.Segment> segments = segmentIfMultiDate(userId, message.text());
+
             PendingNote pendingBefore = pendingStore.get(userId).orElse(null);
             AgentTurnInput context = contextAssembler.assemble(
-                    message.text(), transcript.view(userId), pendingBefore, ocr);
+                    message.text(), transcript.view(userId), pendingBefore, ocr, segments);
 
-            log.info("에이전트 턴 진입: user={} buffered={} pending={}",
-                    userId, bufferNames.size(), pendingBefore != null);
-            // TΔ2b 배선: 턴 원문을 제안 검증기까지 나른다(다중 날짜 게이트 V-16의 판정 입력, ADR-60).
-            // 세그먼트는 자동 분해(TΔ3b) 전까지 null — 라우터가 1회 만들어 넘겨 턴 안에서 값이 일관된다.
-            TurnUtterance utterance = new TurnUtterance(message.text(), null);
+            log.info("에이전트 턴 진입: user={} buffered={} pending={} segments={}",
+                    userId, bufferNames.size(), pendingBefore != null,
+                    segments == null ? "-" : segments.size());
+            // TΔ2b 배선: 턴 원문·세그먼트를 제안 검증기까지 나른다(다중 날짜 게이트 V-16의 판정 입력, ADR-60).
+            // 라우터가 1회 만들어 조립기와 같은 값을 넘긴다 — 턴 안에서 값이 일관된다(findings-TΔ0 §C-5).
+            TurnUtterance utterance = new TurnUtterance(message.text(), segments);
             String reply = agentClient.runTurn(context, agentTools.forTurn(userId, channelId, utterance));
 
             // 모델의 최종 텍스트가 곧 Slack 응답이다(ADR-44) — 미리보기·카드는 tool 구현체가 이미 보냈다.
@@ -186,6 +202,24 @@ public class AgentConversationRouter implements ConversationRouter {
             //         pending·미리보기는 유효하게 남는다(부분 성공 존중). 폴백 사유는 예외 메시지로 구분 관측(plan §6).
             log.warn("에이전트 턴 폴백(pending·노트 무변화, 원문 보존): user={} 원문={}", userId, message.text(), e);
             responder.post(channelId, MochaMessages.AGENT_TURN_FAILED);
+        }
+    }
+
+    // 다중 날짜 턴의 세그먼트 분리(ADR-61) — 단일 날짜(탐지 2개 미만) 턴은 세그먼터를 부르지 않는다(무개입).
+    private List<TurnUtterance.Segment> segmentIfMultiDate(String userId, String text) {
+        NavigableSet<LocalDate> dates = TastingDateDetector.detect(text, LocalDate.now(clock));
+        if (dates.size() < 2) {
+            return null;
+        }
+        try {
+            return segmenter.segment(text, dates).stream()
+                    .map(s -> new TurnUtterance.Segment(s.date(), s.text()))
+                    .toList();
+        } catch (RuntimeException e) {
+            // POLICY: 세그먼터 실패는 자동 분해 없이 진행 — 기록이 막히지 않고(턴 폴백 아님), 뭉뚱그림 제안은
+            //         게이트(V-16)가 거부해 구 UX(분리 안내)로 수렴한다 (ref: plan.md#ADR-61 POLICY, AC-Δ2).
+            log.warn("세그먼터 실패 — 주입 없이 진행(분리 안내 폴백, 게이트 방어): user={} dates={}", userId, dates, e);
+            return null;
         }
     }
 

@@ -76,7 +76,7 @@ class BeansExtractionSmokeTest {
         String message = "어제 커피리브레 배드 블러드 마셨어. 에티오피아 워시드랑 콜롬비아 내추럴 섞은 블렌드래. "
                 + "고소하고 단맛이 좋았음.";
         AgentTurnInput input = new AgentContextAssembler(mapper, clock)
-                .assemble(message, List.of(), null, null);
+                .assemble(message, List.of(), null, null, null);
 
         String reply = new OpenAiAgentClient(client, model, 10, 100_000, Duration.ofSeconds(60), mapper)
                 .runTurn(input, toolkit.forTurn(USER, CHANNEL, new TurnUtterance(message, null)));

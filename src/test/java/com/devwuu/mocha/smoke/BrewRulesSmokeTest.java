@@ -98,7 +98,7 @@ class BrewRulesSmokeTest {
                 new StubPreviewMessenger(), new ProposalValidator(),
                 new ConversationTranscript(20, Duration.ofHours(1)), clock);
         AgentTurnInput input = new AgentContextAssembler(mapper, clock)
-                .assemble(message, List.of(), null, null);
+                .assemble(message, List.of(), null, null, null);
 
         String reply = new OpenAiAgentClient(client, model, 10, 100_000, Duration.ofSeconds(60), mapper)
                 .runTurn(input, toolkit.forTurn(USER, CHANNEL, new TurnUtterance(message, null)));
