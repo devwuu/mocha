@@ -14,18 +14,8 @@ public final class KoreanDates {
         return d == null ? "" : d.getYear() + "년 " + d.getMonthValue() + "월 " + d.getDayOfMonth() + "일";
     }
 
-    /** "7월 10일" — 귀여운 인덱스 카드. */
-    public String monthDay(LocalDate d) {
-        return d == null ? "" : d.getMonthValue() + "월 " + d.getDayOfMonth() + "일";
-    }
-
     /** "2026. 7. 10" — 세리프 노트 헤더. */
     public String dotted(LocalDate d) {
         return d == null ? "" : d.getYear() + ". " + d.getMonthValue() + ". " + d.getDayOfMonth();
-    }
-
-    /** "7.10" — 세리프 인덱스 행. */
-    public String dottedMonthDay(LocalDate d) {
-        return d == null ? "" : d.getMonthValue() + "." + d.getDayOfMonth();
     }
 }

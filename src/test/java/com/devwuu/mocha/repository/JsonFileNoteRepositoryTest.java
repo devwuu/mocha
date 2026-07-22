@@ -1,5 +1,7 @@
 package com.devwuu.mocha.repository;
 
+import com.devwuu.mocha.domain.Aliases;
+import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.domain.Bean;
 import com.devwuu.mocha.domain.Brew;
 import com.devwuu.mocha.domain.Entry;
@@ -61,9 +63,9 @@ class JsonFileNoteRepositoryTest {
         return new NoteMeta(
                 Sourced.user("커피베라 예가체프 G1"),
                 Sourced.user("커피베라"),
-                List.of(new Bean(Sourced.search("에티오피아 예가체프"), Sourced.search("워시드"))),
+                List.of(new Bean(new Sourced<>("에티오피아 예가체프", Source.SEARCH), new Sourced<>("워시드", Source.SEARCH))),
                 new Sourced<>(null, com.devwuu.mocha.domain.Source.SEARCH),
-                Sourced.search(List.of("자스민", "베르가못")),
+                new Sourced<>(List.of("자스민", "베르가못"), Source.SEARCH),
                 List.of("https://example.com/coffeevera")
         );
     }
@@ -93,8 +95,8 @@ class JsonFileNoteRepositoryTest {
     @DisplayName("AC-14: 같은 날 재기록 시 엔트리 수 불변(갱신만)")
     void sameDayUpsertKeepsSingleEntry() {
         LocalDate today = LocalDate.of(2026, 7, 10);
-        repo.upsertEntry("coffeevera-yirgacheffe-g1", sampleMeta(), entry(today, "새콤하고 좋았다"));
-        Note note = repo.upsertEntry("coffeevera-yirgacheffe-g1", sampleMeta(), entry(today, "오늘은 좀 밍밍"));
+        repo.upsertEntry("coffeevera-yirgacheffe-g1", sampleMeta(), entry(today, "새콤하고 좋았다"), Aliases.empty());
+        Note note = repo.upsertEntry("coffeevera-yirgacheffe-g1", sampleMeta(), entry(today, "오늘은 좀 밍밍"), Aliases.empty());
 
         assertThat(note.entries()).hasSize(1);
         assertThat(tasteOf(note.entries().getFirst())).isEqualTo("오늘은 좀 밍밍");
@@ -112,13 +114,13 @@ class JsonFileNoteRepositoryTest {
                 new Recipe("핸드드립", 15.0, 240.0, null, 160.0, 92.0, "210클릭 (매버릭 2.0)", null, null,
                         "첫 모금이 살짝 떫었으니 다음엔 220클릭으로"),
                 new Tasting("새콤하고 좋았음", "새콤하고 좋았다", Rating.GOOD));
-        repo.upsertEntry(slug, sampleMeta(), entry(today, List.of(first)));
+        repo.upsertEntry(slug, sampleMeta(), entry(today, List.of(first)), Aliases.empty());
 
         // 같은 날 2번째 시도 발화 — 에이전트가 기존 회차를 포함해 append한 전체 배열을 구성한다(V-15 검증 통과분).
         Brew second = new Brew(
                 new Recipe("핸드드립", 15.0, 240.0, null, 150.0, 92.0, "220클릭 (매버릭 2.0)", null, null, null),
                 new Tasting("떫은맛 사라지고 단맛 올라옴", "떫은맛이 사라지고 단맛이 올라온다", Rating.PERFECT));
-        Note note = repo.upsertEntry(slug, sampleMeta(), entry(today, List.of(first, second)));
+        Note note = repo.upsertEntry(slug, sampleMeta(), entry(today, List.of(first, second)), Aliases.empty());
 
         // 엔트리 수 불변(AC-14) + 회차만 2개로 — 서버는 회차 단위 병합 없이 배열을 신뢰해 통째 교체한다.
         assertThat(note.entries()).hasSize(1);
@@ -138,14 +140,14 @@ class JsonFileNoteRepositoryTest {
         LocalDate today = LocalDate.of(2026, 7, 18);
         Recipe recipe = new Recipe("핸드드립", 15.0, 240.0, null, 160.0, 92.0, "210클릭 (매버릭 2.0)", null, null, null);
         repo.upsertEntry(slug, sampleMeta(), entry(today,
-                List.of(new Brew(recipe, new Tasting("새콤하고 좋았음", "새콤하고 좋았다", Rating.GOOD)))));
+                List.of(new Brew(recipe, new Tasting("새콤하고 좋았음", "새콤하고 좋았다", Rating.GOOD)))), Aliases.empty());
 
         // "아까 내린 거 식으니까 더 맛있네" — 에이전트가 그 회차 tasting에 병합(텍스트 통합·원문 이어붙임·
         // rating은 명시 시만 갱신)한 배열을 구성한다. 서버는 append 없이 그대로 교체한다(회차 수 불변).
         Note note = repo.upsertEntry(slug, sampleMeta(), entry(today,
                 List.of(new Brew(recipe, new Tasting(
                         "새콤하고 좋았음. 식으니까 더 맛있음",
-                        "새콤하고 좋았다 / 식으니까 더 맛있네", Rating.GOOD)))));
+                        "새콤하고 좋았다 / 식으니까 더 맛있네", Rating.GOOD)))), Aliases.empty());
 
         assertThat(note.entries()).hasSize(1);
         assertThat(note.entries().getFirst().brews()).hasSize(1);
@@ -161,8 +163,8 @@ class JsonFileNoteRepositoryTest {
     void differentDayAppendsSortedByDate() {
         String slug = "coffeevera-yirgacheffe-g1";
         // 나중 날짜를 먼저 저장해 정렬이 실제로 일어나는지 확인
-        repo.upsertEntry(slug, sampleMeta(), entry(LocalDate.of(2026, 7, 10), "10일"));
-        Note note = repo.upsertEntry(slug, sampleMeta(), entry(LocalDate.of(2026, 7, 9), "9일"));
+        repo.upsertEntry(slug, sampleMeta(), entry(LocalDate.of(2026, 7, 10), "10일"), Aliases.empty());
+        Note note = repo.upsertEntry(slug, sampleMeta(), entry(LocalDate.of(2026, 7, 9), "9일"), Aliases.empty());
 
         assertThat(note.entries())
                 .extracting(Entry::date)
@@ -174,10 +176,10 @@ class JsonFileNoteRepositoryTest {
     void nextAvailableSlugSuffixesOnCollision() {
         assertThat(repo.nextAvailableSlug("coffeevera")).isEqualTo("coffeevera");
 
-        repo.upsertEntry("coffeevera", sampleMeta(), entry(LocalDate.of(2026, 7, 10), "첫 노트"));
+        repo.upsertEntry("coffeevera", sampleMeta(), entry(LocalDate.of(2026, 7, 10), "첫 노트"), Aliases.empty());
         assertThat(repo.nextAvailableSlug("coffeevera")).isEqualTo("coffeevera-2");
 
-        repo.upsertEntry("coffeevera-2", sampleMeta(), entry(LocalDate.of(2026, 7, 10), "둘째 노트"));
+        repo.upsertEntry("coffeevera-2", sampleMeta(), entry(LocalDate.of(2026, 7, 10), "둘째 노트"), Aliases.empty());
         assertThat(repo.nextAvailableSlug("coffeevera")).isEqualTo("coffeevera-3");
     }
 
@@ -192,8 +194,8 @@ class JsonFileNoteRepositoryTest {
     @DisplayName("저장 후 새 조회로 동일 노트 복원(왕복) + findAll은 slug 순")
     void persistsAndReloads() {
         LocalDate today = LocalDate.of(2026, 7, 10);
-        Note saved = repo.upsertEntry("bravo", sampleMeta(), entry(today, "b"));
-        repo.upsertEntry("alpha", sampleMeta(), entry(today, "a"));
+        Note saved = repo.upsertEntry("bravo", sampleMeta(), entry(today, "b"), Aliases.empty());
+        repo.upsertEntry("alpha", sampleMeta(), entry(today, "a"), Aliases.empty());
 
         assertThat(repo.findBySlug("bravo")).contains(saved);
         assertThat(repo.findAll()).extracting(Note::slug).containsExactly("alpha", "bravo");
@@ -222,7 +224,7 @@ class JsonFileNoteRepositoryTest {
     void applyEditUpdatesFields() {
         String slug = "coffeevera-yirgacheffe-g1";
         LocalDate target = LocalDate.of(2026, 7, 10);
-        Note saved = repo.upsertEntry(slug, sampleMeta(), entry(target, "새콤하고 좋았다"));
+        Note saved = repo.upsertEntry(slug, sampleMeta(), entry(target, "새콤하고 좋았다"), Aliases.empty());
 
         Note draft = new Note(
                 saved.slug(), saved.coffeeName(),
@@ -244,8 +246,8 @@ class JsonFileNoteRepositoryTest {
     @DisplayName("AC-Δ3(일부): applyEdit 무충돌 날짜 이동 — 옛 date 제거·새 date 추가·정렬 유지, 총수 불변")
     void applyEditMovesDateWithoutConflict() {
         String slug = "coffeevera-yirgacheffe-g1";
-        repo.upsertEntry(slug, sampleMeta(), entry(LocalDate.of(2026, 7, 9), "9일"));
-        Note saved = repo.upsertEntry(slug, sampleMeta(), entry(LocalDate.of(2026, 7, 10), "10일"));
+        repo.upsertEntry(slug, sampleMeta(), entry(LocalDate.of(2026, 7, 9), "9일"), Aliases.empty());
+        Note saved = repo.upsertEntry(slug, sampleMeta(), entry(LocalDate.of(2026, 7, 10), "10일"), Aliases.empty());
 
         // 7/10 엔트리를 7/11로 이동
         Note draft = editDraft(saved, entry(LocalDate.of(2026, 7, 11), "사실 11일에 마심"));
@@ -262,8 +264,8 @@ class JsonFileNoteRepositoryTest {
     @DisplayName("V-10: applyEdit 날짜 이동 충돌 시 대상 덮어쓰기 + 원본 date 제거 — 엔트리 총수 1 감소")
     void applyEditOverwritesOnDateConflict() {
         String slug = "coffeevera-yirgacheffe-g1";
-        repo.upsertEntry(slug, sampleMeta(), entry(LocalDate.of(2026, 7, 9), "9일 원본"));
-        Note saved = repo.upsertEntry(slug, sampleMeta(), entry(LocalDate.of(2026, 7, 10), "10일 원본"));
+        repo.upsertEntry(slug, sampleMeta(), entry(LocalDate.of(2026, 7, 9), "9일 원본"), Aliases.empty());
+        Note saved = repo.upsertEntry(slug, sampleMeta(), entry(LocalDate.of(2026, 7, 10), "10일 원본"), Aliases.empty());
         assertThat(saved.entries()).hasSize(2);
 
         // 7/9 엔트리를 7/10으로 이동 — 기존 7/10 엔트리와 충돌 → 덮어쓰기
@@ -288,9 +290,9 @@ class JsonFileNoteRepositoryTest {
         Note seeded = new Note(
                 slug,
                 Sourced.user("Ethiopia Chelbesa"), Sourced.user("FroB"),
-                List.of(new Bean(Sourced.search("에티오피아"), null)),
+                List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), null)),
                 new com.devwuu.mocha.domain.Sourced<>(null, com.devwuu.mocha.domain.Source.SEARCH),
-                Sourced.search(List.of()),
+                new Sourced<>(List.of(), Source.SEARCH),
                 new com.devwuu.mocha.domain.Aliases(List.of("에티오피아 첼베사"), List.of("프롭")),
                 List.of(),
                 List.of(entry(day1, "새콤")),
@@ -307,7 +309,7 @@ class JsonFileNoteRepositoryTest {
         NoteMeta sameNotation = new NoteMeta(
                 Sourced.user("Ethiopia Chelbesa"), Sourced.user("FroB"),
                 List.of(), null, null, List.of());
-        Note reRecorded = repo.upsertEntry(slug, sameNotation, entry(LocalDate.of(2026, 7, 10), "10일"));
+        Note reRecorded = repo.upsertEntry(slug, sameNotation, entry(LocalDate.of(2026, 7, 10), "10일"), Aliases.empty());
         assertThat(reRecorded.aliases()).isEqualTo(seeded.aliases());
         assertThat(repo.findBySlug(slug)).get()
                 .extracting(n -> n.aliases().coffeeName()).isEqualTo(List.of("에티오피아 첼베사"));
@@ -325,7 +327,7 @@ class JsonFileNoteRepositoryTest {
                 Sourced.user("Ethiopia Chelbesa"), Sourced.user("FroB"),
                 List.of(),
                 new Sourced<>(null, com.devwuu.mocha.domain.Source.SEARCH),
-                Sourced.search(List.of()),
+                new Sourced<>(List.of(), Source.SEARCH),
                 new com.devwuu.mocha.domain.Aliases(List.of("에티오피아 첼베사"), List.of("프롭")),
                 List.of(),
                 List.of(entry(LocalDate.of(2026, 7, 9), "1일차")),
@@ -335,13 +337,13 @@ class JsonFileNoteRepositoryTest {
 
         // 다른 표기로 재기록 → 신규 표기가 별칭 뒤에 축적된다(첫 등장 순서 보존).
         Note r1 = repo.upsertEntry(slug, metaWithNames("이디오피아 첼베사", "프로브"),
-                entry(LocalDate.of(2026, 7, 10), "2일차"));
+                entry(LocalDate.of(2026, 7, 10), "2일차"), Aliases.empty());
         assertThat(r1.aliases().coffeeName()).containsExactly("에티오피아 첼베사", "이디오피아 첼베사");
         assertThat(r1.aliases().roastery()).containsExactly("프롭", "프로브");
 
         // 같은 표기 재기록 → 정규화 중복 미추가. 표시값(FroB)과 같은 관측 표기 → 미추가.
         Note r2 = repo.upsertEntry(slug, metaWithNames("이디오피아  첼베사", "FROB"),
-                entry(LocalDate.of(2026, 7, 11), "3일차"));
+                entry(LocalDate.of(2026, 7, 11), "3일차"), Aliases.empty());
         assertThat(r2.aliases().coffeeName()).containsExactly("에티오피아 첼베사", "이디오피아 첼베사");
         assertThat(r2.aliases().roastery()).containsExactly("프롭", "프로브");
 
@@ -356,7 +358,7 @@ class JsonFileNoteRepositoryTest {
     void applyEditRejectsCoffeeNameChange() {
         String slug = "coffeevera-yirgacheffe-g1";
         LocalDate target = LocalDate.of(2026, 7, 10);
-        Note saved = repo.upsertEntry(slug, sampleMeta(), entry(target, "원본 감상"));
+        Note saved = repo.upsertEntry(slug, sampleMeta(), entry(target, "원본 감상"), Aliases.empty());
 
         Note draft = new Note(
                 saved.slug(),

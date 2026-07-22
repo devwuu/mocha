@@ -214,7 +214,7 @@ class AgentConversationRouterTest {
     }
 
     private static IncomingAction action(String actionId) {
-        return new IncomingAction(USER, CHANNEL, actionId, null, "1720000000.000456");
+        return new IncomingAction(USER, CHANNEL, actionId);
     }
 
     // vision 지원 포맷의 최소 매직바이트 — 스테이징 입구 게이트(ADR-29) 통과용.

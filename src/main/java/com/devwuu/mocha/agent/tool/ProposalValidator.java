@@ -78,7 +78,7 @@ public class ProposalValidator {
     }
 
     /**
-     * {@code propose_edit} 검증 — 통과 시 도메인 타입으로 정규화된 {@link EditProposal}(V-10 충돌 계산 포함).
+     * {@code propose_edit} 검증 — 통과 시 도메인 타입으로 정규화된 {@link EditProposal}.
      * patch의 beans·brews는 배열 통째 교체 의미다 — null만 유지(data-model §3.4).
      *
      * @param args    strict schema를 통과한 미검증 인자.
@@ -112,18 +112,15 @@ public class ProposalValidator {
             }
 
             // 대상 자신의 날짜로는 이동이 아니다 — null로 정규화(구 수정 flow의 충돌 판정 승계).
+            // 이동 충돌(V-10)은 여기서 계산하지 않는다 — 제안 수용 지점(ProposalTools)이 현 draft 기준으로 재계산한다.
             LocalDate newDate = parseDate("new_date", patch.newDate());
             if (targetDate.equals(newDate)) {
                 newDate = null;
             }
-            // V-10: 이동처에 대상 노트의 기존 엔트리가 있으면 충돌 — 미리보기 덮어쓰기 경고의 근거로 서버가 계산한다.
-            LocalDate movedTo = newDate;
-            boolean dateConflict = movedTo != null
-                    && note.entries().stream().anyMatch(e -> movedTo.equals(e.date()));
 
             return ToolValidation.ok(new EditProposal(
                     note.slug(), targetDate, roastery, beans, roastLevel, officialNotes,
-                    brews, newDate, dateConflict));
+                    brews, newDate));
         } catch (RejectedException rejection) {
             return ToolValidation.rejected(rejection.getMessage());
         }

@@ -1,10 +1,7 @@
 package com.devwuu.mocha.slack.inbound;
 
-import com.devwuu.mocha.domain.Bean;
-import com.devwuu.mocha.domain.NoteMeta;
 import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.domain.PhotoBuffer;
-import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.image.ImageFormat;
 import com.devwuu.mocha.llm.PhotoInfoExtractor;
 import com.devwuu.mocha.llm.VisionExtraction;
@@ -28,8 +25,8 @@ import java.util.Locale;
 import java.util.Optional;
 
 /**
- * 사진 수신 경로 전담 — 다운로드·포맷 입구 검증(ADR-29, V-12)·스테이징·버퍼 그룹핑(FR-10)·OCR
- * 오버레이(ADR-23, V-6)를 전담 소유한다(ADR-31, changes/0013). 라우터({@link AgentConversationRouter})가
+ * 사진 수신 경로 전담 — 다운로드·포맷 입구 검증(ADR-29, V-12)·스테이징·버퍼 그룹핑(FR-10)·수신 사진
+ * OCR(ADR-23)을 전담 소유한다(ADR-31, changes/0013). 라우터({@link AgentConversationRouter})가
  * 조립하는 내부 협력자라 Spring 빈이 아니다.
  * <p>이름에 Slack을 붙인 이유: HEIC → Slack 썸네일 대체(ADR-29)처럼 {@link IncomingPhoto}의 Slack 파일
  * 메타(mimetype·썸네일 URL)에 기대는 전송 계층 특화 정책을 품는다 — "URL → 바이트"만 아는 경계 인터페이스
@@ -126,34 +123,6 @@ public class SlackPhotoIntake {
         log.info("수신 사진 OCR 시도: user={} images={} coffeeName={}",
                 userId, images.size(), result.coffeeName() != null);
         return result;
-    }
-
-    // OCR로 읽은 값을 사용자 draft 위에 오버레이한다 — 빈 필드만 source=photo로 채우고 사용자 값은 불가침(V-6).
-    // POLICY: 우선순위 user > photo — 사진 OCR은 source=user 필드를 덮지 않는다(coffee_name 포함) (ADR-23, V-6).
-    static NoteMeta overlayPhotoInfo(NoteMeta user, VisionExtraction photo) {
-        if (photo == null) {
-            return user;
-        }
-        return new NoteMeta(
-                fillPhoto(user.coffeeName(), photo.coffeeName()),
-                fillPhoto(user.roastery(), photo.roastery()),
-                overlayBeans(user.beans(), photo),
-                fillPhoto(user.roastLevel(), photo.roastLevel()),
-                fillPhotoList(user.officialNotes(), photo.officialNotes()),
-                user.sources());
-    }
-
-    // OCR beans(원두별 설명·가공방식, ADR-53)를 요소 그대로 source=photo Bean으로 변환한다.
-    // 사용자 beans가 있으면 배열 단위로 불가침(V-6 user > photo) — 원두 요소 간 대응이 모호해 요소 병합은 안 한다.
-    private static List<Bean> overlayBeans(List<Bean> userBeans, VisionExtraction photo) {
-        if (userBeans != null && !userBeans.isEmpty()) {
-            return userBeans;
-        }
-        return Bean.normalize(photo.beans().stream()
-                .map(b -> new Bean(
-                        Sourced.photo(b.description()),
-                        b.process() == null ? null : Sourced.photo(b.process())))
-                .toList());
     }
 
     /** 스테이징 원본을 photos/&lt;slug&gt;/&lt;date&gt;/로 이동해 확정하고 상대 경로 목록을 돌려준다(V-4, FR-10). */
@@ -289,25 +258,5 @@ public class SlackPhotoIntake {
 
     private boolean withinBufferWindow(OffsetDateTime lastMediaAt, OffsetDateTime now) {
         return Duration.between(lastMediaAt, now).compareTo(bufferWindow) <= 0;
-    }
-
-    private static Sourced<String> fillPhoto(Sourced<String> current, String photoValue) {
-        if (current != null && current.value() != null && !current.value().isBlank()) {
-            return current; // 사용자 값 불가침(V-6)
-        }
-        if (photoValue == null || photoValue.isBlank()) {
-            return current; // 사진에서 못 읽음 — 원래 상태(보통 null) 유지, 검색 보강 대상으로 넘김
-        }
-        return Sourced.photo(photoValue);
-    }
-
-    private static Sourced<List<String>> fillPhotoList(Sourced<List<String>> current, List<String> photoValue) {
-        if (current != null && current.value() != null && !current.value().isEmpty()) {
-            return current;
-        }
-        if (photoValue == null || photoValue.isEmpty()) {
-            return current;
-        }
-        return Sourced.photo(List.copyOf(photoValue));
     }
 }

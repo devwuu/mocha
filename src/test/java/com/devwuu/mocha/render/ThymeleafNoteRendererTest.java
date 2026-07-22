@@ -1,5 +1,6 @@
 package com.devwuu.mocha.render;
 
+import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.config.RenderConfig;
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Bean;
@@ -68,7 +69,7 @@ class ThymeleafNoteRendererTest {
                         "뜸 40ml 30초 → 100ml → 100ml", "다음엔 분쇄를 더 굵게 갈 것"),
                 new Tasting("첫 시도는 새콤함", null, Rating.GOOD));
         Brew second = new Brew(
-                new Recipe(18.0, 250.0, "중간"),
+                new Recipe(null, 18.0, 250.0, null, null, null, "중간", null, null, null),
                 new Tasting("두 번째는 부드러움", null, Rating.PERFECT));
         return new Entry(date, List.of(first, second), ts);
     }
@@ -81,20 +82,20 @@ class ThymeleafNoteRendererTest {
                 Sourced.user("예가체프 G1 워시드"),
                 Sourced.user("커피베라"),
                 // description = 검색 → 감상 카드는 값만 평문 렌더(출처 표기 없음, NoteView.TasteCard)
-                List.of(new Bean(Sourced.search("에티오피아 예가체프"), Sourced.user("워시드"))),
-                Sourced.search("라이트"),
-                Sourced.search(List.of("자몽", "베르가못", "홍차")),
+                List.of(new Bean(new Sourced<>("에티오피아 예가체프", Source.SEARCH), Sourced.user("워시드"))),
+                new Sourced<>("라이트", Source.SEARCH),
+                new Sourced<>(List.of("자몽", "베르가못", "홍차"), Source.SEARCH),
                 List.of("https://coffeevera.example/yirgacheffe"));
         repo.upsertEntry("2026-07-10", meta1,
-                entry(LocalDate.parse("2026-07-10"), "새콤하고 좋았다.\n다음엔 물 온도를 낮춰봐야지.", Rating.GOOD, null, now));
+                entry(LocalDate.parse("2026-07-10"), "새콤하고 좋았다.\n다음엔 물 온도를 낮춰봐야지.", Rating.GOOD, null, now), Aliases.empty());
 
         NoteMeta meta2 = new NoteMeta(
                 Sourced.user("콜롬비아 게이샤 워시드"),
                 Sourced.user("프릳츠"),
-                List.of(new Bean(Sourced.search("콜롬비아"), null)),
-                null, Sourced.search(List.of()), List.of());
+                List.of(new Bean(new Sourced<>("콜롬비아", Source.SEARCH), null)),
+                null, new Sourced<>(List.of(), Source.SEARCH), List.of());
         repo.upsertEntry("2026-07-04", meta2,
-                entry(LocalDate.parse("2026-07-04"), "화사하다.", Rating.PERFECT, null, now));
+                entry(LocalDate.parse("2026-07-04"), "화사하다.", Rating.PERFECT, null, now), Aliases.empty());
         return repo;
     }
 
@@ -108,8 +109,8 @@ class ThymeleafNoteRendererTest {
         NoteMeta meta = new NoteMeta(
                 Sourced.user("레인보우 블렌드"), Sourced.user("커피가게 동경"),
                 List.of(new Bean(Sourced.user("에티오피아 예가체프"), Sourced.user("워시드"))),
-                null, Sourced.search(List.of()), List.of());
-        repo.upsertEntry("rainbow", meta, twoBrewEntry(LocalDate.parse("2026-07-18"), now));
+                null, new Sourced<>(List.of(), Source.SEARCH), List.of());
+        repo.upsertEntry("rainbow", meta, twoBrewEntry(LocalDate.parse("2026-07-18"), now), Aliases.empty());
 
         FakeCardImageRenderer cards = new FakeCardImageRenderer();
         ThymeleafNoteRenderer renderer = new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_A, cards);
@@ -145,12 +146,12 @@ class ThymeleafNoteRendererTest {
         NoteMeta meta = new NoteMeta(
                 Sourced.user("예가체프 G1"), Sourced.user("커피베라"),
                 List.of(new Bean(Sourced.user("에티오피아"), null)),
-                null, Sourced.search(List.of()), List.of());
+                null, new Sourced<>(List.of(), Source.SEARCH), List.of());
         // 1회차 = 레시피만(감상 없음), 2회차 = 감상만(레시피 없음).
         Entry entry = new Entry(LocalDate.parse("2026-07-18"), List.of(
-                new Brew(new Recipe(15.0, 240.0, "중간"), null),
+                new Brew(new Recipe(null, 15.0, 240.0, null, null, null, "중간", null, null, null), null),
                 new Brew(null, new Tasting("두 번째 잔이 더 달다", null, Rating.GOOD))), now);
-        repo.upsertEntry("partial", meta, entry);
+        repo.upsertEntry("partial", meta, entry, Aliases.empty());
 
         FakeCardImageRenderer cards = new FakeCardImageRenderer();
         List<Path> baked = new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_A, cards)
@@ -175,9 +176,9 @@ class ThymeleafNoteRendererTest {
         NoteMeta meta = new NoteMeta(
                 Sourced.user("레인보우 블렌드"), Sourced.user("커피가게 동경"),
                 List.of(new Bean(Sourced.user("에티오피아"), null)),
-                null, Sourced.search(List.of()), List.of());
+                null, new Sourced<>(List.of(), Source.SEARCH), List.of());
         LocalDate date = LocalDate.parse("2026-07-18");
-        repo.upsertEntry("rainbow", meta, twoBrewEntry(date, now));
+        repo.upsertEntry("rainbow", meta, twoBrewEntry(date, now), Aliases.empty());
 
         FakeCardImageRenderer cards = new FakeCardImageRenderer();
         ThymeleafNoteRenderer renderer = new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_A, cards);
@@ -258,12 +259,12 @@ class ThymeleafNoteRendererTest {
         OffsetDateTime now = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
                 Sourced.user("예가체프 G1"),
-                Sourced.user("커피베라"), List.of(new Bean(Sourced.search("에티오피아"), null)),
-                null, Sourced.search(List.of()), List.of());
+                Sourced.user("커피베라"), List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), null)),
+                null, new Sourced<>(List.of(), Source.SEARCH), List.of());
         // 정규화본(음슴체)과 발화 원문을 서로 다른 문자열로 둔다 — 원문 유출을 판별 가능하게.
         repo.upsertEntry("2026-07-10", meta,
                 entry(LocalDate.parse("2026-07-10"), "새콤하고 좋았음", "새콤하고 좋았다구우",
-                        Rating.GOOD, null, now));
+                        Rating.GOOD, null, now), Aliases.empty());
 
         FakeCardImageRenderer cards = new FakeCardImageRenderer();
         new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_B, cards).renderAll();
@@ -281,15 +282,15 @@ class ThymeleafNoteRendererTest {
         NoteMeta meta = new NoteMeta(
                 Sourced.user("예가체프 G1 워시드"),
                 Sourced.user("커피베라"),
-                List.of(new Bean(Sourced.search("에티오피아 예가체프"), Sourced.user("워시드"))),
-                Sourced.search("라이트"),
-                Sourced.search(List.of("자몽", "홍차")),
+                List.of(new Bean(new Sourced<>("에티오피아 예가체프", Source.SEARCH), Sourced.user("워시드"))),
+                new Sourced<>("라이트", Source.SEARCH),
+                new Sourced<>(List.of("자몽", "홍차"), Source.SEARCH),
                 List.of("https://coffeevera.example/yirgacheffe"));
         // 같은 노트(slug)에 다른 날짜 엔트리 2건.
         repo.upsertEntry("yirgacheffe", meta,
-                entry(LocalDate.parse("2026-07-04"), "첫날: 새콤하고 좋았다.", Rating.GOOD, null, now));
+                entry(LocalDate.parse("2026-07-04"), "첫날: 새콤하고 좋았다.", Rating.GOOD, null, now), Aliases.empty());
         repo.upsertEntry("yirgacheffe", meta,
-                entry(LocalDate.parse("2026-07-10"), "둘째 날: 물 온도를 낮추니 부드럽다.", Rating.PERFECT, null, now));
+                entry(LocalDate.parse("2026-07-10"), "둘째 날: 물 온도를 낮추니 부드럽다.", Rating.PERFECT, null, now), Aliases.empty());
 
         FakeCardImageRenderer cards = new FakeCardImageRenderer();
         new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_B, cards).renderAll();
@@ -314,11 +315,11 @@ class ThymeleafNoteRendererTest {
         OffsetDateTime now = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
                 Sourced.user("예가체프 G1 워시드"),
-                Sourced.user("커피베라"), List.of(new Bean(Sourced.search("에티오피아"), null)),
-                null, Sourced.search(List.of()), List.of());
+                Sourced.user("커피베라"), List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), null)),
+                null, new Sourced<>(List.of(), Source.SEARCH), List.of());
         // 렌더는 사진을 읽지 않는다 — 엔트리에 사진 필드가 없고 템플릿에도 사진 슬롯이 없다(changes/0014 ADR-32, AC-Δ2).
         repo.upsertEntry("2026-07-10", meta,
-                entry(LocalDate.parse("2026-07-10"), "새콤하다.", Rating.GOOD, null, now));
+                entry(LocalDate.parse("2026-07-10"), "새콤하다.", Rating.GOOD, null, now), Aliases.empty());
 
         FakeCardImageRenderer cards = new FakeCardImageRenderer();
         new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_B, cards).renderAll();
@@ -341,9 +342,9 @@ class ThymeleafNoteRendererTest {
         NoteMeta meta = new NoteMeta(
                 Sourced.user("예가체프 G1 워시드"),
                 Sourced.user("커피베라"),
-                List.of(new Bean(Sourced.search("에티오피아 예가체프"), Sourced.user("워시드"))),
-                Sourced.search("라이트"),
-                Sourced.search(List.of("자몽", "홍차")), List.of());
+                List.of(new Bean(new Sourced<>("에티오피아 예가체프", Source.SEARCH), Sourced.user("워시드"))),
+                new Sourced<>("라이트", Source.SEARCH),
+                new Sourced<>(List.of("자몽", "홍차"), Source.SEARCH), List.of());
         // 별칭은 표시값(커피명·로스터리)과 명확히 다른 마커 문자열 — 렌더에 새면 반드시 검출된다(V-13).
         Aliases aliases = new Aliases(
                 List.of("yirgacheffe-ALIAS-LEAK", "이르가체프이표기마커"),
@@ -378,11 +379,11 @@ class ThymeleafNoteRendererTest {
         OffsetDateTime now = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
                 Sourced.user("예가체프 G1 워시드"),
-                Sourced.user("커피베라"), List.of(new Bean(Sourced.search("에티오피아"), null)),
-                null, Sourced.search(List.of()), List.of());
+                Sourced.user("커피베라"), List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), null)),
+                null, new Sourced<>(List.of(), Source.SEARCH), List.of());
         // 엔트리 + 실제 사진 파일을 data/photos/에 둔다 — 사진은 노트가 아닌 폴더에만 존재(리렌더 입력 후보로서의 파일 존재를 재현).
         repo.upsertEntry("2026-07-10", meta,
-                entry(LocalDate.parse("2026-07-10"), "새콤하다.", Rating.GOOD, null, now));
+                entry(LocalDate.parse("2026-07-10"), "새콤하다.", Rating.GOOD, null, now), Aliases.empty());
         Path photosDir = dataDir.resolve("photos/2026-07-10/2026-07-10");
         Files.createDirectories(photosDir);
         Files.write(photosDir.resolve("a.jpg"), new byte[]{1, 2, 3});
@@ -475,11 +476,11 @@ class ThymeleafNoteRendererTest {
         NoteMeta meta = new NoteMeta(
                 coffeeName,
                 Sourced.user("커피베라"),
-                List.of(new Bean(Sourced.search("에티오피아 예가체프"), Sourced.user("워시드"))),
-                Sourced.search("라이트"),
-                Sourced.search(List.of("자몽", "홍차")), List.of());
+                List.of(new Bean(new Sourced<>("에티오피아 예가체프", Source.SEARCH), Sourced.user("워시드"))),
+                new Sourced<>("라이트", Source.SEARCH),
+                new Sourced<>(List.of("자몽", "홍차"), Source.SEARCH), List.of());
         repo.upsertEntry("2026-07-10", meta,
-                entry(LocalDate.parse("2026-07-10"), "새콤하다.", Rating.GOOD, recipe, now));
+                entry(LocalDate.parse("2026-07-10"), "새콤하다.", Rating.GOOD, recipe, now), Aliases.empty());
         return repo;
     }
 
@@ -492,7 +493,7 @@ class ThymeleafNoteRendererTest {
     @Test
     @DisplayName("ADR-54·59: recipe 있는 회차는 두 테마 모두 레시피 카드가 별도로 구워지고 수치가 렌더된다")
     void recipeBrewBakesRecipeCard(@TempDir Path dataDir, @TempDir Path artA, @TempDir Path artB) {
-        Recipe recipe = new Recipe(15.0, 240.0, "중간");
+        Recipe recipe = new Recipe(null, 15.0, 240.0, null, null, null, "중간", null, null, null);
         for (Theme theme : new Theme[]{Theme.TYPE_A, Theme.TYPE_B}) {
             NoteRepository repo = seedWithRecipe(dataDir, Sourced.user("예가체프 G1 워시드"), recipe);
             Path artifactDir = theme == Theme.TYPE_A ? artA : artB;
@@ -530,7 +531,7 @@ class ThymeleafNoteRendererTest {
     @Test
     @DisplayName("FR-7: recipe가 일부만 있으면(원두만) 레시피 카드에 있는 항목만 표시한다")
     void recipeCardRendersOnlyPresentItems(@TempDir Path dataDir, @TempDir Path artA, @TempDir Path artB) {
-        Recipe partial = Recipe.normalize(new Recipe(15.0, null, null)); // 원두만
+        Recipe partial = Recipe.normalize(new Recipe(null, 15.0, null, null, null, null, null, null, null, null)); // 원두만
         for (Theme theme : new Theme[]{Theme.TYPE_A, Theme.TYPE_B}) {
             NoteRepository repo = seedWithRecipe(dataDir, Sourced.user("예가체프 G1 워시드"), partial);
             Path artifactDir = theme == Theme.TYPE_A ? artA : artB;
@@ -597,9 +598,9 @@ class ThymeleafNoteRendererTest {
         NoteMeta meta = new NoteMeta(
                 Sourced.user("레인보우 블렌드"), Sourced.user("커피가게 동경"),
                 List.of(new Bean(Sourced.user("에티오피아"), null)),
-                null, Sourced.search(List.of()), List.of());
+                null, new Sourced<>(List.of(), Source.SEARCH), List.of());
         LocalDate date = LocalDate.parse("2026-07-18");
-        repo.upsertEntry("rainbow", meta, twoBrewEntry(date, now));
+        repo.upsertEntry("rainbow", meta, twoBrewEntry(date, now), Aliases.empty());
 
         ThymeleafNoteRenderer renderer =
                 new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_A, new FakeCardImageRenderer());

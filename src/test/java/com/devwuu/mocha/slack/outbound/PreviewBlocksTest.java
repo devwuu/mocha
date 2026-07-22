@@ -1,5 +1,6 @@
 package com.devwuu.mocha.slack.outbound;
 
+import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.domain.Bean;
 import com.devwuu.mocha.domain.Brew;
 import com.devwuu.mocha.domain.Entry;
@@ -61,9 +62,9 @@ class PreviewBlocksTest {
                 "coffeevera-yirgacheffe-g1",
                 Sourced.user("커피베라 예가체프 G1"),
                 Sourced.user("커피베라"),          // 사용자 값 — (검색) 없음
-                List.of(new Bean(Sourced.search("에티오피아"), Sourced.search("워시드"))), // 검색 보강 — (검색)
+                List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), new Sourced<>("워시드", Source.SEARCH))), // 검색 보강 — (검색)
                 null,                               // 미언급 — 필드 생략
-                Sourced.search(List.of("자몽", "홍차")), // official_notes 검색
+                new Sourced<>(List.of("자몽", "홍차"), Source.SEARCH), // official_notes 검색
                 List.of("https://roastery.example/yirga", "https://coffee.example/wiki"),
                 List.of(entry("새콤하고 좋았다", Rating.GOOD)),
                 OffsetDateTime.now(),
@@ -155,9 +156,9 @@ class PreviewBlocksTest {
                 "coffeevera-yirgacheffe-g1",
                 Sourced.user("커피베라 예가체프 G1"),
                 Sourced.user("커피베라"),
-                List.of(new Bean(Sourced.search("에티오피아"), Sourced.search("워시드"))),
+                List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), new Sourced<>("워시드", Source.SEARCH))),
                 null,
-                Sourced.search(List.of("자몽", "홍차")),
+                new Sourced<>(List.of("자몽", "홍차"), Source.SEARCH),
                 List.of("https://roastery.example/yirga"),
                 List.of(entry("새콤하고 좋았다", Rating.GOOD)),
                 OffsetDateTime.now(),
@@ -196,7 +197,7 @@ class PreviewBlocksTest {
                 "coffeevera-yirgacheffe-g1",
                 Sourced.photo("커피베라 예가체프 G1"),
                 Sourced.photo("커피베라"),
-                List.of(new Bean(Sourced.search("에티오피아"), null)),
+                List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), null)),
                 null, null,
                 List.of(),
                 List.of(entry("좋았다", Rating.GOOD)),
@@ -236,7 +237,7 @@ class PreviewBlocksTest {
                 Sourced.user("커피베라"),
                 List.of(), null, null,
                 List.of(),
-                List.of(entry("좋았다", Rating.GOOD, Recipe.normalize(new Recipe(15.0, 240.0, "중간")))),
+                List.of(entry("좋았다", Rating.GOOD, Recipe.normalize(new Recipe(null, 15.0, 240.0, null, null, null, "중간", null, null, null)))),
                 OffsetDateTime.now(),
                 OffsetDateTime.now());
 
@@ -261,7 +262,7 @@ class PreviewBlocksTest {
                 Sourced.user("커피베라 예가체프 G1"),
                 Sourced.user("커피베라"),
                 List.of(), null, null, List.of(),
-                List.of(entry("좋았다", Rating.GOOD, Recipe.normalize(new Recipe(null, 240.0, null)))),
+                List.of(entry("좋았다", Rating.GOOD, Recipe.normalize(new Recipe(null, null, 240.0, null, null, null, null, null, null, null)))),
                 OffsetDateTime.now(), OffsetDateTime.now());
         String recipeBlock = recipeSectionText(
                 previewBlocks.build(new PendingNote(partial, MatchInfo.newNote(), null, OffsetDateTime.now())));
@@ -358,7 +359,7 @@ class PreviewBlocksTest {
     @Test
     @DisplayName("FR-4/AC-78: 레시피만·감상만인 회차도 회차별 요약에 있는 쪽만 담긴다")
     void multiBrewPartialBrews() {
-        Recipe onlyRecipe = Recipe.normalize(new Recipe(18.0, null, "210클릭"));
+        Recipe onlyRecipe = Recipe.normalize(new Recipe(null, 18.0, null, null, null, null, "210클릭", null, null, null));
         Entry entry = new Entry(LocalDate.of(2026, 7, 18), List.of(
                 new Brew(onlyRecipe, null),                                      // 감상 없는 시도
                 new Brew(null, new Tasting("식으니까 더 맛있었음", null, null))), // 레시피 없이 마신 회차

@@ -31,14 +31,6 @@ public record Recipe(
 ) {
 
     /**
-     * 회차 확장(changes/0021) 전 3필드 시그니처 편의 생성자 — 나머지 필드는 전부 null.
-     * 구 시그니처를 쓰는 픽스처·과도기 인자 경로(TΔ2a에서 스키마 개정)의 호환용.
-     */
-    public Recipe(Double doseG, Double waterMl, String grind) {
-        this(null, doseG, waterMl, null, null, null, grind, null, null, null);
-    }
-
-    /**
      * V-8 정규화. 수치 필드의 위반 값(음수·0)과 텍스트 필드의 공백은 <b>해당 항목만</b> null로 드롭하고,
      * 전 필드가 null이면 Recipe 자체를 {@code null}로 정규화한다(레시피 카드 미생성 근거).
      * <p>레시피는 부속 정보라 위반이 있어도 저장을 거부하지 않는다 (ref: data-model.md#V-8).

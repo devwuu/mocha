@@ -104,10 +104,8 @@ public class SlackGateway implements SmartLifecycle {
         BlockActionPayload.Action action = actions.get(0);
         String userId = payload.getUser() != null ? payload.getUser().getId() : null;
         String channelId = payload.getChannel() != null ? payload.getChannel().getId() : null;
-        // 버튼이 달린 메시지의 ts = 미리보기 메시지(preview_ts). 수정/저장 시 이 메시지를 edit한다(data-model §2.3).
-        String messageTs = payload.getContainer() != null ? payload.getContainer().getMessageTs() : null;
-        router.onAction(new IncomingAction(
-                userId, channelId, action.getActionId(), action.getValue(), messageTs));
+        // 미리보기 메시지 ts(preview_ts)는 payload가 아니라 pending에 영속된 값을 쓴다(data-model §2.3).
+        router.onAction(new IncomingAction(userId, channelId, action.getActionId()));
     }
 
     /**

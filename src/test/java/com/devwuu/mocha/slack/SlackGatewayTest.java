@@ -165,12 +165,8 @@ class SlackGatewayTest {
         BlockActionPayload.Channel channel = new BlockActionPayload.Channel();
         channel.setId("C1");
         payload.setChannel(channel);
-        BlockActionPayload.Container container = new BlockActionPayload.Container();
-        container.setMessageTs("1720000000.000999");
-        payload.setContainer(container);
         BlockActionPayload.Action action = new BlockActionPayload.Action();
         action.setActionId("save");
-        action.setValue("coffeevera-yirgacheffe-g1");
         payload.setActions(List.of(action));
 
         gateway(router).handleBlockAction(payload);
@@ -180,9 +176,6 @@ class SlackGatewayTest {
         assertEquals("U1", parsed.userId());
         assertEquals("C1", parsed.channelId());
         assertEquals("save", parsed.actionId());
-        assertEquals("coffeevera-yirgacheffe-g1", parsed.value());
-        // 버튼이 달린 메시지 ts = 미리보기 메시지(preview_ts)
-        assertEquals("1720000000.000999", parsed.messageTs());
         assertTrue(router.messages.isEmpty());
     }
 
@@ -441,12 +434,8 @@ class SlackGatewayTest {
         BlockActionPayload.Channel channel = new BlockActionPayload.Channel();
         channel.setId("C1");
         payload.setChannel(channel);
-        BlockActionPayload.Container container = new BlockActionPayload.Container();
-        container.setMessageTs("1720000000.000999");
-        payload.setContainer(container);
         BlockActionPayload.Action action = new BlockActionPayload.Action();
         action.setActionId("save");
-        action.setValue("coffeevera-yirgacheffe-g1");
         payload.setActions(List.of(action));
 
         Response ack = invokeBlockAction(app, payload);

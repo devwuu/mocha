@@ -17,4 +17,8 @@ public record PhotoBuffer(
         OffsetDateTime lastMediaAt,
         List<String> stagedNames
 ) {
+    // 다른 도메인 record(Entry·Note 등)와 같은 방어 복사 — 호출부의 가변 리스트 재사용에 안전하게(REVIEW.md §7).
+    public PhotoBuffer {
+        stagedNames = stagedNames == null ? List.of() : List.copyOf(stagedNames);
+    }
 }

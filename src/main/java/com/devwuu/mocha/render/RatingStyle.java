@@ -9,16 +9,6 @@ import com.devwuu.mocha.domain.Rating;
  */
 public final class RatingStyle {
 
-    /** 라벨 옆 이모지. */
-    public String emoji(Rating r) {
-        return switch (r) {
-            case PERFECT -> "❤";       // ❤
-            case GOOD -> "😋";     // 😋
-            case OKAY_NOT_MINE -> "🙂"; // 🙂
-            case BAD -> "😓";      // 😓
-        };
-    }
-
     /** 배지 배경색(귀여운 테마). */
     public String bg(Rating r) {
         return switch (r) {

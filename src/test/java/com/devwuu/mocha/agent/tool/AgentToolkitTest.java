@@ -1,5 +1,6 @@
 package com.devwuu.mocha.agent.tool;
 
+import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.agent.conversation.ConversationTranscript;
 import com.devwuu.mocha.agent.conversation.TranscriptTurn;
 import com.devwuu.mocha.domain.Aliases;
@@ -298,6 +299,21 @@ class AgentToolkitTest {
     }
 
     @Test
+    @DisplayName("V-10: 이동처에 기존 엔트리가 없으면 date_conflict=false — 자유 날짜 이동은 경고 없이 제안된다")
+    void proposeEditDateMoveWithoutConflict() {
+        noteRepository.put(note("2026-07-13-102030", "Ethiopia Chelbesa", "FroB",
+                Aliases.empty(), LocalDate.of(2026, 7, 13)));
+
+        JsonNode result = mapper.readTree(execute("propose_edit",
+                editArgs("2026-07-13-102030", "2026-07-13", "\"new_date\":\"2026-07-20\"")));
+
+        PendingNote pending = pendingStore.get(USER).orElseThrow();
+        assertThat(pending.draft().entries().get(0).date()).isEqualTo(LocalDate.of(2026, 7, 20));
+        assertThat(pending.dateConflict()).isFalse();
+        assertThat(result.get("date_conflict").asBoolean()).isFalse();
+    }
+
+    @Test
     @DisplayName("FR-5: 같은 대상 재호출 = 누적 반영 — 직전 변경 유지 + preview_ts·created_at 보존 + 이동 충돌 경고 유지")
     void proposeEditRecallAccumulatesOnPendingDraft() {
         noteRepository.put(note("2026-07-13-102030", "Ethiopia Chelbesa", "FroB",
@@ -575,8 +591,8 @@ class AgentToolkitTest {
                     OffsetDateTime.parse("2026-07-14T10:00:00+09:00")));
         }
         return new Note(slug, Sourced.user(coffeeName), Sourced.user(roastery),
-                List.of(new Bean(Sourced.search("에티오피아"), null)),
-                null, Sourced.search(List.of("자스민")),
+                List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), null)),
+                null, new Sourced<>(List.of("자스민"), Source.SEARCH),
                 aliases, List.of(), entries,
                 OffsetDateTime.parse("2026-07-13T10:20:30+09:00"),
                 OffsetDateTime.parse("2026-07-14T10:00:00+09:00"));
@@ -585,12 +601,12 @@ class AgentToolkitTest {
     /** 회차 2개(각각 recipe+tasting) 엔트리 1건 노트 — 기대 카드 4장(taste·recipe × 회차 2)의 픽스처(AC-Δ6). */
     private static Note twoBrewNote(String slug, LocalDate date) {
         Entry entry = new Entry(date, List.of(
-                new Brew(new Recipe(15.0, 250.0, "210클릭 (매버릭 2.0)"), new Tasting("새콤하고 좋았음", null, Rating.GOOD)),
-                new Brew(new Recipe(15.0, 250.0, "205클릭 (매버릭 2.0)"), new Tasting("더 새콤했음", null, Rating.PERFECT))),
+                new Brew(new Recipe(null, 15.0, 250.0, null, null, null, "210클릭 (매버릭 2.0)", null, null, null), new Tasting("새콤하고 좋았음", null, Rating.GOOD)),
+                new Brew(new Recipe(null, 15.0, 250.0, null, null, null, "205클릭 (매버릭 2.0)", null, null, null), new Tasting("더 새콤했음", null, Rating.PERFECT))),
                 OffsetDateTime.parse("2026-07-18T10:00:00+09:00"));
         return new Note(slug, Sourced.user("Ethiopia Chelbesa"), Sourced.user("FroB"),
-                List.of(new Bean(Sourced.search("에티오피아"), null)),
-                null, Sourced.search(List.of("자스민")),
+                List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), null)),
+                null, new Sourced<>(List.of("자스민"), Source.SEARCH),
                 Aliases.empty(), List.of(), List.of(entry),
                 OffsetDateTime.parse("2026-07-18T10:00:00+09:00"),
                 OffsetDateTime.parse("2026-07-18T10:00:00+09:00"));

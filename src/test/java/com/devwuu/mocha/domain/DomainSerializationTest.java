@@ -28,7 +28,7 @@ class DomainSerializationTest {
         Entry entry = new Entry(
                 LocalDate.of(2026, 7, 10),
                 List.of(new Brew(
-                        new Recipe(15.0, 240.0, "중간"),   // 레시피 포함 — Note 왕복에 회차 recipe도 실린다(FR-18)
+                        new Recipe(null, 15.0, 240.0, null, null, null, "중간", null, null, null),   // 레시피 포함 — Note 왕복에 회차 recipe도 실린다(FR-18)
                         new Tasting("새콤하고 좋았다", null, Rating.GOOD))),
                 ts
         );
@@ -36,9 +36,9 @@ class DomainSerializationTest {
                 "coffeevera-yirgacheffe-g1",
                 Sourced.user("커피베라 예가체프 G1"),
                 Sourced.user("커피베라"),
-                List.of(new Bean(Sourced.user("에티오피아 예가체프"), Sourced.search("워시드"))),
+                List.of(new Bean(Sourced.user("에티오피아 예가체프"), new Sourced<>("워시드", Source.SEARCH))),
                 new Sourced<>(null, Source.SEARCH),          // 미확정 값 + source 마킹
-                Sourced.search(List.of("자스민", "베르가못")),  // Sourced<List<String>>
+                new Sourced<>(List.of("자스민", "베르가못"), Source.SEARCH),  // Sourced<List<String>>
                 List.of("https://example.com/coffeevera"),
                 List.of(entry),
                 ts,
@@ -212,14 +212,14 @@ class DomainSerializationTest {
     @DisplayName("0021-TΔ1b/V-15: normalize — recipe·tasting 둘 다 null인 회차와 빈 감상 tasting을 드롭한다")
     void brewsNormalizeDropsEmptyElements() {
         List<Brew> normalized = Brew.normalize(Arrays.asList(
-                new Brew(new Recipe(15.0, 240.0, "중간"), new Tasting("새콤", null, Rating.GOOD)),
+                new Brew(new Recipe(null, 15.0, 240.0, null, null, null, "중간", null, null, null), new Tasting("새콤", null, Rating.GOOD)),
                 new Brew(null, null),                                          // 빈 회차 → 드롭
                 null,                                                          // null 요소 → 드롭
                 new Brew(null, Tasting.normalize("  ", null, Rating.GOOD)),    // 빈 감상 tasting → null → 드롭
-                new Brew(new Recipe(0.0, null, "  "), null)));                 // recipe 전무 정규화 → null → 드롭
+                new Brew(new Recipe(null, 0.0, null, null, null, null, "  ", null, null, null), null)));                 // recipe 전무 정규화 → null → 드롭
 
         assertThat(normalized).containsExactly(
-                new Brew(new Recipe(15.0, 240.0, "중간"), new Tasting("새콤", "새콤", Rating.GOOD)));
+                new Brew(new Recipe(null, 15.0, 240.0, null, null, null, "중간", null, null, null), new Tasting("새콤", "새콤", Rating.GOOD)));
         assertThat(Brew.normalize(null)).isEmpty(); // null 배열은 빈 배열
     }
 
@@ -237,8 +237,8 @@ class DomainSerializationTest {
     @DisplayName("0021-TΔ1b/V-8: recipe 전 필드 전무면 normalize가 null로 정규화한다")
     void recipeNormalizeAllNull() {
         assertThat(Recipe.normalize(null)).isNull();
-        assertThat(Recipe.normalize(new Recipe(null, null, null))).isNull();
-        assertThat(Recipe.normalize(new Recipe(null, null, "  "))).isNull();  // 공백 grind도 전무로 간주
+        assertThat(Recipe.normalize(new Recipe(null, null, null, null, null, null, null, null, null, null))).isNull();
+        assertThat(Recipe.normalize(new Recipe(null, null, null, null, null, null, "  ", null, null, null))).isNull();  // 공백 grind도 전무로 간주
         assertThat(Recipe.normalize(new Recipe(null, -18.0, null, 0.0, null, null, " ", "", null, null)))
                 .isNull(); // 위반 값만으로 채워진 recipe도 전무로 수렴
     }
@@ -247,8 +247,8 @@ class DomainSerializationTest {
     @DisplayName("0021-TΔ1b/V-8: 위반 값(음수·0·공백)은 해당 항목만 null로 드롭한다 — 10필드 확장형")
     void recipeNormalizeDropsInvalid() {
         // dose 음수·water 0 → 각 null 드롭, grind만 살아 Recipe는 유지(부속 정보라 저장 거부 아님).
-        Recipe dropped = Recipe.normalize(new Recipe(-15.0, 0.0, "굵게"));
-        assertThat(dropped).isEqualTo(new Recipe(null, null, "굵게"));
+        Recipe dropped = Recipe.normalize(new Recipe(null, -15.0, 0.0, null, null, null, "굵게", null, null, null));
+        assertThat(dropped).isEqualTo(new Recipe(null, null, null, null, null, null, "굵게", null, null, null));
 
         // 신설 수치(yield_ml·time_sec·temp_c)도 양수만 보존, 공백 텍스트(machine)는 드롭.
         Recipe expanded = Recipe.normalize(new Recipe(
@@ -321,9 +321,9 @@ class DomainSerializationTest {
                 "ethiopia-chelbesa",
                 Sourced.user("Ethiopia Chelbesa"),
                 Sourced.user("FroB"),
-                List.of(new Bean(Sourced.search("에티오피아"), null)),
+                List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), null)),
                 new Sourced<>(null, Source.SEARCH),
-                Sourced.search(List.of()),
+                new Sourced<>(List.of(), Source.SEARCH),
                 new Aliases(List.of("에티오피아 첼베사"), List.of("프롭", "프로브")),
                 List.of(),
                 List.of(),
@@ -374,8 +374,8 @@ class DomainSerializationTest {
                 Sourced.user("시그니처 블렌드"),
                 Sourced.user("커피베라"),
                 List.of(
-                        new Bean(Sourced.user("에티오피아 예가체프"), Sourced.search("워시드")),
-                        new Bean(Sourced.search("콜롬비아 후일라"), Sourced.search("내추럴")),
+                        new Bean(Sourced.user("에티오피아 예가체프"), new Sourced<>("워시드", Source.SEARCH)),
+                        new Bean(new Sourced<>("콜롬비아 후일라", Source.SEARCH), new Sourced<>("내추럴", Source.SEARCH)),
                         new Bean(Sourced.user("브라질"), null)),
                 null,
                 null,
@@ -413,14 +413,14 @@ class DomainSerializationTest {
     @DisplayName("0021-TΔ1a/V-14: normalize — description이 빈 요소만 드롭하고 나머지 원두는 유지한다(저장 거부 아님)")
     void beansNormalizeDropsEmptyDescription() {
         List<Bean> normalized = Bean.normalize(Arrays.asList(
-                new Bean(Sourced.user("  에티오피아 예가체프 "), Sourced.search("  워시드 ")),
-                new Bean(new Sourced<>("   ", Source.USER), Sourced.search("내추럴")), // 빈 설명 → 드롭
-                new Bean(null, Sourced.search("허니")),                                  // 설명 자체 부재 → 드롭
+                new Bean(Sourced.user("  에티오피아 예가체프 "), new Sourced<>("  워시드 ", Source.SEARCH)),
+                new Bean(new Sourced<>("   ", Source.USER), new Sourced<>("내추럴", Source.SEARCH)), // 빈 설명 → 드롭
+                new Bean(null, new Sourced<>("허니", Source.SEARCH)),                                  // 설명 자체 부재 → 드롭
                 null,                                                                    // null 요소 → 드롭
                 new Bean(Sourced.user("브라질"), new Sourced<>("  ", Source.SEARCH)))); // 빈 process → null 정규화
 
         assertThat(normalized).containsExactly(
-                new Bean(Sourced.user("에티오피아 예가체프"), Sourced.search("워시드")),
+                new Bean(Sourced.user("에티오피아 예가체프"), new Sourced<>("워시드", Source.SEARCH)),
                 new Bean(Sourced.user("브라질"), null));
     }
 

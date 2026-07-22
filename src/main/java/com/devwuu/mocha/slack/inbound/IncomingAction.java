@@ -8,8 +8,6 @@ package com.devwuu.mocha.slack.inbound;
  * @param userId    누른 사용자 id.
  * @param channelId 액션이 발생한 채널 id.
  * @param actionId  버튼 action_id — 저장/취소 등 의도 식별자.
- * @param value     버튼 value — 필요 시 대상 식별에 사용.
- * @param messageTs 버튼이 달린 메시지의 ts = 미리보기 메시지 timestamp(preview_ts, data-model §2.3).
  */
-public record IncomingAction(String userId, String channelId, String actionId, String value, String messageTs) {
+public record IncomingAction(String userId, String channelId, String actionId) {
 }

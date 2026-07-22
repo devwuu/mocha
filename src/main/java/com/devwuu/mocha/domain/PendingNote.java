@@ -56,11 +56,6 @@ public record PendingNote(
         return new PendingNote(mode, draft, target, dateConflict, match, ts, createdAt);
     }
 
-    /** 매칭 표기만 교체한 사본 — record 모드 revise로 시음 날짜가 바뀌면 대상 날짜를 재판정해 싣는다(ADR-39, AC-56). */
-    public PendingNote withMatch(MatchInfo revisedMatch) {
-        return new PendingNote(mode, draft, target, dateConflict, revisedMatch, previewTs, createdAt);
-    }
-
     /** 세션 종류 — {@code "record"} | {@code "edit"} (FR-21, changes/0012). */
     public enum Mode {
         RECORD("record"),

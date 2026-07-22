@@ -15,8 +15,4 @@ public record Sourced<T>(T value, Source source) {
     public static <T> Sourced<T> photo(T value) {
         return new Sourced<>(value, Source.PHOTO);
     }
-
-    public static <T> Sourced<T> search(T value) {
-        return new Sourced<>(value, Source.SEARCH);
-    }
 }

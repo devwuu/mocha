@@ -1,5 +1,6 @@
 package com.devwuu.mocha.slack;
 
+import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Bean;
 import com.devwuu.mocha.domain.Brew;
@@ -529,7 +530,7 @@ class SlackCommitHandlerTest {
         Entry entry = entry(LocalDate.of(2026, 7, 11), "새콤하고 좋았다", OffsetDateTime.now());
         Note draft = new Note(
                 slug, Sourced.user("커피베라 예가체프"),
-                Sourced.user("커피베라"), List.of(new Bean(Sourced.search("에티오피아"), null)), null,
+                Sourced.user("커피베라"), List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), null)), null,
                 null, List.of("https://example.com/coffee"),
                 List.of(entry), OffsetDateTime.now(), OffsetDateTime.now());
         return new PendingNote(draft, MatchInfo.newNote(), "1720000000.000999", OffsetDateTime.now());
@@ -540,7 +541,7 @@ class SlackCommitHandlerTest {
         Entry entry = entry(newDate, myTaste, OffsetDateTime.now());
         Note draft = new Note(
                 slug, Sourced.user("커피베라 예가체프"),
-                Sourced.user("커피베라"), List.of(new Bean(Sourced.search("에티오피아"), null)), null,
+                Sourced.user("커피베라"), List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), null)), null,
                 null, List.of(), List.of(entry), OffsetDateTime.now(), OffsetDateTime.now());
         return new PendingNote(PendingNote.Mode.EDIT, draft, new PendingNote.EditTarget(slug, targetDate),
                 null, "1720000000.000999", OffsetDateTime.now());
@@ -550,19 +551,19 @@ class SlackCommitHandlerTest {
     private void seedEditableNote(NoteRepository repo, String slug, LocalDate date) {
         NoteMeta meta = new NoteMeta(
                 Sourced.user("커피베라 예가체프"), Sourced.user("커피베라"),
-                List.of(new Bean(Sourced.search("에티오피아"), null)),
+                List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), null)),
                 null, null, List.of());
-        repo.upsertEntry(slug, meta, entry(date, "원래 감상", OffsetDateTime.now()));
+        repo.upsertEntry(slug, meta, entry(date, "원래 감상", OffsetDateTime.now()), Aliases.empty());
     }
 
     private void seedNote(NoteRepository repo, String slug, String coffeeName, String roastery, LocalDate date) {
         NoteMeta meta = new NoteMeta(
                 Sourced.user(coffeeName), Sourced.user(roastery), List.of(), null, null, List.of());
-        repo.upsertEntry(slug, meta, entry(date, "좋았다", OffsetDateTime.now(clock)));
+        repo.upsertEntry(slug, meta, entry(date, "좋았다", OffsetDateTime.now(clock)), Aliases.empty());
     }
 
     private static IncomingAction action(String actionId) {
-        return new IncomingAction("U1", "C1", actionId, "slug", "1720000000.000999");
+        return new IncomingAction("U1", "C1", actionId);
     }
 
     // ---- fakes (모듈 CLAUDE.md §5.2 — 외부 의존은 인터페이스 stub/fake, 구 SlackConversationFlowsTest에서 포팅) ----

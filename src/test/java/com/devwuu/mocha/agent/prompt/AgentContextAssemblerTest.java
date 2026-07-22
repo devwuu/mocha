@@ -1,5 +1,6 @@
 package com.devwuu.mocha.agent.prompt;
 
+import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.agent.conversation.TranscriptTurn;
 import com.devwuu.mocha.domain.Bean;
 import com.devwuu.mocha.domain.Brew;
@@ -49,7 +50,7 @@ class AgentContextAssemblerTest {
                 List.of(new Brew(null, new Tasting("새콤하고 좋았음", "새콤하고 좋았다", Rating.GOOD))), NOW);
         return new Note("2026-07-16-100000",
                 Sourced.user("Ethiopia Chelbesa"), Sourced.user("FroB"),
-                List.of(new Bean(Sourced.search("에티오피아"), null)),
+                List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), null)),
                 null, null, List.of(), List.of(entry), NOW, NOW);
     }
 

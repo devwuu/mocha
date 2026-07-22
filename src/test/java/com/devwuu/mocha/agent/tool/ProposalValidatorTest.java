@@ -44,7 +44,7 @@ class ProposalValidatorTest {
                 List.of(new BeanArg(new SourcedArg<>("에티오피아", "search"), new SourcedArg<>(null, null))),
                 new SourcedArg<>(null, null),
                 new SourcedArg<>(List.of("자스민", "베르가못"), "search"),
-                List.of(new BrewArg(new Recipe(15.0, 240.0, null),
+                List.of(new BrewArg(new Recipe(null, 15.0, 240.0, null, null, null, null, null, null, null),
                         new BrewArg.TastingArg("새콤하고 좋았음", "새콤하고 좋았다", rating))),
                 targetDate, match,
                 List.of("https://frob.co.kr/products/chelbesa"));
@@ -174,7 +174,7 @@ class ProposalValidatorTest {
             assertThat(proposal.meta().roastLevel()).isNull();
             // beans 요소의 빈 process도 null로 정규화된다(V-14).
             assertThat(proposal.meta().beans())
-                    .containsExactly(new Bean(Sourced.search("에티오피아"), null));
+                    .containsExactly(new Bean(new Sourced<>("에티오피아", Source.SEARCH), null));
             assertThat(proposal.meta().officialNotes().value()).containsExactly("자스민", "베르가못");
             assertThat(proposal.meta().officialNotes().source()).isEqualTo(Source.SEARCH);
         }
@@ -195,7 +195,7 @@ class ProposalValidatorTest {
                                     new SourcedArg<>("내추럴", "user"))),
                     List.of(tastingBrew("좋았음", null, null))), null));
             assertThat(proposal.meta().beans()).containsExactly(
-                    new Bean(Sourced.user("에티오피아 예가체프"), Sourced.search("워시드")),
+                    new Bean(Sourced.user("에티오피아 예가체프"), new Sourced<>("워시드", Source.SEARCH)),
                     new Bean(Sourced.user("콜롬비아"), Sourced.user("내추럴")));
         }
 
@@ -237,9 +237,9 @@ class ProposalValidatorTest {
         @DisplayName("V-8: 위반 값(음수·0·공백)은 항목만 드롭되고 저장은 거부되지 않는다")
         void invalidItemsDroppedNotRejected() {
             RecordProposal proposal = okOf(validator.validateRecord(recordArgsWith(
-                    null, List.of(new BrewArg(new Recipe(-1.0, 240.0, "  "), null))), null));
+                    null, List.of(new BrewArg(new Recipe(null, -1.0, 240.0, null, null, null, "  ", null, null, null), null))), null));
             // 감상 없는 recipe만의 발화 = recipe만 담긴 회차 1개(V-15 허용).
-            assertThat(proposal.brews().getFirst().recipe()).isEqualTo(new Recipe(null, 240.0, null));
+            assertThat(proposal.brews().getFirst().recipe()).isEqualTo(new Recipe(null, null, 240.0, null, null, null, null, null, null, null));
             assertThat(proposal.brews().getFirst().tasting()).isNull();
         }
 
@@ -257,7 +257,7 @@ class ProposalValidatorTest {
         @DisplayName("V-8: recipe 전 필드 전무면 recipe 자체가 null로 정규화된다(레시피 카드 미생성 근거)")
         void allInvalidNormalizedToNull() {
             RecordProposal proposal = okOf(validator.validateRecord(recordArgsWith(
-                    null, List.of(new BrewArg(new Recipe(0.0, null, ""),
+                    null, List.of(new BrewArg(new Recipe(null, 0.0, null, null, null, null, "", null, null, null),
                             new BrewArg.TastingArg("좋았음", null, null)))), null));
             // recipe 전무 정규화가 저장 거부로 번지지 않는다 — 감상 tasting이 있어 회차는 성립(V-15).
             assertThat(proposal.brews().getFirst().recipe()).isNull();
@@ -281,7 +281,7 @@ class ProposalValidatorTest {
         void allEmptyBrewsRejected() {
             assertThat(rejectionOf(validator.validateRecord(recordArgsWith(
                     null, List.of(new BrewArg(null, null),
-                            new BrewArg(new Recipe(0.0, null, " "), new BrewArg.TastingArg(" ", null, null)))),
+                            new BrewArg(new Recipe(null, 0.0, null, null, null, null, " ", null, null, null), new BrewArg.TastingArg(" ", null, null)))),
                     null))).contains("회차").contains("V-15");
         }
 
@@ -289,13 +289,13 @@ class ProposalValidatorTest {
         @DisplayName("V-15/AC-74: 시도 2회 발화는 회차 2개로 정규화된다 — 배열 순서 = 회차 번호, 시도별 recipe·tasting 유지")
         void twoAttemptsBecomeTwoBrews() {
             RecordProposal proposal = okOf(validator.validateRecord(recordArgsWith(null, List.of(
-                    new BrewArg(new Recipe(15.0, 240.0, "210클릭 (매버릭 2.0)"),
+                    new BrewArg(new Recipe(null, 15.0, 240.0, null, null, null, "210클릭 (매버릭 2.0)", null, null, null),
                             new BrewArg.TastingArg("떫었음", "떫었다", null)),
-                    new BrewArg(new Recipe(15.0, 240.0, "220클릭 (매버릭 2.0)"),
+                    new BrewArg(new Recipe(null, 15.0, 240.0, null, null, null, "220클릭 (매버릭 2.0)", null, null, null),
                             new BrewArg.TastingArg("부드러웠음", "부드러웠다", "맛있다")))), null));
             assertThat(proposal.brews()).containsExactly(
-                    new Brew(new Recipe(15.0, 240.0, "210클릭 (매버릭 2.0)"), new Tasting("떫었음", "떫었다", null)),
-                    new Brew(new Recipe(15.0, 240.0, "220클릭 (매버릭 2.0)"),
+                    new Brew(new Recipe(null, 15.0, 240.0, null, null, null, "210클릭 (매버릭 2.0)", null, null, null), new Tasting("떫었음", "떫었다", null)),
+                    new Brew(new Recipe(null, 15.0, 240.0, null, null, null, "220클릭 (매버릭 2.0)", null, null, null),
                             new Tasting("부드러웠음", "부드러웠다", Rating.GOOD)));
         }
 
@@ -312,7 +312,7 @@ class ProposalValidatorTest {
         void tasteBecomesSingleBrew() {
             RecordProposal proposal = okOf(validator.validateRecord(recordArgs(), null));
             assertThat(proposal.brews()).containsExactly(new Brew(
-                    new Recipe(15.0, 240.0, null),
+                    new Recipe(null, 15.0, 240.0, null, null, null, null, null, null, null),
                     new Tasting("새콤하고 좋았음", "새콤하고 좋았다", Rating.GOOD)));
         }
     }
@@ -468,25 +468,19 @@ class ProposalValidatorTest {
         }
 
         @Test
-        @DisplayName("V-10: 이동처에 기존 엔트리가 있으면 dateConflict=true로 계산된다(경고 없는 덮어쓰기 금지)")
-        void dateMoveConflictComputed() {
-            EditProposal conflicted = okOf(validator.validateEdit(
+        @DisplayName("§3.4: new_date 이동처는 도메인 날짜로 전달된다 — 충돌(V-10) 계산은 제안 수용 지점(ProposalTools) 몫")
+        void dateMovePassedThrough() {
+            EditProposal proposal = okOf(validator.validateEdit(
                     editArgs(target.slug(), "2026-07-13", patchWithNewDate("2026-07-14")), target, null));
-            assertThat(conflicted.newDate()).isEqualTo(LocalDate.of(2026, 7, 14));
-            assertThat(conflicted.dateConflict()).isTrue();
-
-            EditProposal free = okOf(validator.validateEdit(
-                    editArgs(target.slug(), "2026-07-13", patchWithNewDate("2026-07-20")), target, null));
-            assertThat(free.dateConflict()).isFalse();
+            assertThat(proposal.newDate()).isEqualTo(LocalDate.of(2026, 7, 14));
         }
 
         @Test
-        @DisplayName("V-10: 대상 자신의 날짜로는 이동이 아니다 — newDate null·충돌 없음으로 정규화")
+        @DisplayName("V-10: 대상 자신의 날짜로는 이동이 아니다 — newDate null로 정규화")
         void moveToOwnDateIsNotAMove() {
             EditProposal proposal = okOf(validator.validateEdit(
                     editArgs(target.slug(), "2026-07-13", patchWithNewDate("2026-07-13")), target, null));
             assertThat(proposal.newDate()).isNull();
-            assertThat(proposal.dateConflict()).isFalse();
         }
 
         @Test
@@ -569,7 +563,6 @@ class ProposalValidatorTest {
             assertThat(proposal.beans()).isNull();
             assertThat(proposal.brews()).isNull();
             assertThat(proposal.newDate()).isNull();
-            assertThat(proposal.dateConflict()).isFalse();
         }
 
         private static ProposeEditArgs.Patch patchWithNewDate(String newDate) {
