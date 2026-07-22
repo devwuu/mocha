@@ -14,8 +14,10 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -91,6 +93,10 @@ class ProposalValidatorTest {
         return new ProposeEditArgs(slug, date, patch);
     }
 
+    private static ProposeEditArgs.Patch patchWithNewDate(String newDate) {
+        return new ProposeEditArgs.Patch(null, null, null, null, null, newDate);
+    }
+
     private static String rejectionOf(ToolValidation<?> result) {
         assertThat(result).isInstanceOf(ToolValidation.Rejected.class);
         return ((ToolValidation.Rejected<?>) result).reason();
@@ -101,8 +107,8 @@ class ProposalValidatorTest {
         return ((ToolValidation.Ok<T>) result).value();
     }
 
-    // TΔ2b 배선(동작 불변): 기존 검증 단언 전부를 턴 원문이 실린 호출로 통과시켜 배선 회귀를 상시 가드한다.
-    // 원문 내용은 아직 판정에 쓰이지 않는다 — 게이트(V-16) 활성화는 TΔ2c.
+    // TΔ2b 배선: 기존 검증 단언 전부를 턴 원문(단일 날짜 = 게이트 비발동)이 실린 호출로 통과시켜
+    // 배선 회귀를 상시 가드한다. 다중 날짜 원문의 판정(V-16 게이트)은 MultiDateGateV16이 단언한다.
     private ToolValidation<RecordProposal> validateRecord(ProposeRecordArgs args, PendingNote pending) {
         return validator.validateRecord(args, pending, new TurnUtterance("7월 16일 새콤하고 좋았음", null));
     }
@@ -113,12 +119,68 @@ class ProposalValidatorTest {
     class TurnUtteranceWiringT2b {
 
         @Test
-        @DisplayName("TΔ2b: 원문·세그먼트가 무엇이든(null·다중 날짜 포함) 판정 결과는 동일하다 — 배선은 판정에 영향 없음")
-        void utteranceDoesNotAffectJudgement() {
+        @DisplayName("TΔ2b: 게이트 비발동 원문(null·단일 날짜)이면 판정 결과는 동일하다 — 배선 자체는 판정에 영향 없음")
+        void utteranceWiringDoesNotAffectJudgement() {
             RecordProposal withoutUtterance = okOf(validator.validateRecord(recordArgs(), null, null));
-            RecordProposal withMultiDate = okOf(validator.validateRecord(recordArgs(), null,
+            RecordProposal withSingleDate = okOf(validator.validateRecord(recordArgs(), null,
+                    new TurnUtterance("7월 16일 새콤하고 좋았음", null)));
+            assertThat(withSingleDate).isEqualTo(withoutUtterance);
+        }
+    }
+
+    // ---- V-16 다중 날짜 게이트 (TΔ2c) ----
+
+    @Nested
+    class MultiDateGateV16 {
+
+        // 연도 없는 표기("7월 16일")의 연도 해석을 결정론으로 — 시스템 시계 대신 고정 시계(2026-07-22).
+        private static final LocalDate TODAY = LocalDate.of(2026, 7, 22);
+        private final ProposalValidator gateValidator = new ProposalValidator(
+                Clock.fixed(TODAY.atStartOfDay(ZoneId.of("Asia/Seoul")).toInstant(), ZoneId.of("Asia/Seoul")));
+
+        @Test
+        @DisplayName("AC-Δ1: 다중 날짜 원문의 분해 우회 제안(세그먼트 부재)은 거부된다 — 사유에 탐지 집합·다음 행동 포함")
+        void multiDateWithoutSegmentsRejectedWithReason() {
+            String reason = rejectionOf(gateValidator.validateRecord(recordArgs(), null,
                     new TurnUtterance("7월 16일은 새콤했고 7월 17일은 고소했음", null)));
-            assertThat(withMultiDate).isEqualTo(withoutUtterance);
+            assertThat(reason)
+                    .contains("2026-07-16").contains("2026-07-17")   // 탐지 날짜 집합
+                    .contains("V-16")                                 // 위반 이유
+                    .contains("나눠 보내달라고 안내해라");              // 다음 행동 — bare rejection 금지(ADR-60)
+        }
+
+        @Test
+        @DisplayName("AC-Δ1: target_date가 탐지 집합 밖이면 세그먼트가 있어도 거부된다 — 사유에 가장 이른 날짜 안내")
+        void targetDateOutsideDetectedSetRejected() {
+            List<TurnUtterance.Segment> segments = List.of(
+                    new TurnUtterance.Segment(LocalDate.of(2026, 7, 16), "7월 16일은 새콤했음"),
+                    new TurnUtterance.Segment(LocalDate.of(2026, 7, 17), "7월 17일은 고소했음"));
+            String reason = rejectionOf(gateValidator.validateRecord(
+                    recordArgs("커피베라 예가체프 G1", "맛있다", "2026-07-20",
+                            new ProposeRecordArgs.MatchArg("new", null, null)),
+                    null, new TurnUtterance("7월 16일은 새콤했고 7월 17일은 고소했음", segments)));
+            assertThat(reason)
+                    .contains("2026-07-20")                          // 위반 이유 — 집합 밖 target_date
+                    .contains("2026-07-16").contains("2026-07-17")   // 탐지 날짜 집합
+                    .contains("가장 이른 날짜(2026-07-16)");           // 다음 행동
+        }
+
+        @Test
+        @DisplayName("V-16/ADR-60: 상대 날짜는 세지 않는다 — 절대 날짜 1개 + 상대 날짜 발화는 게이트 비발동")
+        void relativeDatesDoNotTriggerGate() {
+            okOf(gateValidator.validateRecord(recordArgs(), null,
+                    new TurnUtterance("어제는 별로였는데 7월 16일은 새콤하고 좋았음", null)));
+        }
+
+        @Test
+        @DisplayName("AC-Δ4: 날짜 2개(대상 date + new_date 이동)의 propose_edit는 게이트에 걸리지 않고 통과한다 — V-16 record 전용")
+        void editWithTwoDatesPassesUngated() {
+            Note target = note("2026-07-13-102030", "커피베라 예가체프 G1", "커피베라",
+                    LocalDate.of(2026, 7, 13), LocalDate.of(2026, 7, 14));
+            // POLICY 대응: 다중 날짜 게이트는 record 전용 — edit는 날짜 정정·이동이 날짜 2개를 정당하게 포함(ADR-60).
+            EditProposal proposal = okOf(gateValidator.validateEdit(
+                    editArgs(target.slug(), "2026-07-13", patchWithNewDate("2026-07-15")), target, null));
+            assertThat(proposal.newDate()).isEqualTo(LocalDate.of(2026, 7, 15));
         }
     }
 
@@ -586,8 +648,5 @@ class ProposalValidatorTest {
             assertThat(proposal.newDate()).isNull();
         }
 
-        private static ProposeEditArgs.Patch patchWithNewDate(String newDate) {
-            return new ProposeEditArgs.Patch(null, null, null, null, null, newDate);
-        }
     }
 }
