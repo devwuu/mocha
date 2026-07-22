@@ -20,7 +20,7 @@
   - 이 프로젝트에서 controller 역할 = `SlackGateway`(Socket Mode 수신·응답). HTTP 컨트롤러와 마찬가지로 얇게 — 파싱·위임·응답 변환만 하고 로직은 service로.
   - service = 파이프라인 오케스트레이션(추출→매칭→보강→확인→저장→렌더).
   - repository = `NoteRepository`/`PendingStore`/`PhotoStore` 파일 구현체.
-- **외부 의존은 인터페이스로 경계화한다.** LLM 호출(`LlmClient`), 웹 검색(`SearchClient`), 저장소(`NoteRepository` 등)는 인터페이스 뒤에 두고 구현체를 주입한다. 이것은 헥사고날 도입이 아니라 교체 가능성(spec NFR-4)을 위한 최소 규칙이다 — 패키지 구조를 뒤집거나 포트/어댑터 명명을 강제하지 않는다.
+- **외부 의존은 인터페이스로 경계화한다.** 허용 경계·인터페이스 목록은 루트 `REVIEW.md` §2 표가 **단일 소유**한다 — 여기서는 이름을 중복 나열하지 않는다(문서 간 드리프트 방지). 외부 의존(LLM·저장·Slack·렌더링)은 그 표의 인터페이스 뒤에 두고 구현체를 주입한다. 이것은 헥사고날 도입이 아니라 교체 가능성(spec NFR-4)을 위한 최소 규칙이다 — 패키지 구조를 뒤집거나 포트/어댑터 명명을 강제하지 않는다.
   - 호출부(service)가 OpenAI SDK 타입을 직접 참조하지 않는다 (ref: specs/coffee-note-agent/plan.md#ADR-5).
 - **단발성 우선**: 요청 처리는 선형 단발 흐름으로 구현한다. 에이전트 루프·장기 실행은 spec이 요구할 때만.
 
