@@ -58,6 +58,11 @@ tasks.named('test') {
 		// 실 외부 호출 스모크는 기본 실행에서 제외 — 무거운 Chromium(ADR-11), 비용 발생 OpenAI 호출.
 		excludeTags 'chromium', 'openai'
 	}
+	// 계약 스냅샷 재캡처 게이트(-Dmocha.contract.recapture=true)를 테스트 JVM으로 전달
+	// (AgentModelContractSnapshotTest.recaptureSnapshot — 의도된 계약 변경 시에만).
+	if (System.getProperty('mocha.contract.recapture') != null) {
+		systemProperty 'mocha.contract.recapture', System.getProperty('mocha.contract.recapture')
+	}
 }
 
 // 실 OpenAI 호출 스모크만 온디맨드: `./gradlew openaiTest` (.env.local의 OPENAI_API_KEY 필요, 비용 발생).

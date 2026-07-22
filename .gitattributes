@@ -1,3 +1,5 @@
 /gradlew text eol=lf
 *.bat text eol=crlf
 *.jar binary
+# 계약 스냅샷은 바이트 단위 비교 대상 — git 줄바꿈 변환(autocrlf) 금지 (AgentModelContractSnapshotTest)
+*.snapshot.txt -text
