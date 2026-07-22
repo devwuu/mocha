@@ -5,6 +5,8 @@ import com.devwuu.mocha.agent.OpenAiAgentClient;
 import com.devwuu.mocha.agent.conversation.ConversationTranscript;
 import com.devwuu.mocha.llm.AliasGenerator;
 import com.devwuu.mocha.llm.OpenAiAliasGenerator;
+import com.devwuu.mocha.llm.OpenAiUtteranceSegmenter;
+import com.devwuu.mocha.llm.UtteranceSegmenter;
 import com.devwuu.mocha.llm.VisionClient;
 import com.devwuu.mocha.render.CardImageRenderer;
 import com.devwuu.mocha.render.NoteRenderer;
@@ -49,6 +51,17 @@ class ConfigDefaultsTest {
             ConversationTranscript transcript = context.getBean(ConversationTranscript.class);
             assertThat(ReflectionTestUtils.getField(transcript, "maxTurns")).isEqualTo(20);
             assertThat(ReflectionTestUtils.getField(transcript, "ttl")).isEqualTo(Duration.ofHours(1));
+        });
+    }
+
+    @Test
+    @DisplayName("ADR-61(changes/0023 TΔ3a): mocha.agent.segmenter-model 미설정 시 세그먼터가 전용 경량 default로 뜬다")
+    void segmenterDefaultsToLightweightModel() {
+        runner.run(context -> {
+            UtteranceSegmenter segmenter = context.getBean(UtteranceSegmenter.class);
+            assertThat(segmenter).isInstanceOf(OpenAiUtteranceSegmenter.class);
+            // 분리만 하는 좁은 작업 — 루프 모델(gpt-5.4)에 편승하지 않는 경량 전용 키(plan §5).
+            assertThat(ReflectionTestUtils.getField(segmenter, "model")).isEqualTo("gpt-5.4-mini");
         });
     }
 

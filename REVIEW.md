@@ -28,6 +28,7 @@
 | 경계 | 인터페이스 | 이유 |
 |---|---|---|
 | LLM 호출 | `AgentClient`, `VisionClient`, `AliasGenerator` | 모델/프로바이더 교체 가능성, 테스트 격리 |
+| LLM 호출 (세그먼터) | `UtteranceSegmenter` | 다중 날짜 발화의 날짜별 분리 전용 전처리(plan ADR-61, changes/0023) — 모델/프로바이더 교체 가능성, 테스트 격리 |
 | 저장 | `NoteRepository`, `PendingStore`, `PhotoBufferStore`, `PhotoStore` | 저장 방식 교체 가능성(NFR-4), 테스트 격리 |
 | 메시지 송수신 (Slack) | `SlackResponder`, `PhotoDownloader`, `ConversationRouter` | 외부 서비스 경계, 테스트 격리 |
 | 렌더링 | `NoteRenderer`, `CardImageRenderer` | 템플릿/렌더링 엔진 경계 |
