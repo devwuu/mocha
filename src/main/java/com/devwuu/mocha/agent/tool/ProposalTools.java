@@ -28,7 +28,7 @@ import java.util.Optional;
 /**
  * 쓰기 제안 축 tool 2종 — {@code propose_record}·{@code propose_edit}
  * (ref: specs/coffee-note-agent/data-model.md#3.3~3.4, plan#ADR-45; changes/0018 TΔ6).
- * <p>{@link AgentToolkit}(façade)가 조립하는 내부 협력자라 Spring 빈이 아니다.
+ * <p>{@link ToolCallbackProvider}(façade)가 조립하는 내부 협력자라 Spring 빈이 아니다.
  * <p>strict schema(전 필드 required·additionalProperties=false)가 인자 <b>형태</b>를 보장하고, 값 수준
  * 규칙(V-1·5·8·11·14·15·16, 단일 대기)은 툴별 검증 진입점({@link RecordProposalValidator}·
  * {@link EditProposalValidator})이 결정론으로 강제한다 — 이동 충돌(V-10) 계산만 제안 수용 지점인
@@ -173,8 +173,8 @@ class ProposalTools {
 
     // 턴 원문(utterance)은 클로저 캡처로만 유입된다 — 턴 시작 시점 고정 값이라 pending처럼 재조회하지
     // 않고, FR-5 갱신 재호출도 같은 턴 클로저를 써 턴 안에서 일관된다(TΔ2b, findings-TΔ0 §C-2·C-5).
-    AgentTool proposeRecord(String userId, String channelId, TurnUtterance utterance) {
-        return new AgentTool(
+    ToolCallback proposeRecord(String userId, String channelId, TurnUtterance utterance) {
+        return new ToolCallback(
                 "propose_record",
                 "신규 시음 기록(또는 기존 노트에 더하는 새 시음)을 제안한다 — 검증 통과 시 확인 대기(pending)가 "
                         + "만들어지고 미리보기가 전송된다. 저장은 사용자의 [저장] 버튼만 한다. 확인 대기 중 같은 커피의 "
@@ -251,8 +251,8 @@ class ProposalTools {
 
     // ---- propose_edit (data-model §3.4, FR-21) ----
 
-    AgentTool proposeEdit(String userId, String channelId) {
-        return new AgentTool(
+    ToolCallback proposeEdit(String userId, String channelId) {
+        return new ToolCallback(
                 "propose_edit",
                 "저장된 노트의 기존 시음 엔트리 수정을 제안한다 — patch에 바꿀 필드만 채우면(null=유지) 검증 후 "
                         + "✏️ 미리보기가 전송되고, 저장은 사용자의 [저장] 버튼만 한다. 커피 이름은 바꿀 수 없다"

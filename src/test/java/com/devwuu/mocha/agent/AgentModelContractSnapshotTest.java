@@ -1,8 +1,8 @@
 package com.devwuu.mocha.agent;
 
 import com.devwuu.mocha.agent.prompt.AgentSystemPrompt;
-import com.devwuu.mocha.agent.tool.AgentTool;
-import com.devwuu.mocha.agent.tool.AgentToolkit;
+import com.devwuu.mocha.agent.tool.ToolCallback;
+import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
 import com.devwuu.mocha.agent.turn.TurnUtterance;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -46,11 +46,12 @@ class AgentModelContractSnapshotTest {
      */
     private static String serializeCurrentContract() {
         // 협력자는 전부 null — executor는 호출하지 않고 정의만 캡처한다(정의는 협력자 무관 상수).
-        AgentToolkit toolkit = new AgentToolkit(null, null, null, null, null, null, null, null, null, null, null);
-        List<AgentTool> tools = toolkit.forTurn("U-snapshot", "C-snapshot", new TurnUtterance("스냅샷", null));
+        ToolCallbackProvider toolkit = new ToolCallbackProvider(null, null, null, null, null, null,
+                null, null, null, null, null);
+        List<ToolCallback> tools = toolkit.forTurn("U-snapshot", "C-snapshot", new TurnUtterance("스냅샷", null));
 
         StringBuilder contract = new StringBuilder();
-        for (AgentTool tool : tools) {
+        for (ToolCallback tool : tools) {
             contract.append("### tool: ").append(tool.name()).append('\n')
                     .append("--- description\n").append(tool.description()).append('\n')
                     .append("--- parametersSchema\n").append(tool.parametersSchema()).append('\n')

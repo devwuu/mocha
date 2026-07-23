@@ -5,7 +5,7 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.devwuu.mocha.agent.prompt.AgentInputMessage;
 import com.devwuu.mocha.agent.prompt.AgentTurnInput;
-import com.devwuu.mocha.agent.tool.AgentTool;
+import com.devwuu.mocha.agent.tool.ToolCallback;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.openai.models.responses.FunctionTool;
 import com.openai.models.responses.Response;
@@ -87,7 +87,7 @@ class OpenAiAgentClientTest {
     @DisplayName("루프 왕복: tool 실행 결과가 callId로 짝지어 다음 요청에 실리고 최종 텍스트를 반환한다 (findings-TΔ0 §SDK)")
     void roundTripsToolCallAndReturnsFinalText() {
         List<String> receivedArgs = new ArrayList<>();
-        AgentTool tool = getNoteTool(args -> {
+        ToolCallback tool = getNoteTool(args -> {
             receivedArgs.add(args);
             return "{\"coffee_name\":\"와이키키\"}";
         });
@@ -118,7 +118,7 @@ class OpenAiAgentClientTest {
     @DisplayName("ADR-44 POLICY: tool 호출 상한 도달 시 AgentException으로 턴을 중단한다 — 상한 없는 루프 금지")
     void abortsWhenToolCallCapReached() {
         AtomicInteger executions = new AtomicInteger();
-        AgentTool tool = getNoteTool(args -> {
+        ToolCallback tool = getNoteTool(args -> {
             executions.incrementAndGet();
             return "{}";
         });
@@ -139,7 +139,7 @@ class OpenAiAgentClientTest {
     @DisplayName("AC-Δ3 (ADR-62): 누적 토큰 상한 도달 시 AgentException 폴백 — tool 미실행·사유 구분 로그")
     void abortsWhenCumulativeTokenCapReached() {
         AtomicInteger executions = new AtomicInteger();
-        AgentTool tool = getNoteTool(args -> {
+        ToolCallback tool = getNoteTool(args -> {
             executions.incrementAndGet();
             return "{}";
         });
@@ -162,7 +162,7 @@ class OpenAiAgentClientTest {
     @DisplayName("AC-Δ3 (ADR-62): 턴 경과 시간 상한 도달 시 AgentException 폴백 — 이터레이션 경계 판정·사유 구분 로그")
     void abortsWhenTurnTimeoutReached() {
         AtomicInteger executions = new AtomicInteger();
-        AgentTool tool = getNoteTool(args -> {
+        ToolCallback tool = getNoteTool(args -> {
             executions.incrementAndGet();
             return "{}";
         });
@@ -199,7 +199,7 @@ class OpenAiAgentClientTest {
     @Test
     @DisplayName("ADR-45: tool 실행 오류는 사유가 tool 결과로 모델에 돌아가고 루프는 계속된다 — 조용한 드롭 금지")
     void deliversToolErrorAsToolResultAndContinues() {
-        AgentTool tool = getNoteTool(args -> {
+        ToolCallback tool = getNoteTool(args -> {
             throw new IllegalArgumentException("rating은 4범주만 허용");
         });
         ScriptedAgentClient client = new ScriptedAgentClient(8, List.of(
@@ -311,8 +311,8 @@ class OpenAiAgentClientTest {
         return new AgentTurnInput("시스템 프롬프트", List.of(AgentInputMessage.user(userText)));
     }
 
-    private static AgentTool getNoteTool(AgentTool.Executor executor) {
-        return new AgentTool("get_note", "저장된 커피 노트 1건을 조회한다.", """
+    private static ToolCallback getNoteTool(ToolCallback.Executor executor) {
+        return new ToolCallback("get_note", "저장된 커피 노트 1건을 조회한다.", """
                 {"type":"object","properties":{"slug":{"type":"string"}},\
                 "required":["slug"],"additionalProperties":false}""", executor);
     }

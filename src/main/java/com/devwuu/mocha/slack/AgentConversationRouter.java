@@ -5,7 +5,7 @@ import com.devwuu.mocha.agent.conversation.ConversationTranscript;
 import com.devwuu.mocha.agent.conversation.TranscriptTurn;
 import com.devwuu.mocha.agent.prompt.AgentContextAssembler;
 import com.devwuu.mocha.agent.prompt.AgentTurnInput;
-import com.devwuu.mocha.agent.tool.AgentToolkit;
+import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
 import com.devwuu.mocha.agent.turn.TastingDateDetector;
 import com.devwuu.mocha.agent.turn.TurnUtterance;
 import com.devwuu.mocha.domain.PendingNote;
@@ -59,7 +59,7 @@ public class AgentConversationRouter implements ConversationRouter {
     private final PendingStore pendingStore;
     private final ConversationTranscript transcript;
     private final AgentClient agentClient;
-    private final AgentToolkit agentTools;
+    private final ToolCallbackProvider toolCallbackProvider;
     private final AgentContextAssembler contextAssembler;
     private final UtteranceSegmenter segmenter;
     private final SlackPhotoIntake photoIntake;
@@ -74,7 +74,7 @@ public class AgentConversationRouter implements ConversationRouter {
             PendingStore pendingStore,
             ConversationTranscript transcript,
             AgentClient agentClient,
-            AgentToolkit agentTools,
+            ToolCallbackProvider toolCallbackProvider,
             AgentContextAssembler contextAssembler,
             UtteranceSegmenter segmenter,
             SlackPhotoIntake photoIntake,
@@ -84,7 +84,7 @@ public class AgentConversationRouter implements ConversationRouter {
         this.pendingStore = pendingStore;
         this.transcript = transcript;
         this.agentClient = agentClient;
-        this.agentTools = agentTools;
+        this.toolCallbackProvider = toolCallbackProvider;
         this.contextAssembler = contextAssembler;
         this.segmenter = segmenter;
         this.photoIntake = photoIntake;
@@ -122,7 +122,7 @@ public class AgentConversationRouter implements ConversationRouter {
             // TΔ2b 배선: 턴 원문·세그먼트를 제안 검증기까지 나른다(다중 날짜 게이트 V-16의 판정 입력, ADR-60).
             // 라우터가 1회 만들어 조립기와 같은 값을 넘긴다 — 턴 안에서 값이 일관된다(findings-TΔ0 §C-5).
             TurnUtterance utterance = new TurnUtterance(message.text(), segments);
-            String reply = agentClient.runTurn(context, agentTools.forTurn(userId, channelId, utterance));
+            String reply = agentClient.runTurn(context, toolCallbackProvider.forTurn(userId, channelId, utterance));
 
             // 모델의 최종 텍스트가 곧 Slack 응답이다(ADR-44) — 미리보기·카드는 tool 구현체가 이미 보냈다.
             responder.post(channelId, reply);

@@ -28,7 +28,7 @@ import java.util.stream.Collectors;
 /**
  * 검색·회상 축 tool 3종 — {@code list_notes}·{@code get_note}·{@code send_entry_card}
  * (ref: specs/coffee-note-agent/data-model.md#3.1~3.2·3.5, spec FR-14/FR-20; changes/0018 TΔ5).
- * <p>{@link AgentToolkit}(façade)가 조립하는 내부 협력자라 Spring 빈이 아니다. 전부 읽기 전용이다:
+ * <p>{@link ToolCallbackProvider}(façade)가 조립하는 내부 협력자라 Spring 빈이 아니다. 전부 읽기 전용이다:
  * 노트·pending 파일을 바꾸지 않고(AC-Δ4), 카드 재전송도 기존 파생물 재사용이 우선이다.
  * <p>값 수준 확인(미존재 slug·날짜 형식)의 위반은 예외가 아니라 <b>사유를 담은 오류 결과</b>로 돌려줘
  * 에이전트가 루프 안에서 정정한다(ADR-45 — 환각 필터).
@@ -71,8 +71,8 @@ class NoteLookupTools {
 
     // ---- list_notes (data-model §3.1) ----
 
-    AgentTool listNotes() {
-        return new AgentTool(
+    ToolCallback listNotes() {
+        return new ToolCallback(
                 "list_notes",
                 "저장된 모든 커피 노트의 메타 목록을 돌려준다 — slug·커피명·로스터리·내부 별칭(aliases)·원산지·"
                         + "공식 테이스팅 노트·최근 시음일. 기존 노트 매칭(동일성 판단)과 검색의 출발점. "
@@ -115,8 +115,8 @@ class NoteLookupTools {
 
     // ---- get_note (data-model §3.2) ----
 
-    AgentTool getNote() {
-        return new AgentTool(
+    ToolCallback getNote() {
+        return new ToolCallback(
                 "get_note",
                 "slug로 노트 전체(모든 시음 엔트리 포함)를 돌려준다 — 상세 확인·수정 대상 검증용. "
                         + "미존재 slug는 오류를 돌려준다.",
@@ -137,8 +137,8 @@ class NoteLookupTools {
 
     // ---- send_entry_card (data-model §3.5, FR-20) ----
 
-    AgentTool sendEntryCard(String channelId) {
-        return new AgentTool(
+    ToolCallback sendEntryCard(String channelId) {
+        return new ToolCallback(
                 "send_entry_card",
                 "기존 시음 엔트리의 카드 이미지를 사용자 채널에 전송한다 — 기존 기록을 찾는 발화의 답은 이 카드다. "
                         + "전송까지 이 tool이 끝내므로 최종 텍스트에 카드 내용을 반복할 필요 없다.",

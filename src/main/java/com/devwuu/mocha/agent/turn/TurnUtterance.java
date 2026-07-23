@@ -6,7 +6,7 @@ import java.util.List;
 /**
  * 턴의 사용자 원문(+세그먼트 컨텍스트)을 제안 검증기까지 나르는 SDK 무관 홀더 — 다중 날짜 게이트(V-16)의
  * 판정 입력이다 (ref: specs/coffee-note-agent/changes/0023-harness-baseline/delta.md#ADR-60, TΔ2b).
- * <p>라우터가 턴 시작 시 1회 만들어 tool 조립({@code AgentToolkit.forTurn})에 넘긴다 — 턴 안에서
+ * <p>라우터가 턴 시작 시 1회 만들어 tool 조립({@code ToolCallbackProvider.forTurn})에 넘긴다 — 턴 안에서
  * 원문·세그먼트가 일관되고(FR-5 갱신 재호출 포함), 다음 턴은 새 조립으로 자연 갱신된다.
  * <p>{@code segments}는 다중 날짜 자동 분해(ADR-61, TΔ3b) 산물 — 라우터가 컨텍스트 조립기에 넘긴 것과
  * 같은 값을 싣는다(모델 컨텍스트 ↔ 게이트 판정의 드리프트 방지, findings-TΔ0 §C-5).

@@ -4,7 +4,7 @@ import com.devwuu.mocha.agent.OpenAiAgentClient;
 import com.devwuu.mocha.agent.conversation.ConversationTranscript;
 import com.devwuu.mocha.agent.prompt.AgentContextAssembler;
 import com.devwuu.mocha.agent.prompt.AgentTurnInput;
-import com.devwuu.mocha.agent.tool.AgentToolkit;
+import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
 import com.devwuu.mocha.agent.tool.validation.EditProposalValidator;
 import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
 import com.devwuu.mocha.agent.turn.TurnUtterance;
@@ -105,7 +105,7 @@ class BrewRulesSmokeTest {
         Clock clock = Clock.fixed(Instant.parse("2026-07-21T01:00:00Z"), ZoneId.of("Asia/Seoul"));
 
         InMemoryPendingStore pendingStore = new InMemoryPendingStore();
-        AgentToolkit toolkit = new AgentToolkit(new EmptyNoteRepository(), new NoOpRenderer(),
+        ToolCallbackProvider toolkit = new ToolCallbackProvider(new EmptyNoteRepository(), new NoOpRenderer(),
                 new PrintingResponder(), Path.of("build/smoke-artifact"), mapper, pendingStore,
                 new StubPreviewMessenger(), new RecordProposalValidator(clock), new EditProposalValidator(),
                 new ConversationTranscript(20, Duration.ofHours(1), clock), clock);

@@ -30,7 +30,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  *       Chromium 실렌더 스모크 2종(Taste/RecipeCardChromiumSmokeTest)</li>
  *   <li>[저장] 배달 경로(AC-17) — {@link com.devwuu.mocha.slack.SlackCommitHandlerTest}
  *       (커밋 → 증분 렌더 → 카드 배달, 부분 폴백 포함)</li>
- *   <li>send_entry_card 재전송 — {@link com.devwuu.mocha.agent.tool.AgentToolkitTest}
+ *   <li>send_entry_card 재전송 — {@link com.devwuu.mocha.agent.tool.ToolCallbackProviderTest}
  *       (재사용/증분/다장/부분 실패)</li>
  *   <li>하루 엔트리 2개 금지(AC-14) — {@link com.devwuu.mocha.repository.JsonFileNoteRepositoryTest}
  *       (같은 날 재기록 시 엔트리 수 불변)</li>

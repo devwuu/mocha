@@ -2,7 +2,7 @@ package com.devwuu.mocha.config;
 
 import com.devwuu.mocha.agent.conversation.ConversationTranscript;
 import com.devwuu.mocha.agent.prompt.AgentContextAssembler;
-import com.devwuu.mocha.agent.tool.AgentToolkit;
+import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
 import com.devwuu.mocha.agent.tool.validation.EditProposalValidator;
 import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
 import com.devwuu.mocha.llm.AliasGenerator;
@@ -57,7 +57,7 @@ public class RouterConfig {
 
     // function tool 5종 façade(ADR-44·45) — 도메인 협력자를 받아 역할별 구현(조회·제안 축)을 내부 조립한다.
     @Bean
-    public AgentToolkit agentToolkit(
+    public ToolCallbackProvider toolCallbackProvider(
             NoteRepository noteRepository,
             NoteRenderer noteRenderer,
             SlackResponder responder,
@@ -69,7 +69,7 @@ public class RouterConfig {
             EditProposalValidator editProposalValidator,
             ConversationTranscript transcript,
             Clock clock) {
-        return new AgentToolkit(noteRepository, noteRenderer, responder, Path.of(artifactDir),
+        return new ToolCallbackProvider(noteRepository, noteRenderer, responder, Path.of(artifactDir),
                 mapper, pendingStore, previewMessenger, recordProposalValidator, editProposalValidator,
                 transcript, clock);
     }

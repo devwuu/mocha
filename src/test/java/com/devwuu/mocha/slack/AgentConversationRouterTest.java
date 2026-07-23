@@ -7,8 +7,8 @@ import com.devwuu.mocha.agent.conversation.TranscriptTurn;
 import com.devwuu.mocha.agent.prompt.AgentContextAssembler;
 import com.devwuu.mocha.agent.prompt.AgentInputMessage;
 import com.devwuu.mocha.agent.prompt.AgentTurnInput;
-import com.devwuu.mocha.agent.tool.AgentTool;
-import com.devwuu.mocha.agent.tool.AgentToolkit;
+import com.devwuu.mocha.agent.tool.ToolCallback;
+import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
 import com.devwuu.mocha.agent.tool.validation.EditProposalValidator;
 import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
 import com.devwuu.mocha.domain.Brew;
@@ -86,10 +86,10 @@ class AgentConversationRouterTest {
                 url -> jpegBytes(), photoStore, photoBufferStore, photoInfoExtractor,
                 Duration.ofMinutes(3), clock);
         // fake AgentClient는 tool 실행기를 부르지 않으므로 lookup·제안 협력자는 미접촉 — 장착 목록 계약만 쓴다.
-        AgentToolkit agentTools = new AgentToolkit(null, null, responder, Path.of("unused-artifact"),
-                MochaObjectMapper.create(), pendingStore, null, new RecordProposalValidator(clock),
-                new EditProposalValidator(), transcript, clock);
-        router = new AgentConversationRouter(pendingStore, transcript, agentClient, agentTools,
+        ToolCallbackProvider toolCallbackProvider = new ToolCallbackProvider(null, null, responder,
+                Path.of("unused-artifact"), MochaObjectMapper.create(), pendingStore, null,
+                new RecordProposalValidator(clock), new EditProposalValidator(), transcript, clock);
+        router = new AgentConversationRouter(pendingStore, transcript, agentClient, toolCallbackProvider,
                 new AgentContextAssembler(MochaObjectMapper.create(), clock), segmenter, photoIntake,
                 responder, commitHandler, clock);
     }
@@ -106,7 +106,7 @@ class AgentConversationRouterTest {
         // 이번 발화가 messages의 마지막 user 메시지로 실린다(TΔ7a 조립 계약).
         List<AgentInputMessage> messages = agentClient.lastContext.messages();
         assertThat(messages.get(messages.size() - 1)).isEqualTo(AgentInputMessage.user("요즘 커피 뭐가 맛있어?"));
-        assertThat(agentClient.lastTools).extracting(AgentTool::name).containsExactly(
+        assertThat(agentClient.lastTools).extracting(ToolCallback::name).containsExactly(
                 "list_notes", "get_note", "propose_record", "propose_edit", "send_entry_card");
         // 제안 없는 턴은 트랜스크립트에 쌓인다(FR-23) — 다음 턴의 문맥이 된다.
         assertThat(transcript.view(USER))
@@ -295,10 +295,10 @@ class AgentConversationRouterTest {
         Runnable onRun;
         int calls;
         AgentTurnInput lastContext;
-        List<AgentTool> lastTools;
+        List<ToolCallback> lastTools;
 
         @Override
-        public String runTurn(AgentTurnInput context, List<AgentTool> tools) {
+        public String runTurn(AgentTurnInput context, List<ToolCallback> tools) {
             calls++;
             lastContext = context;
             lastTools = tools;

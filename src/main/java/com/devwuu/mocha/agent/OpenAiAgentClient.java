@@ -2,7 +2,7 @@ package com.devwuu.mocha.agent;
 
 import com.devwuu.mocha.agent.prompt.AgentInputMessage;
 import com.devwuu.mocha.agent.prompt.AgentTurnInput;
-import com.devwuu.mocha.agent.tool.AgentTool;
+import com.devwuu.mocha.agent.tool.ToolCallback;
 import com.openai.client.OpenAIClient;
 import com.openai.core.JsonValue;
 import com.openai.models.responses.EasyInputMessage;
@@ -60,9 +60,9 @@ public class OpenAiAgentClient implements AgentClient {
     }
 
     @Override
-    public String runTurn(AgentTurnInput context, List<AgentTool> tools) {
+    public String runTurn(AgentTurnInput context, List<ToolCallback> tools) {
         long started = System.currentTimeMillis();
-        Map<String, AgentTool> toolsByName = new LinkedHashMap<>();
+        Map<String, ToolCallback> toolsByName = new LinkedHashMap<>();
         tools.forEach(tool -> toolsByName.put(tool.name(), tool));
 
         List<ResponseInputItem> pendingInput = new ArrayList<>();
@@ -149,8 +149,8 @@ public class OpenAiAgentClient implements AgentClient {
      * tool 호출 1건 디스패치. 실행 오류는 삼키지도 턴을 깨지도 않고 <b>사유를 tool 결과로</b> 돌려준다
      * — 에이전트가 루프 안에서 정정하거나 사용자에게 안내한다(ref: plan.md#ADR-45 POLICY, AC-Δ5).
      */
-    private String dispatch(Map<String, AgentTool> toolsByName, ResponseFunctionToolCall call) {
-        AgentTool tool = toolsByName.get(call.name());
+    private String dispatch(Map<String, ToolCallback> toolsByName, ResponseFunctionToolCall call) {
+        ToolCallback tool = toolsByName.get(call.name());
         if (tool == null) {
             log.warn("에이전트가 등록되지 않은 tool 호출: {}", call.name());
             return errorOutput("등록되지 않은 tool: " + call.name());
@@ -180,7 +180,7 @@ public class OpenAiAgentClient implements AgentClient {
     }
 
     // 요청 조립 — tool 정의(function 5종 + 내장 web_search)는 매 요청 재전송(findings-TΔ0 §SDK).
-    ResponseCreateParams buildParams(String instructions, List<AgentTool> tools,
+    ResponseCreateParams buildParams(String instructions, List<ToolCallback> tools,
                                      List<ResponseInputItem> input, String previousResponseId) {
         ResponseCreateParams.Builder builder = ResponseCreateParams.builder()
                 .model(model)
@@ -195,7 +195,7 @@ public class OpenAiAgentClient implements AgentClient {
     }
 
     // strict schema — 형태는 모델이 보장하고, 값 수준 규칙은 서버 검증(TΔ1)이 맡는다(findings-TΔ0 §SDK).
-    private FunctionTool toFunctionTool(AgentTool tool) {
+    private FunctionTool toFunctionTool(ToolCallback tool) {
         Map<String, Object> schemaFields;
         try {
             @SuppressWarnings("unchecked")

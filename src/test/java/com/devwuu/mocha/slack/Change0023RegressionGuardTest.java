@@ -4,8 +4,8 @@ import com.devwuu.mocha.agent.AgentClient;
 import com.devwuu.mocha.agent.conversation.ConversationTranscript;
 import com.devwuu.mocha.agent.prompt.AgentContextAssembler;
 import com.devwuu.mocha.agent.prompt.AgentTurnInput;
-import com.devwuu.mocha.agent.tool.AgentTool;
-import com.devwuu.mocha.agent.tool.AgentToolkit;
+import com.devwuu.mocha.agent.tool.ToolCallback;
+import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
 import com.devwuu.mocha.agent.tool.validation.EditProposalValidator;
 import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
 import com.devwuu.mocha.domain.PendingNote;
@@ -47,7 +47,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 항목은 아래 기존 테스트가 이미 가드한다(중복 단언하지 않음 — 위치 이동 시 이 표를 갱신할 것):
  * <ul>
  *   <li>① 단일 대기 거부(FR-22/AC-30) — {@link com.devwuu.mocha.agent.tool.validation.ProposalValidatorsTest}
- *       (record·edit 양 경로의 "먼저 저장/취소" 거부), {@link com.devwuu.mocha.agent.tool.AgentToolkitTest}
+ *       (record·edit 양 경로의 "먼저 저장/취소" 거부), {@link com.devwuu.mocha.agent.tool.ToolCallbackProviderTest}
  *       (tool 반환의 "단일 대기" 오류 + 대기·미리보기 무변화)</li>
  *   <li>① [저장] 커밋 경로(ADR-3·45) — {@link SlackCommitHandlerTest}
  *       ("[저장] 커밋 → pending clear → 카드 배달 → 버튼 소진 순서가 종전과 동일" 회귀 가드 포함)</li>
@@ -89,12 +89,12 @@ class Change0023RegressionGuardTest {
         SlackPhotoIntake photoIntake = new SlackPhotoIntake(pendingStore, responder,
                 url -> new byte[0], photoStore, photoBufferStore, new StubPhotoInfoExtractor(),
                 Duration.ofMinutes(3), clock);
-        AgentToolkit agentTools = new AgentToolkit(null, null, responder, Path.of("unused-artifact"),
-                mapper, pendingStore, null, new RecordProposalValidator(clock),
+        ToolCallbackProvider toolCallbackProvider = new ToolCallbackProvider(null, null, responder,
+                Path.of("unused-artifact"), mapper, pendingStore, null, new RecordProposalValidator(clock),
                 new EditProposalValidator(), transcript, clock);
         // 버튼 미수신 경로만 돌리므로 커밋 핸들러는 접촉되지 않는다 — 접촉되면 null 협력자로 즉시 실패한다.
         AgentConversationRouter router = new AgentConversationRouter(pendingStore, transcript, agentClient,
-                agentTools, new AgentContextAssembler(mapper, clock), segmenter, photoIntake,
+                toolCallbackProvider, new AgentContextAssembler(mapper, clock), segmenter, photoIntake,
                 responder, new SlackCommitHandler(null, null, null, null, null, null), clock);
 
         // 턴 1: 다중 날짜 → 세그먼터 주입 성공(제안 없는 턴).
@@ -127,7 +127,7 @@ class Change0023RegressionGuardTest {
         int calls;
 
         @Override
-        public String runTurn(AgentTurnInput context, List<AgentTool> tools) {
+        public String runTurn(AgentTurnInput context, List<ToolCallback> tools) {
             calls++;
             return "네 멍!";
         }

@@ -58,7 +58,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 미리보기 전송·단일 대기 거부·충돌 경고·트랜스크립트 접힘)을 결정론으로 단언한다
  * (data-model §3, plan ADR-45·46, AC-Δ4·Δ5·Δ6). 외부 호출 없음 — 협력자는 전부 fake(모듈 CLAUDE.md §5.2).
  */
-class AgentToolkitTest {
+class ToolCallbackProviderTest {
 
     private static final String USER = "U-dev";
     private static final String CHANNEL = "C-mocha";
@@ -76,7 +76,7 @@ class AgentToolkitTest {
     private RecordingResponder responder;
     private CapturingPreviewMessenger previewMessenger;
     private ConversationTranscript transcript;
-    private AgentToolkit agentTools;
+    private ToolCallbackProvider toolCallbackProvider;
 
     @BeforeEach
     void setUp() {
@@ -84,7 +84,7 @@ class AgentToolkitTest {
         responder = new RecordingResponder();
         previewMessenger = new CapturingPreviewMessenger();
         transcript = new ConversationTranscript(20, Duration.ofHours(1), clock);
-        agentTools = new AgentToolkit(noteRepository, renderer, responder, artifactDir, mapper,
+        toolCallbackProvider = new ToolCallbackProvider(noteRepository, renderer, responder, artifactDir, mapper,
                 pendingStore, previewMessenger, new RecordProposalValidator(clock),
                 new EditProposalValidator(), transcript, clock);
     }
@@ -92,11 +92,11 @@ class AgentToolkitTest {
     @Test
     @DisplayName("plan §3/ADR-44: forTurn은 function tool 5종을 strict 스키마(additionalProperties=false)로 장착한다")
     void forTurnExposesFiveStrictTools() {
-        List<AgentTool> tools = agentTools.forTurn(USER, CHANNEL, UTTERANCE);
+        List<ToolCallback> tools = toolCallbackProvider.forTurn(USER, CHANNEL, UTTERANCE);
 
-        assertThat(tools).extracting(AgentTool::name)
+        assertThat(tools).extracting(ToolCallback::name)
                 .containsExactly("list_notes", "get_note", "propose_record", "propose_edit", "send_entry_card");
-        for (AgentTool tool : tools) {
+        for (ToolCallback tool : tools) {
             JsonNode schema = mapper.readTree(tool.parametersSchema());
             assertThat(schema.get("additionalProperties").asBoolean()).isFalse();
             // strict 계약: 선언한 전 필드가 required에 있다 (findings-TΔ0 §SDK).
@@ -108,7 +108,7 @@ class AgentToolkitTest {
     @Test
     @DisplayName("V-9/AC-38: propose_edit patch 스키마에 coffee_name 필드 자체가 없다 — 구조 차단(strict 유지)")
     void proposeEditSchemaHasNoCoffeeName() {
-        AgentTool proposeEdit = tool("propose_edit");
+        ToolCallback proposeEdit = tool("propose_edit");
         JsonNode patch = mapper.readTree(proposeEdit.parametersSchema()).get("properties").get("patch");
 
         List<String> patchFields = new ArrayList<>(patch.get("properties").propertyNames());
@@ -542,8 +542,8 @@ class AgentToolkitTest {
         return tool(toolName).executor().execute(argumentsJson);
     }
 
-    private AgentTool tool(String toolName) {
-        return agentTools.forTurn(USER, CHANNEL, UTTERANCE).stream()
+    private ToolCallback tool(String toolName) {
+        return toolCallbackProvider.forTurn(USER, CHANNEL, UTTERANCE).stream()
                 .filter(tool -> tool.name().equals(toolName))
                 .findFirst().orElseThrow();
     }
