@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import java.time.Clock;
 import java.time.Duration;
 
 /**
@@ -50,7 +51,8 @@ public class AgentConfig {
     @Bean
     public ConversationTranscript conversationTranscript(
             @Value("${mocha.agent.transcript-max-turns:20}") int maxTurns,
-            @Value("${mocha.agent.transcript-ttl:1h}") Duration ttl) {
-        return new ConversationTranscript(maxTurns, ttl);
+            @Value("${mocha.agent.transcript-ttl:1h}") Duration ttl,
+            Clock clock) {
+        return new ConversationTranscript(maxTurns, ttl, clock);
     }
 }

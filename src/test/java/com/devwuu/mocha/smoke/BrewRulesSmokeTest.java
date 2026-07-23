@@ -106,8 +106,8 @@ class BrewRulesSmokeTest {
         InMemoryPendingStore pendingStore = new InMemoryPendingStore();
         AgentToolkit toolkit = new AgentToolkit(new EmptyNoteRepository(), new NoOpRenderer(),
                 new PrintingResponder(), Path.of("build/smoke-artifact"), mapper, pendingStore,
-                new StubPreviewMessenger(), new ProposalValidator(),
-                new ConversationTranscript(20, Duration.ofHours(1)), clock);
+                new StubPreviewMessenger(), new ProposalValidator(clock),
+                new ConversationTranscript(20, Duration.ofHours(1), clock), clock);
         AgentTurnInput input = new AgentContextAssembler(mapper, clock)
                 .assemble(message, List.of(), null, null, segments);
 

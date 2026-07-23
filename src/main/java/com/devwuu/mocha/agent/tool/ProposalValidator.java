@@ -14,11 +14,11 @@ import com.devwuu.mocha.domain.Tasting;
 
 import java.time.Clock;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.NavigableSet;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -39,21 +39,15 @@ import java.util.stream.Collectors;
  */
 public class ProposalValidator {
 
-    private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
-
     // V-5: coffee_name은 검색 보강 대상이 아니다 — 검색 앵커이자 정체성 (ref: data-model.md#2.1).
     private static final Set<Source> COFFEE_NAME_SOURCES = Set.of(Source.USER, Source.PHOTO);
     private static final Set<Source> ENRICHABLE_SOURCES = Set.of(Source.USER, Source.PHOTO, Source.SEARCH);
 
     private final Clock clock;
 
-    public ProposalValidator() {
-        this(Clock.system(SEOUL));
-    }
-
-    // 테스트에서 시간을 고정하기 위한 생성자 — V-16의 연도 없는 표기 해석을 결정론으로 만든다.
-    ProposalValidator(Clock clock) {
-        this.clock = clock;
+    // 시계는 config 공통 빈 주입(ADR-63) — 테스트는 고정 시계로 V-16의 연도 없는 표기 해석을 결정론으로 만든다.
+    public ProposalValidator(Clock clock) {
+        this.clock = Objects.requireNonNull(clock, "clock");
     }
 
     /**

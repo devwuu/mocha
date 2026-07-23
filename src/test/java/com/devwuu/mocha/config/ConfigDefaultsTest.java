@@ -19,7 +19,9 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.lang.reflect.Proxy;
+import java.time.Clock;
 import java.time.Duration;
+import java.time.ZoneId;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -36,7 +38,8 @@ class ConfigDefaultsTest {
             // Boot 런타임과 동일한 문자열→Duration("1h") 변환을 켠다 — 실제 앱 컨텍스트와 조건을 맞춘다.
             .withInitializer(context -> context.getBeanFactory()
                     .setConversionService(ApplicationConversionService.getSharedInstance()))
-            .withUserConfiguration(LlmConfig.class, AgentConfig.class);
+            // CommonConfig: 트랜스크립트 빈이 공통 Clock 빈을 주입받는다(ADR-63) — 실제 앱 컨텍스트와 동일 배선.
+            .withUserConfiguration(CommonConfig.class, LlmConfig.class, AgentConfig.class);
 
     @Test
     @DisplayName("ADR-50: mocha.agent.* 미설정 시 루프·트랜스크립트 빈이 코드 default로 뜬다")
@@ -52,6 +55,15 @@ class ConfigDefaultsTest {
             assertThat(ReflectionTestUtils.getField(transcript, "maxTurns")).isEqualTo(20);
             assertThat(ReflectionTestUtils.getField(transcript, "ttl")).isEqualTo(Duration.ofHours(1));
         });
+    }
+
+    @Test
+    @DisplayName("ADR-63/V-3: 공통 Clock 빈은 Asia/Seoul 존이다 — 산재 생성 제거 후 유일한 존 소유 지점 가드")
+    void commonClockBeanIsSeoulZone() {
+        // 존 불변식은 이제 CommonConfig 빈 정의 1곳만 강제한다(자체 생성 8곳 제거, changes/0024 TΔ1a1) —
+        // 이 빈이 다른 존으로 바뀌면 V-3 날짜 스탬핑(pending TTL·노트 date)이 조용히 어긋나므로 여기서 박는다.
+        runner.run(context ->
+                assertThat(context.getBean(Clock.class).getZone()).isEqualTo(ZoneId.of("Asia/Seoul")));
     }
 
     @Test

@@ -30,7 +30,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ProposalValidatorTest {
 
     private static final LocalDate TASTED = LocalDate.of(2026, 7, 16);
-    private final ProposalValidator validator = new ProposalValidator();
+    // 연도 없는 표기 해석(V-16)의 기준 시계 — 시스템 시계 대신 고정 시계(2026-07-22)로 결정론화.
+    private static final Clock FIXED = Clock.fixed(
+            LocalDate.of(2026, 7, 22).atStartOfDay(ZoneId.of("Asia/Seoul")).toInstant(),
+            ZoneId.of("Asia/Seoul"));
+    private final ProposalValidator validator = new ProposalValidator(FIXED);
 
     // ---- 픽스처 ----
 
@@ -132,16 +136,12 @@ class ProposalValidatorTest {
 
     @Nested
     class MultiDateGateV16 {
-
-        // 연도 없는 표기("7월 16일")의 연도 해석을 결정론으로 — 시스템 시계 대신 고정 시계(2026-07-22).
-        private static final LocalDate TODAY = LocalDate.of(2026, 7, 22);
-        private final ProposalValidator gateValidator = new ProposalValidator(
-                Clock.fixed(TODAY.atStartOfDay(ZoneId.of("Asia/Seoul")).toInstant(), ZoneId.of("Asia/Seoul")));
+        // 연도 없는 표기("7월 16일")의 연도 해석 기준은 클래스 레벨 FIXED(2026-07-22) — 바깥 validator를 그대로 쓴다.
 
         @Test
         @DisplayName("AC-Δ1: 다중 날짜 원문의 분해 우회 제안(세그먼트 부재)은 거부된다 — 사유에 탐지 집합·다음 행동 포함")
         void multiDateWithoutSegmentsRejectedWithReason() {
-            String reason = rejectionOf(gateValidator.validateRecord(recordArgs(), null,
+            String reason = rejectionOf(validator.validateRecord(recordArgs(), null,
                     new TurnUtterance("7월 16일은 새콤했고 7월 17일은 고소했음", null)));
             assertThat(reason)
                     .contains("2026-07-16").contains("2026-07-17")   // 탐지 날짜 집합
@@ -155,7 +155,7 @@ class ProposalValidatorTest {
             List<TurnUtterance.Segment> segments = List.of(
                     new TurnUtterance.Segment(LocalDate.of(2026, 7, 16), "7월 16일은 새콤했음"),
                     new TurnUtterance.Segment(LocalDate.of(2026, 7, 17), "7월 17일은 고소했음"));
-            String reason = rejectionOf(gateValidator.validateRecord(
+            String reason = rejectionOf(validator.validateRecord(
                     recordArgs("커피베라 예가체프 G1", "맛있다", "2026-07-20",
                             new ProposeRecordArgs.MatchArg("new", null, null)),
                     null, new TurnUtterance("7월 16일은 새콤했고 7월 17일은 고소했음", segments)));
@@ -174,12 +174,12 @@ class ProposalValidatorTest {
             TurnUtterance utterance = new TurnUtterance("7월 16일은 새콤했고 7월 17일은 고소했음", segments);
 
             // 순차 제안의 첫 턴 — 가장 이른 날짜 세그먼트의 제안이 통과한다.
-            RecordProposal earliest = okOf(gateValidator.validateRecord(recordArgs(), null, utterance));
+            RecordProposal earliest = okOf(validator.validateRecord(recordArgs(), null, utterance));
             assertThat(earliest.targetDate()).isEqualTo(LocalDate.of(2026, 7, 16));
 
             // 게이트 기준은 집합 소속뿐 — 이른 날짜 강제는 프롬프트 몫이라 "저장 후 이어서" 턴의
             // 나중 날짜 제안도 게이트에 막히지 않는다(ADR-60).
-            RecordProposal later = okOf(gateValidator.validateRecord(
+            RecordProposal later = okOf(validator.validateRecord(
                     recordArgs("커피베라 예가체프 G1", "맛있다", "2026-07-17",
                             new ProposeRecordArgs.MatchArg("new", null, null)),
                     null, utterance));
@@ -189,7 +189,7 @@ class ProposalValidatorTest {
         @Test
         @DisplayName("V-16/ADR-60: 상대 날짜는 세지 않는다 — 절대 날짜 1개 + 상대 날짜 발화는 게이트 비발동")
         void relativeDatesDoNotTriggerGate() {
-            okOf(gateValidator.validateRecord(recordArgs(), null,
+            okOf(validator.validateRecord(recordArgs(), null,
                     new TurnUtterance("어제는 별로였는데 7월 16일은 새콤하고 좋았음", null)));
         }
 
@@ -199,7 +199,7 @@ class ProposalValidatorTest {
             Note target = note("2026-07-13-102030", "커피베라 예가체프 G1", "커피베라",
                     LocalDate.of(2026, 7, 13), LocalDate.of(2026, 7, 14));
             // POLICY 대응: 다중 날짜 게이트는 record 전용 — edit는 날짜 정정·이동이 날짜 2개를 정당하게 포함(ADR-60).
-            EditProposal proposal = okOf(gateValidator.validateEdit(
+            EditProposal proposal = okOf(validator.validateEdit(
                     editArgs(target.slug(), "2026-07-13", patchWithNewDate("2026-07-15")), target, null));
             assertThat(proposal.newDate()).isEqualTo(LocalDate.of(2026, 7, 15));
         }

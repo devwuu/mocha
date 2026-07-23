@@ -69,7 +69,7 @@ class SlackCommitHandlerTest {
     private final FakeAliasGenerator aliasGenerator = new FakeAliasGenerator();
 
     private NoteRepository noteRepository() {
-        return new JsonFileNoteRepository(dataDir, MochaObjectMapper.create());
+        return new JsonFileNoteRepository(dataDir, MochaObjectMapper.create(), clock);
     }
 
     private SlackCommitHandler handler(NoteRepository repo) {

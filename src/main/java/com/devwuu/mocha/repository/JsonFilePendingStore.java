@@ -12,7 +12,7 @@ import java.nio.file.StandardCopyOption;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.OffsetDateTime;
-import java.time.ZoneId;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -22,23 +22,17 @@ import java.util.Optional;
  */
 public class JsonFilePendingStore implements PendingStore {
 
-    // 날짜/타임스탬프는 Asia/Seoul 기준 — NoteRepository와 동일(V-3).
-    private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
-
     private final Path pendingFile;
     private final ObjectMapper mapper;
     private final Duration ttl;
     private final Clock clock;
 
-    public JsonFilePendingStore(Path dataDir, ObjectMapper mapper, Duration ttl) {
-        this(dataDir, mapper, ttl, Clock.system(SEOUL));
-    }
-
-    JsonFilePendingStore(Path dataDir, ObjectMapper mapper, Duration ttl, Clock clock) {
+    // 시계(Asia/Seoul — V-3, NoteRepository와 동일)는 config 공통 빈 주입(ADR-63), 테스트에서 시간 고정용.
+    public JsonFilePendingStore(Path dataDir, ObjectMapper mapper, Duration ttl, Clock clock) {
         this.pendingFile = dataDir.resolve("pending.json");
         this.mapper = mapper;
         this.ttl = ttl;
-        this.clock = clock;
+        this.clock = Objects.requireNonNull(clock, "clock");
     }
 
     @Override

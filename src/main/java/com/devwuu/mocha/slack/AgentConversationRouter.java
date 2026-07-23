@@ -42,7 +42,6 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
-import java.time.ZoneId;
 import java.util.List;
 import java.util.NavigableSet;
 import java.util.Objects;
@@ -73,9 +72,6 @@ public class AgentConversationRouter implements ConversationRouter {
 
     private static final Logger log = LoggerFactory.getLogger(AgentConversationRouter.class);
 
-    // 날짜/타임스탬프는 Asia/Seoul 기준 — pending·트랜스크립트와 동일(V-3).
-    private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
-
     private final PendingStore pendingStore;
     private final ConversationTranscript transcript;
     private final AgentClient agentClient;
@@ -85,6 +81,7 @@ public class AgentConversationRouter implements ConversationRouter {
     private final SlackPhotoIntake photoIntake;
     private final SlackResponder responder;
     private final SlackCommitHandler commitHandler;
+    // 시계(Asia/Seoul — V-3, pending·트랜스크립트와 동일)는 config 공통 빈 주입(ADR-63).
     private final Clock clock;
 
     @Autowired
@@ -102,18 +99,19 @@ public class AgentConversationRouter implements ConversationRouter {
             PhotoBufferStore photoBufferStore,
             PhotoInfoExtractor photoInfoExtractor,
             AliasGenerator aliasGenerator,
+            Clock clock,
             @Value("${mocha.artifact.dir}") String artifactDir,
             @Value("${mocha.photo.buffer-window}") Duration bufferWindow) {
         // tool façade·컨텍스트 조립기·커밋 핸들러는 프레임워크 무관 내부 협력자라 여기서 조립한다(Spring 빈이 아니다).
         this(pendingStore, transcript, agentClient,
                 new AgentToolkit(noteRepository, noteRenderer, responder, Path.of(artifactDir),
-                        MochaObjectMapper.create(), pendingStore, previewMessenger, new ProposalValidator(),
-                        transcript, Clock.system(SEOUL)),
-                new AgentContextAssembler(MochaObjectMapper.create(), Clock.system(SEOUL)),
+                        MochaObjectMapper.create(), pendingStore, previewMessenger, new ProposalValidator(clock),
+                        transcript, clock),
+                new AgentContextAssembler(MochaObjectMapper.create(), clock),
                 segmenter,
                 new SlackPhotoIntake(pendingStore, responder, photoDownloader, photoStore, photoBufferStore,
-                        photoInfoExtractor, bufferWindow, Clock.system(SEOUL)),
-                responder, noteRepository, noteRenderer, aliasGenerator, Clock.system(SEOUL));
+                        photoInfoExtractor, bufferWindow, clock),
+                responder, noteRepository, noteRenderer, aliasGenerator, clock);
     }
 
     // 커밋 핸들러가 사진 배관(photoIntake)을 라우터와 공유하도록 잇는 중간 생성자 — this(...) 단일 식

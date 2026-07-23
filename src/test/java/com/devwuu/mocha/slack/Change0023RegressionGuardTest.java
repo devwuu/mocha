@@ -78,10 +78,10 @@ class Change0023RegressionGuardTest {
         // (delta UNCHANGED "저장/메모리 상태 구조: 새 파일·저장소 없음", NFR-2 예외 목록 불변).
         Clock clock = Clock.fixed(Instant.parse("2026-07-17T01:20:30Z"), SEOUL);
         var mapper = MochaObjectMapper.create();
-        var pendingStore = new JsonFilePendingStore(dataDir, mapper, Duration.ofHours(24));
+        var pendingStore = new JsonFilePendingStore(dataDir, mapper, Duration.ofHours(24), clock);
         var photoBufferStore = new JsonFilePhotoBufferStore(dataDir, mapper);
         var photoStore = new LocalPhotoStore(dataDir);
-        var transcript = new ConversationTranscript(20, Duration.ofHours(1));
+        var transcript = new ConversationTranscript(20, Duration.ofHours(1), clock);
         var responder = new RecordingResponder();
         var agentClient = new FakeAgentClient();
         var segmenter = new FakeSegmenter();
@@ -89,7 +89,7 @@ class Change0023RegressionGuardTest {
                 url -> new byte[0], photoStore, photoBufferStore, new StubPhotoInfoExtractor(),
                 Duration.ofMinutes(3), clock);
         AgentToolkit agentTools = new AgentToolkit(null, null, responder, Path.of("unused-artifact"),
-                mapper, pendingStore, null, new ProposalValidator(), transcript, clock);
+                mapper, pendingStore, null, new ProposalValidator(clock), transcript, clock);
         // 버튼 미수신 경로만 돌리므로 커밋 핸들러는 접촉되지 않는다 — 접촉되면 null 협력자로 즉시 실패한다.
         AgentConversationRouter router = new AgentConversationRouter(pendingStore, transcript, agentClient,
                 agentTools, new AgentContextAssembler(mapper, clock), segmenter, photoIntake,

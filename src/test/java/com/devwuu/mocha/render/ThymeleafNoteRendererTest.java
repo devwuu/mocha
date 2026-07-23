@@ -24,8 +24,11 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Stream;
@@ -49,6 +52,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * </ul>
  */
 class ThymeleafNoteRendererTest {
+
+    // 저장소 시계 — 렌더 검증엔 시각 값이 무관하지만 생성자가 주입을 요구한다(ADR-63). 고정으로 결정론화.
+    private static final Clock FIXED =
+            Clock.fixed(Instant.parse("2026-07-16T00:30:00Z"), ZoneId.of("Asia/Seoul"));
 
     private final SpringTemplateEngine engine = RenderConfig.offlineTemplateEngine();
 
@@ -76,7 +83,7 @@ class ThymeleafNoteRendererTest {
 
     // 두 노트(각 엔트리 1건·회차 1개, 감상만). note1=검색 보강/GOOD(2026-07-10), note2=PERFECT(2026-07-04).
     private NoteRepository seedRepository(Path dataDir) {
-        NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create());
+        NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create(), FIXED);
         OffsetDateTime now = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
         NoteMeta meta1 = new NoteMeta(
                 Sourced.user("예가체프 G1 워시드"),
@@ -141,7 +148,7 @@ class ThymeleafNoteRendererTest {
     @Test
     @DisplayName("AC-78: 레시피만/감상만 있는 회차는 해당 카드만 생성된다(없는 파트 카드 미생성)")
     void partialBrewsBakeOnlyPresentPartCards(@TempDir Path dataDir, @TempDir Path artifactDir) {
-        NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create());
+        NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create(), FIXED);
         OffsetDateTime now = OffsetDateTime.parse("2026-07-18T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
                 Sourced.user("예가체프 G1"), Sourced.user("커피베라"),
@@ -171,7 +178,7 @@ class ThymeleafNoteRendererTest {
     @Test
     @DisplayName("TΔ5a: 회차 감소 재저장 후 renderEntryCard → 옛 번호 카드가 잔존하지 않는다")
     void rerenderAfterBrewShrinkLeavesNoStaleCards(@TempDir Path dataDir, @TempDir Path artifactDir) {
-        NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create());
+        NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create(), FIXED);
         OffsetDateTime now = OffsetDateTime.parse("2026-07-18T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
                 Sourced.user("레인보우 블렌드"), Sourced.user("커피가게 동경"),
@@ -255,7 +262,7 @@ class ThymeleafNoteRendererTest {
     @Test
     @DisplayName("AC-Δ5(changes/0013): 감상 카드는 my_taste(정규화)만 렌더하고 my_taste_original(원문)은 노출하지 않는다")
     void tasteCardRendersNormalizedTasteAndHidesOriginal(@TempDir Path dataDir, @TempDir Path artifactDir) {
-        NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create());
+        NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create(), FIXED);
         OffsetDateTime now = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
                 Sourced.user("예가체프 G1"),
@@ -277,7 +284,7 @@ class ThymeleafNoteRendererTest {
     @Test
     @DisplayName("같은 커피를 다른 날 기록하면 엔트리마다 별도 카드가 생기고, 카드 HTML은 자기 날짜 회차만 담는다")
     void sameCoffeeDifferentDatesYieldSeparateCards(@TempDir Path dataDir, @TempDir Path artifactDir) {
-        NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create());
+        NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create(), FIXED);
         OffsetDateTime now = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
                 Sourced.user("예가체프 G1 워시드"),
@@ -311,7 +318,7 @@ class ThymeleafNoteRendererTest {
     @Test
     @DisplayName("AC-Δ2(changes/0014): 사진이 있는 엔트리도 카드 HTML에 사진·썸네일 요소가 없다(아카이브 전용)")
     void cardHasNoPhotoOrThumbElements(@TempDir Path dataDir, @TempDir Path artifactDir) {
-        NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create());
+        NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create(), FIXED);
         OffsetDateTime now = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
                 Sourced.user("예가체프 G1 워시드"),
@@ -337,7 +344,7 @@ class ThymeleafNoteRendererTest {
     @Test
     @DisplayName("AC-Δ10⑥/V-13(changes/0016): aliases를 채운 노트도 카드 HTML에 별칭 문자열이 나타나지 않는다")
     void aliasesNeverAppearInRenderedOutput(@TempDir Path dataDir, @TempDir Path artA, @TempDir Path artB) {
-        NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create());
+        NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create(), FIXED);
         OffsetDateTime now = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
                 Sourced.user("예가체프 G1 워시드"),
@@ -375,7 +382,7 @@ class ThymeleafNoteRendererTest {
     @DisplayName("AC-Δ3(changes/0014): data/photos/를 통째로 옮겨둬도 renderAll 산출(카드)이 동일하다 — 리렌더 입력은 JSON뿐")
     void renderAllIsIndependentOfPhotosDirectory(
             @TempDir Path dataDir, @TempDir Path withPhotosDir, @TempDir Path withoutPhotosDir) throws IOException {
-        NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create());
+        NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create(), FIXED);
         OffsetDateTime now = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
                 Sourced.user("예가체프 G1 워시드"),
@@ -471,7 +478,7 @@ class ThymeleafNoteRendererTest {
 
     // recipe·coffeeName만 갈아끼우는 단일 엔트리(회차 1개: 감상+recipe) 노트 seed. 나머지 메타는 고정.
     private NoteRepository seedWithRecipe(Path dataDir, Sourced<String> coffeeName, Recipe recipe) {
-        NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create());
+        NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create(), FIXED);
         OffsetDateTime now = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
                 coffeeName,
@@ -593,7 +600,7 @@ class ThymeleafNoteRendererTest {
     @Test
     @DisplayName("AC-39(회차화): removeEntryCard는 그 엔트리의 회차 카드 전부를 삭제한다")
     void removeEntryCardDeletesAllBrewCardsOfEntry(@TempDir Path dataDir, @TempDir Path artifactDir) {
-        NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create());
+        NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create(), FIXED);
         OffsetDateTime now = OffsetDateTime.parse("2026-07-18T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
                 Sourced.user("레인보우 블렌드"), Sourced.user("커피가게 동경"),

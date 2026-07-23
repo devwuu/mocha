@@ -15,10 +15,10 @@ import java.nio.file.StandardCopyOption;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -31,21 +31,16 @@ import java.util.stream.Stream;
 public class JsonFileNoteRepository implements NoteRepository {
 
     private static final Pattern SLUG = Pattern.compile("[a-z0-9-]+");
-    // 날짜/타임스탬프는 Asia/Seoul 기준(V-3).
-    private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
 
     private final Path notesDir;
     private final ObjectMapper mapper;
     private final Clock clock;
 
-    public JsonFileNoteRepository(Path dataDir, ObjectMapper mapper) {
-        this(dataDir, mapper, Clock.system(SEOUL));
-    }
-
-    JsonFileNoteRepository(Path dataDir, ObjectMapper mapper, Clock clock) {
+    // 시계(Asia/Seoul — V-3)는 config 공통 빈 주입(ADR-63), 테스트에서 시간 고정용.
+    public JsonFileNoteRepository(Path dataDir, ObjectMapper mapper, Clock clock) {
         this.notesDir = dataDir.resolve("notes");
         this.mapper = mapper;
-        this.clock = clock;
+        this.clock = Objects.requireNonNull(clock, "clock");
     }
 
     @Override

@@ -14,6 +14,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.nio.file.Path;
+import java.time.Clock;
 import java.time.Duration;
 
 /**
@@ -25,15 +26,16 @@ import java.time.Duration;
 public class RepositoryConfig {
 
     @Bean
-    public NoteRepository noteRepository(@Value("${mocha.data.dir}") String dataDir) {
-        return new JsonFileNoteRepository(Path.of(dataDir), MochaObjectMapper.create());
+    public NoteRepository noteRepository(@Value("${mocha.data.dir}") String dataDir, Clock clock) {
+        return new JsonFileNoteRepository(Path.of(dataDir), MochaObjectMapper.create(), clock);
     }
 
     @Bean
     public PendingStore pendingStore(
             @Value("${mocha.data.dir}") String dataDir,
-            @Value("${mocha.pending.ttl}") Duration ttl) {
-        return new JsonFilePendingStore(Path.of(dataDir), MochaObjectMapper.create(), ttl);
+            @Value("${mocha.pending.ttl}") Duration ttl,
+            Clock clock) {
+        return new JsonFilePendingStore(Path.of(dataDir), MochaObjectMapper.create(), ttl, clock);
     }
 
     @Bean

@@ -6,7 +6,6 @@ import org.slf4j.LoggerFactory;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.OffsetDateTime;
-import java.time.ZoneId;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
@@ -27,9 +26,6 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ConversationTranscript {
 
     private static final Logger log = LoggerFactory.getLogger(ConversationTranscript.class);
-
-    // 날짜/타임스탬프는 Asia/Seoul 기준 — pending과 동일(V-3).
-    private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
 
     /**
      * 명시 접힘 트리거 — 배선 지점 정의 (ref: plan.md#ADR-46 접힘 규칙 ①②).
@@ -64,12 +60,9 @@ public class ConversationTranscript {
     /**
      * @param maxTurns 턴 수 상한(mocha.agent.transcript-max-turns) — 초과분은 오래된 턴부터 드롭
      * @param ttl      TTL(mocha.agent.transcript-ttl) — 경과 시 view가 빈 문맥 반환
+     * @param clock    시계(Asia/Seoul — V-3, pending과 동일) — config 공통 빈 주입(ADR-63), 테스트에서 시간 고정용
      */
-    public ConversationTranscript(int maxTurns, Duration ttl) {
-        this(maxTurns, ttl, Clock.system(SEOUL));
-    }
-
-    ConversationTranscript(int maxTurns, Duration ttl, Clock clock) {
+    public ConversationTranscript(int maxTurns, Duration ttl, Clock clock) {
         if (maxTurns < 1) {
             throw new IllegalArgumentException("maxTurns는 1 이상이어야 함: " + maxTurns);
         }
@@ -79,7 +72,7 @@ public class ConversationTranscript {
         }
         this.maxTurns = maxTurns;
         this.ttl = ttl;
-        this.clock = clock;
+        this.clock = Objects.requireNonNull(clock, "clock");
     }
 
     /** 턴 1건 추가 — 만료된 트랜스크립트 위에는 새로 시작하고, 상한 초과분은 오래된 턴부터 버린다. */

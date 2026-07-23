@@ -80,9 +80,9 @@ class AgentToolkitTest {
         renderer = new RecordingRenderer(artifactDir);
         responder = new RecordingResponder();
         previewMessenger = new CapturingPreviewMessenger();
-        transcript = new ConversationTranscript(20, Duration.ofHours(1));
+        transcript = new ConversationTranscript(20, Duration.ofHours(1), clock);
         agentTools = new AgentToolkit(noteRepository, renderer, responder, artifactDir, mapper,
-                pendingStore, previewMessenger, new ProposalValidator(), transcript, clock);
+                pendingStore, previewMessenger, new ProposalValidator(clock), transcript, clock);
     }
 
     @Test

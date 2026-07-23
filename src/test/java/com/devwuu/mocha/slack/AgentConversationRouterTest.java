@@ -70,7 +70,7 @@ class AgentConversationRouterTest {
     private final Clock clock = Clock.fixed(Instant.parse("2026-07-17T01:20:30Z"), SEOUL); // Seoul 10:20:30
     private final FakeAgentClient agentClient = new FakeAgentClient();
     private final FakePendingStore pendingStore = new FakePendingStore();
-    private final ConversationTranscript transcript = new ConversationTranscript(20, Duration.ofHours(1));
+    private final ConversationTranscript transcript = new ConversationTranscript(20, Duration.ofHours(1), clock);
     private final RecordingResponder responder = new RecordingResponder();
     private final CapturingCommitHandler commitHandler = new CapturingCommitHandler();
     private final FakePhotoStore photoStore = new FakePhotoStore();
@@ -86,7 +86,7 @@ class AgentConversationRouterTest {
                 Duration.ofMinutes(3), clock);
         // fake AgentClient는 tool 실행기를 부르지 않으므로 lookup·제안 협력자는 미접촉 — 장착 목록 계약만 쓴다.
         AgentToolkit agentTools = new AgentToolkit(null, null, responder, Path.of("unused-artifact"),
-                MochaObjectMapper.create(), pendingStore, null, new ProposalValidator(), transcript, clock);
+                MochaObjectMapper.create(), pendingStore, null, new ProposalValidator(clock), transcript, clock);
         router = new AgentConversationRouter(pendingStore, transcript, agentClient, agentTools,
                 new AgentContextAssembler(MochaObjectMapper.create(), clock), segmenter, photoIntake,
                 responder, commitHandler, clock);

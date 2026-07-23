@@ -68,8 +68,8 @@ class BeansExtractionSmokeTest {
         InMemoryPendingStore pendingStore = new InMemoryPendingStore();
         AgentToolkit toolkit = new AgentToolkit(new EmptyNoteRepository(), new NoOpRenderer(),
                 new PrintingResponder(), Path.of("build/smoke-artifact"), mapper, pendingStore,
-                new StubPreviewMessenger(), new ProposalValidator(),
-                new ConversationTranscript(20, Duration.ofHours(1)), clock);
+                new StubPreviewMessenger(), new ProposalValidator(clock),
+                new ConversationTranscript(20, Duration.ofHours(1), clock), clock);
 
         // AC-64 수준의 블렌드 발화 — 원두별 가공방식이 갈린다. 기대: beans 요소 2개(에티오피아=워시드,
         // 콜롬비아=내추럴), 원산지 쉼표 나열 ❌.
