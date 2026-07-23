@@ -5,7 +5,8 @@ import com.devwuu.mocha.agent.conversation.ConversationTranscript;
 import com.devwuu.mocha.agent.prompt.AgentContextAssembler;
 import com.devwuu.mocha.agent.prompt.AgentTurnInput;
 import com.devwuu.mocha.agent.tool.AgentToolkit;
-import com.devwuu.mocha.agent.tool.validation.ProposalValidator;
+import com.devwuu.mocha.agent.tool.validation.EditProposalValidator;
+import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
 import com.devwuu.mocha.agent.turn.TurnUtterance;
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Entry;
@@ -68,7 +69,7 @@ class BeansExtractionSmokeTest {
         InMemoryPendingStore pendingStore = new InMemoryPendingStore();
         AgentToolkit toolkit = new AgentToolkit(new EmptyNoteRepository(), new NoOpRenderer(),
                 new PrintingResponder(), Path.of("build/smoke-artifact"), mapper, pendingStore,
-                new StubPreviewMessenger(), new ProposalValidator(clock),
+                new StubPreviewMessenger(), new RecordProposalValidator(clock), new EditProposalValidator(),
                 new ConversationTranscript(20, Duration.ofHours(1), clock), clock);
 
         // AC-64 수준의 블렌드 발화 — 원두별 가공방식이 갈린다. 기대: beans 요소 2개(에티오피아=워시드,

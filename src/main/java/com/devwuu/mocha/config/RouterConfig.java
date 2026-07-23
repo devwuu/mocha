@@ -3,7 +3,8 @@ package com.devwuu.mocha.config;
 import com.devwuu.mocha.agent.conversation.ConversationTranscript;
 import com.devwuu.mocha.agent.prompt.AgentContextAssembler;
 import com.devwuu.mocha.agent.tool.AgentToolkit;
-import com.devwuu.mocha.agent.tool.validation.ProposalValidator;
+import com.devwuu.mocha.agent.tool.validation.EditProposalValidator;
+import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
 import com.devwuu.mocha.llm.AliasGenerator;
 import com.devwuu.mocha.llm.PhotoInfoExtractor;
 import com.devwuu.mocha.render.NoteRenderer;
@@ -36,10 +37,16 @@ import java.time.Duration;
 @Configuration
 public class RouterConfig {
 
-    // 제안 검증기(V-1~16) — 시간 규칙(V-3 미래 날짜 거부)만 주입받는 순수 협력자.
+    // 제안 검증 진입점 2종(툴별 1클래스 — ADR-64). record는 V-16 연도 없는 표기 해석 기준 시계만
+    // 주입받는 순수 협력자, edit는 다중 날짜 게이트가 없어(record 전용, ADR-60) 의존이 없다.
     @Bean
-    public ProposalValidator proposalValidator(Clock clock) {
-        return new ProposalValidator(clock);
+    public RecordProposalValidator recordProposalValidator(Clock clock) {
+        return new RecordProposalValidator(clock);
+    }
+
+    @Bean
+    public EditProposalValidator editProposalValidator() {
+        return new EditProposalValidator();
     }
 
     // 턴 컨텍스트 조립기(ADR-44·TΔ7a) — 트랜스크립트·pending·OCR·세그먼트를 모델 입력으로 직렬화.
@@ -58,11 +65,13 @@ public class RouterConfig {
             ObjectMapper mapper,
             PendingStore pendingStore,
             PreviewMessenger previewMessenger,
-            ProposalValidator proposalValidator,
+            RecordProposalValidator recordProposalValidator,
+            EditProposalValidator editProposalValidator,
             ConversationTranscript transcript,
             Clock clock) {
         return new AgentToolkit(noteRepository, noteRenderer, responder, Path.of(artifactDir),
-                mapper, pendingStore, previewMessenger, proposalValidator, transcript, clock);
+                mapper, pendingStore, previewMessenger, recordProposalValidator, editProposalValidator,
+                transcript, clock);
     }
 
     // 사진 수신 배관(FR-10·ADR-29·31) — 라우터(버퍼 그룹핑·OCR)와 커밋 핸들러(스테이징 이관·정리)가 공유한다.

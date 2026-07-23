@@ -1,7 +1,8 @@
 package com.devwuu.mocha.agent.tool;
 
 import com.devwuu.mocha.agent.conversation.ConversationTranscript;
-import com.devwuu.mocha.agent.tool.validation.ProposalValidator;
+import com.devwuu.mocha.agent.tool.validation.EditProposalValidator;
+import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
 import com.devwuu.mocha.agent.tool.validation.ToolValidation;
 import com.devwuu.mocha.agent.turn.TurnUtterance;
 import com.devwuu.mocha.domain.Entry;
@@ -29,7 +30,9 @@ import java.util.Optional;
  * (ref: specs/coffee-note-agent/data-model.md#3.3~3.4, plan#ADR-45; changes/0018 TΔ6).
  * <p>{@link AgentToolkit}(façade)가 조립하는 내부 협력자라 Spring 빈이 아니다.
  * <p>strict schema(전 필드 required·additionalProperties=false)가 인자 <b>형태</b>를 보장하고, 값 수준
- * 규칙(V-1·5·8·10·11·14·15·16, 단일 대기)은 {@link ProposalValidator}가 결정론으로 강제한다 — 위반은 예외가 아니라
+ * 규칙(V-1·5·8·11·14·15·16, 단일 대기)은 툴별 검증 진입점({@link RecordProposalValidator}·
+ * {@link EditProposalValidator})이 결정론으로 강제한다 — 이동 충돌(V-10) 계산만 제안 수용 지점인
+ * 이 클래스 몫이다(현 draft 기준 재계산). 위반은 예외가 아니라
  * <b>사유를 담은 오류 결과</b>로 돌려줘 에이전트가 루프 안에서 정정한다(ADR-45, findings-TΔ0 §SDK).
  * <p>POLICY: 노트·pending 쓰기는 제안 tool 2종(propose_record/propose_edit)과 버튼 커밋뿐 — 읽기 tool·
  * 최종 텍스트는 파일 무변화 (ref: specs/coffee-note-agent/plan.md#ADR-45, AC-59).
@@ -127,18 +130,20 @@ class ProposalTools {
     private final NoteRepository noteRepository;
     private final PendingStore pendingStore;
     private final PreviewMessenger previewMessenger;
-    private final ProposalValidator validator;
+    private final RecordProposalValidator recordValidator;
+    private final EditProposalValidator editValidator;
     private final ConversationTranscript transcript;
     private final ObjectMapper mapper;
     private final Clock clock;
 
     ProposalTools(NoteRepository noteRepository, PendingStore pendingStore, PreviewMessenger previewMessenger,
-                  ProposalValidator validator, ConversationTranscript transcript, ObjectMapper mapper,
-                  Clock clock) {
+                  RecordProposalValidator recordValidator, EditProposalValidator editValidator,
+                  ConversationTranscript transcript, ObjectMapper mapper, Clock clock) {
         this.noteRepository = noteRepository;
         this.pendingStore = pendingStore;
         this.previewMessenger = previewMessenger;
-        this.validator = validator;
+        this.recordValidator = recordValidator;
+        this.editValidator = editValidator;
         this.transcript = transcript;
         this.mapper = mapper;
         this.clock = clock;
@@ -184,7 +189,7 @@ class ProposalTools {
         PendingNote pending = pendingStore.get(userId).orElse(null);
         // POLICY: 제안 tool의 서버 검증 실패는 오류 사유를 tool 결과로 반환 — 조용한 드롭·서버 대행 금지
         //         (ref: specs/coffee-note-agent/plan.md#ADR-45, AC-9). 단일 대기 거부(AC-30)도 여기 수렴한다.
-        ToolValidation<RecordProposal> validation = validator.validateRecord(args, pending, utterance);
+        ToolValidation<RecordProposal> validation = recordValidator.validate(args, pending, utterance);
         if (validation instanceof ToolValidation.Rejected<RecordProposal>(String reason)) {
             log.info("propose_record 검증 거부: user={} reason={}", userId, reason);
             return ToolSupport.errorOutput(mapper, reason);
@@ -264,7 +269,7 @@ class ProposalTools {
         }
         Note note = noteOpt.get();
         PendingNote pending = pendingStore.get(userId).orElse(null);
-        ToolValidation<EditProposal> validation = validator.validateEdit(args, note, pending);
+        ToolValidation<EditProposal> validation = editValidator.validate(args, note, pending);
         if (validation instanceof ToolValidation.Rejected<EditProposal>(String reason)) {
             log.info("propose_edit 검증 거부: user={} reason={}", userId, reason);
             return ToolSupport.errorOutput(mapper, reason);
@@ -319,7 +324,7 @@ class ProposalTools {
     private static Note editBaseDraft(Note note, LocalDate targetDate) {
         Entry target = note.entries().stream()
                 .filter(e -> targetDate.equals(e.date()))
-                .findFirst().orElseThrow(); // 실존은 검증(validateEdit)이 이미 보장했다.
+                .findFirst().orElseThrow(); // 실존은 검증(EditProposalValidator)이 이미 보장했다.
         return new Note(
                 note.slug(), note.coffeeName(), note.roastery(), note.beans(),
                 note.roastLevel(), note.officialNotes(), note.sources(),

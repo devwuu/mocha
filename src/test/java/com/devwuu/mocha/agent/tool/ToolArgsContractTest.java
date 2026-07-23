@@ -115,7 +115,7 @@ class ToolArgsContractTest {
         assertThat(args.patch().roastery()).isEqualTo(new SourcedArg<>("프릳츠", "user"));
         assertThat(args.patch().beans()).isNull(); // null = 유지 — 통째 교체 인자(§3.4)
         assertThat(args.patch().newDate()).isEqualTo("2026-07-15");
-        // V-1 위반 값은 역직렬화 예외가 아니라 String으로 도착한다 — 거부 사유 반환은 ProposalValidator의 몫.
+        // V-1 위반 값은 역직렬화 예외가 아니라 String으로 도착한다 — 거부 사유 반환은 검증 진입점(RecordProposalValidator 등)의 몫.
         assertThat(args.patch().brews().getFirst().tasting().rating()).isEqualTo("다섯 개 만점");
     }
 

@@ -108,7 +108,7 @@ class AgentSystemPromptTest {
     void encodesSegmenterFailureFallback() {
         assertThat(PROMPT).contains("세그먼트 컨텍스트가 없으면(분해 실패) 제안 tool을 호출하지 않는다");
         assertThat(PROMPT).contains("한 날짜씩 나눠 보내달라고 안내한다(폴백)");
-        // AC-Δ1 재확인(우회 거부)은 프롬프트가 아니라 서버 게이트 몫 — ProposalValidatorTest.MultiDateGateV16이 가드.
+        // AC-Δ1 재확인(우회 거부)은 프롬프트가 아니라 서버 게이트 몫 — ProposalValidatorsTest.MultiDateGateV16이 가드.
     }
 
     @Test

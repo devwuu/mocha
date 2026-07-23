@@ -5,7 +5,8 @@ import com.devwuu.mocha.agent.conversation.ConversationTranscript;
 import com.devwuu.mocha.agent.prompt.AgentContextAssembler;
 import com.devwuu.mocha.agent.prompt.AgentTurnInput;
 import com.devwuu.mocha.agent.tool.AgentToolkit;
-import com.devwuu.mocha.agent.tool.validation.ProposalValidator;
+import com.devwuu.mocha.agent.tool.validation.EditProposalValidator;
+import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
 import com.devwuu.mocha.agent.turn.TurnUtterance;
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Entry;
@@ -106,7 +107,7 @@ class BrewRulesSmokeTest {
         InMemoryPendingStore pendingStore = new InMemoryPendingStore();
         AgentToolkit toolkit = new AgentToolkit(new EmptyNoteRepository(), new NoOpRenderer(),
                 new PrintingResponder(), Path.of("build/smoke-artifact"), mapper, pendingStore,
-                new StubPreviewMessenger(), new ProposalValidator(clock),
+                new StubPreviewMessenger(), new RecordProposalValidator(clock), new EditProposalValidator(),
                 new ConversationTranscript(20, Duration.ofHours(1), clock), clock);
         AgentTurnInput input = new AgentContextAssembler(mapper, clock)
                 .assemble(message, List.of(), null, null, segments);

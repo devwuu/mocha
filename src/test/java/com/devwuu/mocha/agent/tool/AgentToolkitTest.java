@@ -3,7 +3,8 @@ package com.devwuu.mocha.agent.tool;
 import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.agent.conversation.ConversationTranscript;
 import com.devwuu.mocha.agent.conversation.TranscriptTurn;
-import com.devwuu.mocha.agent.tool.validation.ProposalValidator;
+import com.devwuu.mocha.agent.tool.validation.EditProposalValidator;
+import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
 import com.devwuu.mocha.agent.turn.TurnUtterance;
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Bean;
@@ -84,7 +85,8 @@ class AgentToolkitTest {
         previewMessenger = new CapturingPreviewMessenger();
         transcript = new ConversationTranscript(20, Duration.ofHours(1), clock);
         agentTools = new AgentToolkit(noteRepository, renderer, responder, artifactDir, mapper,
-                pendingStore, previewMessenger, new ProposalValidator(clock), transcript, clock);
+                pendingStore, previewMessenger, new RecordProposalValidator(clock),
+                new EditProposalValidator(), transcript, clock);
     }
 
     @Test

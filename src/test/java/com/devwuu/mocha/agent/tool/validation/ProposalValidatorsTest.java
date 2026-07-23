@@ -34,15 +34,19 @@ import static org.assertj.core.api.Assertions.assertThat;
  * TΔ1(changes/0018) · TΔ2a(changes/0021): 제안 tool 서버 검증 — 검증 규칙별 통과/거부(사유 포함)를
  * 결정론으로 단언한다 (AC-Δ5, data-model §5 — beans·brews 인자는 V-14·V-15).
  * 외부 호출 없음 — 순수 도메인 검증(모듈 CLAUDE.md §5.2).
+ * <p>진입점 분할(changes/0024 TΔ2b2) 후에도 한 파일로 유지한다 — 규칙 패밀리·픽스처를 공유하고,
+ * 두 진입점을 가로지르는 단언(V-16 게이트 record 전용, 비정상 pending 양 경로 수렴)이 있어서다.
+ * 분할이 배치 변경임은 이 테스트 전량 그린이 가드한다.
  */
-class ProposalValidatorTest {
+class ProposalValidatorsTest {
 
     private static final LocalDate TASTED = LocalDate.of(2026, 7, 16);
     // 연도 없는 표기 해석(V-16)의 기준 시계 — 시스템 시계 대신 고정 시계(2026-07-22)로 결정론화.
     private static final Clock FIXED = Clock.fixed(
             LocalDate.of(2026, 7, 22).atStartOfDay(ZoneId.of("Asia/Seoul")).toInstant(),
             ZoneId.of("Asia/Seoul"));
-    private final ProposalValidator validator = new ProposalValidator(FIXED);
+    private final RecordProposalValidator recordValidator = new RecordProposalValidator(FIXED);
+    private final EditProposalValidator editValidator = new EditProposalValidator();
 
     // ---- 픽스처 ----
 
@@ -122,7 +126,7 @@ class ProposalValidatorTest {
     // TΔ2b 배선: 기존 검증 단언 전부를 턴 원문(단일 날짜 = 게이트 비발동)이 실린 호출로 통과시켜
     // 배선 회귀를 상시 가드한다. 다중 날짜 원문의 판정(V-16 게이트)은 MultiDateGateV16이 단언한다.
     private ToolValidation<RecordProposal> validateRecord(ProposeRecordArgs args, PendingNote pending) {
-        return validator.validateRecord(args, pending, new TurnUtterance("7월 16일 새콤하고 좋았음", null));
+        return recordValidator.validate(args, pending, new TurnUtterance("7월 16일 새콤하고 좋았음", null));
     }
 
     // ---- TΔ2b 턴 원문 배선 ----
@@ -133,8 +137,8 @@ class ProposalValidatorTest {
         @Test
         @DisplayName("TΔ2b: 게이트 비발동 원문(null·단일 날짜)이면 판정 결과는 동일하다 — 배선 자체는 판정에 영향 없음")
         void utteranceWiringDoesNotAffectJudgement() {
-            RecordProposal withoutUtterance = okOf(validator.validateRecord(recordArgs(), null, null));
-            RecordProposal withSingleDate = okOf(validator.validateRecord(recordArgs(), null,
+            RecordProposal withoutUtterance = okOf(recordValidator.validate(recordArgs(), null, null));
+            RecordProposal withSingleDate = okOf(recordValidator.validate(recordArgs(), null,
                     new TurnUtterance("7월 16일 새콤하고 좋았음", null)));
             assertThat(withSingleDate).isEqualTo(withoutUtterance);
         }
@@ -144,12 +148,12 @@ class ProposalValidatorTest {
 
     @Nested
     class MultiDateGateV16 {
-        // 연도 없는 표기("7월 16일")의 연도 해석 기준은 클래스 레벨 FIXED(2026-07-22) — 바깥 validator를 그대로 쓴다.
+        // 연도 없는 표기("7월 16일")의 연도 해석 기준은 클래스 레벨 FIXED(2026-07-22) — 바깥 recordValidator를 그대로 쓴다.
 
         @Test
         @DisplayName("AC-Δ1: 다중 날짜 원문의 분해 우회 제안(세그먼트 부재)은 거부된다 — 사유에 탐지 집합·다음 행동 포함")
         void multiDateWithoutSegmentsRejectedWithReason() {
-            String reason = rejectionOf(validator.validateRecord(recordArgs(), null,
+            String reason = rejectionOf(recordValidator.validate(recordArgs(), null,
                     new TurnUtterance("7월 16일은 새콤했고 7월 17일은 고소했음", null)));
             assertThat(reason)
                     .contains("2026-07-16").contains("2026-07-17")   // 탐지 날짜 집합
@@ -163,7 +167,7 @@ class ProposalValidatorTest {
             List<TurnUtterance.Segment> segments = List.of(
                     new TurnUtterance.Segment(LocalDate.of(2026, 7, 16), "7월 16일은 새콤했음"),
                     new TurnUtterance.Segment(LocalDate.of(2026, 7, 17), "7월 17일은 고소했음"));
-            String reason = rejectionOf(validator.validateRecord(
+            String reason = rejectionOf(recordValidator.validate(
                     recordArgs("커피베라 예가체프 G1", "맛있다", "2026-07-20",
                             new ProposeRecordArgs.MatchArg("new", null, null)),
                     null, new TurnUtterance("7월 16일은 새콤했고 7월 17일은 고소했음", segments)));
@@ -182,12 +186,12 @@ class ProposalValidatorTest {
             TurnUtterance utterance = new TurnUtterance("7월 16일은 새콤했고 7월 17일은 고소했음", segments);
 
             // 순차 제안의 첫 턴 — 가장 이른 날짜 세그먼트의 제안이 통과한다.
-            RecordProposal earliest = okOf(validator.validateRecord(recordArgs(), null, utterance));
+            RecordProposal earliest = okOf(recordValidator.validate(recordArgs(), null, utterance));
             assertThat(earliest.targetDate()).isEqualTo(LocalDate.of(2026, 7, 16));
 
             // 게이트 기준은 집합 소속뿐 — 이른 날짜 강제는 프롬프트 몫이라 "저장 후 이어서" 턴의
             // 나중 날짜 제안도 게이트에 막히지 않는다(ADR-60).
-            RecordProposal later = okOf(validator.validateRecord(
+            RecordProposal later = okOf(recordValidator.validate(
                     recordArgs("커피베라 예가체프 G1", "맛있다", "2026-07-17",
                             new ProposeRecordArgs.MatchArg("new", null, null)),
                     null, utterance));
@@ -197,7 +201,7 @@ class ProposalValidatorTest {
         @Test
         @DisplayName("V-16/ADR-60: 상대 날짜는 세지 않는다 — 절대 날짜 1개 + 상대 날짜 발화는 게이트 비발동")
         void relativeDatesDoNotTriggerGate() {
-            okOf(validator.validateRecord(recordArgs(), null,
+            okOf(recordValidator.validate(recordArgs(), null,
                     new TurnUtterance("어제는 별로였는데 7월 16일은 새콤하고 좋았음", null)));
         }
 
@@ -207,7 +211,7 @@ class ProposalValidatorTest {
             Note target = note("2026-07-13-102030", "커피베라 예가체프 G1", "커피베라",
                     LocalDate.of(2026, 7, 13), LocalDate.of(2026, 7, 14));
             // POLICY 대응: 다중 날짜 게이트는 record 전용 — edit는 날짜 정정·이동이 날짜 2개를 정당하게 포함(ADR-60).
-            EditProposal proposal = okOf(validator.validateEdit(
+            EditProposal proposal = okOf(editValidator.validate(
                     editArgs(target.slug(), "2026-07-13", patchWithNewDate("2026-07-15")), target, null));
             assertThat(proposal.newDate()).isEqualTo(LocalDate.of(2026, 7, 15));
         }
@@ -574,7 +578,7 @@ class ProposalValidatorTest {
         @Test
         @DisplayName("대상 엔트리가 없는 날짜의 수정 제안은 거부된다 — 환각 필터(data-model §3.4)")
         void missingEntryRejected() {
-            assertThat(rejectionOf(validator.validateEdit(
+            assertThat(rejectionOf(editValidator.validate(
                     editArgs(target.slug(), "2026-07-12", ProposeEditArgs.Patch.empty()), target, null)))
                     .contains("2026-07-12").contains("엔트리가 없다");
         }
@@ -582,7 +586,7 @@ class ProposalValidatorTest {
         @Test
         @DisplayName("§3.4: new_date 이동처는 도메인 날짜로 전달된다 — 충돌(V-10) 계산은 제안 수용 지점(ProposalTools) 몫")
         void dateMovePassedThrough() {
-            EditProposal proposal = okOf(validator.validateEdit(
+            EditProposal proposal = okOf(editValidator.validate(
                     editArgs(target.slug(), "2026-07-13", patchWithNewDate("2026-07-14")), target, null));
             assertThat(proposal.newDate()).isEqualTo(LocalDate.of(2026, 7, 14));
         }
@@ -590,7 +594,7 @@ class ProposalValidatorTest {
         @Test
         @DisplayName("V-10: 대상 자신의 날짜로는 이동이 아니다 — newDate null로 정규화")
         void moveToOwnDateIsNotAMove() {
-            EditProposal proposal = okOf(validator.validateEdit(
+            EditProposal proposal = okOf(editValidator.validate(
                     editArgs(target.slug(), "2026-07-13", patchWithNewDate("2026-07-13")), target, null));
             assertThat(proposal.newDate()).isNull();
         }
@@ -598,7 +602,7 @@ class ProposalValidatorTest {
         @Test
         @DisplayName("FR-5: edit 대기 중 같은 대상(slug+date)의 재호출은 갱신 경로로 통과한다")
         void sameTargetReproposalPasses() {
-            okOf(validator.validateEdit(
+            okOf(editValidator.validate(
                     editArgs(target.slug(), "2026-07-13", ProposeEditArgs.Patch.empty()),
                     target, editPending(target.slug(), LocalDate.of(2026, 7, 13))));
         }
@@ -607,12 +611,12 @@ class ProposalValidatorTest {
         @DisplayName("단일 대기: 대기 중 다른 대상의 수정 제안은 '먼저 저장/취소' 사유로 거부된다")
         void differentTargetRejectedWhilePending() {
             // 같은 노트의 다른 엔트리도 다른 대상이다.
-            assertThat(rejectionOf(validator.validateEdit(
+            assertThat(rejectionOf(editValidator.validate(
                     editArgs(target.slug(), "2026-07-14", ProposeEditArgs.Patch.empty()),
                     target, editPending(target.slug(), LocalDate.of(2026, 7, 13)))))
                     .contains("[저장]");
             // record 대기 중 수정 세션 제안도 거부(구 수정 진입 거부 승계).
-            assertThat(rejectionOf(validator.validateEdit(
+            assertThat(rejectionOf(editValidator.validate(
                     editArgs(target.slug(), "2026-07-13", ProposeEditArgs.Patch.empty()),
                     target, recordPending("와이키키 블렌드"))))
                     .contains("[저장]");
@@ -625,11 +629,24 @@ class ProposalValidatorTest {
             PendingNote corrupt = new PendingNote(PendingNote.Mode.EDIT,
                     note("2026-07-13-102030", "커피베라 예가체프 G1", "커피베라", LocalDate.of(2026, 7, 13)),
                     null, null, "ts-1", OffsetDateTime.now());
-            assertThat(rejectionOf(validator.validateEdit(
+            assertThat(rejectionOf(editValidator.validate(
                     editArgs(target.slug(), "2026-07-13", ProposeEditArgs.Patch.empty()), target, corrupt)))
                     .contains("수정 세션").contains("[저장]");
             assertThat(rejectionOf(validateRecord(recordArgs(), corrupt)))
                     .contains("수정 세션").contains("[저장]");
+        }
+
+        @Test
+        @DisplayName("단일 대기: draft가 빠진 record pending(비정상 역직렬화)도 NPE 없이 사유 있는 거부로 수렴한다 — ADR-45 POLICY")
+        void recordPendingWithoutDraftStillRejectsWithReason() {
+            // mode=record인데 draft=null — pending.json 수기 편집 등으로만 가능한 비정상 상태(edit의 target null과 대칭).
+            PendingNote corrupt = new PendingNote(PendingNote.Mode.RECORD, null, null,
+                    MatchInfo.newNote(), "ts-1", OffsetDateTime.now());
+            assertThat(rejectionOf(validateRecord(recordArgs(), corrupt)))
+                    .contains("새 기록").contains("대상 미상").contains("[저장]");
+            assertThat(rejectionOf(editValidator.validate(
+                    editArgs(target.slug(), "2026-07-13", ProposeEditArgs.Patch.empty()), target, corrupt)))
+                    .contains("새 기록").contains("대상 미상").contains("[저장]");
         }
 
         @Test
@@ -638,7 +655,7 @@ class ProposalValidatorTest {
             ProposeEditArgs.Patch patch = new ProposeEditArgs.Patch(null, null, null, null,
                     List.of(new BrewArg(null, null), tastingBrew("더 새콤했음", "더 새콤했다", "완전 내스타일")),
                     null);
-            EditProposal proposal = okOf(validator.validateEdit(
+            EditProposal proposal = okOf(editValidator.validate(
                     editArgs(target.slug(), "2026-07-13", patch), target, null));
             assertThat(proposal.brews()).containsExactly(
                     new Brew(null, new Tasting("더 새콤했음", "더 새콤했다", Rating.PERFECT)));
@@ -648,13 +665,13 @@ class ProposalValidatorTest {
         @DisplayName("V-15: 교체 결과 회차 0개가 되는 brews patch는 사유와 함께 거부된다")
         void patchBrewsEmptyAfterNormalizeRejected() {
             ProposeEditArgs.Patch emptyArray = new ProposeEditArgs.Patch(null, null, null, null, List.of(), null);
-            assertThat(rejectionOf(validator.validateEdit(
+            assertThat(rejectionOf(editValidator.validate(
                     editArgs(target.slug(), "2026-07-13", emptyArray), target, null)))
                     .contains("회차").contains("V-15");
 
             ProposeEditArgs.Patch allEmpty = new ProposeEditArgs.Patch(null, null, null, null,
                     List.of(new BrewArg(null, null)), null);
-            assertThat(rejectionOf(validator.validateEdit(
+            assertThat(rejectionOf(editValidator.validate(
                     editArgs(target.slug(), "2026-07-13", allEmpty), target, null)))
                     .contains("회차").contains("V-15");
         }
@@ -665,7 +682,7 @@ class ProposalValidatorTest {
             ProposeEditArgs.Patch patch = new ProposeEditArgs.Patch(null,
                     List.of(new BeanArg(new SourcedArg<>("콜롬비아", "user"), new SourcedArg<>(" ", "user"))),
                     null, null, null, null);
-            EditProposal proposal = okOf(validator.validateEdit(
+            EditProposal proposal = okOf(editValidator.validate(
                     editArgs(target.slug(), "2026-07-13", patch), target, null));
             assertThat(proposal.beans()).containsExactly(new Bean(Sourced.user("콜롬비아"), null));
         }
@@ -675,7 +692,7 @@ class ProposalValidatorTest {
         void patchRatingViolationRejected() {
             ProposeEditArgs.Patch patch = new ProposeEditArgs.Patch(null, null, null, null,
                     List.of(tastingBrew("맛", null, "최고")), null);
-            assertThat(rejectionOf(validator.validateEdit(
+            assertThat(rejectionOf(editValidator.validate(
                     editArgs(target.slug(), "2026-07-13", patch), target, null)))
                     .contains("rating").contains("V-1");
         }
@@ -683,7 +700,7 @@ class ProposalValidatorTest {
         @Test
         @DisplayName("빈 patch(순수 전환)는 전 필드 유지(null)로 통과한다")
         void emptyPatchPasses() {
-            EditProposal proposal = okOf(validator.validateEdit(
+            EditProposal proposal = okOf(editValidator.validate(
                     editArgs(target.slug(), "2026-07-13", null), target, null));
             assertThat(proposal.roastery()).isNull();
             assertThat(proposal.beans()).isNull();

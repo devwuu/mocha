@@ -3,7 +3,8 @@ package com.devwuu.mocha.agent.tool;
 /**
  * 제안 tool 인자의 출처 표시 필드 — {@code { "value": ..., "source": "user"|"photo"|"search"|null }}의
  * <b>미검증 원시 형태</b>. 도메인 {@link com.devwuu.mocha.domain.Sourced}와 달리 source를 String으로 들고,
- * enum 위반(V-5)을 역직렬화 예외가 아니라 {@link ProposalValidator}의 <b>사유 있는 거부</b>로 다루기 위한
+ * enum 위반(V-5)을 역직렬화 예외가 아니라 검증 진입점({@code RecordProposalValidator}·
+ * {@code EditProposalValidator})의 <b>사유 있는 거부</b>로 다루기 위한
  * 계약 타입이다 (ref: specs/coffee-note-agent/data-model.md#3.3, plan#ADR-45).
  *
  * @param value  필드 값 — 미언급이면 null(추측 금지, FR-2).

@@ -6,7 +6,7 @@ import java.util.List;
  * {@code propose_record} tool 인자 — 신규 기록 제안(쓰기 경로 ①)의 strict schema 계약을 그대로 담는
  * 미검증 값객체 (ref: specs/coffee-note-agent/data-model.md#3.3, plan#ADR-45·53·59).
  * <p>SDK 무관 도메인 계층 타입이다 — JSON(snake_case, {@code MochaObjectMapper})에서 역직렬화되고,
- * 값 수준 규칙(V-1·5·8·11·14·15, 단일 대기)은 {@link ProposalValidator}가 검증한다. rating·날짜·match를
+ * 값 수준 규칙(V-1·5·8·11·14·15, 단일 대기)은 {@code RecordProposalValidator}가 검증한다. rating·날짜·match를
  * 원시 String으로 두는 이유는 위반을 예외가 아니라 <b>사유 있는 tool 오류 결과</b>로 돌려주기 위해서다
  * (에이전트가 루프 안에서 정정 — AC-Δ5).
  *

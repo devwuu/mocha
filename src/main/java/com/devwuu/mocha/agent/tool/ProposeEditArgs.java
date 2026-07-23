@@ -5,8 +5,8 @@ import java.util.List;
 /**
  * {@code propose_edit} tool 인자 — 저장 노트 수정 제안(쓰기 경로 ②)의 strict schema 계약을 그대로 담는
  * 미검증 값객체 (ref: specs/coffee-note-agent/data-model.md#3.4, plan#ADR-45·53·59).
- * <p>대상 리졸브(slug → Note)는 tool 구현의 몫이고, 값 수준 규칙(V-1·5·8·10·11·14·15, 단일 대기)은
- * {@link ProposalValidator}가 검증한다.
+ * <p>대상 리졸브(slug → Note)는 tool 구현의 몫이고, 값 수준 규칙(V-1·5·8·11·14·15, 단일 대기)은
+ * {@code EditProposalValidator}가 검증한다 — 이동 충돌(V-10) 계산은 제안 수용 지점(tool 구현)의 몫이다.
  *
  * @param slug  수정 대상 노트 — 미존재는 오류 반환(환각 필터).
  * @param date  수정 대상 엔트리의 날짜(YYYY-MM-DD).

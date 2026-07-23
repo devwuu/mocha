@@ -9,7 +9,8 @@ import com.devwuu.mocha.agent.prompt.AgentInputMessage;
 import com.devwuu.mocha.agent.prompt.AgentTurnInput;
 import com.devwuu.mocha.agent.tool.AgentTool;
 import com.devwuu.mocha.agent.tool.AgentToolkit;
-import com.devwuu.mocha.agent.tool.validation.ProposalValidator;
+import com.devwuu.mocha.agent.tool.validation.EditProposalValidator;
+import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
 import com.devwuu.mocha.domain.Brew;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
@@ -86,7 +87,8 @@ class AgentConversationRouterTest {
                 Duration.ofMinutes(3), clock);
         // fake AgentClient는 tool 실행기를 부르지 않으므로 lookup·제안 협력자는 미접촉 — 장착 목록 계약만 쓴다.
         AgentToolkit agentTools = new AgentToolkit(null, null, responder, Path.of("unused-artifact"),
-                MochaObjectMapper.create(), pendingStore, null, new ProposalValidator(clock), transcript, clock);
+                MochaObjectMapper.create(), pendingStore, null, new RecordProposalValidator(clock),
+                new EditProposalValidator(), transcript, clock);
         router = new AgentConversationRouter(pendingStore, transcript, agentClient, agentTools,
                 new AgentContextAssembler(MochaObjectMapper.create(), clock), segmenter, photoIntake,
                 responder, commitHandler, clock);

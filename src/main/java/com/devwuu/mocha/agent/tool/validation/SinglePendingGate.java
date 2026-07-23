@@ -28,7 +28,8 @@ final class SinglePendingGate {
             return;
         }
         if (pending.mode() == PendingNote.Mode.RECORD
-                && sameNormalized(proposedCoffeeName, pending.draft().coffeeName().value())
+                && pending.draft() != null
+                && sameNormalized(proposedCoffeeName, draftCoffeeName(pending))
                 && roasteryCompatible(proposedRoastery, pending.draft().roastery())) {
             return; // FR-5: 대기 중 수정 발화 = 같은 커피의 propose_record 재호출 → 갱신 경로.
         }
@@ -64,12 +65,23 @@ final class SinglePendingGate {
         return sameNormalized(proposed, draft);
     }
 
+    // 훼손 pending(draft·coffee_name 누락) null 가드 — 판정·사유 조립 양쪽에서 NPE 대신 거부로 수렴시킨다
+    // (ADR-45 POLICY, 0024 리뷰 반영 — edit의 target null 가드와 대칭).
+    private static String draftCoffeeName(PendingNote pending) {
+        if (pending.draft() == null || pending.draft().coffeeName() == null) {
+            return null;
+        }
+        return pending.draft().coffeeName().value();
+    }
+
     private static String pendingBlocksReason(PendingNote pending) {
-        // target null 가드 — 역직렬화된 pending(mode=edit)에 target이 빠진 비정상 상태(위 통과 판정이
-        // 이미 대비하는 상태)에서도 NPE가 아니라 사유 있는 거부로 수렴한다(ADR-45 POLICY, 0024 리뷰 반영).
+        // target·draft null 가드 — 역직렬화된 pending에 target(mode=edit)이나 draft(mode=record)가 빠진
+        // 비정상 상태(위 통과 판정이 이미 대비하는 상태)에서도 NPE가 아니라 사유 있는 거부로 수렴한다
+        // (ADR-45 POLICY, 0024 리뷰 반영).
+        String draftCoffeeName = draftCoffeeName(pending);
         String current = pending.mode() == PendingNote.Mode.EDIT
                 ? "수정 세션(" + (pending.target() == null ? "대상 미상" : pending.target().slug()) + ")"
-                : "새 기록(" + pending.draft().coffeeName().value() + ")";
+                : "새 기록(" + (draftCoffeeName == null ? "대상 미상" : draftCoffeeName) + ")";
         return "확인 대기 중인 " + current + "이 이미 있다 — 단일 대기 원칙상 다른 제안을 받을 수 없다. "
                 + "사용자에게 먼저 [저장]이나 [취소]로 마무리해 달라고 안내해라.";
     }

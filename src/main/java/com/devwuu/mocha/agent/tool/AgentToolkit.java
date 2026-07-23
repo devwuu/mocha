@@ -2,7 +2,8 @@ package com.devwuu.mocha.agent.tool;
 
 import com.devwuu.mocha.agent.OpenAiAgentClient;
 import com.devwuu.mocha.agent.conversation.ConversationTranscript;
-import com.devwuu.mocha.agent.tool.validation.ProposalValidator;
+import com.devwuu.mocha.agent.tool.validation.EditProposalValidator;
+import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
 import com.devwuu.mocha.agent.turn.TurnUtterance;
 import com.devwuu.mocha.render.NoteRenderer;
 import com.devwuu.mocha.repository.NoteRepository;
@@ -33,11 +34,11 @@ public class AgentToolkit {
 
     public AgentToolkit(NoteRepository noteRepository, NoteRenderer noteRenderer, SlackResponder responder,
                       Path artifactDir, ObjectMapper mapper, PendingStore pendingStore,
-                      PreviewMessenger previewMessenger, ProposalValidator validator,
-                      ConversationTranscript transcript, Clock clock) {
+                      PreviewMessenger previewMessenger, RecordProposalValidator recordValidator,
+                      EditProposalValidator editValidator, ConversationTranscript transcript, Clock clock) {
         this.lookupTools = new NoteLookupTools(noteRepository, noteRenderer, responder, artifactDir, mapper);
-        this.proposalTools = new ProposalTools(noteRepository, pendingStore, previewMessenger, validator,
-                transcript, mapper, clock);
+        this.proposalTools = new ProposalTools(noteRepository, pendingStore, previewMessenger, recordValidator,
+                editValidator, transcript, mapper, clock);
     }
 
     /**
