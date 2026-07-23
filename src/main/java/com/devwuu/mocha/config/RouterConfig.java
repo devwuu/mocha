@@ -1,6 +1,6 @@
 package com.devwuu.mocha.config;
 
-import com.devwuu.mocha.agent.conversation.ConversationTranscript;
+import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
 import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
 import com.devwuu.mocha.agent.tool.validation.EditProposalValidator;
@@ -67,7 +67,7 @@ public class RouterConfig {
             PreviewMessenger previewMessenger,
             RecordProposalValidator recordProposalValidator,
             EditProposalValidator editProposalValidator,
-            ConversationTranscript transcript,
+            FoldingChatMemory transcript,
             Clock clock) {
         return new ToolCallbackProvider(noteRepository, noteRenderer, responder, Path.of(artifactDir),
                 mapper, pendingStore, previewMessenger, recordProposalValidator, editProposalValidator,

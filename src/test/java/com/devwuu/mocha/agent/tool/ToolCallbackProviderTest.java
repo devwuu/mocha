@@ -1,7 +1,7 @@
 package com.devwuu.mocha.agent.tool;
 
 import com.devwuu.mocha.domain.Source;
-import com.devwuu.mocha.agent.conversation.ConversationTranscript;
+import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
 import com.devwuu.mocha.agent.conversation.TranscriptTurn;
 import com.devwuu.mocha.agent.tool.validation.EditProposalValidator;
 import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
@@ -75,7 +75,7 @@ class ToolCallbackProviderTest {
     private RecordingRenderer renderer;
     private RecordingResponder responder;
     private CapturingPreviewMessenger previewMessenger;
-    private ConversationTranscript transcript;
+    private FoldingChatMemory transcript;
     private ToolCallbackProvider toolCallbackProvider;
 
     @BeforeEach
@@ -83,7 +83,7 @@ class ToolCallbackProviderTest {
         renderer = new RecordingRenderer(artifactDir);
         responder = new RecordingResponder();
         previewMessenger = new CapturingPreviewMessenger();
-        transcript = new ConversationTranscript(20, Duration.ofHours(1), clock);
+        transcript = new FoldingChatMemory(20, Duration.ofHours(1), clock);
         toolCallbackProvider = new ToolCallbackProvider(noteRepository, renderer, responder, artifactDir, mapper,
                 pendingStore, previewMessenger, new RecordProposalValidator(clock),
                 new EditProposalValidator(), transcript, clock);

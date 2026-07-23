@@ -1,8 +1,8 @@
 package com.devwuu.mocha.slack;
 
-import com.devwuu.mocha.agent.AgentClient;
+import com.devwuu.mocha.agent.ChatClient;
 import com.devwuu.mocha.agent.AgentException;
-import com.devwuu.mocha.agent.conversation.ConversationTranscript;
+import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
 import com.devwuu.mocha.agent.conversation.TranscriptTurn;
 import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
 import com.devwuu.mocha.agent.prompt.TurnPrompt;
@@ -68,9 +68,9 @@ class AgentConversationRouterTest {
     private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
 
     private final Clock clock = Clock.fixed(Instant.parse("2026-07-17T01:20:30Z"), SEOUL); // Seoul 10:20:30
-    private final FakeAgentClient agentClient = new FakeAgentClient();
+    private final FakeChatClient chatClient = new FakeChatClient();
     private final FakePendingStore pendingStore = new FakePendingStore();
-    private final ConversationTranscript transcript = new ConversationTranscript(20, Duration.ofHours(1), clock);
+    private final FoldingChatMemory transcript = new FoldingChatMemory(20, Duration.ofHours(1), clock);
     private final RecordingResponder responder = new RecordingResponder();
     private final CapturingCommitHandler commitHandler = new CapturingCommitHandler();
     private final FakePhotoStore photoStore = new FakePhotoStore();
@@ -84,11 +84,11 @@ class AgentConversationRouterTest {
         SlackPhotoIntake photoIntake = new SlackPhotoIntake(pendingStore, responder,
                 url -> jpegBytes(), photoStore, photoBufferStore, photoInfoExtractor,
                 Duration.ofMinutes(3), clock);
-        // fake AgentClient는 tool 실행기를 부르지 않으므로 lookup·제안 협력자는 미접촉 — 장착 목록 계약만 쓴다.
+        // fake ChatClient는 tool 실행기를 부르지 않으므로 lookup·제안 협력자는 미접촉 — 장착 목록 계약만 쓴다.
         ToolCallbackProvider toolCallbackProvider = new ToolCallbackProvider(null, null, responder,
                 Path.of("unused-artifact"), MochaObjectMapper.create(), pendingStore, null,
                 new RecordProposalValidator(clock), new EditProposalValidator(), transcript, clock);
-        router = new AgentConversationRouter(pendingStore, transcript, agentClient, toolCallbackProvider,
+        router = new AgentConversationRouter(pendingStore, transcript, chatClient, toolCallbackProvider,
                 new TurnPromptAssembler(MochaObjectMapper.create(), clock), segmenter, photoIntake,
                 responder, commitHandler, clock);
     }
@@ -96,16 +96,16 @@ class AgentConversationRouterTest {
     @Test
     @DisplayName("FR-22/ADR-44: 버튼 외 텍스트 수신 = 에이전트 턴 — tool 5종 장착, 최종 텍스트 응답, 트랜스크립트 축적")
     void textMessageRunsAgentTurn() {
-        agentClient.reply = "커피 얘기 좋아요 멍! 🐾";
+        chatClient.reply = "커피 얘기 좋아요 멍! 🐾";
 
         router.onMessage(message("요즘 커피 뭐가 맛있어?"));
 
-        assertThat(agentClient.calls).isEqualTo(1);
+        assertThat(chatClient.calls).isEqualTo(1);
         assertThat(responder.posted).containsExactly("커피 얘기 좋아요 멍! 🐾");
         // 이번 발화가 messages의 마지막 user 메시지로 실린다(TΔ7a 조립 계약).
-        List<TurnPrompt.Message> messages = agentClient.lastContext.messages();
+        List<TurnPrompt.Message> messages = chatClient.lastContext.messages();
         assertThat(messages.get(messages.size() - 1)).isEqualTo(TurnPrompt.Message.user("요즘 커피 뭐가 맛있어?"));
-        assertThat(agentClient.lastTools).extracting(ToolCallback::name).containsExactly(
+        assertThat(chatClient.lastTools).extracting(ToolCallback::name).containsExactly(
                 "list_notes", "get_note", "propose_record", "propose_edit", "send_entry_card");
         // 제안 없는 턴은 트랜스크립트에 쌓인다(FR-23) — 다음 턴의 문맥이 된다.
         assertThat(transcript.view(USER))
@@ -119,7 +119,7 @@ class AgentConversationRouterTest {
         PendingNote pending = pendingNote();
         pendingStore.put(USER, pending);
         transcript.append(USER, new TranscriptTurn("이 커피 뭐더라", "찾아볼게요 멍"));
-        agentClient.failure = new AgentException("tool 호출 상한(8) 도달 — 턴 중단");
+        chatClient.failure = new AgentException("tool 호출 상한(8) 도달 — 턴 중단");
 
         router.onMessage(message("어제 마신 예가체프 새콤했어"));
 
@@ -135,14 +135,14 @@ class AgentConversationRouterTest {
         router.onAction(action(AgentConversationRouter.ACTION_SAVE));
 
         assertThat(commitHandler.saves).hasSize(1);
-        assertThat(agentClient.calls).isZero();
+        assertThat(chatClient.calls).isZero();
         assertThat(transcript.view(USER)).isEmpty(); // SAVE_COMMIT 접힘
 
         transcript.append(USER, new TranscriptTurn("잡담 둘", "네 멍"));
         router.onAction(action(AgentConversationRouter.ACTION_CANCEL));
 
         assertThat(commitHandler.cancels).hasSize(1);
-        assertThat(agentClient.calls).isZero();
+        assertThat(chatClient.calls).isZero();
         assertThat(transcript.view(USER)).isEmpty(); // CANCEL_COMMIT 접힘
     }
 
@@ -153,7 +153,7 @@ class AgentConversationRouterTest {
 
         assertThat(commitHandler.saves).isEmpty();
         assertThat(commitHandler.cancels).isEmpty();
-        assertThat(agentClient.calls).isZero();
+        assertThat(chatClient.calls).isZero();
     }
 
     @Test
@@ -164,7 +164,7 @@ class AgentConversationRouterTest {
 
         assertThat(photoStore.staged.get(USER)).extracting(StagedImage::name).containsExactly("bag.jpg");
         assertThat(photoBufferStore.get(USER)).isPresent(); // pending 없음 → 버퍼에 담아 텍스트를 기다린다
-        assertThat(agentClient.calls).isZero();
+        assertThat(chatClient.calls).isZero();
     }
 
     @Test
@@ -176,7 +176,7 @@ class AgentConversationRouterTest {
         router.onMessage(message("이거 마셨어"));
 
         assertThat(photoInfoExtractor.calls).isEqualTo(1);
-        assertThat(agentClient.lastContext.instructions()).contains("Kenya AA"); // OCR 결과 주입(TΔ7a)
+        assertThat(chatClient.lastContext.instructions()).contains("Kenya AA"); // OCR 결과 주입(TΔ7a)
         // 제안 없는 턴 — 버퍼는 남아 윈도우 안 후속 텍스트가 다시 흡수한다(소비는 pending 이관 시점).
         assertThat(photoBufferStore.get(USER)).isPresent();
     }
@@ -186,15 +186,15 @@ class AgentConversationRouterTest {
     void proposalTurnKeepsFoldAndConsumesBuffer() {
         bufferPhoto("bag.jpg");
         transcript.append(USER, new TranscriptTurn("이 커피 뭐더라", "찾아볼게요 멍"));
-        agentClient.onRun = () -> {
+        chatClient.onRun = () -> {
             // 제안 tool 성공 효과 시뮬레이션(TΔ6 계약) — pending 생성 + 트랜스크립트 접힘.
             pendingStore.put(USER, pendingNote());
-            transcript.clear(USER, ConversationTranscript.FoldTrigger.PROPOSAL_ACCEPTED);
+            transcript.clear(USER, FoldingChatMemory.FoldTrigger.PROPOSAL_ACCEPTED);
         };
 
         router.onMessage(message("어제 마신 걸로 기록해줘"));
 
-        assertThat(responder.posted).containsExactly(agentClient.reply);
+        assertThat(responder.posted).containsExactly(chatClient.reply);
         assertThat(transcript.view(USER)).isEmpty();      // 접힘 후 문맥은 pending draft가 대신한다(FR-23)
         assertThat(photoBufferStore.get(USER)).isEmpty(); // 사진은 pending으로 이관 — 버퍼 소비
     }
@@ -203,7 +203,7 @@ class AgentConversationRouterTest {
     @DisplayName("ADR-48: 실패 턴은 버퍼를 보존한다 — 사진이 재시도로 살아남는다(유실 금지)")
     void failedTurnKeepsBuffer() {
         bufferPhoto("bag.jpg");
-        agentClient.failure = new AgentException("에이전트 모델 호출 실패");
+        chatClient.failure = new AgentException("에이전트 모델 호출 실패");
 
         router.onMessage(message("이거 기록해줘"));
 
@@ -225,8 +225,8 @@ class AgentConversationRouterTest {
         assertThat(segmenter.lastUtterance).isEqualTo("7/15 에티오피아 새콤했음. 7/16 케냐 진했음");
         assertThat(segmenter.lastDates).containsExactly(LocalDate.of(2026, 7, 15), LocalDate.of(2026, 7, 16));
         // 세그먼트가 턴 컨텍스트에 실리고(가장 이른 날짜 활성) 턴은 정상 진행된다.
-        assertThat(agentClient.calls).isEqualTo(1);
-        assertThat(agentClient.lastContext.instructions())
+        assertThat(chatClient.calls).isEqualTo(1);
+        assertThat(chatClient.lastContext.instructions())
                 .contains("다중 날짜 자동 분해 세그먼트")
                 .contains("\"active_date\":\"2026-07-15\"")
                 .contains("7/16 케냐 진했음");
@@ -240,10 +240,10 @@ class AgentConversationRouterTest {
         router.onMessage(message("7/15 에티오피아 새콤했음. 7/16 케냐 진했음"));
 
         assertThat(segmenter.calls).isEqualTo(1);
-        assertThat(agentClient.calls).isEqualTo(1);                 // 기록 흐름이 막히지 않는다
-        assertThat(responder.posted).containsExactly(agentClient.reply); // AGENT_TURN_FAILED 아님
+        assertThat(chatClient.calls).isEqualTo(1);                 // 기록 흐름이 막히지 않는다
+        assertThat(responder.posted).containsExactly(chatClient.reply); // AGENT_TURN_FAILED 아님
         // 주입 블록 bullet 마커로 부재 단언 — 프롬프트 정책 문구의 "세그먼트"(TΔ3d)와 구분한다.
-        assertThat(agentClient.lastContext.instructions()).doesNotContain("- 다중 날짜 자동 분해 세그먼트(");
+        assertThat(chatClient.lastContext.instructions()).doesNotContain("- 다중 날짜 자동 분해 세그먼트(");
     }
 
     @Test
@@ -253,7 +253,7 @@ class AgentConversationRouterTest {
 
         assertThat(segmenter.calls).isZero();
         // 주입 블록 bullet 마커로 부재 단언 — 프롬프트 정책 문구의 "세그먼트"(TΔ3d)와 구분한다.
-        assertThat(agentClient.lastContext.instructions()).doesNotContain("- 다중 날짜 자동 분해 세그먼트(");
+        assertThat(chatClient.lastContext.instructions()).doesNotContain("- 다중 날짜 자동 분해 세그먼트(");
     }
 
     // ---- 헬퍼 ----
@@ -288,7 +288,7 @@ class AgentConversationRouterTest {
     // ---- fakes (모듈 CLAUDE.md §5.2 — 외부 의존은 인터페이스 stub/fake) ----
 
     /** 턴 입력을 캡처하고 지정된 응답·실패를 돌려주는 fake 루프 드라이버 — LLM 미접촉. */
-    private static final class FakeAgentClient implements AgentClient {
+    private static final class FakeChatClient implements ChatClient {
         String reply = "네 멍!";
         RuntimeException failure;
         Runnable onRun;

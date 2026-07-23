@@ -1,8 +1,8 @@
 package com.devwuu.mocha.config;
 
-import com.devwuu.mocha.agent.AgentClient;
-import com.devwuu.mocha.agent.OpenAiAgentClient;
-import com.devwuu.mocha.agent.conversation.ConversationTranscript;
+import com.devwuu.mocha.agent.ChatClient;
+import com.devwuu.mocha.agent.OpenAiChatClient;
+import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
 import com.devwuu.mocha.llm.OpenAiUtteranceSegmenter;
 import com.devwuu.mocha.llm.UtteranceSegmenter;
 import com.openai.client.OpenAIClient;
@@ -29,14 +29,14 @@ public class AgentConfig {
     // 턴 상한 3종(ADR-44·62): tool 호출 수 + 누적 토큰 + 경과 시간 — 기본값은 관측 표본 부족(6건)으로
     // 보수적 시작, 누적 usage 관측 축적 후 yml 조정(plan §5·§6).
     @Bean
-    public AgentClient agentClient(
+    public ChatClient chatClient(
             OpenAIClient openAiClient,
             @Value("${mocha.agent.model:gpt-5.4}") String model,
             @Value("${mocha.agent.max-tool-calls:8}") int maxToolCalls,
             @Value("${mocha.agent.max-turn-tokens:100000}") int maxTurnTokens,
             @Value("${mocha.agent.turn-timeout:60s}") Duration turnTimeout,
             ObjectMapper mapper) {
-        return new OpenAiAgentClient(openAiClient, model, maxToolCalls, maxTurnTokens, turnTimeout, mapper);
+        return new OpenAiChatClient(openAiClient, model, maxToolCalls, maxTurnTokens, turnTimeout, mapper);
     }
 
     // 다중 날짜 세그먼트 분리 경계(ADR-61) — 탐지기가 절대 날짜 2개 이상을 찾은 턴에만 루프 전 1콜.
@@ -50,10 +50,10 @@ public class AgentConfig {
     }
 
     @Bean
-    public ConversationTranscript conversationTranscript(
+    public FoldingChatMemory foldingChatMemory(
             @Value("${mocha.agent.transcript-max-turns:20}") int maxTurns,
             @Value("${mocha.agent.transcript-ttl:1h}") Duration ttl,
             Clock clock) {
-        return new ConversationTranscript(maxTurns, ttl, clock);
+        return new FoldingChatMemory(maxTurns, ttl, clock);
     }
 }

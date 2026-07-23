@@ -1,8 +1,8 @@
 package com.devwuu.mocha.config;
 
-import com.devwuu.mocha.agent.AgentClient;
-import com.devwuu.mocha.agent.OpenAiAgentClient;
-import com.devwuu.mocha.agent.conversation.ConversationTranscript;
+import com.devwuu.mocha.agent.ChatClient;
+import com.devwuu.mocha.agent.OpenAiChatClient;
+import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
 import com.devwuu.mocha.llm.AliasGenerator;
 import com.devwuu.mocha.llm.OpenAiAliasGenerator;
 import com.devwuu.mocha.llm.OpenAiUtteranceSegmenter;
@@ -53,13 +53,13 @@ class ConfigDefaultsTest {
     @DisplayName("ADR-50: mocha.agent.* 미설정 시 루프·트랜스크립트 빈이 코드 default로 뜬다")
     void agentBeansStartWithDefaults() {
         runner.run(context -> {
-            AgentClient agentClient = context.getBean(AgentClient.class);
-            assertThat(agentClient).isInstanceOf(OpenAiAgentClient.class);
+            ChatClient chatClient = context.getBean(ChatClient.class);
+            assertThat(chatClient).isInstanceOf(OpenAiChatClient.class);
             // changes/0021 TΔ3b: 경량(gpt-5.4-mini)의 AC-77 반복 위반 관측으로 gpt-5.4 교체(사용자 확정).
-            assertThat(ReflectionTestUtils.getField(agentClient, "model")).isEqualTo("gpt-5.4");
-            assertThat(ReflectionTestUtils.getField(agentClient, "maxToolCalls")).isEqualTo(8);
+            assertThat(ReflectionTestUtils.getField(chatClient, "model")).isEqualTo("gpt-5.4");
+            assertThat(ReflectionTestUtils.getField(chatClient, "maxToolCalls")).isEqualTo(8);
 
-            ConversationTranscript transcript = context.getBean(ConversationTranscript.class);
+            FoldingChatMemory transcript = context.getBean(FoldingChatMemory.class);
             assertThat(ReflectionTestUtils.getField(transcript, "maxTurns")).isEqualTo(20);
             assertThat(ReflectionTestUtils.getField(transcript, "ttl")).isEqualTo(Duration.ofHours(1));
         });

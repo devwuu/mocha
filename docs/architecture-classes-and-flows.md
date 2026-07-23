@@ -222,7 +222,7 @@ flowchart TB
 
 | 클래스 | 종류 | 역할 |
 |---|---|---|
-| `AgentClient` | interface | 에이전트 루프 드라이버의 경계. "모델↔tool 루프를 상한까지 돌리고 최종 텍스트를 반환한다"는 계약만 정의 — 루프 밖 코드가 OpenAI SDK를 모르게 한다. |
+| `ChatClient` | interface | 에이전트 루프 드라이버의 경계. "모델↔tool 루프를 상한까지 돌리고 최종 텍스트를 반환한다"는 계약만 정의 — 루프 밖 코드가 OpenAI SDK를 모르게 한다. |
 | `OpenAiAgentClient` | class | OpenAI Responses API 기반 구현체. 모델 호출 → function call 수집 → tool 실행 → 결과를 다음 입력에 실어 재호출을 반복하고, tool 호출이 없는 응답이 오면 그 텍스트로 턴을 마친다. tool 호출 상한 검사, 미등록 tool·실행 오류를 `{"error": 사유}` tool 결과로 돌려주는 정정 루프, 내장 web_search 관측 로그를 담당한다. |
 | `AgentException` | exception | 턴 실패 신호(모델 오류·상한 도달). 라우터가 이를 받아 결정론 폴백으로 수렴시킨다. |
 

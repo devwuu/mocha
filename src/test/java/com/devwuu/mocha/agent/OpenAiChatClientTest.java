@@ -37,23 +37,23 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * OpenAiAgentClient 루프 드라이버의 계약 검증 — fake 모델 응답으로 루프 왕복·상한 중단·tool 오류 전달을
+ * OpenAiChatClient 루프 드라이버의 계약 검증 — fake 모델 응답으로 루프 왕복·상한 중단·tool 오류 전달을
  * SDK 호출 없이 결정론적으로 확인한다 (ref: changes/0018 tasks.md TΔ2, plan.md#ADR-44·45,
  * findings-TΔ0.md §SDK, CLAUDE.md §5.2 — 실 API 스모크는 수동 AgentLoopProbeSmokeTest).
  */
-class OpenAiAgentClientTest {
+class OpenAiChatClientTest {
 
     /** {@code send} 시임을 미리 준비한 응답 시퀀스로 대체하는 스텁 — 보낸 요청 params를 캡처한다. */
-    static class ScriptedAgentClient extends OpenAiAgentClient {
+    static class ScriptedChatClient extends OpenAiChatClient {
         private final Deque<Response> script;
         final List<ResponseCreateParams> sent = new ArrayList<>();
 
-        ScriptedAgentClient(int maxToolCalls, List<Response> script) {
+        ScriptedChatClient(int maxToolCalls, List<Response> script) {
             // 토큰·타임아웃 상한은 운영 기본값 — 상한 무관 테스트가 걸리지 않게 넉넉히 둔다.
             this(maxToolCalls, 100_000, Duration.ofSeconds(60), script);
         }
 
-        ScriptedAgentClient(int maxToolCalls, int maxTurnTokens, Duration turnTimeout, List<Response> script) {
+        ScriptedChatClient(int maxToolCalls, int maxTurnTokens, Duration turnTimeout, List<Response> script) {
             super(null, "test-model", maxToolCalls, maxTurnTokens, turnTimeout, MochaObjectMapper.create());
             this.script = new ArrayDeque<>(script);
         }
@@ -71,7 +71,7 @@ class OpenAiAgentClientTest {
 
     @BeforeEach
     void attachLogAppender() {
-        driverLogger = (Logger) LoggerFactory.getLogger(OpenAiAgentClient.class);
+        driverLogger = (Logger) LoggerFactory.getLogger(OpenAiChatClient.class);
         logs = new ListAppender<>();
         logs.start();
         driverLogger.addAppender(logs);
@@ -90,7 +90,7 @@ class OpenAiAgentClientTest {
             receivedArgs.add(args);
             return "{\"coffee_name\":\"와이키키\"}";
         });
-        ScriptedAgentClient client = new ScriptedAgentClient(8, List.of(
+        ScriptedChatClient client = new ScriptedChatClient(8, List.of(
                 response("resp_1", functionCall("call_1", "get_note", "{\"slug\":\"waikiki\"}")),
                 response("resp_2", message("와이키키 노트 찾았다멍"))));
 
@@ -121,7 +121,7 @@ class OpenAiAgentClientTest {
             executions.incrementAndGet();
             return "{}";
         });
-        ScriptedAgentClient client = new ScriptedAgentClient(2, List.of(
+        ScriptedChatClient client = new ScriptedChatClient(2, List.of(
                 response("resp_loop", functionCall("call_n", "get_note", "{\"slug\":\"x\"}"))));
 
         assertThatThrownBy(() -> client.runTurn(context("계속 조회해"), List.of(tool)))
@@ -143,7 +143,7 @@ class OpenAiAgentClientTest {
             return "{}";
         });
         // 첫 이터레이션 usage(80+30=110)가 상한(100)을 넘고 턴이 계속되려 한다 → 이터레이션 경계에서 중단.
-        ScriptedAgentClient client = new ScriptedAgentClient(8, 100, Duration.ofSeconds(60), List.of(
+        ScriptedChatClient client = new ScriptedChatClient(8, 100, Duration.ofSeconds(60), List.of(
                 responseWithUsage("resp_1", 80, 30, functionCall("call_1", "get_note", "{\"slug\":\"x\"}"))));
 
         assertThatThrownBy(() -> client.runTurn(context("기록해줘"), List.of(tool)))
@@ -166,7 +166,7 @@ class OpenAiAgentClientTest {
             return "{}";
         });
         // timeout=0 — 첫 이터레이션 경계에서 즉시 도달(실제 대기 없는 결정론 판정).
-        ScriptedAgentClient client = new ScriptedAgentClient(8, 100_000, Duration.ZERO, List.of(
+        ScriptedChatClient client = new ScriptedChatClient(8, 100_000, Duration.ZERO, List.of(
                 response("resp_1", functionCall("call_1", "get_note", "{\"slug\":\"x\"}"))));
 
         assertThatThrownBy(() -> client.runTurn(context("기록해줘"), List.of(tool)))
@@ -181,7 +181,7 @@ class OpenAiAgentClientTest {
     @Test
     @DisplayName("AC-Δ3 (ADR-62): 상한 미달 시 동작 불변 — 턴 완료 + 관측 로그에 이터레이션별 usage 합산")
     void accumulatesUsageAcrossIterationsWhenUnderCaps() {
-        ScriptedAgentClient client = new ScriptedAgentClient(8, 100_000, Duration.ofSeconds(60), List.of(
+        ScriptedChatClient client = new ScriptedChatClient(8, 100_000, Duration.ofSeconds(60), List.of(
                 responseWithUsage("resp_1", 80, 30, functionCall("call_1", "get_note", "{\"slug\":\"x\"}")),
                 responseWithUsage("resp_2", 120, 50, message("찾았다멍"))));
 
@@ -201,7 +201,7 @@ class OpenAiAgentClientTest {
         ToolCallback tool = getNoteTool(args -> {
             throw new IllegalArgumentException("rating은 4범주만 허용");
         });
-        ScriptedAgentClient client = new ScriptedAgentClient(8, List.of(
+        ScriptedChatClient client = new ScriptedChatClient(8, List.of(
                 response("resp_1", functionCall("call_1", "get_note", "{\"slug\":\"x\"}")),
                 response("resp_2", message("rating을 다시 알려달라멍"))));
 
@@ -217,7 +217,7 @@ class OpenAiAgentClientTest {
     @Test
     @DisplayName("ADR-45: 등록되지 않은 tool 호출도 오류 결과로 돌아간다")
     void deliversUnknownToolAsError() {
-        ScriptedAgentClient client = new ScriptedAgentClient(8, List.of(
+        ScriptedChatClient client = new ScriptedChatClient(8, List.of(
                 response("resp_1", functionCall("call_1", "save_note", "{}")),
                 response("resp_2", message("그건 못 한다멍"))));
 
@@ -232,7 +232,7 @@ class OpenAiAgentClientTest {
     @Test
     @DisplayName("buildParams: strict function tool + 내장 web_search(GA·KR 지역화) + instructions·메시지 매핑 (ADR-44, findings-TΔ0 §SDK)")
     void buildsParamsWithStrictToolsAndGaWebSearch() {
-        ScriptedAgentClient client = new ScriptedAgentClient(8, List.of(
+        ScriptedChatClient client = new ScriptedChatClient(8, List.of(
                 response("resp_1", message("안녕하다멍"))));
 
         client.runTurn(new TurnPrompt("모카 시스템 프롬프트",
@@ -269,7 +269,7 @@ class OpenAiAgentClientTest {
     @Test
     @DisplayName("AC-Δ9: 턴 관측 로그에 tool 시퀀스(web_search 포함)·호출 수가 남는다 (plan §6)")
     void logsTurnObservationWithToolSequence() {
-        ScriptedAgentClient client = new ScriptedAgentClient(8, List.of(
+        ScriptedChatClient client = new ScriptedChatClient(8, List.of(
                 response("resp_1", functionCall("call_1", "get_note", "{\"slug\":\"x\"}")),
                 response("resp_2", webSearchCall("ws_1"), message("찾았다멍"))));
 
@@ -286,7 +286,7 @@ class OpenAiAgentClientTest {
     @DisplayName("ADR-48: 모델 호출 실패는 AgentException으로 수렴한다(폴백 대상)")
     void wrapsModelCallFailureAsAgentException() {
         // client=null인 실 send 경로 — SDK 호출 시도가 RuntimeException으로 실패한다.
-        OpenAiAgentClient client = new OpenAiAgentClient(null, "test-model", 8,
+        OpenAiChatClient client = new OpenAiChatClient(null, "test-model", 8,
                 100_000, Duration.ofSeconds(60), MochaObjectMapper.create());
 
         assertThatThrownBy(() -> client.runTurn(context("안녕"), List.of()))
@@ -297,7 +297,7 @@ class OpenAiAgentClientTest {
     @Test
     @DisplayName("ADR-48: 최종 텍스트 없이 끝난 턴은 AgentException으로 수렴한다(폴백 대상)")
     void failsWhenTurnEndsWithoutFinalText() {
-        ScriptedAgentClient client = new ScriptedAgentClient(8, List.of(response("resp_1")));
+        ScriptedChatClient client = new ScriptedChatClient(8, List.of(response("resp_1")));
 
         assertThatThrownBy(() -> client.runTurn(context("안녕"), List.of()))
                 .isInstanceOf(AgentException.class)

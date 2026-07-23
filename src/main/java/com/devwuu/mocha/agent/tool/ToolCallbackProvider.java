@@ -1,7 +1,7 @@
 package com.devwuu.mocha.agent.tool;
 
-import com.devwuu.mocha.agent.OpenAiAgentClient;
-import com.devwuu.mocha.agent.conversation.ConversationTranscript;
+import com.devwuu.mocha.agent.OpenAiChatClient;
+import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
 import com.devwuu.mocha.agent.tool.validation.EditProposalValidator;
 import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
 import com.devwuu.mocha.agent.turn.TurnUserMessage;
@@ -25,7 +25,7 @@ import java.util.List;
  *   <li>{@link NoteLookupTools} — 검색·회상 축: {@code list_notes}·{@code get_note}·{@code send_entry_card} (TΔ5)</li>
  *   <li>{@link ProposalTools} — 쓰기 제안 축: {@code propose_record}·{@code propose_edit} (TΔ6)</li>
  * </ul>
- * 내장 {@code web_search}는 드라이버({@link OpenAiAgentClient})가 장착하므로 여기 없다.
+ * 내장 {@code web_search}는 드라이버({@link OpenAiChatClient})가 장착하므로 여기 없다.
  */
 public class ToolCallbackProvider {
 
@@ -35,7 +35,7 @@ public class ToolCallbackProvider {
     public ToolCallbackProvider(NoteRepository noteRepository, NoteRenderer noteRenderer, SlackResponder responder,
                                 Path artifactDir, ObjectMapper mapper, PendingStore pendingStore,
                                 PreviewMessenger previewMessenger, RecordProposalValidator recordValidator,
-                                EditProposalValidator editValidator, ConversationTranscript transcript, Clock clock) {
+                                EditProposalValidator editValidator, FoldingChatMemory transcript, Clock clock) {
         this.lookupTools = new NoteLookupTools(noteRepository, noteRenderer, responder, artifactDir, mapper);
         this.proposalTools = new ProposalTools(noteRepository, pendingStore, previewMessenger, recordValidator,
                 editValidator, transcript, mapper, clock);

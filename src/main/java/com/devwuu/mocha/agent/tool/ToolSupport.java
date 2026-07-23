@@ -1,6 +1,6 @@
 package com.devwuu.mocha.agent.tool;
 
-import com.devwuu.mocha.agent.OpenAiAgentClient;
+import com.devwuu.mocha.agent.OpenAiChatClient;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.repository.NoteRepository;
 import tools.jackson.databind.ObjectMapper;
@@ -17,7 +17,7 @@ final class ToolSupport {
     private ToolSupport() {
     }
 
-    // 오류 결과 형태는 드라이버(OpenAiAgentClient.errorOutput)와 동일한 {"error": 사유} — 모델이 한 형태만 본다.
+    // 오류 결과 형태는 드라이버(OpenAiChatClient.errorOutput)와 동일한 {"error": 사유} — 모델이 한 형태만 본다.
     static String errorOutput(ObjectMapper mapper, String reason) {
         return mapper.writeValueAsString(Map.of("error", reason));
     }

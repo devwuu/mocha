@@ -23,9 +23,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * 이 클래스가 내부 판정한다. TTL 만료 판정은 다음 접근 시점에 지연 수행한다(백그라운드 스케줄러
  * 없음 — 구 검색 세션·pending과 동일 패턴).
  */
-public class ConversationTranscript {
+public class FoldingChatMemory {
 
-    private static final Logger log = LoggerFactory.getLogger(ConversationTranscript.class);
+    private static final Logger log = LoggerFactory.getLogger(FoldingChatMemory.class);
 
     /**
      * 명시 접힘 트리거 — 배선 지점 정의 (ref: plan.md#ADR-46 접힘 규칙 ①②).
@@ -62,7 +62,7 @@ public class ConversationTranscript {
      * @param ttl      TTL(mocha.agent.transcript-ttl) — 경과 시 view가 빈 문맥 반환
      * @param clock    시계(Asia/Seoul — V-3, pending과 동일) — config 공통 빈 주입(ADR-63), 테스트에서 시간 고정용
      */
-    public ConversationTranscript(int maxTurns, Duration ttl, Clock clock) {
+    public FoldingChatMemory(int maxTurns, Duration ttl, Clock clock) {
         if (maxTurns < 1) {
             throw new IllegalArgumentException("maxTurns는 1 이상이어야 함: " + maxTurns);
         }

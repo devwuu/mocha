@@ -1,6 +1,6 @@
 package com.devwuu.mocha.agent.tool;
 
-import com.devwuu.mocha.agent.conversation.ConversationTranscript;
+import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
 import com.devwuu.mocha.agent.tool.validation.EditProposalValidator;
 import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
 import com.devwuu.mocha.agent.tool.validation.ToolValidation;
@@ -132,13 +132,13 @@ class ProposalTools {
     private final PreviewMessenger previewMessenger;
     private final RecordProposalValidator recordValidator;
     private final EditProposalValidator editValidator;
-    private final ConversationTranscript transcript;
+    private final FoldingChatMemory transcript;
     private final ObjectMapper mapper;
     private final Clock clock;
 
     ProposalTools(NoteRepository noteRepository, PendingStore pendingStore, PreviewMessenger previewMessenger,
                   RecordProposalValidator recordValidator, EditProposalValidator editValidator,
-                  ConversationTranscript transcript, ObjectMapper mapper, Clock clock) {
+                  FoldingChatMemory transcript, ObjectMapper mapper, Clock clock) {
         this.noteRepository = noteRepository;
         this.pendingStore = pendingStore;
         this.previewMessenger = previewMessenger;
@@ -224,7 +224,7 @@ class ProposalTools {
             return ToolSupport.errorOutput(mapper, failure);
         }
         // 제안 성공 = 트랜스크립트 접힘(ADR-46 규칙 ①) — 이후 문맥은 pending draft가 대신한다.
-        transcript.clear(userId, ConversationTranscript.FoldTrigger.PROPOSAL_ACCEPTED);
+        transcript.clear(userId, FoldingChatMemory.FoldTrigger.PROPOSAL_ACCEPTED);
         log.info("propose_record 수용: user={} slug={} match={} updated={}",
                 userId, draft.slug(), proposal.match().type(), pending != null);
 
@@ -306,7 +306,7 @@ class ProposalTools {
             return ToolSupport.errorOutput(mapper, failure);
         }
         // 제안 성공 = 트랜스크립트 접힘(ADR-46 규칙 ①) — 이후 문맥은 pending draft가 대신한다.
-        transcript.clear(userId, ConversationTranscript.FoldTrigger.PROPOSAL_ACCEPTED);
+        transcript.clear(userId, FoldingChatMemory.FoldTrigger.PROPOSAL_ACCEPTED);
         log.info("propose_edit 수용: user={} slug={} target={} movedTo={} conflict={} updated={}",
                 userId, note.slug(), proposal.targetDate(),
                 entryDate.equals(proposal.targetDate()) ? null : entryDate, dateConflict, pending != null);

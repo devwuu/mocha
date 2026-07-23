@@ -20,10 +20,10 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * ConversationTranscript의 접힘·TTL·상한 계약 검증 — 결정론 이벤트(제안 성공·커밋·TTL·턴 상한)로만
+ * FoldingChatMemory의 접힘·TTL·상한 계약 검증 — 결정론 이벤트(제안 성공·커밋·TTL·턴 상한)로만
  * 문맥이 접히는지 확인한다 (ref: changes/0018 tasks.md TΔ3, plan.md#ADR-46, spec FR-23, AC-Δ6).
  */
-class ConversationTranscriptTest {
+class FoldingChatMemoryTest {
 
     private static final String USER = "U123";
     private static final Duration TTL = Duration.ofHours(1);
@@ -54,21 +54,21 @@ class ConversationTranscriptTest {
     }
 
     private SteppingClock steppingClock;
-    private ConversationTranscript transcript;
+    private FoldingChatMemory transcript;
     private ListAppender<ILoggingEvent> logs;
 
     @BeforeEach
     void setUp() {
         steppingClock = new SteppingClock();
-        transcript = new ConversationTranscript(20, TTL, steppingClock);
+        transcript = new FoldingChatMemory(20, TTL, steppingClock);
         logs = new ListAppender<>();
         logs.start();
-        ((Logger) LoggerFactory.getLogger(ConversationTranscript.class)).addAppender(logs);
+        ((Logger) LoggerFactory.getLogger(FoldingChatMemory.class)).addAppender(logs);
     }
 
     @AfterEach
     void tearDown() {
-        ((Logger) LoggerFactory.getLogger(ConversationTranscript.class)).detachAppender(logs);
+        ((Logger) LoggerFactory.getLogger(FoldingChatMemory.class)).detachAppender(logs);
     }
 
     @Test
@@ -93,9 +93,9 @@ class ConversationTranscriptTest {
     }
 
     @ParameterizedTest
-    @EnumSource(ConversationTranscript.FoldTrigger.class)
+    @EnumSource(FoldingChatMemory.FoldTrigger.class)
     @DisplayName("AC-Δ6/AC-61: 접힘 이벤트(제안 성공·[저장]·[취소]) 각각에서 문맥이 비워진다")
-    void clearFoldsTranscriptOnEachTrigger(ConversationTranscript.FoldTrigger trigger) {
+    void clearFoldsTranscriptOnEachTrigger(FoldingChatMemory.FoldTrigger trigger) {
         transcript.append(USER, new TranscriptTurn("검색 왕복 1", "후보 목록"));
         transcript.append(USER, new TranscriptTurn("두 번째 거", "미리보기 보냈멍"));
 
@@ -110,7 +110,7 @@ class ConversationTranscriptTest {
     @Test
     @DisplayName("접힘: 트랜스크립트가 없는 사용자 clear는 no-op(예외·로그 없음)")
     void clearWithoutTranscriptIsNoOp() {
-        transcript.clear(USER, ConversationTranscript.FoldTrigger.SAVE_COMMIT);
+        transcript.clear(USER, FoldingChatMemory.FoldTrigger.SAVE_COMMIT);
 
         assertThat(transcript.view(USER)).isEmpty();
         assertThat(logs.list).isEmpty();
@@ -154,7 +154,7 @@ class ConversationTranscriptTest {
     @Test
     @DisplayName("FR-23: 턴 수 상한 초과분은 오래된 턴부터 드롭된다(요약 비도입)")
     void maxTurnsDropsOldestFirst() {
-        ConversationTranscript small = new ConversationTranscript(3, TTL, steppingClock);
+        FoldingChatMemory small = new FoldingChatMemory(3, TTL, steppingClock);
         small.append(USER, new TranscriptTurn("t1", "r1"));
         small.append(USER, new TranscriptTurn("t2", "r2"));
         small.append(USER, new TranscriptTurn("t3", "r3"));

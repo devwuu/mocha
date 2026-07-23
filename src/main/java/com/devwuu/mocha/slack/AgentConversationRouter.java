@@ -1,7 +1,7 @@
 package com.devwuu.mocha.slack;
 
-import com.devwuu.mocha.agent.AgentClient;
-import com.devwuu.mocha.agent.conversation.ConversationTranscript;
+import com.devwuu.mocha.agent.ChatClient;
+import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
 import com.devwuu.mocha.agent.conversation.TranscriptTurn;
 import com.devwuu.mocha.agent.prompt.TurnPrompt;
 import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
@@ -57,8 +57,8 @@ public class AgentConversationRouter implements ConversationRouter {
     private static final Logger log = LoggerFactory.getLogger(AgentConversationRouter.class);
 
     private final PendingStore pendingStore;
-    private final ConversationTranscript transcript;
-    private final AgentClient agentClient;
+    private final FoldingChatMemory transcript;
+    private final ChatClient chatClient;
     private final ToolCallbackProvider toolCallbackProvider;
     private final TurnPromptAssembler promptAssembler;
     private final UtteranceSegmenter segmenter;
@@ -72,8 +72,8 @@ public class AgentConversationRouter implements ConversationRouter {
     // 프로덕션·테스트 공용). 공개 승격 이유는 Clock 빈과 동일(config가 타 패키지 — ADR-63).
     public AgentConversationRouter(
             PendingStore pendingStore,
-            ConversationTranscript transcript,
-            AgentClient agentClient,
+            FoldingChatMemory transcript,
+            ChatClient chatClient,
             ToolCallbackProvider toolCallbackProvider,
             TurnPromptAssembler promptAssembler,
             UtteranceSegmenter segmenter,
@@ -83,7 +83,7 @@ public class AgentConversationRouter implements ConversationRouter {
             Clock clock) {
         this.pendingStore = pendingStore;
         this.transcript = transcript;
-        this.agentClient = agentClient;
+        this.chatClient = chatClient;
         this.toolCallbackProvider = toolCallbackProvider;
         this.promptAssembler = promptAssembler;
         this.segmenter = segmenter;
@@ -122,7 +122,7 @@ public class AgentConversationRouter implements ConversationRouter {
             // TΔ2b 배선: 턴 원문·세그먼트를 제안 검증기까지 나른다(다중 날짜 게이트 V-16의 판정 입력, ADR-60).
             // 라우터가 1회 만들어 조립기와 같은 값을 넘긴다 — 턴 안에서 값이 일관된다(findings-TΔ0 §C-5).
             TurnUserMessage utterance = new TurnUserMessage(message.text(), segments);
-            String reply = agentClient.runTurn(context, toolCallbackProvider.forTurn(userId, channelId, utterance));
+            String reply = chatClient.runTurn(context, toolCallbackProvider.forTurn(userId, channelId, utterance));
 
             // 모델의 최종 텍스트가 곧 Slack 응답이다(ADR-44) — 미리보기·카드는 tool 구현체가 이미 보냈다.
             responder.post(channelId, reply);
@@ -180,10 +180,10 @@ public class AgentConversationRouter implements ConversationRouter {
         if (ACTION_SAVE.equals(actionId)) {
             commitHandler.confirmSave(action);
             // 커밋 접힘(ADR-46 규칙 ②) — 확정된 작업의 문맥은 버린다. 배선 지점: 버튼 액션 핸들러(FoldTrigger 계약).
-            transcript.clear(action.userId(), ConversationTranscript.FoldTrigger.SAVE_COMMIT);
+            transcript.clear(action.userId(), FoldingChatMemory.FoldTrigger.SAVE_COMMIT);
         } else if (ACTION_CANCEL.equals(actionId)) {
             commitHandler.cancel(action);
-            transcript.clear(action.userId(), ConversationTranscript.FoldTrigger.CANCEL_COMMIT);
+            transcript.clear(action.userId(), FoldingChatMemory.FoldTrigger.CANCEL_COMMIT);
         } else {
             // 계약에 없는 action_id — 조용히 무시하되 원인 추적용으로 남긴다(구 라우터 규칙 승계).
             log.warn("알 수 없는 액션 무시: actionId={} user={}", actionId, action.userId());

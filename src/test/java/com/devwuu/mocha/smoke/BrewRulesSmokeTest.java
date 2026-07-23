@@ -1,7 +1,7 @@
 package com.devwuu.mocha.smoke;
 
-import com.devwuu.mocha.agent.OpenAiAgentClient;
-import com.devwuu.mocha.agent.conversation.ConversationTranscript;
+import com.devwuu.mocha.agent.OpenAiChatClient;
+import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
 import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
 import com.devwuu.mocha.agent.prompt.TurnPrompt;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
@@ -108,11 +108,11 @@ class BrewRulesSmokeTest {
         ToolCallbackProvider toolkit = new ToolCallbackProvider(new EmptyNoteRepository(), new NoOpRenderer(),
                 new PrintingResponder(), Path.of("build/smoke-artifact"), mapper, pendingStore,
                 new StubPreviewMessenger(), new RecordProposalValidator(clock), new EditProposalValidator(),
-                new ConversationTranscript(20, Duration.ofHours(1), clock), clock);
+                new FoldingChatMemory(20, Duration.ofHours(1), clock), clock);
         TurnPrompt input = new TurnPromptAssembler(mapper, clock)
                 .assemble(message, List.of(), null, null, segments);
 
-        String reply = new OpenAiAgentClient(client, model, 10, 100_000, Duration.ofSeconds(60), mapper)
+        String reply = new OpenAiChatClient(client, model, 10, 100_000, Duration.ofSeconds(60), mapper)
                 .runTurn(input, toolkit.forTurn(USER, CHANNEL, new TurnUserMessage(message, segments)));
 
         System.out.println("=== BREW RULES SMOKE (" + label + ") model=" + model + " ===");

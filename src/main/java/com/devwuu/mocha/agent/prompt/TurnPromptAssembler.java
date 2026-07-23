@@ -1,6 +1,6 @@
 package com.devwuu.mocha.agent.prompt;
 
-import com.devwuu.mocha.agent.conversation.ConversationTranscript;
+import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
 import com.devwuu.mocha.agent.conversation.TranscriptTurn;
 import com.devwuu.mocha.agent.turn.TurnUserMessage;
 import com.devwuu.mocha.domain.PendingNote;
@@ -43,7 +43,7 @@ public class TurnPromptAssembler {
      * 턴 1회의 입력 컨텍스트 조립.
      *
      * @param userMessage 이번 사용자 발화(사진 캡션 포함) — messages의 마지막 user 메시지가 된다
-     * @param transcript  현재 트랜스크립트 문맥({@code ConversationTranscript.view()}) — 비었으면 이번 발화만
+     * @param transcript  현재 트랜스크립트 문맥({@code FoldingChatMemory.view()}) — 비었으면 이번 발화만
      * @param pending     확인 대기 — 없으면 null. draft가 곧 접힘 후 문맥의 압축본이다(ADR-46)
      * @param ocr         수신 사진 OCR 전처리 결과 — 사진 없음·실패·무정보면 null 또는 empty(AC-28)
      * @param segments    다중 날짜 자동 분해 결과(ADR-61) — 분해 미수행(단일 날짜)·세그먼터 실패 턴은 null.

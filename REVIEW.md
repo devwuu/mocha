@@ -27,7 +27,7 @@
 
 | 경계 | 인터페이스 | 이유 |
 |---|---|---|
-| LLM 호출 | `AgentClient`, `VisionClient`, `AliasGenerator` | 모델/프로바이더 교체 가능성, 테스트 격리 |
+| LLM 호출 | `ChatClient`, `VisionClient`, `AliasGenerator` | 모델/프로바이더 교체 가능성, 테스트 격리 |
 | LLM 호출 (세그먼터) | `UtteranceSegmenter` | 다중 날짜 발화의 날짜별 분리 전용 전처리(plan ADR-61, changes/0023) — 모델/프로바이더 교체 가능성, 테스트 격리 |
 | 저장 | `NoteRepository`, `PendingStore`, `PhotoBufferStore`, `PhotoStore` | 저장 방식 교체 가능성(NFR-4), 테스트 격리 |
 | 메시지 송수신 (Slack) | `SlackResponder`, `PhotoDownloader`, `ConversationRouter` | 외부 서비스 경계, 테스트 격리 |
@@ -107,7 +107,7 @@ LLM 응답을 파싱·검증 없이 그대로 사용하는 경로는 flag:
 - 토큰/비용 상한 또는 타임아웃
 
 ### 6.5 프롬프트 변경에 취약한 핵심 로직의 테스트 부재
-프롬프트 수정만으로 동작이 바뀔 수 있는 핵심 경로(출력 파싱, 툴 인자 매핑, 분기 판단)에, LLM 호출을 §2 경계(`AgentClient` 등)에서 격리하고 파싱·검증·분기 로직만 검증하는 테스트가 없으면 flag. 테스트를 위해 새 인터페이스를 만들지 말 것(§2).
+프롬프트 수정만으로 동작이 바뀔 수 있는 핵심 경로(출력 파싱, 툴 인자 매핑, 분기 판단)에, LLM 호출을 §2 경계(`ChatClient` 등)에서 격리하고 파싱·검증·분기 로직만 검증하는 테스트가 없으면 flag. 테스트를 위해 새 인터페이스를 만들지 말 것(§2).
 
 ### 6.6 프롬프트와 스키마의 이중 정의
 프롬프트 템플릿의 출력 형식 지시와 파싱 스키마(record/DTO)가 서로 다른 위치에 중복 정의되어 한쪽만 수정하면 어긋나는 구조는 flag. 스키마에서 형식 지시를 파생시키거나, 최소한 같은 패키지에 두고 POLICY 주석으로 연결 관계를 명시하면 통과.

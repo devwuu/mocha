@@ -1,7 +1,7 @@
 package com.devwuu.mocha.slack;
 
-import com.devwuu.mocha.agent.AgentClient;
-import com.devwuu.mocha.agent.conversation.ConversationTranscript;
+import com.devwuu.mocha.agent.ChatClient;
+import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
 import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
 import com.devwuu.mocha.agent.prompt.TurnPrompt;
 import com.devwuu.mocha.agent.tool.ToolCallback;
@@ -55,7 +55,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *       {@link com.devwuu.mocha.agent.tool.validation.ProposalValidatorsTest}
  *       ("AC-Δ4: 날짜 2개(대상 date + new_date 이동)의 propose_edit는 게이트에 걸리지 않고 통과한다")</li>
  *   <li>④ 트랜스크립트 접힘 이벤트(AC-61) —
- *       {@link com.devwuu.mocha.agent.conversation.ConversationTranscriptTest}
+ *       {@link com.devwuu.mocha.agent.conversation.FoldingChatMemoryTest}
  *       ("접힘 이벤트(제안 성공·[저장]·[취소]) 각각에서 문맥이 비워진다"),
  *       {@link AgentConversationRouterTest}(커밋 접힘·제안 성공 접힘 유지)</li>
  * </ul>
@@ -82,9 +82,9 @@ class Change0023RegressionGuardTest {
         var pendingStore = new JsonFilePendingStore(dataDir, mapper, Duration.ofHours(24), clock);
         var photoBufferStore = new JsonFilePhotoBufferStore(dataDir, mapper);
         var photoStore = new LocalPhotoStore(dataDir);
-        var transcript = new ConversationTranscript(20, Duration.ofHours(1), clock);
+        var transcript = new FoldingChatMemory(20, Duration.ofHours(1), clock);
         var responder = new RecordingResponder();
-        var agentClient = new FakeAgentClient();
+        var chatClient = new FakeChatClient();
         var segmenter = new FakeSegmenter();
         SlackPhotoIntake photoIntake = new SlackPhotoIntake(pendingStore, responder,
                 url -> new byte[0], photoStore, photoBufferStore, new StubPhotoInfoExtractor(),
@@ -93,7 +93,7 @@ class Change0023RegressionGuardTest {
                 Path.of("unused-artifact"), mapper, pendingStore, null, new RecordProposalValidator(clock),
                 new EditProposalValidator(), transcript, clock);
         // 버튼 미수신 경로만 돌리므로 커밋 핸들러는 접촉되지 않는다 — 접촉되면 null 협력자로 즉시 실패한다.
-        AgentConversationRouter router = new AgentConversationRouter(pendingStore, transcript, agentClient,
+        AgentConversationRouter router = new AgentConversationRouter(pendingStore, transcript, chatClient,
                 toolCallbackProvider, new TurnPromptAssembler(mapper, clock), segmenter, photoIntake,
                 responder, new SlackCommitHandler(null, null, null, null, null, null), clock);
 
@@ -109,7 +109,7 @@ class Change0023RegressionGuardTest {
         router.onMessage(new IncomingMessage(USER, CHANNEL,
                 "7/18 콜롬비아. 7/19 브라질도 마셨어", "1720000000.000456"));
 
-        assertThat(agentClient.calls).isEqualTo(2); // 두 턴 모두 정상 진행(sanity)
+        assertThat(chatClient.calls).isEqualTo(2); // 두 턴 모두 정상 진행(sanity)
         // 세그먼트 이어가기 상태는 메모리 트랜스크립트에만 쌓인다 — 제안 없는 턴 2개가 문맥으로 남는다(FR-23).
         assertThat(transcript.view(USER)).hasSize(2);
         // 핵심 단언: 턴 처리(탐지→분해→주입 포함)가 data/ 아래 어떤 파일·디렉터리도 만들지 않았다.
@@ -123,7 +123,7 @@ class Change0023RegressionGuardTest {
     // ---- fakes (모듈 CLAUDE.md §5.2 — 외부 의존은 인터페이스 stub/fake, store만 실 파일) ----
 
     /** 제안 없는 응답만 돌려주는 fake 루프 드라이버 — LLM 미접촉. */
-    private static final class FakeAgentClient implements AgentClient {
+    private static final class FakeChatClient implements ChatClient {
         int calls;
 
         @Override

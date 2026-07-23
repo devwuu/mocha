@@ -23,7 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 시스템 프롬프트를 재정비 착수 시점 캡처와 <b>바이트 단위</b>로 비교한다 (AC-Δ4, delta UNCHANGED 표).
  * <p>구조 재정비(조립 이관·패키지 분할·명명 정리)의 전 과정에서 이 테스트가 그린이어야 한다 —
  * 배치·배선만 바뀌고 <b>이 가드의 범위(tool 5종 정의 + 시스템 프롬프트)</b>는 안 바뀌었음의 증거다.
- * 모델 대면 표면의 나머지 — 드라이버가 장착하는 내장 web_search(OpenAiAgentClient)와 턴 컨텍스트
+ * 모델 대면 표면의 나머지 — 드라이버가 장착하는 내장 web_search(OpenAiChatClient)와 턴 컨텍스트
  * 조립(TurnPromptAssembler) — 는 이 스냅샷 밖이며 각자의 테스트가 가드한다.
  * <p>의도된 계약 변경(spec 델타로 결정된 프롬프트·스키마 수정)이 생기면 {@link #recaptureSnapshot()}을
  * {@code -Dmocha.contract.recapture=true}로 1회 실행해 재캡처한다 — 그 커밋에서 스냅샷 diff 자체가

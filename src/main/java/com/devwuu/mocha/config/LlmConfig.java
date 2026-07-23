@@ -15,7 +15,7 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * 에이전트 루프 밖 보조 콜(vision OCR·별칭 생성) 어댑터 + OCR 전처리({@link PhotoInfoExtractor}) 빈 배선
  * (ref: plan.md#ADR-37·ADR-50·ADR-51, NFR-4).
- * 루프 드라이버({@code AgentClient})는 {@link AgentConfig}가 배선한다. OpenAI SDK 타입은 여기와
+ * 루프 드라이버({@code ChatClient})는 {@link AgentConfig}가 배선한다. OpenAI SDK 타입은 여기와
  * 구현체에만 존재한다. 구 단발 콜·검색 클라이언트 계열은 에이전트 전환으로 폐기됐다(changes/0018 TΔ8b).
  * <p>비밀(OPENAI_API_KEY)은 코드/설정에 하드코딩하지 않고 환경변수(.env → .env.local)로 주입한다
  * (루트 CLAUDE.md §5). 미설정 프로파일에서도 컨텍스트가 뜨도록 빈 기본값을 둔다 — 실제 호출 시에만 필요.

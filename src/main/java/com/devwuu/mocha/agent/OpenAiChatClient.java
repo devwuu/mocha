@@ -24,16 +24,16 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * OpenAI Responses API 기반 {@link AgentClient} 구현 — 모델 호출↔tool 실행 루프 드라이버
+ * OpenAI Responses API 기반 {@link ChatClient} 구현 — 모델 호출↔tool 실행 루프 드라이버
  * (ref: specs/coffee-note-agent/plan.md#ADR-44, changes/0018 findings-TΔ0.md §SDK).
  * <p>루프 계약(TΔ0a 실측): 이터레이션 상태는 {@code previous_response_id} + function_call_output만 싣고,
  * tool 정의는 매 요청 재전송한다. 내장 web_search는 서버측에서 실행 완료된 채 도착하므로
  * 클라이언트 왕복·상한 대상이 아니다(관측 로그만). 종료 = function_call 없는 응답.
  * <p>OpenAI SDK 타입은 이 클래스 안에만 존재한다(plan §4 POLICY, NFR-4).
  */
-public class OpenAiAgentClient implements AgentClient {
+public class OpenAiChatClient implements ChatClient {
 
-    private static final Logger log = LoggerFactory.getLogger(OpenAiAgentClient.class);
+    private static final Logger log = LoggerFactory.getLogger(OpenAiChatClient.class);
 
     private final OpenAIClient client;
     private final String model;
@@ -48,8 +48,8 @@ public class OpenAiAgentClient implements AgentClient {
      * @param maxTurnTokens 턴 누적 토큰 상한 — 이터레이션별 usage(in+out) 합산(mocha.agent.max-turn-tokens, ADR-62)
      * @param turnTimeout   턴 경과 시간 상한 — 이터레이션 경계 판정(mocha.agent.turn-timeout, ADR-62)
      */
-    public OpenAiAgentClient(OpenAIClient client, String model, int maxToolCalls,
-                             int maxTurnTokens, Duration turnTimeout, ObjectMapper mapper) {
+    public OpenAiChatClient(OpenAIClient client, String model, int maxToolCalls,
+                            int maxTurnTokens, Duration turnTimeout, ObjectMapper mapper) {
         this.client = client;
         this.model = model;
         this.maxToolCalls = maxToolCalls;
