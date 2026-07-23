@@ -36,6 +36,17 @@ class RecipeAmountsTest {
     }
 
     @Test
+    @DisplayName("changes/0025 TΔ1c: 시간은 반올림 후 0초 이하·비유한값이면 null — '0초' 표기가 어디에도 새지 않는다")
+    void timeOmitsNonPositiveAfterRounding() {
+        assertNull(amt.time(0.0), "0초는 행 생략(카드·미리보기 공통)");
+        assertNull(amt.time(-30.0), "음수는 행 생략");
+        assertNull(amt.time(0.3), "반올림하면 0초가 되는 입력도 생략 — 가드는 반올림 후 값 기준");
+        assertEquals("1초", amt.time(0.6), "반올림해서 1초 이상이면 표기");
+        assertNull(amt.time(Double.POSITIVE_INFINITY), "비유한값은 표기 불가(num과 동일 취급)");
+        assertNull(amt.time(Double.NaN));
+    }
+
+    @Test
     @DisplayName("FR-18: grind 정규화 형식 '<분쇄값> (<그라인더명>)'이 값·그라인더 서브라벨로 분리된다")
     void grindSplitsValueAndGrinder() {
         assertEquals("210클릭", amt.grindValue("210클릭 (매버릭 2.0)"));
@@ -52,5 +63,7 @@ class RecipeAmountsTest {
         assertEquals("15", amt.num(15.0));
         assertEquals("15.5", amt.num(15.5));
         assertEquals("", amt.num(null));
+        assertEquals("", amt.num(Double.POSITIVE_INFINITY), "비유한값은 표기 불가 — 빈 문자열(소비처가 행 생략)");
+        assertEquals("", amt.num(Double.NaN));
     }
 }

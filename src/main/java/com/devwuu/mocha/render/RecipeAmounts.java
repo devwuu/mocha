@@ -5,6 +5,7 @@ import java.util.regex.Pattern;
 
 /**
  * 레시피 수량·파생 표기 헬퍼 — 템플릿 컨텍스트에 {@code amt}로 주입한다(TΔ6 도입 · TΔ4b 확장).
+ * 시간·수치 표기의 단일 소스로, Slack 미리보기({@code PreviewBlocks})도 이 계산에 위임한다(changes/0025 ADR-67).
  * <p>레시피 수량은 {@link com.devwuu.mocha.domain.Recipe}에서 {@code Double}이라 {@code 15.0} 그대로 찍으면
  * "15.0"이 된다. 정수면 소수점을 떼어 "15", 소수가 있으면 "15.5"로 보이게 다듬는다(단위는 템플릿이 붙인다).
  * <p>비율·시간 표기는 저장하지 않는 파생값이다 — 렌더 시에만 계산한다(ADR-1, changes/0021 ADR-54 POLICY).
@@ -41,13 +42,17 @@ public final class RecipeAmounts {
 
     /**
      * 총 추출 시간 — 60초 미만 {@code "28초"}, 이상 {@code "2분 40초"}(정확히 분 단위면 {@code "3분"}).
-     * null·비양수는 {@code null}(행 생략 — ADR-54).
+     * null·비양수는 {@code null}(행 생략 — ADR-54). 가드는 반올림 <em>후</em> 값 기준이다 —
+     * {@code 0.3}처럼 반올림하면 0초가 되는 입력이 "0초"로 새는 것을 막는다(changes/0025 TΔ1c 정렬).
      */
     public String time(Double timeSec) {
-        if (timeSec == null || timeSec <= 0) {
-            return null;
+        if (timeSec == null || timeSec.isNaN() || timeSec.isInfinite()) {
+            return null; // 비유한값은 num과 동일하게 표기 불가 취급(Math.round(∞)=Long.MAX 누수 차단)
         }
         long total = Math.round(timeSec);
+        if (total <= 0) {
+            return null;
+        }
         if (total < 60) {
             return total + "초";
         }

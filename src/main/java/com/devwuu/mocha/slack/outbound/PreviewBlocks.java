@@ -10,6 +10,7 @@ import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.domain.Tasting;
+import com.devwuu.mocha.render.RecipeAmounts;
 import com.devwuu.mocha.slack.AgentConversationRouter;
 import com.slack.api.model.block.LayoutBlock;
 import com.slack.api.model.block.composition.TextObject;
@@ -91,6 +92,10 @@ public class PreviewBlocks {
     // 회차별 요약(FR-4, changes/0021 TΔ3c) — 회차 2개 이상일 때 회차마다 섹션 1개로 구분 표시.
     static final String BREW_HEADER_FMT = "*%d회차*"; // 회차 구분 헤더
     private static final String BREW_RATING_FMT = "평가: %s"; // 회차 감상에 붙는 rating 표기
+
+    // POLICY: 시간·수치 표기는 RecipeAmounts(render)가 단일 소스 — 미리보기는 위임만 하고 사본을 두지 않는다.
+    //         카드↔미리보기 동일 문자열(AC-76)을 코드로 강제한다 (ref: specs/coffee-note-agent/plan.md#ADR-67).
+    private static final RecipeAmounts AMOUNTS = new RecipeAmounts();
 
     /**
      * pending을 확인 미리보기 블록 목록으로 조립한다.
@@ -289,21 +294,16 @@ public class PreviewBlocks {
         if (recipe.method() != null) {
             parts.add(recipe.method());
         }
-        if (recipe.doseG() != null) {
-            parts.add(String.format(RECIPE_DOSE_FMT, number(recipe.doseG())));
+        // 수치는 num의 표기 불가(null·비유한값 → "")를 행 생략으로 매핑한다 — 템플릿의 th:if 숨김과 같은 효과.
+        addNumberPart(parts, RECIPE_DOSE_FMT, recipe.doseG());
+        addNumberPart(parts, RECIPE_WATER_FMT, recipe.waterMl());
+        addNumberPart(parts, RECIPE_YIELD_FMT, recipe.yieldMl());
+        // 시간은 카드와 동일 기준 — 비양수는 null 반환이라 행 자체를 생략한다(ADR-54 정렬, ADR-67).
+        String time = AMOUNTS.time(recipe.timeSec());
+        if (time != null) {
+            parts.add(String.format(RECIPE_TIME_FMT, time));
         }
-        if (recipe.waterMl() != null) {
-            parts.add(String.format(RECIPE_WATER_FMT, number(recipe.waterMl())));
-        }
-        if (recipe.yieldMl() != null) {
-            parts.add(String.format(RECIPE_YIELD_FMT, number(recipe.yieldMl())));
-        }
-        if (recipe.timeSec() != null) {
-            parts.add(String.format(RECIPE_TIME_FMT, timeText(recipe.timeSec())));
-        }
-        if (recipe.tempC() != null) {
-            parts.add(String.format(RECIPE_TEMP_FMT, number(recipe.tempC())));
-        }
+        addNumberPart(parts, RECIPE_TEMP_FMT, recipe.tempC());
         if (recipe.grind() != null) {
             parts.add(String.format(RECIPE_GRIND_FMT, recipe.grind()));
         }
@@ -323,20 +323,12 @@ public class PreviewBlocks {
         return lines.isEmpty() ? null : String.join("\n", lines);
     }
 
-    // 시간(초)을 60초 기준으로 "2분 40초"/"45초"/"2분" 표기 — 카드 렌더와 동일한 파생 계산(AC-76, 저장 안 함).
-    private static String timeText(double sec) {
-        long total = Math.round(sec);
-        long minutes = total / 60;
-        long seconds = total % 60;
-        if (minutes == 0) {
-            return seconds + "초";
+    // 수치 항목 1개 추가 — RecipeAmounts.num이 표기 불가로 빈 문자열을 돌려주면 항목을 만들지 않는다.
+    private static void addNumberPart(List<String> parts, String format, Double value) {
+        String num = AMOUNTS.num(value);
+        if (!num.isEmpty()) {
+            parts.add(String.format(format, num));
         }
-        return seconds == 0 ? minutes + "분" : minutes + "분 " + seconds + "초";
-    }
-
-    // 정수면 소수점 없이(15.0 → "15"), 아니면 그대로(15.5 → "15.5") 표기.
-    private static String number(double v) {
-        return v == Math.rint(v) ? String.valueOf((long) v) : String.valueOf(v);
     }
 
     private static String sourcesText(List<String> sources) {

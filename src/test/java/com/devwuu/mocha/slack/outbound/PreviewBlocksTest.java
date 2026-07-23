@@ -285,6 +285,27 @@ class PreviewBlocksTest {
     }
 
     @Test
+    @DisplayName("changes/0025 TΔ1c: 표기 불가 수치(반올림 0초·비유한값)는 카드 기준으로 행이 생략된다")
+    void recipeOmitsUnrenderableNumbers() {
+        // normalize의 V-8(양수만)을 통과하지만 표기 불가인 값들 — timeSec 0.3(반올림 0초)·doseG Infinity.
+        Recipe edge = Recipe.normalize(new Recipe(
+                null, Double.POSITIVE_INFINITY, 240.0, null, 0.3, null, null, null, null, null));
+        Note draft = new Note(
+                "coffeevera-yirgacheffe-g1",
+                new Sourced<>("커피베라 예가체프 G1", Source.USER),
+                new Sourced<>("커피베라", Source.USER),
+                List.of(), null, null, List.of(),
+                List.of(entry("좋았다", Rating.GOOD, edge)),
+                OffsetDateTime.now(), OffsetDateTime.now());
+        String recipeBlock = recipeSectionText(
+                previewBlocks.build(new PendingNote(draft, MatchInfo.newNote(), null, OffsetDateTime.now())));
+        assertNotNull(recipeBlock, "표기 가능한 항목(물)이 있으므로 영역은 출력");
+        assertTrue(recipeBlock.contains("물 240ml"), recipeBlock);
+        assertFalse(recipeBlock.contains("시간"), "반올림하면 0초 — '시간 0초' 대신 행 생략: " + recipeBlock);
+        assertFalse(recipeBlock.contains("원두"), "비유한값 — '원두 g' 빈 값 행 대신 생략: " + recipeBlock);
+    }
+
+    @Test
     @DisplayName("FR-4/AC-Δ6: 회차 2개 draft는 회차별 레시피·감상 요약이 구분 표시되고, 평가는 각 회차 섹션에 담긴다")
     void multiBrewPerBrewSummary() {
         Recipe first = Recipe.normalize(new Recipe(
