@@ -2,6 +2,7 @@ package com.devwuu.mocha.agent;
 
 import com.devwuu.mocha.agent.prompt.TurnPrompt;
 import com.devwuu.mocha.agent.tool.ToolCallback;
+import com.devwuu.mocha.agent.tool.ToolSupport;
 import com.openai.client.OpenAIClient;
 import com.openai.core.JsonValue;
 import com.openai.models.responses.EasyInputMessage;
@@ -152,18 +153,15 @@ public class OpenAiChatClient implements ChatClient {
         ToolCallback tool = toolsByName.get(call.name());
         if (tool == null) {
             log.warn("에이전트가 등록되지 않은 tool 호출: {}", call.name());
-            return errorOutput("등록되지 않은 tool: " + call.name());
+            return ToolSupport.errorOutput(mapper, "등록되지 않은 tool: " + call.name());
         }
         try {
             return tool.executor().execute(call.arguments());
         } catch (RuntimeException e) {
             log.warn("tool {} 실행 실패 — 오류 사유를 tool 결과로 반환", call.name(), e);
-            return errorOutput(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+            return ToolSupport.errorOutput(mapper,
+                    e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
         }
-    }
-
-    private String errorOutput(String reason) {
-        return mapper.writeValueAsString(Map.of("error", reason));
     }
 
     /**
