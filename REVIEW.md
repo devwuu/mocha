@@ -15,8 +15,8 @@
 구현 클래스는 **무엇에 의존하는지 이름만 보고 알 수 있어야 한다.**
 
 - 외부 서비스·기술에 의존하는 구현체는 그 대상을 접두어로 명명한다.
-  - 예: `OpenAiAgentClient`, `JsonFileNoteRepository`, `ThymeleafNoteRenderer`, `PlaywrightCardImageRenderer`, `LocalPhotoStore`
-  - 나쁜 예: `AgentClientImpl`, `DefaultNoteRepository`, `NoteRepositoryImpl` — `Impl`/`Default` 접두·접미어는 의존 정보를 숨기므로 금지.
+  - 예: `OpenAiChatClient`, `JsonFileNoteRepository`, `ThymeleafNoteRenderer`, `PlaywrightCardImageRenderer`, `LocalPhotoStore`
+  - 나쁜 예: `ChatClientImpl`, `DefaultNoteRepository`, `NoteRepositoryImpl` — `Impl`/`Default` 접두·접미어는 의존 정보를 숨기므로 금지.
 - 클래스 내부에서도 외부 의존(HTTP 클라이언트, 파일 시스템, 프로세스 실행 등)은 필드·생성자 시그니처에 드러나야 한다. 메서드 깊숙한 곳에서 몰래 `new`로 외부 자원을 만들지 않는다.
 
 **리뷰 질문**: 이 클래스 이름만 보고 뭘 쓰는지 알 수 있는가? 숨은 외부 의존이 있는가?
@@ -63,8 +63,8 @@
 ## 5. 패키지는 응집 단위로 작게
 
 - 한 패키지가 **대략 10개 파일을 넘으면 분리 신호**로 본다. 숫자 자체보다 "서로 다른 관심사가 섞여 있는가"가 기준이다.
-  - 좋은 선례: `slack/` → `slack/inbound/`, `slack/outbound/` 분리, `agent/` → `agent/prompt/`, `agent/tool/`, `agent/conversation/` 분리.
-  - 허용 예외: 단일 관심사의 데이터 홀더 군집은 파일 수 초과를 허용한다 — `domain/`(노트 JSON 구조 record), `agent/tool/`(툴 정의 + 인자 record + 검증). 쪼개면 오히려 응집이 깨지는 곳이니 개수만으로 flag하지 마라.
+  - 좋은 선례: `slack/` → `slack/inbound/`, `slack/outbound/` 분리, `agent/` → `agent/prompt/`, `agent/tool/`, `agent/conversation/` 분리, `agent/tool/` → 검증은 `agent/tool/validation/`·턴 하네스는 `agent/turn/` 분리(ADR-64).
+  - 허용 예외: 단일 관심사의 데이터 홀더 군집은 파일 수 초과를 허용한다 — `domain/`(노트 JSON 구조 record), `agent/tool/` 루트(툴 정의 + 인자 record — 검증은 `agent/tool/validation/`, 턴 전처리·컨텍스트 운반체는 `agent/turn/`이 담당하므로 루트에 유입시키지 않는다, ADR-64). 쪼개면 오히려 응집이 깨지는 곳이니 개수만으로 flag하지 마라.
 - 분리할 때는 계층(예: `service/`, `impl/`)이 아니라 **기능·관심사**로 자른다.
 - 반대로, 파일 1~2개짜리 패키지를 예비로 미리 만들지도 않는다. 분리는 커졌을 때 한다.
 
