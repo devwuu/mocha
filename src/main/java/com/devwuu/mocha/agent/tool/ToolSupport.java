@@ -1,6 +1,5 @@
 package com.devwuu.mocha.agent.tool;
 
-import com.devwuu.mocha.agent.OpenAiChatClient;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.repository.NoteRepository;
 import tools.jackson.databind.ObjectMapper;
