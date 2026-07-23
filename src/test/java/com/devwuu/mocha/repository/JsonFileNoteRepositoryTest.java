@@ -353,6 +353,68 @@ class JsonFileNoteRepositoryTest {
                 .isEqualTo(List.of("에티오피아 첼베사", "이디오피아 첼베사"));
     }
 
+    // ── 0025 TΔ2a: 노트 읽기 위생 — 로드 시 Bean.normalize 적용 (AC-Δ2 ①, ADR-66) ──────
+
+    @Test
+    @DisplayName("0025-TΔ2a/AC-Δ2①: 수기 편집 JSON의 무효 beans 요소(description 부재·공백)는 로드 시 드롭 — 나머지 원두 유지, 파일 무변경")
+    void loadDropsInvalidBeanElements() throws java.io.IOException {
+        String slug = "hand-edited";
+        // 수기 편집으로 무효 요소가 섞인 노트 JSON을 시뮬레이션 — description 부재·공백 요소 + 정상 원두 1개.
+        Note seeded = new Note(
+                slug,
+                new Sourced<>("수기 편집 노트", Source.USER), new Sourced<>("커피베라", Source.USER),
+                List.of(
+                        new Bean(new Sourced<>("에티오피아 예가체프", Source.USER), new Sourced<>("워시드", Source.USER)),
+                        new Bean(null, new Sourced<>("내추럴", Source.USER)),   // description 부재
+                        new Bean(new Sourced<>("   ", Source.PHOTO), null)),    // description 공백
+                new Sourced<>(null, Source.SEARCH),
+                new Sourced<>(List.of(), Source.SEARCH),
+                List.of(),
+                List.of(entry(LocalDate.of(2026, 7, 10), "감상")),
+                OffsetDateTime.now(FIXED), OffsetDateTime.now(FIXED)
+        );
+        seedNoteFile(seeded);
+        java.nio.file.Path file = dataDir.resolve("notes").resolve(slug + ".json");
+        byte[] before = java.nio.file.Files.readAllBytes(file);
+
+        // 단건·전체 조회 모두 공용 읽기 지점을 지난다 — 위반 요소만 드롭, 정상 원두 유지.
+        Note loaded = repo.findBySlug(slug).orElseThrow();
+        assertThat(loaded.beans()).hasSize(1);
+        assertThat(loaded.beans().getFirst().description().value()).isEqualTo("에티오피아 예가체프");
+        assertThat(loaded.beans().getFirst().process().value()).isEqualTo("워시드");
+        assertThat(repo.findAll().getFirst().beans()).hasSize(1);
+
+        // 파일은 다시 쓰지 않는다 — 읽기 메모리 정규화만(delta UNCHANGED "파일 내용 무변경").
+        assertThat(java.nio.file.Files.readAllBytes(file)).isEqualTo(before);
+    }
+
+    @Test
+    @DisplayName("0025-TΔ2a/AC-Δ2①: 수기 편집 JSON의 recipe V-8 위반 수치(0·음수)는 로드 시 해당 항목만 드롭 — 회차 위생 저장 경로와 동일")
+    void loadNormalizesHandEditedRecipeViolations() {
+        String slug = "hand-edited-recipe";
+        // 수기 편집으로 dose_g 음수·time_sec 0이 들어간 레시피 — 정상 필드(water_ml·grind)는 유지돼야 한다.
+        Recipe broken = new Recipe("핸드드립", -18.0, 240.0, null, 0.0, 92.0, "210클릭 (매버릭 2.0)", null, null, null);
+        Note seeded = new Note(
+                slug,
+                new Sourced<>("수기 편집 레시피", Source.USER), new Sourced<>("커피베라", Source.USER),
+                List.of(),
+                new Sourced<>(null, Source.SEARCH),
+                new Sourced<>(List.of(), Source.SEARCH),
+                List.of(),
+                List.of(entry(LocalDate.of(2026, 7, 10),
+                        List.of(new Brew(broken, new Tasting("새콤", null, Rating.GOOD))))),
+                OffsetDateTime.now(FIXED), OffsetDateTime.now(FIXED)
+        );
+        seedNoteFile(seeded);
+
+        Recipe loaded = repo.findBySlug(slug).orElseThrow()
+                .entries().getFirst().brews().getFirst().recipe();
+        assertThat(loaded.doseG()).isNull();   // 음수 → 드롭
+        assertThat(loaded.timeSec()).isNull(); // 0 → 드롭
+        assertThat(loaded.waterMl()).isEqualTo(240.0);
+        assertThat(loaded.grind()).isEqualTo("210클릭 (매버릭 2.0)");
+    }
+
     @Test
     @DisplayName("V-9: applyEdit coffee_name 변경 시도 거부 — 커밋 없음, 원본 무변화")
     void applyEditRejectsCoffeeNameChange() {

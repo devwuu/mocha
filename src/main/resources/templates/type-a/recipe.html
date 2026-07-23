@@ -67,11 +67,14 @@
           <div style="font-size:10px;color:#7c6b5b;margin-top:3px" th:if="${amt.ratio(card.recipe.doseG, card.recipe.yieldMl) != null}"
                th:text="'비율 ' + ${amt.ratio(card.recipe.doseG, card.recipe.yieldMl)}">비율 1 : 2</div>
         </div>
-        <!--/* 시간 가드는 표기 결과(amt.time) 기준 — 반올림 0초 등 표기 불가 값의 빈 타일·'총 null' 누수 차단(changes/0025 리뷰 후속). */-->
-        <div class="tile" th:if="${amt.time(card.recipe.timeSec) != null}">
-          <div style="font-size:9.5px;letter-spacing:2px;color:#8d7d6c;margin-bottom:6px">추출 시간</div>
-          <div style="font-size:22px;font-weight:700;color:#2e261f" th:text="${amt.time(card.recipe.timeSec)}">28초</div>
-        </div>
+        <!--/* 시간 가드는 표기 결과(amt.time) 기준 — 반올림 0초 등 표기 불가 값의 빈 타일·'총 null' 누수 차단(changes/0025 리뷰 후속).
+             표기는 th:with로 1회 계산해 재사용(th:block은 산출 HTML에서 제거 — 레이아웃 불변). */-->
+        <th:block th:with="timeText=${amt.time(card.recipe.timeSec)}">
+          <div class="tile" th:if="${timeText != null}">
+            <div style="font-size:9.5px;letter-spacing:2px;color:#8d7d6c;margin-bottom:6px">추출 시간</div>
+            <div style="font-size:22px;font-weight:700;color:#2e261f" th:text="${timeText}">28초</div>
+          </div>
+        </th:block>
       </th:block>
     </div>
     <!--/* FR-7 ③ 상세 행 — 타일에 못 오른 값 있는 항목만. 시안에 없는 조합(핸드드립의 추출량·머신 등)도 행으로 수용. */-->
@@ -87,11 +90,13 @@
              style="font-size:10px;color:#7c6b5b" th:if="${amt.ratio(card.recipe.doseG, card.recipe.yieldMl) != null}"
              th:text="'비율 ' + ${amt.ratio(card.recipe.doseG, card.recipe.yieldMl)}">비율 1 : 2</span></div>
         <div style="font-size:9.5px;letter-spacing:2px;color:#8d7d6c;text-align:right" th:if="${card.recipe.pouring != null}">푸어링</div>
-        <!--/* 총 추출 시간은 시안대로 푸어링 행에 병기(findings-TΔ0 §5.3), 푸어링이 없으면 단독 행으로. */-->
-        <div style="line-height:1.7" th:if="${card.recipe.pouring != null}"
-             th:text="${card.recipe.pouring + (amt.time(card.recipe.timeSec) != null ? ' · 총 ' + amt.time(card.recipe.timeSec) : '')}">뜸 40ml 30초 → 100ml → 100ml · 총 2분 40초</div>
-        <div style="font-size:9.5px;letter-spacing:2px;color:#8d7d6c;text-align:right" th:if="${card.recipe.pouring == null and amt.time(card.recipe.timeSec) != null}">추출 시간</div>
-        <div th:if="${card.recipe.pouring == null and amt.time(card.recipe.timeSec) != null}" th:text="'총 ' + ${amt.time(card.recipe.timeSec)}">총 2분 40초</div>
+        <!--/* 총 추출 시간은 시안대로 푸어링 행에 병기(findings-TΔ0 §5.3), 푸어링이 없으면 단독 행으로. 표기는 th:with 1회 계산. */-->
+        <th:block th:with="timeText=${amt.time(card.recipe.timeSec)}">
+          <div style="line-height:1.7" th:if="${card.recipe.pouring != null}"
+               th:text="${card.recipe.pouring + (timeText != null ? ' · 총 ' + timeText : '')}">뜸 40ml 30초 → 100ml → 100ml · 총 2분 40초</div>
+          <div style="font-size:9.5px;letter-spacing:2px;color:#8d7d6c;text-align:right" th:if="${card.recipe.pouring == null and timeText != null}">추출 시간</div>
+          <div th:if="${card.recipe.pouring == null and timeText != null}" th:text="'총 ' + ${timeText}">총 2분 40초</div>
+        </th:block>
       </th:block>
       <th:block th:if="${card.espressoLayout()}">
         <div style="font-size:9.5px;letter-spacing:2px;color:#8d7d6c;text-align:right" th:if="${card.recipe.grind != null}">분쇄도</div>

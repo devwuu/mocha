@@ -65,11 +65,14 @@
           <div style="font-size:9.5px;color:#a3854f;margin-top:1px" th:if="${amt.ratio(card.recipe.doseG, card.recipe.yieldMl) != null}"
                th:text="'비율 ' + ${amt.ratio(card.recipe.doseG, card.recipe.yieldMl)}">비율 1 : 2</div>
         </div>
-        <!--/* 시간 가드는 표기 결과(amt.time) 기준 — 반올림 0초 등 표기 불가 값의 빈 타일 누수 차단(changes/0025 리뷰 후속). */-->
-        <div class="tile" th:if="${amt.time(card.recipe.timeSec) != null}">
-          <div style="font-size:10px;color:#b08a5c;margin-bottom:3px">추출 시간</div>
-          <div style="font-size:17px;font-weight:700;color:#3f2a17" th:text="${amt.time(card.recipe.timeSec)}">28초</div>
-        </div>
+        <!--/* 시간 가드는 표기 결과(amt.time) 기준 — 반올림 0초 등 표기 불가 값의 빈 타일 누수 차단(changes/0025 리뷰 후속).
+             표기는 th:with로 1회 계산해 재사용(th:block은 산출 HTML에서 제거 — 레이아웃 불변). */-->
+        <th:block th:with="timeText=${amt.time(card.recipe.timeSec)}">
+          <div class="tile" th:if="${timeText != null}">
+            <div style="font-size:10px;color:#b08a5c;margin-bottom:3px">추출 시간</div>
+            <div style="font-size:17px;font-weight:700;color:#3f2a17" th:text="${timeText}">28초</div>
+          </div>
+        </th:block>
       </th:block>
     </div>
   </div>
@@ -86,7 +89,9 @@
              style="font-weight:400;font-size:10.5px;color:#a3854f" th:if="${amt.ratio(card.recipe.doseG, card.recipe.yieldMl) != null}"
              th:text="'비율 ' + ${amt.ratio(card.recipe.doseG, card.recipe.yieldMl)}">비율 1 : 2</span></span></div>
         <div class="row" th:if="${card.recipe.pouring != null}"><span>푸어링</span><span style="font-weight:700;color:#3f2a17;text-align:right" th:text="${card.recipe.pouring}">100ml + 100ml</span></div>
-        <div class="row" th:if="${amt.time(card.recipe.timeSec) != null}"><span>총 추출 시간</span><span style="font-weight:700;color:#3f2a17" th:text="${amt.time(card.recipe.timeSec)}">2분 40초</span></div>
+        <th:block th:with="timeText=${amt.time(card.recipe.timeSec)}">
+          <div class="row" th:if="${timeText != null}"><span>총 추출 시간</span><span style="font-weight:700;color:#3f2a17" th:text="${timeText}">2분 40초</span></div>
+        </th:block>
       </th:block>
       <th:block th:if="${card.espressoLayout()}">
         <div class="row" th:if="${card.recipe.grind != null}"><span>분쇄도</span><span style="font-weight:700;color:#3f2a17"><span th:text="${amt.grindValue(card.recipe.grind)}">90클릭</span> <span

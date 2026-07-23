@@ -33,7 +33,7 @@ public record Note(
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt
 ) {
-    // V-14: beans는 null 불가 — 정보 전무면 빈 배열(요소 검증·드롭은 쓰기 경로의 Bean.normalize 몫).
+    // V-14: beans는 null 불가 — 정보 전무면 빈 배열(요소 검증·드롭은 저장·로드 경계의 Bean.normalize 몫, ADR-66).
     public Note {
         beans = beans == null ? List.of() : List.copyOf(beans);
     }
@@ -58,5 +58,25 @@ public record Note(
     ) {
         this(slug, coffeeName, roastery, beans, roastLevel, officialNotes,
                 Aliases.empty(), sources, entries, createdAt, updatedAt);
+    }
+
+    /**
+     * 로드 경계 위생(ADR-66, changes/0025) — 저장 경로와 동일한 정규화(beans V-14, 회차 V-15·recipe V-8)를
+     * 적용한 사본을 돌려준다. 위반이 없으면 자기 자신을 반환한다(앱이 쓴 데이터엔 no-op — 로드마다 재구성 없음).
+     * <p>record 전 컴포넌트 복사는 이 한 곳에만 둔다 — 컴포넌트 추가·변경 시 여기만 따라간다.
+     */
+    public Note normalized() {
+        List<Bean> normalizedBeans = Bean.normalize(beans);
+        List<Entry> normalizedEntries = entries.stream()
+                .map(e -> {
+                    List<Brew> brews = Brew.normalize(e.brews());
+                    return brews.equals(e.brews()) ? e : new Entry(e.date(), brews, e.updatedAt());
+                })
+                .toList();
+        if (normalizedBeans.equals(beans) && normalizedEntries.equals(entries)) {
+            return this;
+        }
+        return new Note(slug, coffeeName, roastery, normalizedBeans, roastLevel, officialNotes,
+                aliases, sources, normalizedEntries, createdAt, updatedAt);
     }
 }

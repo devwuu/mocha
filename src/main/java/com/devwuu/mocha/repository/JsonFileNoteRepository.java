@@ -5,6 +5,8 @@ import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
 import com.devwuu.mocha.domain.Sourced;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
@@ -30,6 +32,8 @@ import java.util.stream.Stream;
  * 쓰기 도중 죽어도 원본이 깨지지 않게 한다(CLAUDE.md §3).
  */
 public class JsonFileNoteRepository implements NoteRepository {
+
+    private static final Logger log = LoggerFactory.getLogger(JsonFileNoteRepository.class);
 
     private static final Pattern SLUG = Pattern.compile("[a-z0-9-]+");
 
@@ -203,9 +207,21 @@ public class JsonFileNoteRepository implements NoteRepository {
         return notesDir.resolve(slug + ".json");
     }
 
+    // 단건(findBySlug)·전체(findAll) 조회 공용 읽기 지점 — 로드 위생은 여기 한 곳에 건다.
     private Note read(Path file) {
         try {
-            return mapper.readValue(Files.readAllBytes(file), Note.class);
+            Note note = mapper.readValue(Files.readAllBytes(file), Note.class);
+            // POLICY: 저장소 읽기 경계가 유일한 무결성 관문 — 수기 편집 JSON의 무효 요소(beans V-14,
+            //         회차 V-15·recipe V-8)는 저장 경로와 동일한 정규화로 로드 시 드롭한다. 앱이 쓴
+            //         데이터엔 no-op. 파일은 다시 쓰지 않는다 — 읽기 메모리 정규화만. 단, 드롭분은 그
+            //         노트의 다음 저장에서 파일에도 반영되므로 경고 로그로 관측을 남긴다
+            //         (ref: specs/coffee-note-agent/plan.md#ADR-66, data-model.md#V-8·V-14).
+            Note sanitized = note.normalized();
+            if (sanitized != note) {
+                log.warn("노트 로드 위생(ADR-66): 무효 요소 드롭 — {} (수기 편집 위반 추정, 파일은 다시 쓰지 않음. 드롭분은 다음 저장 시 파일에 반영됨)",
+                        file.getFileName());
+            }
+            return sanitized;
         } catch (IOException e) {
             throw new UncheckedIOException("노트 읽기 실패: " + file, e);
         }

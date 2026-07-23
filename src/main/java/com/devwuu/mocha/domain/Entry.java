@@ -23,7 +23,7 @@ public record Entry(
         OffsetDateTime updatedAt
 ) {
 
-    // V-15: brews는 배열(null 불가) — 요소 검증·드롭은 쓰기 경로의 Brew.normalize 몫.
+    // V-15: brews는 배열(null 불가) — 요소 검증·드롭은 저장·로드 경계의 Brew.normalize 몫(ADR-66).
     public Entry {
         brews = brews == null ? List.of() : List.copyOf(brews);
     }

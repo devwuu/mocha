@@ -12,7 +12,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
  */
 class RecipeAmountsTest {
 
-
     @Test
     @DisplayName("AC-76/ADR-54: 비율은 도징·추출량 둘 다 있을 때만 '1 : N'(소수 1자리 반올림)로 계산된다")
     void ratioRequiresBothAndRoundsToOneDecimal() {
