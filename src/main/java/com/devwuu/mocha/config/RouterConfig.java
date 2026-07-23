@@ -3,7 +3,7 @@ package com.devwuu.mocha.config;
 import com.devwuu.mocha.agent.conversation.ConversationTranscript;
 import com.devwuu.mocha.agent.prompt.AgentContextAssembler;
 import com.devwuu.mocha.agent.tool.AgentToolkit;
-import com.devwuu.mocha.agent.tool.ProposalValidator;
+import com.devwuu.mocha.agent.tool.validation.ProposalValidator;
 import com.devwuu.mocha.llm.AliasGenerator;
 import com.devwuu.mocha.llm.PhotoInfoExtractor;
 import com.devwuu.mocha.render.NoteRenderer;

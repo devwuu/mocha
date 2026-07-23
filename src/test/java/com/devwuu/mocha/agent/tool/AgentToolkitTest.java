@@ -3,6 +3,7 @@ package com.devwuu.mocha.agent.tool;
 import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.agent.conversation.ConversationTranscript;
 import com.devwuu.mocha.agent.conversation.TranscriptTurn;
+import com.devwuu.mocha.agent.tool.validation.ProposalValidator;
 import com.devwuu.mocha.agent.turn.TurnUtterance;
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Bean;

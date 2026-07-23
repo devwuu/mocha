@@ -1,5 +1,12 @@
-package com.devwuu.mocha.agent.tool;
+package com.devwuu.mocha.agent.tool.validation;
 
+import com.devwuu.mocha.agent.tool.BeanArg;
+import com.devwuu.mocha.agent.tool.BrewArg;
+import com.devwuu.mocha.agent.tool.EditProposal;
+import com.devwuu.mocha.agent.tool.ProposeEditArgs;
+import com.devwuu.mocha.agent.tool.ProposeRecordArgs;
+import com.devwuu.mocha.agent.tool.RecordProposal;
+import com.devwuu.mocha.agent.tool.SourcedArg;
 import com.devwuu.mocha.agent.turn.TurnUtterance;
 import com.devwuu.mocha.domain.Bean;
 import com.devwuu.mocha.domain.Brew;
@@ -609,6 +616,20 @@ class ProposalValidatorTest {
                     editArgs(target.slug(), "2026-07-13", ProposeEditArgs.Patch.empty()),
                     target, recordPending("와이키키 블렌드"))))
                     .contains("[저장]");
+        }
+
+        @Test
+        @DisplayName("단일 대기: target이 빠진 edit pending(비정상 역직렬화)도 NPE 없이 사유 있는 거부로 수렴한다 — ADR-45 POLICY")
+        void editPendingWithoutTargetStillRejectsWithReason() {
+            // mode=edit인데 target=null — pending.json 수기 편집 등으로만 가능한 비정상 상태.
+            PendingNote corrupt = new PendingNote(PendingNote.Mode.EDIT,
+                    note("2026-07-13-102030", "커피베라 예가체프 G1", "커피베라", LocalDate.of(2026, 7, 13)),
+                    null, null, "ts-1", OffsetDateTime.now());
+            assertThat(rejectionOf(validator.validateEdit(
+                    editArgs(target.slug(), "2026-07-13", ProposeEditArgs.Patch.empty()), target, corrupt)))
+                    .contains("수정 세션").contains("[저장]");
+            assertThat(rejectionOf(validateRecord(recordArgs(), corrupt)))
+                    .contains("수정 세션").contains("[저장]");
         }
 
         @Test

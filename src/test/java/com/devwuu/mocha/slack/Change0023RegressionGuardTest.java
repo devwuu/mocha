@@ -6,7 +6,7 @@ import com.devwuu.mocha.agent.prompt.AgentContextAssembler;
 import com.devwuu.mocha.agent.prompt.AgentTurnInput;
 import com.devwuu.mocha.agent.tool.AgentTool;
 import com.devwuu.mocha.agent.tool.AgentToolkit;
-import com.devwuu.mocha.agent.tool.ProposalValidator;
+import com.devwuu.mocha.agent.tool.validation.ProposalValidator;
 import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.llm.PhotoInfoExtractor;
@@ -45,13 +45,13 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>이 클래스는 기존 테스트가 커버하지 못한 한 갭(③ data/ 무변화)만 직접 단언한다. 나머지 UNCHANGED
  * 항목은 아래 기존 테스트가 이미 가드한다(중복 단언하지 않음 — 위치 이동 시 이 표를 갱신할 것):
  * <ul>
- *   <li>① 단일 대기 거부(FR-22/AC-30) — {@link com.devwuu.mocha.agent.tool.ProposalValidatorTest}
+ *   <li>① 단일 대기 거부(FR-22/AC-30) — {@link com.devwuu.mocha.agent.tool.validation.ProposalValidatorTest}
  *       (record·edit 양 경로의 "먼저 저장/취소" 거부), {@link com.devwuu.mocha.agent.tool.AgentToolkitTest}
  *       (tool 반환의 "단일 대기" 오류 + 대기·미리보기 무변화)</li>
  *   <li>① [저장] 커밋 경로(ADR-3·45) — {@link SlackCommitHandlerTest}
  *       ("[저장] 커밋 → pending clear → 카드 배달 → 버튼 소진 순서가 종전과 동일" 회귀 가드 포함)</li>
  *   <li>② propose_edit 날짜 2개 통과(AC-Δ4, V-16 record 전용) —
- *       {@link com.devwuu.mocha.agent.tool.ProposalValidatorTest}
+ *       {@link com.devwuu.mocha.agent.tool.validation.ProposalValidatorTest}
  *       ("AC-Δ4: 날짜 2개(대상 date + new_date 이동)의 propose_edit는 게이트에 걸리지 않고 통과한다")</li>
  *   <li>④ 트랜스크립트 접힘 이벤트(AC-61) —
  *       {@link com.devwuu.mocha.agent.conversation.ConversationTranscriptTest}

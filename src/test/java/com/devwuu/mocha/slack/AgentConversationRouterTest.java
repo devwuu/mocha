@@ -9,7 +9,7 @@ import com.devwuu.mocha.agent.prompt.AgentInputMessage;
 import com.devwuu.mocha.agent.prompt.AgentTurnInput;
 import com.devwuu.mocha.agent.tool.AgentTool;
 import com.devwuu.mocha.agent.tool.AgentToolkit;
-import com.devwuu.mocha.agent.tool.ProposalValidator;
+import com.devwuu.mocha.agent.tool.validation.ProposalValidator;
 import com.devwuu.mocha.domain.Brew;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;

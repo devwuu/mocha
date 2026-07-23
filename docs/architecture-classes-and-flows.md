@@ -250,7 +250,7 @@ flowchart TB
 | `AgentToolkit` | class | tool 5종의 façade — 읽기 tool(`NoteLookupTools`)과 쓰기 tool(`ProposalTools`)을 조립하고, 턴마다 userId(pending 소유자)·channelId(배달처)를 바인딩한 tool 목록을 공급한다. |
 | `NoteLookupTools` | class | **읽기 tool 3종**: `list_notes`(전체 노트 메타+별칭 — 매칭·검색의 출발점), `get_note`(노트 전체, 미존재 slug는 오류 = 환각 필터), `send_entry_card`(기존 카드 JPG 재전송, 파일 부재 시에만 증분 렌더). 노트·pending 파일을 절대 바꾸지 않는다. |
 | `ProposalTools` | class | **쓰기 제안 tool 2종**: `propose_record`(신규 기록 제안)·`propose_edit`(저장 노트 수정 제안). 인자 파싱 → 서버 검증 → pending 생성/갱신 → 미리보기 전송 → 트랜스크립트 접힘까지가 효과의 전부(커밋은 버튼만). strict schema 문자열도 여기서 정의한다. |
-| `ProposalValidator` | class | 제안 인자의 **서버 값검증** — rating 4범주, source enum 제약(커피명은 user/photo만), 레시피 정규화, 날짜 충돌 계산, my_taste 병존, 단일 대기 판정. 위반은 예외가 아니라 사유 있는 거부로 수렴해 에이전트가 루프 안에서 정정하게 한다. |
+| `ProposalValidator` | class | 제안 인자의 **서버 값검증** — rating 4범주, source enum 제약(커피명은 user/photo만), 레시피 정규화, 다중 날짜 게이트(V-16), my_taste 병존, 단일 대기 판정. 이동 충돌(V-10) 계산은 제안 수용 지점(`ProposalTools`)의 몫. 위반은 예외가 아니라 사유 있는 거부로 수렴해 에이전트가 루프 안에서 정정하게 한다. |
 | `ToolValidation<T>` | sealed interface | 검증 결과 타입 — `Ok(값)` 또는 `Rejected(사유)`. |
 | `ToolSupport` | final class | tool 공용 유틸 — 오류 결과 형태(`{"error":...}`) 통일, slug 리졸브. |
 | `GetNoteArgs` / `SendEntryCardArgs` | record | 읽기 tool 인자 값객체. |
@@ -448,7 +448,7 @@ flowchart TB
     C --> D{대상 명확?}
     D -->|모호 — 후보·날짜 복수| E[자연어 되묻기<br/>트랜스크립트가 왕복 문맥 유지] --> C
     D -->|명확| F[propose_edit 호출<br/>patch에 커피명 필드 자체가 없음 — 이름 변경 구조적 차단]
-    F --> G[ProposalValidator.validateEdit<br/>대상 실존 확인 · new_date 충돌 계산]
+    F --> G[ProposalValidator.validateEdit<br/>대상 실존 확인 · new_date 충돌 계산은 ProposalTools 몫]
     G -->|거부| H[오류 사유 tool 결과 → 루프 내 정정] --> F
     G -->|통과| I[pending mode=edit 생성<br/>날짜 충돌 시 덮어쓰기 경고 포함<br/>✏️ 미리보기 + 버튼 전송]
     I --> J["이후 수정 발화는 propose_edit 재호출로<br/>draft에 누적 patch (4.1의 갱신 경로)"]
