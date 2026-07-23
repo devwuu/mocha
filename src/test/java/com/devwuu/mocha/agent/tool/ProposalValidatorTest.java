@@ -1,5 +1,6 @@
 package com.devwuu.mocha.agent.tool;
 
+import com.devwuu.mocha.agent.turn.TurnUtterance;
 import com.devwuu.mocha.domain.Bean;
 import com.devwuu.mocha.domain.Brew;
 import com.devwuu.mocha.domain.MatchInfo;

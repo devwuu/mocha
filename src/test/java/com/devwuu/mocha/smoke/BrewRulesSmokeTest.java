@@ -6,7 +6,7 @@ import com.devwuu.mocha.agent.prompt.AgentContextAssembler;
 import com.devwuu.mocha.agent.prompt.AgentTurnInput;
 import com.devwuu.mocha.agent.tool.AgentToolkit;
 import com.devwuu.mocha.agent.tool.ProposalValidator;
-import com.devwuu.mocha.agent.tool.TurnUtterance;
+import com.devwuu.mocha.agent.turn.TurnUtterance;
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;

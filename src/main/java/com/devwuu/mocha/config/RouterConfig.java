@@ -54,7 +54,7 @@ public class RouterConfig {
             NoteRepository noteRepository,
             NoteRenderer noteRenderer,
             SlackResponder responder,
-            @Value("${mocha.artifact.dir}") String artifactDir,
+            @Value("${mocha.artifact.dir:./artifact}") String artifactDir,
             ObjectMapper mapper,
             PendingStore pendingStore,
             PreviewMessenger previewMessenger,
@@ -74,7 +74,7 @@ public class RouterConfig {
             PhotoStore photoStore,
             PhotoBufferStore photoBufferStore,
             PhotoInfoExtractor photoInfoExtractor,
-            @Value("${mocha.photo.buffer-window}") Duration bufferWindow,
+            @Value("${mocha.photo.buffer-window:10m}") Duration bufferWindow,
             Clock clock) {
         return new SlackPhotoIntake(pendingStore, responder, photoDownloader, photoStore, photoBufferStore,
                 photoInfoExtractor, bufferWindow, clock);

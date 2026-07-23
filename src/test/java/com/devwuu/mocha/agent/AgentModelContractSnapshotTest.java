@@ -3,7 +3,7 @@ package com.devwuu.mocha.agent;
 import com.devwuu.mocha.agent.prompt.AgentSystemPrompt;
 import com.devwuu.mocha.agent.tool.AgentTool;
 import com.devwuu.mocha.agent.tool.AgentToolkit;
-import com.devwuu.mocha.agent.tool.TurnUtterance;
+import com.devwuu.mocha.agent.turn.TurnUtterance;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;

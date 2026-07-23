@@ -1,5 +1,7 @@
 package com.devwuu.mocha.agent.tool;
 
+import com.devwuu.mocha.agent.turn.TastingDateDetector;
+import com.devwuu.mocha.agent.turn.TurnUtterance;
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Bean;
 import com.devwuu.mocha.domain.Brew;

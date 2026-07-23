@@ -1,6 +1,7 @@
 package com.devwuu.mocha.agent.tool;
 
 import com.devwuu.mocha.agent.conversation.ConversationTranscript;
+import com.devwuu.mocha.agent.turn.TurnUtterance;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;

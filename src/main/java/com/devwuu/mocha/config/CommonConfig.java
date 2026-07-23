@@ -31,6 +31,10 @@ public class CommonConfig {
     // 추론 타입 JsonMapper)이 이 빈을 보고 물러나 앱의 유일한 매퍼가 된다. 상위 ObjectMapper로
     // 선언하면 Boot의 @Primary 기본 매퍼(snake_case 아님)가 전 주입 지점을 가로챈다 —
     // ConfigDefaultsTest의 ADR-63 가드가 이 조건을 자동구성 포함 컨텍스트로 박는다.
+    // POLICY 전환(ADR-63): 종전 불변식 "Spring 기본 ObjectMapper와 분리해 snake_case·오프셋 보존
+    // 규칙이 다른 곳에 새지 않게 한다"(구 RepositoryConfig)는 이 승격으로 의도적으로 폐기 —
+    // 컨텍스트 매퍼를 소비하는 기능(actuator·web 계층 등)을 들이면 도메인 JSON 규칙이 그 표면에도
+    // 적용된다. 그런 기능 도입 시 매퍼 분리를 재론한다.
     @Bean
     public JsonMapper objectMapper() {
         return MochaObjectMapper.create();

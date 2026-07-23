@@ -2,7 +2,7 @@ package com.devwuu.mocha.agent.prompt;
 
 import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.agent.conversation.TranscriptTurn;
-import com.devwuu.mocha.agent.tool.TurnUtterance;
+import com.devwuu.mocha.agent.turn.TurnUtterance;
 import com.devwuu.mocha.domain.Bean;
 import com.devwuu.mocha.domain.Brew;
 import com.devwuu.mocha.domain.Entry;

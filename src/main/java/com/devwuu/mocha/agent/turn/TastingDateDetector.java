@@ -1,4 +1,4 @@
-package com.devwuu.mocha.agent.tool;
+package com.devwuu.mocha.agent.turn;
 
 import java.time.DateTimeException;
 import java.time.LocalDate;
@@ -11,7 +11,7 @@ import java.util.regex.Pattern;
 /**
  * 결정론 시음 날짜 탐지기 — 사용자 원문에서 <b>절대 날짜 표기만</b> 세어 서로 다른 날짜 집합을 돌려준다
  * (ref: specs/coffee-note-agent/plan.md#ADR-60, data-model.md#V-16, changes/0023 TΔ2a).
- * <p>다중 날짜 게이트(V-16, {@link ProposalValidator})와 자동 분해 트리거(ADR-61, 라우터)가 공유하는
+ * <p>다중 날짜 게이트(V-16, {@code ProposalValidator})와 자동 분해 트리거(ADR-61, 라우터)가 공유하는
  * 순수 유틸 — LLM·I/O 무관. 정렬 집합을 돌려줘 "가장 이른 날짜" 소비(ADR-61)를 바로 지원한다.
  * <p>POLICY: 상대 날짜("어제"·"엊그제")는 세지 않는다 — 참조·수정 발화 오탐 방지. 오탐·미탐이 관측되면
  * 그때 패턴을 조정한다 (ref: plan.md#ADR-60).

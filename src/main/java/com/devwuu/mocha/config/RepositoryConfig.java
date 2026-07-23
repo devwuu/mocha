@@ -1,6 +1,5 @@
 package com.devwuu.mocha.config;
 
-import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.repository.JsonFileNoteRepository;
 import com.devwuu.mocha.repository.JsonFilePendingStore;
 import com.devwuu.mocha.repository.JsonFilePhotoBufferStore;
@@ -20,7 +19,7 @@ import java.time.Duration;
 
 /**
  * 저장소 빈 배선. 파일 경로는 {@code mocha.data.dir}에서만 온다(plan.md §5, CLAUDE.md §3).
- * <p>도메인 JSON 규칙은 공통 {@code ObjectMapper} 빈({@link CommonConfig} — {@link MochaObjectMapper}
+ * <p>도메인 JSON 규칙은 공통 {@code ObjectMapper} 빈({@link CommonConfig} — {@code MochaObjectMapper}
  * 규칙, ADR-63)을 주입받아 통일한다.
  */
 @Configuration
