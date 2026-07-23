@@ -6,7 +6,6 @@ import com.devwuu.mocha.agent.conversation.TranscriptTurn;
 import com.devwuu.mocha.agent.prompt.AgentContextAssembler;
 import com.devwuu.mocha.agent.prompt.AgentTurnInput;
 import com.devwuu.mocha.agent.tool.AgentToolkit;
-import com.devwuu.mocha.agent.tool.ProposalValidator;
 import com.devwuu.mocha.agent.tool.TastingDateDetector;
 import com.devwuu.mocha.agent.tool.TurnUtterance;
 import com.devwuu.mocha.domain.PendingNote;
@@ -27,7 +26,6 @@ import com.devwuu.mocha.slack.inbound.PhotoDownloader;
 import com.devwuu.mocha.slack.inbound.SlackPhotoIntake;
 import com.devwuu.mocha.slack.outbound.MochaMessages;
 import com.devwuu.mocha.slack.outbound.PreviewBlocks;
-import com.devwuu.mocha.slack.outbound.PreviewMessenger;
 import com.devwuu.mocha.slack.outbound.SlackResponder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,9 +33,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
-import tools.jackson.databind.ObjectMapper;
 
-import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDate;
@@ -89,28 +85,23 @@ public class AgentConversationRouter implements ConversationRouter {
             PendingStore pendingStore,
             ConversationTranscript transcript,
             AgentClient agentClient,
+            // tool façade·컨텍스트 조립기는 config 빈 주입(ADR-63, RouterConfig) — 라우터 내 조립 금지.
+            AgentToolkit agentTools,
+            AgentContextAssembler contextAssembler,
             UtteranceSegmenter segmenter,
             NoteRepository noteRepository,
             NoteRenderer noteRenderer,
             SlackResponder responder,
-            PreviewMessenger previewMessenger,
             PhotoDownloader photoDownloader,
             PhotoStore photoStore,
             PhotoBufferStore photoBufferStore,
             PhotoInfoExtractor photoInfoExtractor,
             AliasGenerator aliasGenerator,
-            // 시계·JSON 매퍼는 config 공통 빈 주입(ADR-63) — 자체 생성 금지.
+            // 시계는 config 공통 빈 주입(ADR-63) — 자체 생성 금지.
             Clock clock,
-            ObjectMapper mapper,
-            @Value("${mocha.artifact.dir}") String artifactDir,
             @Value("${mocha.photo.buffer-window}") Duration bufferWindow) {
-        // tool façade·컨텍스트 조립기·커밋 핸들러는 프레임워크 무관 내부 협력자라 여기서 조립한다(Spring 빈이 아니다).
-        this(pendingStore, transcript, agentClient,
-                new AgentToolkit(noteRepository, noteRenderer, responder, Path.of(artifactDir),
-                        mapper, pendingStore, previewMessenger, new ProposalValidator(clock),
-                        transcript, clock),
-                new AgentContextAssembler(mapper, clock),
-                segmenter,
+        // 사진·커밋 배관은 아직 여기서 조립한다 — 빈 이관은 TΔ1b2에서(그때 조립 생성자도 제거).
+        this(pendingStore, transcript, agentClient, agentTools, contextAssembler, segmenter,
                 new SlackPhotoIntake(pendingStore, responder, photoDownloader, photoStore, photoBufferStore,
                         photoInfoExtractor, bufferWindow, clock),
                 responder, noteRepository, noteRenderer, aliasGenerator, clock);
