@@ -4,7 +4,7 @@ import com.devwuu.mocha.agent.OpenAiAgentClient;
 import com.devwuu.mocha.agent.conversation.ConversationTranscript;
 import com.devwuu.mocha.agent.tool.validation.EditProposalValidator;
 import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
-import com.devwuu.mocha.agent.turn.TurnUtterance;
+import com.devwuu.mocha.agent.turn.TurnUserMessage;
 import com.devwuu.mocha.render.NoteRenderer;
 import com.devwuu.mocha.repository.NoteRepository;
 import com.devwuu.mocha.repository.PendingStore;
@@ -46,7 +46,7 @@ public class ToolCallbackProvider {
      * 채널, 그리고 이번 턴의 사용자 원문({@code utterance} — 다중 날짜 게이트 V-16의 판정 입력)을 턴마다
      * 바인딩한다. 툴킷은 애플리케이션 수명 객체라 턴별 값은 이 인자로만 유입된다(TΔ2b, findings-TΔ0 §C-2).
      */
-    public List<ToolCallback> forTurn(String userId, String channelId, TurnUtterance utterance) {
+    public List<ToolCallback> forTurn(String userId, String channelId, TurnUserMessage utterance) {
         return List.of(
                 lookupTools.listNotes(),
                 lookupTools.getNote(),

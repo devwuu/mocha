@@ -3,7 +3,7 @@ package com.devwuu.mocha.agent;
 import com.devwuu.mocha.agent.prompt.AgentSystemPrompt;
 import com.devwuu.mocha.agent.tool.ToolCallback;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
-import com.devwuu.mocha.agent.turn.TurnUtterance;
+import com.devwuu.mocha.agent.turn.TurnUserMessage;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
@@ -24,7 +24,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>구조 재정비(조립 이관·패키지 분할·명명 정리)의 전 과정에서 이 테스트가 그린이어야 한다 —
  * 배치·배선만 바뀌고 <b>이 가드의 범위(tool 5종 정의 + 시스템 프롬프트)</b>는 안 바뀌었음의 증거다.
  * 모델 대면 표면의 나머지 — 드라이버가 장착하는 내장 web_search(OpenAiAgentClient)와 턴 컨텍스트
- * 조립(AgentContextAssembler) — 는 이 스냅샷 밖이며 각자의 테스트가 가드한다.
+ * 조립(TurnPromptAssembler) — 는 이 스냅샷 밖이며 각자의 테스트가 가드한다.
  * <p>의도된 계약 변경(spec 델타로 결정된 프롬프트·스키마 수정)이 생기면 {@link #recaptureSnapshot()}을
  * {@code -Dmocha.contract.recapture=true}로 1회 실행해 재캡처한다 — 그 커밋에서 스냅샷 diff 자체가
  * 계약 변경의 리뷰 대상이 된다.
@@ -48,7 +48,7 @@ class AgentModelContractSnapshotTest {
         // 협력자는 전부 null — executor는 호출하지 않고 정의만 캡처한다(정의는 협력자 무관 상수).
         ToolCallbackProvider toolkit = new ToolCallbackProvider(null, null, null, null, null, null,
                 null, null, null, null, null);
-        List<ToolCallback> tools = toolkit.forTurn("U-snapshot", "C-snapshot", new TurnUtterance("스냅샷", null));
+        List<ToolCallback> tools = toolkit.forTurn("U-snapshot", "C-snapshot", new TurnUserMessage("스냅샷", null));
 
         StringBuilder contract = new StringBuilder();
         for (ToolCallback tool : tools) {

@@ -4,7 +4,7 @@ import com.devwuu.mocha.agent.conversation.ConversationTranscript;
 import com.devwuu.mocha.agent.tool.validation.EditProposalValidator;
 import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
 import com.devwuu.mocha.agent.tool.validation.ToolValidation;
-import com.devwuu.mocha.agent.turn.TurnUtterance;
+import com.devwuu.mocha.agent.turn.TurnUserMessage;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
@@ -173,7 +173,7 @@ class ProposalTools {
 
     // 턴 원문(utterance)은 클로저 캡처로만 유입된다 — 턴 시작 시점 고정 값이라 pending처럼 재조회하지
     // 않고, FR-5 갱신 재호출도 같은 턴 클로저를 써 턴 안에서 일관된다(TΔ2b, findings-TΔ0 §C-2·C-5).
-    ToolCallback proposeRecord(String userId, String channelId, TurnUtterance utterance) {
+    ToolCallback proposeRecord(String userId, String channelId, TurnUserMessage utterance) {
         return new ToolCallback(
                 "propose_record",
                 "신규 시음 기록(또는 기존 노트에 더하는 새 시음)을 제안한다 — 검증 통과 시 확인 대기(pending)가 "
@@ -183,7 +183,7 @@ class ProposalTools {
                 argumentsJson -> executeProposeRecord(userId, channelId, utterance, argumentsJson));
     }
 
-    private String executeProposeRecord(String userId, String channelId, TurnUtterance utterance,
+    private String executeProposeRecord(String userId, String channelId, TurnUserMessage utterance,
                                         String argumentsJson) {
         ProposeRecordArgs args = mapper.readValue(argumentsJson, ProposeRecordArgs.class);
         PendingNote pending = pendingStore.get(userId).orElse(null);

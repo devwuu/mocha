@@ -17,7 +17,7 @@ import java.time.ZoneId;
 public class CommonConfig {
 
     // 날짜/타임스탬프는 Asia/Seoul 기준(V-3) — 시계 생성의 단일 소유 지점(ADR-63).
-    // 모델 대면 문자열 "Asia/Seoul" 2곳(AgentContextAssembler.TIMEZONE_LABEL, web_search 위치
+    // 모델 대면 문자열 "Asia/Seoul" 2곳(TurnPromptAssembler.TIMEZONE_LABEL, web_search 위치
     // 파라미터)은 계약 영역이라 이 빈으로 교체하지 않는다 — 의미 연결은 이 주석으로만.
     @Bean
     public Clock clock() {

@@ -2,8 +2,8 @@ package com.devwuu.mocha.slack;
 
 import com.devwuu.mocha.agent.AgentClient;
 import com.devwuu.mocha.agent.conversation.ConversationTranscript;
-import com.devwuu.mocha.agent.prompt.AgentContextAssembler;
-import com.devwuu.mocha.agent.prompt.AgentTurnInput;
+import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
+import com.devwuu.mocha.agent.prompt.TurnPrompt;
 import com.devwuu.mocha.agent.tool.ToolCallback;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
 import com.devwuu.mocha.agent.tool.validation.EditProposalValidator;
@@ -94,7 +94,7 @@ class Change0023RegressionGuardTest {
                 new EditProposalValidator(), transcript, clock);
         // 버튼 미수신 경로만 돌리므로 커밋 핸들러는 접촉되지 않는다 — 접촉되면 null 협력자로 즉시 실패한다.
         AgentConversationRouter router = new AgentConversationRouter(pendingStore, transcript, agentClient,
-                toolCallbackProvider, new AgentContextAssembler(mapper, clock), segmenter, photoIntake,
+                toolCallbackProvider, new TurnPromptAssembler(mapper, clock), segmenter, photoIntake,
                 responder, new SlackCommitHandler(null, null, null, null, null, null), clock);
 
         // 턴 1: 다중 날짜 → 세그먼터 주입 성공(제안 없는 턴).
@@ -127,7 +127,7 @@ class Change0023RegressionGuardTest {
         int calls;
 
         @Override
-        public String runTurn(AgentTurnInput context, List<ToolCallback> tools) {
+        public String runTurn(TurnPrompt context, List<ToolCallback> tools) {
             calls++;
             return "네 멍!";
         }

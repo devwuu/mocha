@@ -1,6 +1,6 @@
 package com.devwuu.mocha.agent;
 
-import com.devwuu.mocha.agent.prompt.AgentTurnInput;
+import com.devwuu.mocha.agent.prompt.TurnPrompt;
 import com.devwuu.mocha.agent.tool.ToolCallback;
 
 import java.util.List;
@@ -20,5 +20,5 @@ public interface AgentClient {
      *
      * @throws AgentException 모델 호출 실패, tool 호출 상한 도달 등 턴 미완결 시(ADR-48 폴백 대상)
      */
-    String runTurn(AgentTurnInput context, List<ToolCallback> tools);
+    String runTurn(TurnPrompt context, List<ToolCallback> tools);
 }

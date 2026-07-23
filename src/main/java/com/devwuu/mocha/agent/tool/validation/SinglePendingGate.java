@@ -10,6 +10,8 @@ import java.time.LocalDate;
  * 단일 대기 게이트 패밀리(FR-22/AC-30) — 확인 대기(pending) 중 다른 대상의 제안을 거부하고, 같은
  * 대상의 재호출만 FR-5 갱신 경로로 통과시킨다. record·edit 진입점이 거부 문안을 공유한다
  * (ref: specs/coffee-note-agent/plan.md#ADR-45·ADR-64 — 추출은 배치 변경, 판정·문안 불변).
+ * <p>예외 — 훼손 pending(draft·target·coffee_name 누락) null 가드는 추출 시점(0024 리뷰 반영)에 추가된
+ * 신규 판정 동작이다: 종전 NPE→일반 tool 오류 대신 사유 있는 거부("대상 미상")로 수렴한다.
  */
 final class SinglePendingGate {
 

@@ -5,7 +5,7 @@ import com.devwuu.mocha.agent.conversation.ConversationTranscript;
 import com.devwuu.mocha.agent.conversation.TranscriptTurn;
 import com.devwuu.mocha.agent.tool.validation.EditProposalValidator;
 import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
-import com.devwuu.mocha.agent.turn.TurnUtterance;
+import com.devwuu.mocha.agent.turn.TurnUserMessage;
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Bean;
 import com.devwuu.mocha.domain.Brew;
@@ -63,7 +63,7 @@ class ToolCallbackProviderTest {
     private static final String USER = "U-dev";
     private static final String CHANNEL = "C-mocha";
     // TΔ2b 배선: 원문은 아직 판정에 쓰이지 않는다 — 기존 단언 전부 원문 실린 조립으로 검증(동작 불변).
-    private static final TurnUtterance UTTERANCE = new TurnUtterance("7월 16일 새콤하고 좋았음", null);
+    private static final TurnUserMessage UTTERANCE = new TurnUserMessage("7월 16일 새콤하고 좋았음", null);
 
     @TempDir
     Path artifactDir;

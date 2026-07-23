@@ -15,9 +15,9 @@ import java.util.List;
  *                 합류하므로 이 값 하나로 충분하다(§C-5).
  * @param segments 다중 날짜 자동 분해 결과(날짜별 원문 발췌) — 분해 미수행(단일 날짜)·세그먼터 실패 턴은 null.
  */
-public record TurnUtterance(String rawText, List<Segment> segments) {
+public record TurnUserMessage(String rawText, List<Segment> segments) {
 
-    public TurnUtterance {
+    public TurnUserMessage {
         segments = segments == null ? null : List.copyOf(segments);
     }
 

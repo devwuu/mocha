@@ -2,12 +2,12 @@ package com.devwuu.mocha.smoke;
 
 import com.devwuu.mocha.agent.OpenAiAgentClient;
 import com.devwuu.mocha.agent.conversation.ConversationTranscript;
-import com.devwuu.mocha.agent.prompt.AgentContextAssembler;
-import com.devwuu.mocha.agent.prompt.AgentTurnInput;
+import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
+import com.devwuu.mocha.agent.prompt.TurnPrompt;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
 import com.devwuu.mocha.agent.tool.validation.EditProposalValidator;
 import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
-import com.devwuu.mocha.agent.turn.TurnUtterance;
+import com.devwuu.mocha.agent.turn.TurnUserMessage;
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
@@ -76,11 +76,11 @@ class BeansExtractionSmokeTest {
         // 콜롬비아=내추럴), 원산지 쉼표 나열 ❌.
         String message = "어제 커피리브레 배드 블러드 마셨어. 에티오피아 워시드랑 콜롬비아 내추럴 섞은 블렌드래. "
                 + "고소하고 단맛이 좋았음.";
-        AgentTurnInput input = new AgentContextAssembler(mapper, clock)
+        TurnPrompt input = new TurnPromptAssembler(mapper, clock)
                 .assemble(message, List.of(), null, null, null);
 
         String reply = new OpenAiAgentClient(client, model, 10, 100_000, Duration.ofSeconds(60), mapper)
-                .runTurn(input, toolkit.forTurn(USER, CHANNEL, new TurnUtterance(message, null)));
+                .runTurn(input, toolkit.forTurn(USER, CHANNEL, new TurnUserMessage(message, null)));
 
         System.out.println("=== BEANS EXTRACTION SMOKE (TΔ3a, AC-64) model=" + model + " ===");
         System.out.println("입력      = " + message);

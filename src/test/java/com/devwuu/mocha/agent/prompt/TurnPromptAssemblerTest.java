@@ -2,7 +2,7 @@ package com.devwuu.mocha.agent.prompt;
 
 import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.agent.conversation.TranscriptTurn;
-import com.devwuu.mocha.agent.turn.TurnUtterance;
+import com.devwuu.mocha.agent.turn.TurnUserMessage;
 import com.devwuu.mocha.domain.Bean;
 import com.devwuu.mocha.domain.Brew;
 import com.devwuu.mocha.domain.Entry;
@@ -33,17 +33,17 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 조립되는지, OCR 실패·무정보가 컨텍스트에 새지 않는지(AC-28) 결정론적으로 확인한다
  * (ref: changes/0018 tasks.md TΔ7a, plan.md#ADR-44, spec FR-22).
  */
-class AgentContextAssemblerTest {
+class TurnPromptAssemblerTest {
 
     // Asia/Seoul 기준 2026-07-17 오전 — today 조립·상대 날짜 해석 기준(V-3)을 고정한다.
     private static final Clock FIXED = Clock.fixed(Instant.parse("2026-07-17T01:00:00Z"), ZoneId.of("Asia/Seoul"));
     private static final OffsetDateTime NOW = OffsetDateTime.of(2026, 7, 16, 10, 0, 0, 0, ZoneOffset.ofHours(9));
 
-    private AgentContextAssembler assembler;
+    private TurnPromptAssembler assembler;
 
     @BeforeEach
     void setUp() {
-        assembler = new AgentContextAssembler(MochaObjectMapper.create(), FIXED);
+        assembler = new TurnPromptAssembler(MochaObjectMapper.create(), FIXED);
     }
 
     private static Note draft() {
@@ -62,20 +62,20 @@ class AgentContextAssemblerTest {
                 new TranscriptTurn("저번에 마신 예가체프 있잖아", "이 기록 말이냐멍?"),
                 new TranscriptTurn("응 그거", "카드 보냈다멍!"));
 
-        AgentTurnInput context = assembler.assemble("그거 수정할래", transcript, null, null, null);
+        TurnPrompt context = assembler.assemble("그거 수정할래", transcript, null, null, null);
 
-        assertThat(context.messages()).extracting(AgentInputMessage::role).containsExactly(
-                AgentInputMessage.Role.USER, AgentInputMessage.Role.MOCHA,
-                AgentInputMessage.Role.USER, AgentInputMessage.Role.MOCHA,
-                AgentInputMessage.Role.USER);
-        assertThat(context.messages()).extracting(AgentInputMessage::content).containsExactly(
+        assertThat(context.messages()).extracting(TurnPrompt.Message::role).containsExactly(
+                TurnPrompt.Message.Role.USER, TurnPrompt.Message.Role.MOCHA,
+                TurnPrompt.Message.Role.USER, TurnPrompt.Message.Role.MOCHA,
+                TurnPrompt.Message.Role.USER);
+        assertThat(context.messages()).extracting(TurnPrompt.Message::content).containsExactly(
                 "저번에 마신 예가체프 있잖아", "이 기록 말이냐멍?", "응 그거", "카드 보냈다멍!", "그거 수정할래");
     }
 
     @Test
     @DisplayName("ADR-46: 빈 트랜스크립트(접힘 직후·첫 턴)는 이번 발화 1건만 싣는다")
     void emptyTranscriptYieldsSingleMessage() {
-        AgentTurnInput context = assembler.assemble("커피베라 예가체프 마셨어", List.of(), null, null, null);
+        TurnPrompt context = assembler.assemble("커피베라 예가체프 마셨어", List.of(), null, null, null);
 
         assertThat(context.messages()).hasSize(1);
         assertThat(context.messages().get(0).content()).isEqualTo("커피베라 예가체프 마셨어");
@@ -84,7 +84,7 @@ class AgentContextAssemblerTest {
     @Test
     @DisplayName("ADR-44: instructions = 시스템 프롬프트 + today(Asia/Seoul) 컨텍스트")
     void instructionsCarrySystemPromptAndToday() {
-        AgentTurnInput context = assembler.assemble("안녕", List.of(), null, null, null);
+        TurnPrompt context = assembler.assemble("안녕", List.of(), null, null, null);
 
         assertThat(context.instructions()).startsWith(AgentSystemPrompt.INSTRUCTIONS);
         assertThat(context.instructions()).contains("today: 2026-07-17 (Asia/Seoul)");
@@ -93,7 +93,7 @@ class AgentContextAssemblerTest {
     @Test
     @DisplayName("pending 부재 시 '없음'으로 명시된다 — 대기 상태 오인 방지")
     void statesAbsenceOfPending() {
-        AgentTurnInput context = assembler.assemble("안녕", List.of(), null, null, null);
+        TurnPrompt context = assembler.assemble("안녕", List.of(), null, null, null);
 
         assertThat(context.instructions()).contains("확인 대기(pending): 없음");
     }
@@ -103,7 +103,7 @@ class AgentContextAssemblerTest {
     void includesRecordPendingDraft() {
         PendingNote pending = new PendingNote(draft(), MatchInfo.newNote(), "171.001", NOW);
 
-        AgentTurnInput context = assembler.assemble("산미는 낮음으로 바꿔줘", List.of(), pending, null, null);
+        TurnPrompt context = assembler.assemble("산미는 낮음으로 바꿔줘", List.of(), pending, null, null);
 
         assertThat(context.instructions()).contains("\"mode\":\"record\"");
         assertThat(context.instructions()).contains("\"type\":\"new\"");
@@ -120,7 +120,7 @@ class AgentContextAssemblerTest {
                 new PendingNote.EditTarget("2026-07-16-100000", LocalDate.of(2026, 7, 16)),
                 null, null, NOW).withDateConflict(true);
 
-        AgentTurnInput context = assembler.assemble("역시 원래 날짜로 둘래", List.of(), pending, null, null);
+        TurnPrompt context = assembler.assemble("역시 원래 날짜로 둘래", List.of(), pending, null, null);
 
         assertThat(context.instructions()).contains("\"mode\":\"edit\"");
         assertThat(context.instructions()).contains("\"target\":{\"slug\":\"2026-07-16-100000\",\"date\":\"2026-07-16\"}");
@@ -135,7 +135,7 @@ class AgentContextAssemblerTest {
                         new VisionExtraction.Bean("에티오피아", null)),
                 null, List.of("청포도"));
 
-        AgentTurnInput context = assembler.assemble("이거 마셨는데 좋았어", List.of(), null, ocr, null);
+        TurnPrompt context = assembler.assemble("이거 마셨는데 좋았어", List.of(), null, ocr, null);
 
         assertThat(context.instructions()).contains("수신 사진 OCR 결과");
         assertThat(context.instructions()).contains("source=photo");
@@ -151,11 +151,11 @@ class AgentContextAssemblerTest {
     @DisplayName("ADR-61/TΔ3b: 다중 날짜 세그먼트가 active_date(가장 이른 날짜)와 함께 컨텍스트에 실린다")
     void includesSegmentsWithEarliestActiveDate() {
         // 입력 순서를 일부러 뒤집는다 — active_date가 목록 순서가 아니라 최솟값 계산임을 단언한다.
-        List<TurnUtterance.Segment> segments = List.of(
-                new TurnUtterance.Segment(LocalDate.of(2026, 7, 16), "16일엔 케냐가 진했음"),
-                new TurnUtterance.Segment(LocalDate.of(2026, 7, 15), "7월 15일 에티오피아 새콤했음"));
+        List<TurnUserMessage.Segment> segments = List.of(
+                new TurnUserMessage.Segment(LocalDate.of(2026, 7, 16), "16일엔 케냐가 진했음"),
+                new TurnUserMessage.Segment(LocalDate.of(2026, 7, 15), "7월 15일 에티오피아 새콤했음"));
 
-        AgentTurnInput context = assembler.assemble("이틀치 기록해줘", List.of(), null, null, segments);
+        TurnPrompt context = assembler.assemble("이틀치 기록해줘", List.of(), null, null, segments);
 
         assertThat(context.instructions()).contains("다중 날짜 자동 분해 세그먼트");
         assertThat(context.instructions()).contains("\"active_date\":\"2026-07-15\"");
@@ -167,7 +167,7 @@ class AgentContextAssemblerTest {
     @Test
     @DisplayName("ADR-61: 분해 미수행·세그먼터 실패 턴(segments=null)은 세그먼트 항목을 싣지 않는다 — 흐름 불변")
     void omitsAbsentSegments() {
-        AgentTurnInput context = assembler.assemble("이거 마셨어", List.of(), null, null, null);
+        TurnPrompt context = assembler.assemble("이거 마셨어", List.of(), null, null, null);
 
         // 주입 블록의 bullet 마커로 부재를 단언한다 — 시스템 프롬프트 정책 문구에도 "세그먼트"가
         // 등장하므로(TΔ3d 순차 제안 개정) 낱말 단위 단언은 못 쓴다.
@@ -177,8 +177,8 @@ class AgentContextAssemblerTest {
     @Test
     @DisplayName("AC-28: OCR 부재·실패(empty)는 컨텍스트에 싣지 않는다 — 흐름 불변")
     void omitsAbsentOrEmptyOcr() {
-        AgentTurnInput without = assembler.assemble("이거 마셨어", List.of(), null, null, null);
-        AgentTurnInput empty = assembler.assemble("이거 마셨어", List.of(), null, VisionExtraction.empty(), null);
+        TurnPrompt without = assembler.assemble("이거 마셨어", List.of(), null, null, null);
+        TurnPrompt empty = assembler.assemble("이거 마셨어", List.of(), null, VisionExtraction.empty(), null);
 
         assertThat(without.instructions()).doesNotContain("수신 사진 OCR 결과");
         assertThat(empty.instructions()).doesNotContain("수신 사진 OCR 결과");

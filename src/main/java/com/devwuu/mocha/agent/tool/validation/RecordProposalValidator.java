@@ -3,7 +3,7 @@ package com.devwuu.mocha.agent.tool.validation;
 import com.devwuu.mocha.agent.tool.ProposeRecordArgs;
 import com.devwuu.mocha.agent.tool.RecordProposal;
 import com.devwuu.mocha.agent.turn.TastingDateDetector;
-import com.devwuu.mocha.agent.turn.TurnUtterance;
+import com.devwuu.mocha.agent.turn.TurnUserMessage;
 import com.devwuu.mocha.domain.Bean;
 import com.devwuu.mocha.domain.Brew;
 import com.devwuu.mocha.domain.MatchInfo;
@@ -56,7 +56,7 @@ public class RecordProposalValidator {
      *                  이번 턴 원문만 본다 — 트랜스크립트의 과거 발화는 탐지 대상이 아니다(ADR-60).
      */
     public ToolValidation<RecordProposal> validate(ProposeRecordArgs args, PendingNote pending,
-                                                   TurnUtterance utterance) {
+                                                   TurnUserMessage utterance) {
         try {
             Sourced<String> coffeeName = SourceRules.sourced(
                     "coffee_name", args.coffeeName(), SourceRules.COFFEE_NAME_SOURCES);
@@ -104,7 +104,7 @@ public class RecordProposalValidator {
     // "저장 후 이어서" 턴의 나중 날짜 제안을 게이트가 막지 않는다.
     // 거부 사유는 판단 근거(탐지 집합·위반 이유·다음 행동)를 담아 루프 내 자가 정정을 돕는다 —
     // bare rejection 금지(ADR-60 POLICY).
-    private void requireSingleDateOrSegmented(TurnUtterance utterance, LocalDate targetDate) {
+    private void requireSingleDateOrSegmented(TurnUserMessage utterance, LocalDate targetDate) {
         NavigableSet<LocalDate> detected = TastingDateDetector.detect(
                 utterance == null ? null : utterance.rawText(), LocalDate.now(clock));
         if (detected.size() < 2) {

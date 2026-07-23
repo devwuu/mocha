@@ -3,8 +3,8 @@ package com.devwuu.mocha.agent.prompt;
 /**
  * 에이전트 턴의 시스템 프롬프트 — 모카 페르소나·대화 경계·필드 값 정책의 단일 소유 지점
  * (ref: specs/coffee-note-agent/plan.md#ADR-47/#ADR-49, spec FR-22/FR-24; changes/0018 TΔ7a).
- * <p>동적 컨텍스트(트랜스크립트·pending·OCR·today)는 여기 없다 — {@link AgentContextAssembler}가
- * 이 프롬프트에 턴 컨텍스트를 덧붙여 {@link AgentTurnInput}를 만든다(ADR-44).
+ * <p>동적 컨텍스트(트랜스크립트·pending·OCR·today)는 여기 없다 — {@link TurnPromptAssembler}가
+ * 이 프롬프트에 턴 컨텍스트를 덧붙여 {@link TurnPrompt}를 만든다(ADR-44).
  * <p>POLICY: 커피와 무관한 발화에 tool 호출 금지 — 잡담 턴은 pending·노트를 만들지 않는다.
  * 페르소나·경계 문구는 시스템 프롬프트 단일 소유 (ref: plan.md#ADR-47, spec AC-20).
  * <p>POLICY: coffee_name·roastery는 원문 표기 유지(음차·번역 금지) — 언어 규칙은 에이전트 시스템

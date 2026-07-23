@@ -1,7 +1,7 @@
 package com.devwuu.mocha.config;
 
 import com.devwuu.mocha.agent.conversation.ConversationTranscript;
-import com.devwuu.mocha.agent.prompt.AgentContextAssembler;
+import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
 import com.devwuu.mocha.agent.tool.validation.EditProposalValidator;
 import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
@@ -51,8 +51,8 @@ public class RouterConfig {
 
     // 턴 컨텍스트 조립기(ADR-44·TΔ7a) — 트랜스크립트·pending·OCR·세그먼트를 모델 입력으로 직렬화.
     @Bean
-    public AgentContextAssembler agentContextAssembler(ObjectMapper mapper, Clock clock) {
-        return new AgentContextAssembler(mapper, clock);
+    public TurnPromptAssembler turnPromptAssembler(ObjectMapper mapper, Clock clock) {
+        return new TurnPromptAssembler(mapper, clock);
     }
 
     // function tool 5종 façade(ADR-44·45) — 도메인 협력자를 받아 역할별 구현(조회·제안 축)을 내부 조립한다.

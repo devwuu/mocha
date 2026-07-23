@@ -2,12 +2,12 @@ package com.devwuu.mocha.smoke;
 
 import com.devwuu.mocha.agent.OpenAiAgentClient;
 import com.devwuu.mocha.agent.conversation.ConversationTranscript;
-import com.devwuu.mocha.agent.prompt.AgentContextAssembler;
-import com.devwuu.mocha.agent.prompt.AgentTurnInput;
+import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
+import com.devwuu.mocha.agent.prompt.TurnPrompt;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
 import com.devwuu.mocha.agent.tool.validation.EditProposalValidator;
 import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
-import com.devwuu.mocha.agent.turn.TurnUtterance;
+import com.devwuu.mocha.agent.turn.TurnUserMessage;
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
@@ -95,7 +95,7 @@ class BrewRulesSmokeTest {
         runProposalSmoke("MULTI-DATE FALLBACK (AC-Δ2 폴백)", sampleWhole(), null);
     }
 
-    private void runProposalSmoke(String label, String message, List<TurnUtterance.Segment> segments) throws Exception {
+    private void runProposalSmoke(String label, String message, List<TurnUserMessage.Segment> segments) throws Exception {
         String apiKey = resolveApiKey();
         assumeTrue(apiKey != null && !apiKey.isBlank(), "OPENAI_API_KEY 미설정 — 스모크 스킵");
 
@@ -109,11 +109,11 @@ class BrewRulesSmokeTest {
                 new PrintingResponder(), Path.of("build/smoke-artifact"), mapper, pendingStore,
                 new StubPreviewMessenger(), new RecordProposalValidator(clock), new EditProposalValidator(),
                 new ConversationTranscript(20, Duration.ofHours(1), clock), clock);
-        AgentTurnInput input = new AgentContextAssembler(mapper, clock)
+        TurnPrompt input = new TurnPromptAssembler(mapper, clock)
                 .assemble(message, List.of(), null, null, segments);
 
         String reply = new OpenAiAgentClient(client, model, 10, 100_000, Duration.ofSeconds(60), mapper)
-                .runTurn(input, toolkit.forTurn(USER, CHANNEL, new TurnUtterance(message, segments)));
+                .runTurn(input, toolkit.forTurn(USER, CHANNEL, new TurnUserMessage(message, segments)));
 
         System.out.println("=== BREW RULES SMOKE (" + label + ") model=" + model + " ===");
         System.out.println("입력      = " + message);
@@ -142,13 +142,13 @@ class BrewRulesSmokeTest {
 
     // AC-Δ2의 세그먼트 컨텍스트 — sample.md를 날짜 헤더 기준으로 수동 분할해 실 세그먼터 콜을 대체한다
     // (결정론·비용 절약). 분할 규칙은 세그먼터 계약과 동일: 원문 보존, 날짜별 1세그먼트(ADR-61).
-    private static List<TurnUtterance.Segment> sampleSegments() throws Exception {
+    private static List<TurnUserMessage.Segment> sampleSegments() throws Exception {
         String whole = sampleWhole();
         int cut = whole.indexOf("2026 07 19");
         assumeTrue(cut > 0, "ideas/sample.md 형식 변경 — 07-19 마커 없음");
         return List.of(
-                new TurnUtterance.Segment(LocalDate.of(2026, 7, 18), whole.substring(0, cut).strip()),
-                new TurnUtterance.Segment(LocalDate.of(2026, 7, 19), whole.substring(cut).strip()));
+                new TurnUserMessage.Segment(LocalDate.of(2026, 7, 18), whole.substring(0, cut).strip()),
+                new TurnUserMessage.Segment(LocalDate.of(2026, 7, 19), whole.substring(cut).strip()));
     }
 
     private static String sampleWhole() throws Exception {

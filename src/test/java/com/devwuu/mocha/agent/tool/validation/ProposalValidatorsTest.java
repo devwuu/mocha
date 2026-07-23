@@ -7,7 +7,7 @@ import com.devwuu.mocha.agent.tool.ProposeEditArgs;
 import com.devwuu.mocha.agent.tool.ProposeRecordArgs;
 import com.devwuu.mocha.agent.tool.RecordProposal;
 import com.devwuu.mocha.agent.tool.SourcedArg;
-import com.devwuu.mocha.agent.turn.TurnUtterance;
+import com.devwuu.mocha.agent.turn.TurnUserMessage;
 import com.devwuu.mocha.domain.Bean;
 import com.devwuu.mocha.domain.Brew;
 import com.devwuu.mocha.domain.MatchInfo;
@@ -126,20 +126,20 @@ class ProposalValidatorsTest {
     // TΔ2b 배선: 기존 검증 단언 전부를 턴 원문(단일 날짜 = 게이트 비발동)이 실린 호출로 통과시켜
     // 배선 회귀를 상시 가드한다. 다중 날짜 원문의 판정(V-16 게이트)은 MultiDateGateV16이 단언한다.
     private ToolValidation<RecordProposal> validateRecord(ProposeRecordArgs args, PendingNote pending) {
-        return recordValidator.validate(args, pending, new TurnUtterance("7월 16일 새콤하고 좋았음", null));
+        return recordValidator.validate(args, pending, new TurnUserMessage("7월 16일 새콤하고 좋았음", null));
     }
 
     // ---- TΔ2b 턴 원문 배선 ----
 
     @Nested
-    class TurnUtteranceWiringT2b {
+    class TurnUserMessageWiringT2b {
 
         @Test
         @DisplayName("TΔ2b: 게이트 비발동 원문(null·단일 날짜)이면 판정 결과는 동일하다 — 배선 자체는 판정에 영향 없음")
         void utteranceWiringDoesNotAffectJudgement() {
             RecordProposal withoutUtterance = okOf(recordValidator.validate(recordArgs(), null, null));
             RecordProposal withSingleDate = okOf(recordValidator.validate(recordArgs(), null,
-                    new TurnUtterance("7월 16일 새콤하고 좋았음", null)));
+                    new TurnUserMessage("7월 16일 새콤하고 좋았음", null)));
             assertThat(withSingleDate).isEqualTo(withoutUtterance);
         }
     }
@@ -154,7 +154,7 @@ class ProposalValidatorsTest {
         @DisplayName("AC-Δ1: 다중 날짜 원문의 분해 우회 제안(세그먼트 부재)은 거부된다 — 사유에 탐지 집합·다음 행동 포함")
         void multiDateWithoutSegmentsRejectedWithReason() {
             String reason = rejectionOf(recordValidator.validate(recordArgs(), null,
-                    new TurnUtterance("7월 16일은 새콤했고 7월 17일은 고소했음", null)));
+                    new TurnUserMessage("7월 16일은 새콤했고 7월 17일은 고소했음", null)));
             assertThat(reason)
                     .contains("2026-07-16").contains("2026-07-17")   // 탐지 날짜 집합
                     .contains("V-16")                                 // 위반 이유
@@ -164,13 +164,13 @@ class ProposalValidatorsTest {
         @Test
         @DisplayName("AC-Δ1: target_date가 탐지 집합 밖이면 세그먼트가 있어도 거부된다 — 사유에 가장 이른 날짜 안내")
         void targetDateOutsideDetectedSetRejected() {
-            List<TurnUtterance.Segment> segments = List.of(
-                    new TurnUtterance.Segment(LocalDate.of(2026, 7, 16), "7월 16일은 새콤했음"),
-                    new TurnUtterance.Segment(LocalDate.of(2026, 7, 17), "7월 17일은 고소했음"));
+            List<TurnUserMessage.Segment> segments = List.of(
+                    new TurnUserMessage.Segment(LocalDate.of(2026, 7, 16), "7월 16일은 새콤했음"),
+                    new TurnUserMessage.Segment(LocalDate.of(2026, 7, 17), "7월 17일은 고소했음"));
             String reason = rejectionOf(recordValidator.validate(
                     recordArgs("커피베라 예가체프 G1", "맛있다", "2026-07-20",
                             new ProposeRecordArgs.MatchArg("new", null, null)),
-                    null, new TurnUtterance("7월 16일은 새콤했고 7월 17일은 고소했음", segments)));
+                    null, new TurnUserMessage("7월 16일은 새콤했고 7월 17일은 고소했음", segments)));
             assertThat(reason)
                     .contains("2026-07-20")                          // 위반 이유 — 집합 밖 target_date
                     .contains("2026-07-16").contains("2026-07-17")   // 탐지 날짜 집합
@@ -180,10 +180,10 @@ class ProposalValidatorsTest {
         @Test
         @DisplayName("AC-Δ2: 세그먼트 분해가 수행되고 target_date가 탐지 집합 안이면 통과한다 — V-16 완성형(TΔ3c)")
         void segmentedProposalWithinDetectedSetPasses() {
-            List<TurnUtterance.Segment> segments = List.of(
-                    new TurnUtterance.Segment(LocalDate.of(2026, 7, 16), "7월 16일은 새콤했음"),
-                    new TurnUtterance.Segment(LocalDate.of(2026, 7, 17), "7월 17일은 고소했음"));
-            TurnUtterance utterance = new TurnUtterance("7월 16일은 새콤했고 7월 17일은 고소했음", segments);
+            List<TurnUserMessage.Segment> segments = List.of(
+                    new TurnUserMessage.Segment(LocalDate.of(2026, 7, 16), "7월 16일은 새콤했음"),
+                    new TurnUserMessage.Segment(LocalDate.of(2026, 7, 17), "7월 17일은 고소했음"));
+            TurnUserMessage utterance = new TurnUserMessage("7월 16일은 새콤했고 7월 17일은 고소했음", segments);
 
             // 순차 제안의 첫 턴 — 가장 이른 날짜 세그먼트의 제안이 통과한다.
             RecordProposal earliest = okOf(recordValidator.validate(recordArgs(), null, utterance));
@@ -202,7 +202,7 @@ class ProposalValidatorsTest {
         @DisplayName("V-16/ADR-60: 상대 날짜는 세지 않는다 — 절대 날짜 1개 + 상대 날짜 발화는 게이트 비발동")
         void relativeDatesDoNotTriggerGate() {
             okOf(recordValidator.validate(recordArgs(), null,
-                    new TurnUtterance("어제는 별로였는데 7월 16일은 새콤하고 좋았음", null)));
+                    new TurnUserMessage("어제는 별로였는데 7월 16일은 새콤하고 좋았음", null)));
         }
 
         @Test

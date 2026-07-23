@@ -3,8 +3,7 @@ package com.devwuu.mocha.agent;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
-import com.devwuu.mocha.agent.prompt.AgentInputMessage;
-import com.devwuu.mocha.agent.prompt.AgentTurnInput;
+import com.devwuu.mocha.agent.prompt.TurnPrompt;
 import com.devwuu.mocha.agent.tool.ToolCallback;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.openai.models.responses.FunctionTool;
@@ -236,8 +235,8 @@ class OpenAiAgentClientTest {
         ScriptedAgentClient client = new ScriptedAgentClient(8, List.of(
                 response("resp_1", message("안녕하다멍"))));
 
-        client.runTurn(new AgentTurnInput("모카 시스템 프롬프트",
-                        List.of(AgentInputMessage.mocha("이전 답"), AgentInputMessage.user("안녕"))),
+        client.runTurn(new TurnPrompt("모카 시스템 프롬프트",
+                        List.of(TurnPrompt.Message.mocha("이전 답"), TurnPrompt.Message.user("안녕"))),
                 List.of(getNoteTool(args -> "{}")));
 
         ResponseCreateParams first = client.sent.get(0);
@@ -307,8 +306,8 @@ class OpenAiAgentClientTest {
 
     // ---- fake 조립 헬퍼 ----
 
-    private static AgentTurnInput context(String userText) {
-        return new AgentTurnInput("시스템 프롬프트", List.of(AgentInputMessage.user(userText)));
+    private static TurnPrompt context(String userText) {
+        return new TurnPrompt("시스템 프롬프트", List.of(TurnPrompt.Message.user(userText)));
     }
 
     private static ToolCallback getNoteTool(ToolCallback.Executor executor) {

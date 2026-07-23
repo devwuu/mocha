@@ -11,14 +11,39 @@ import java.util.Objects;
  * @param instructions 시스템 프롬프트(페르소나·정책 — ADR-47·49)
  * @param messages     대화 메시지(트랜스크립트 재구성 + 이번 발화 — 마지막이 이번 사용자 발화)
  */
-public record AgentTurnInput(String instructions, List<AgentInputMessage> messages) {
+public record TurnPrompt(String instructions, List<Message> messages) {
 
-    public AgentTurnInput {
+    public TurnPrompt {
         Objects.requireNonNull(instructions, "instructions");
         Objects.requireNonNull(messages, "messages");
         if (messages.isEmpty()) {
             throw new IllegalArgumentException("messages가 비어 있음 — 에이전트 턴에는 최소 1개의 입력 메시지가 필요");
         }
         messages = List.copyOf(messages);
+    }
+
+    /**
+     * 턴 프롬프트의 대화 메시지 1건 — 트랜스크립트(ADR-46)를 모델 입력으로 재구성하는 단위
+     * (ref: specs/coffee-note-agent/plan.md#ADR-44, findings-TΔ0.md §SDK — 턴과 턴 사이 문맥은
+     * 메모리 트랜스크립트가 소유하고, 새 턴 시작 시 role user/mocha 메시지로 재구성한다).
+     */
+    public record Message(Role role, String content) {
+
+        public enum Role {
+            USER, MOCHA
+        }
+
+        public Message {
+            Objects.requireNonNull(role, "role");
+            Objects.requireNonNull(content, "content");
+        }
+
+        public static Message user(String content) {
+            return new Message(Role.USER, content);
+        }
+
+        public static Message mocha(String content) {
+            return new Message(Role.MOCHA, content);
+        }
     }
 }

@@ -1,7 +1,6 @@
 package com.devwuu.mocha.agent;
 
-import com.devwuu.mocha.agent.prompt.AgentInputMessage;
-import com.devwuu.mocha.agent.prompt.AgentTurnInput;
+import com.devwuu.mocha.agent.prompt.TurnPrompt;
 import com.devwuu.mocha.agent.tool.ToolCallback;
 import com.openai.client.OpenAIClient;
 import com.openai.core.JsonValue;
@@ -60,7 +59,7 @@ public class OpenAiAgentClient implements AgentClient {
     }
 
     @Override
-    public String runTurn(AgentTurnInput context, List<ToolCallback> tools) {
+    public String runTurn(TurnPrompt context, List<ToolCallback> tools) {
         long started = System.currentTimeMillis();
         Map<String, ToolCallback> toolsByName = new LinkedHashMap<>();
         tools.forEach(tool -> toolsByName.put(tool.name(), tool));
@@ -226,9 +225,9 @@ public class OpenAiAgentClient implements AgentClient {
                 .build();
     }
 
-    private static ResponseInputItem toInputItem(AgentInputMessage message) {
+    private static ResponseInputItem toInputItem(TurnPrompt.Message message) {
         return ResponseInputItem.ofEasyInputMessage(EasyInputMessage.builder()
-                .role(message.role() == AgentInputMessage.Role.USER
+                .role(message.role() == TurnPrompt.Message.Role.USER
                         ? EasyInputMessage.Role.USER
                         : EasyInputMessage.Role.ASSISTANT)
                 .content(message.content())

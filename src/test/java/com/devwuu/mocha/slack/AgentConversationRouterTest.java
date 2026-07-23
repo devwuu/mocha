@@ -4,9 +4,8 @@ import com.devwuu.mocha.agent.AgentClient;
 import com.devwuu.mocha.agent.AgentException;
 import com.devwuu.mocha.agent.conversation.ConversationTranscript;
 import com.devwuu.mocha.agent.conversation.TranscriptTurn;
-import com.devwuu.mocha.agent.prompt.AgentContextAssembler;
-import com.devwuu.mocha.agent.prompt.AgentInputMessage;
-import com.devwuu.mocha.agent.prompt.AgentTurnInput;
+import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
+import com.devwuu.mocha.agent.prompt.TurnPrompt;
 import com.devwuu.mocha.agent.tool.ToolCallback;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
 import com.devwuu.mocha.agent.tool.validation.EditProposalValidator;
@@ -90,7 +89,7 @@ class AgentConversationRouterTest {
                 Path.of("unused-artifact"), MochaObjectMapper.create(), pendingStore, null,
                 new RecordProposalValidator(clock), new EditProposalValidator(), transcript, clock);
         router = new AgentConversationRouter(pendingStore, transcript, agentClient, toolCallbackProvider,
-                new AgentContextAssembler(MochaObjectMapper.create(), clock), segmenter, photoIntake,
+                new TurnPromptAssembler(MochaObjectMapper.create(), clock), segmenter, photoIntake,
                 responder, commitHandler, clock);
     }
 
@@ -104,8 +103,8 @@ class AgentConversationRouterTest {
         assertThat(agentClient.calls).isEqualTo(1);
         assertThat(responder.posted).containsExactly("커피 얘기 좋아요 멍! 🐾");
         // 이번 발화가 messages의 마지막 user 메시지로 실린다(TΔ7a 조립 계약).
-        List<AgentInputMessage> messages = agentClient.lastContext.messages();
-        assertThat(messages.get(messages.size() - 1)).isEqualTo(AgentInputMessage.user("요즘 커피 뭐가 맛있어?"));
+        List<TurnPrompt.Message> messages = agentClient.lastContext.messages();
+        assertThat(messages.get(messages.size() - 1)).isEqualTo(TurnPrompt.Message.user("요즘 커피 뭐가 맛있어?"));
         assertThat(agentClient.lastTools).extracting(ToolCallback::name).containsExactly(
                 "list_notes", "get_note", "propose_record", "propose_edit", "send_entry_card");
         // 제안 없는 턴은 트랜스크립트에 쌓인다(FR-23) — 다음 턴의 문맥이 된다.
@@ -294,11 +293,11 @@ class AgentConversationRouterTest {
         RuntimeException failure;
         Runnable onRun;
         int calls;
-        AgentTurnInput lastContext;
+        TurnPrompt lastContext;
         List<ToolCallback> lastTools;
 
         @Override
-        public String runTurn(AgentTurnInput context, List<ToolCallback> tools) {
+        public String runTurn(TurnPrompt context, List<ToolCallback> tools) {
             calls++;
             lastContext = context;
             lastTools = tools;

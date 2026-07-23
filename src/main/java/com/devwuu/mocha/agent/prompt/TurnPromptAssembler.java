@@ -2,7 +2,7 @@ package com.devwuu.mocha.agent.prompt;
 
 import com.devwuu.mocha.agent.conversation.ConversationTranscript;
 import com.devwuu.mocha.agent.conversation.TranscriptTurn;
-import com.devwuu.mocha.agent.turn.TurnUtterance;
+import com.devwuu.mocha.agent.turn.TurnUserMessage;
 import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.llm.VisionExtraction;
 import tools.jackson.databind.ObjectMapper;
@@ -18,7 +18,7 @@ import java.util.Objects;
 
 /**
  * 에이전트 턴 컨텍스트 조립 — 트랜스크립트 + pending draft + OCR 결과 + 다중 날짜 세그먼트 + today를
- * {@link AgentTurnInput}(instructions·messages)로 만든다
+ * {@link TurnPrompt}(instructions·messages)로 만든다
  * (ref: specs/coffee-note-agent/plan.md#ADR-44, spec FR-22; changes/0018 TΔ7a).
  * <p>배치: 시스템 프롬프트({@link AgentSystemPrompt}) 뒤에 턴 컨텍스트(today·pending·OCR·세그먼트)를 덧붙여
  * instructions로, 트랜스크립트(ADR-46)는 user/mocha 메시지로 재구성해 이번 발화와 함께 messages로.
@@ -26,7 +26,7 @@ import java.util.Objects;
  * 컨텍스트에 싣지 않고 진행한다(AC-28, 흐름 불변). 다중 날짜 세그먼트도 같은 자리의 전처리 산물이다
  * (ADR-61, changes/0023 TΔ3b) — 분해 미수행·실패 턴(null)은 싣지 않는다(분리 안내 폴백과 정합).
  */
-public class AgentContextAssembler {
+public class TurnPromptAssembler {
 
     // 날짜 해석 기준은 Asia/Seoul(V-3) — 컨텍스트에 명시해 상대 날짜("엊그제")의 절대화 기준을 못박는다.
     private static final String TIMEZONE_LABEL = "Asia/Seoul";
@@ -34,7 +34,7 @@ public class AgentContextAssembler {
     private final ObjectMapper mapper;
     private final Clock clock;
 
-    public AgentContextAssembler(ObjectMapper mapper, Clock clock) {
+    public TurnPromptAssembler(ObjectMapper mapper, Clock clock) {
         this.mapper = mapper;
         this.clock = clock;
     }
@@ -47,27 +47,27 @@ public class AgentContextAssembler {
      * @param pending     확인 대기 — 없으면 null. draft가 곧 접힘 후 문맥의 압축본이다(ADR-46)
      * @param ocr         수신 사진 OCR 전처리 결과 — 사진 없음·실패·무정보면 null 또는 empty(AC-28)
      * @param segments    다중 날짜 자동 분해 결과(ADR-61) — 분해 미수행(단일 날짜)·세그먼터 실패 턴은 null.
-     *                    라우터가 검증 게이트({@code TurnUtterance})와 같은 값을 넘긴다(findings-TΔ0 §C-5 드리프트 방지)
+     *                    라우터가 검증 게이트({@code TurnUserMessage})와 같은 값을 넘긴다(findings-TΔ0 §C-5 드리프트 방지)
      */
-    public AgentTurnInput assemble(String userMessage, List<TranscriptTurn> transcript,
+    public TurnPrompt assemble(String userMessage, List<TranscriptTurn> transcript,
                                      PendingNote pending, VisionExtraction ocr,
-                                     List<TurnUtterance.Segment> segments) {
+                                     List<TurnUserMessage.Segment> segments) {
         Objects.requireNonNull(userMessage, "userMessage");
         Objects.requireNonNull(transcript, "transcript");
 
-        List<AgentInputMessage> messages = new ArrayList<>();
+        List<TurnPrompt.Message> messages = new ArrayList<>();
         for (TranscriptTurn turn : transcript) {
-            messages.add(AgentInputMessage.user(turn.userMessage()));
-            messages.add(AgentInputMessage.mocha(turn.mochaMessage()));
+            messages.add(TurnPrompt.Message.user(turn.userMessage()));
+            messages.add(TurnPrompt.Message.mocha(turn.mochaMessage()));
         }
-        messages.add(AgentInputMessage.user(userMessage));
+        messages.add(TurnPrompt.Message.user(userMessage));
 
-        return new AgentTurnInput(
+        return new TurnPrompt(
                 AgentSystemPrompt.INSTRUCTIONS + "\n" + turnContext(pending, ocr, segments), messages);
     }
 
     // 턴 컨텍스트 블록 — 프롬프트 정책이 참조하는 동적 사실(today·대기 상태·OCR·세그먼트)만 싣는다.
-    private String turnContext(PendingNote pending, VisionExtraction ocr, List<TurnUtterance.Segment> segments) {
+    private String turnContext(PendingNote pending, VisionExtraction ocr, List<TurnUserMessage.Segment> segments) {
         StringBuilder sb = new StringBuilder("## 이번 턴 컨텍스트\n");
         sb.append("- today: ").append(LocalDate.now(clock)).append(" (").append(TIMEZONE_LABEL)
                 .append(") — 상대 날짜는 이 날짜 기준으로 해석한다.\n");
@@ -91,9 +91,9 @@ public class AgentContextAssembler {
     }
 
     // 세그먼트 주입 조각 — 오름차순 계약(UtteranceSegmenter)에 기대지 않고 활성(가장 이른) 날짜를 직접 계산한다.
-    private static Map<String, Object> segmentContext(List<TurnUtterance.Segment> segments) {
+    private static Map<String, Object> segmentContext(List<TurnUserMessage.Segment> segments) {
         LocalDate activeDate = segments.stream()
-                .map(TurnUtterance.Segment::date)
+                .map(TurnUserMessage.Segment::date)
                 .min(Comparator.naturalOrder())
                 .orElseThrow(); // 호출부가 비어 있지 않음을 보장한다
         Map<String, Object> context = new LinkedHashMap<>();

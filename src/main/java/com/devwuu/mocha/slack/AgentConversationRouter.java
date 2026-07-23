@@ -3,11 +3,11 @@ package com.devwuu.mocha.slack;
 import com.devwuu.mocha.agent.AgentClient;
 import com.devwuu.mocha.agent.conversation.ConversationTranscript;
 import com.devwuu.mocha.agent.conversation.TranscriptTurn;
-import com.devwuu.mocha.agent.prompt.AgentContextAssembler;
-import com.devwuu.mocha.agent.prompt.AgentTurnInput;
+import com.devwuu.mocha.agent.prompt.TurnPrompt;
+import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
 import com.devwuu.mocha.agent.turn.TastingDateDetector;
-import com.devwuu.mocha.agent.turn.TurnUtterance;
+import com.devwuu.mocha.agent.turn.TurnUserMessage;
 import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.llm.UtteranceSegmenter;
 import com.devwuu.mocha.llm.VisionExtraction;
@@ -60,7 +60,7 @@ public class AgentConversationRouter implements ConversationRouter {
     private final ConversationTranscript transcript;
     private final AgentClient agentClient;
     private final ToolCallbackProvider toolCallbackProvider;
-    private final AgentContextAssembler contextAssembler;
+    private final TurnPromptAssembler promptAssembler;
     private final UtteranceSegmenter segmenter;
     private final SlackPhotoIntake photoIntake;
     private final SlackResponder responder;
@@ -75,7 +75,7 @@ public class AgentConversationRouter implements ConversationRouter {
             ConversationTranscript transcript,
             AgentClient agentClient,
             ToolCallbackProvider toolCallbackProvider,
-            AgentContextAssembler contextAssembler,
+            TurnPromptAssembler promptAssembler,
             UtteranceSegmenter segmenter,
             SlackPhotoIntake photoIntake,
             SlackResponder responder,
@@ -85,7 +85,7 @@ public class AgentConversationRouter implements ConversationRouter {
         this.transcript = transcript;
         this.agentClient = agentClient;
         this.toolCallbackProvider = toolCallbackProvider;
-        this.contextAssembler = contextAssembler;
+        this.promptAssembler = promptAssembler;
         this.segmenter = segmenter;
         this.photoIntake = photoIntake;
         this.responder = responder;
@@ -110,10 +110,10 @@ public class AgentConversationRouter implements ConversationRouter {
 
             // 다중 날짜 자동 분해(ADR-61) — OCR과 동렬의 루프 전 전처리. 탐지기가 절대 날짜 2개 이상을
             // 찾은 턴에만 세그먼터 1콜, 그 외·실패 턴은 null(주입 없음 — 게이트 V-16이 뭉뚱그림을 방어).
-            List<TurnUtterance.Segment> segments = segmentIfMultiDate(userId, message.text());
+            List<TurnUserMessage.Segment> segments = segmentIfMultiDate(userId, message.text());
 
             PendingNote pendingBefore = pendingStore.get(userId).orElse(null);
-            AgentTurnInput context = contextAssembler.assemble(
+            TurnPrompt context = promptAssembler.assemble(
                     message.text(), transcript.view(userId), pendingBefore, ocr, segments);
 
             log.info("에이전트 턴 진입: user={} buffered={} pending={} segments={}",
@@ -121,7 +121,7 @@ public class AgentConversationRouter implements ConversationRouter {
                     segments == null ? "-" : segments.size());
             // TΔ2b 배선: 턴 원문·세그먼트를 제안 검증기까지 나른다(다중 날짜 게이트 V-16의 판정 입력, ADR-60).
             // 라우터가 1회 만들어 조립기와 같은 값을 넘긴다 — 턴 안에서 값이 일관된다(findings-TΔ0 §C-5).
-            TurnUtterance utterance = new TurnUtterance(message.text(), segments);
+            TurnUserMessage utterance = new TurnUserMessage(message.text(), segments);
             String reply = agentClient.runTurn(context, toolCallbackProvider.forTurn(userId, channelId, utterance));
 
             // 모델의 최종 텍스트가 곧 Slack 응답이다(ADR-44) — 미리보기·카드는 tool 구현체가 이미 보냈다.
@@ -137,14 +137,14 @@ public class AgentConversationRouter implements ConversationRouter {
     }
 
     // 다중 날짜 턴의 세그먼트 분리(ADR-61) — 단일 날짜(탐지 2개 미만) 턴은 세그먼터를 부르지 않는다(무개입).
-    private List<TurnUtterance.Segment> segmentIfMultiDate(String userId, String text) {
+    private List<TurnUserMessage.Segment> segmentIfMultiDate(String userId, String text) {
         NavigableSet<LocalDate> dates = TastingDateDetector.detect(text, LocalDate.now(clock));
         if (dates.size() < 2) {
             return null;
         }
         try {
             return segmenter.segment(text, dates).stream()
-                    .map(s -> new TurnUtterance.Segment(s.date(), s.text()))
+                    .map(s -> new TurnUserMessage.Segment(s.date(), s.text()))
                     .toList();
         } catch (RuntimeException e) {
             // POLICY: 세그먼터 실패는 자동 분해 없이 진행 — 기록이 막히지 않고(턴 폴백 아님), 뭉뚱그림 제안은
