@@ -194,10 +194,10 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
     // taste.html을 회차 감상 파트 1건으로 렌더해 cards/<slug>/<date>-taste-<n>.jpg로 굽는다.
     private Path bakeTasteCard(Note note, Entry entry, Tasting tasting, int brewNumber) {
         NoteView.TasteCard card = new NoteView.TasteCard(
-                value(note.coffeeName()), // 제목은 값만 — 출처 무표기(제목=정체성, NoteView.TasteCard)
-                value(note.roastery()),
+                Sourced.valueOrNull(note.coffeeName()), // 제목은 값만 — 출처 무표기(제목=정체성, NoteView.TasteCard)
+                Sourced.valueOrNull(note.roastery()),
                 beanLines(note.beans()),
-                value(note.roastLevel()),
+                Sourced.valueOrNull(note.roastLevel()),
                 note.officialNotes() == null || note.officialNotes().value() == null
                         ? List.of() : note.officialNotes().value(),
                 entry.date(),
@@ -211,7 +211,7 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
     // recipe.html을 회차 레시피 파트 1건으로 렌더해 cards/<slug>/<date>-recipe-<n>.jpg로 굽는다.
     private Path bakeRecipeCard(Note note, Entry entry, Recipe recipe, int brewNumber) {
         NoteView.RecipeCard card = new NoteView.RecipeCard(
-                value(note.coffeeName()), value(note.roastery()), entry.date(), recipe);
+                Sourced.valueOrNull(note.coffeeName()), Sourced.valueOrNull(note.roastery()), entry.date(), recipe);
         Path out = CardFiles.recipeCard(artifactDir, note.slug(), entry.date(), brewNumber);
         cardImageRenderer.render(render("recipe", cardContext(card)), artifactDir, out);
         return out;
@@ -229,7 +229,7 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
             return List.of();
         }
         return beans.stream()
-                .map(b -> new NoteView.BeanLine(b.description().value(), value(b.process())))
+                .map(b -> new NoteView.BeanLine(b.description().value(), Sourced.valueOrNull(b.process())))
                 .toList();
     }
 
@@ -262,10 +262,6 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
 
     private String render(String templateName, Context ctx) {
         return templateEngine.process(theme.id() + "/" + templateName, ctx);
-    }
-
-    private static String value(Sourced<String> sourced) {
-        return sourced == null ? null : sourced.value();
     }
 
     // 템플릿이 참조하는 마스코트 자산을 artifact/ 루트로 복사한다(상대 경로 참조 대상, AC-Δ5).

@@ -41,8 +41,8 @@ class JsonFilePendingStoreTest {
     private static PendingNote sampleDraft(OffsetDateTime createdAt) {
         Note draft = new Note(
                 "coffeevera-yirgacheffe-g1",
-                Sourced.user("커피베라 예가체프 G1"),
-                Sourced.user("커피베라"),
+                new Sourced<>("커피베라 예가체프 G1", Source.USER),
+                new Sourced<>("커피베라", Source.USER),
                 List.of(new Bean(new Sourced<>("에티오피아 예가체프", Source.SEARCH), new Sourced<>("워시드", Source.SEARCH))),
                 new Sourced<>(null, Source.SEARCH),
                 new Sourced<>(List.of("자스민", "베르가못"), Source.SEARCH),

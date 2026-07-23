@@ -133,7 +133,7 @@ public class PreviewBlocks {
         blocks.add(header(h -> h.text(plainText(editMode ? HEADER_EDIT : HEADER))));
         blocks.add(section(s -> s.text(markdownText(editMode
                 ? editMatchLine(pending, entry)
-                : matchLine(pending.match(), value(draft.coffeeName()))))));
+                : matchLine(pending.match(), Sourced.valueOrNull(draft.coffeeName()))))));
         // POLICY: 날짜 이동 덮어쓰기는 미리보기 경고 표기 없이는 금지 — 충돌 플래그가 서 있으면 경고 섹션 필수
         //         (ref: specs/coffee-note-agent/plan.md#ADR-27, data-model.md#V-10, spec AC-39).
         if (editMode && pending.dateConflict() && entry != null) {
@@ -203,17 +203,13 @@ public class PreviewBlocks {
     // edit 모드 매칭 라인 — "기존 노트 수정" 명시(AC-15). 미리보기가 draft(저장될 내용)를 반영해야 하므로(FR-4)
     // 날짜 이동이 있으면 대상 날짜 → 새 날짜를 함께 표기한다.
     private static String editMatchLine(PendingNote pending, Entry entry) {
-        String coffeeName = value(pending.draft().coffeeName());
+        String coffeeName = Sourced.valueOrNull(pending.draft().coffeeName());
         LocalDate targetDate = pending.target().date();
         LocalDate entryDate = entry == null ? null : entry.date();
         if (entryDate != null && !entryDate.equals(targetDate)) {
             return String.format(MATCH_EDIT_MOVED_FMT, coffeeName, targetDate, entryDate);
         }
         return String.format(MATCH_EDIT_FMT, coffeeName, targetDate);
-    }
-
-    private static String value(Sourced<String> sourced) {
-        return sourced == null ? null : sourced.value();
     }
 
     // 회차 1개의 요약 — 헤더("{n}회차") + 레시피 + 감상(+평가)을 섹션 1개 텍스트로 구성한다(FR-4).

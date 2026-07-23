@@ -143,7 +143,7 @@ class SlackCommitHandlerTest {
         seedNote(repo, "ethiopia-chelbesa", "Ethiopia Chelbesa", "FroB", LocalDate.of(2026, 7, 1));
         Entry entry = entry(LocalDate.of(2026, 7, 11), "새콤", OffsetDateTime.now(clock));
         Note draft = new Note(
-                "ethiopia-chelbesa", Sourced.user("에티오피아 첼베사"), Sourced.user("프롭"),
+                "ethiopia-chelbesa", new Sourced<>("에티오피아 첼베사", Source.USER), new Sourced<>("프롭", Source.USER),
                 List.of(), null, null, List.of(),
                 List.of(entry), OffsetDateTime.now(clock), OffsetDateTime.now(clock));
         pendingStore.setPending(new PendingNote(
@@ -529,8 +529,8 @@ class SlackCommitHandlerTest {
     private static PendingNote pendingWith(String slug) {
         Entry entry = entry(LocalDate.of(2026, 7, 11), "새콤하고 좋았다", OffsetDateTime.now());
         Note draft = new Note(
-                slug, Sourced.user("커피베라 예가체프"),
-                Sourced.user("커피베라"), List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), null)), null,
+                slug, new Sourced<>("커피베라 예가체프", Source.USER),
+                new Sourced<>("커피베라", Source.USER), List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), null)), null,
                 null, List.of("https://example.com/coffee"),
                 List.of(entry), OffsetDateTime.now(), OffsetDateTime.now());
         return new PendingNote(draft, MatchInfo.newNote(), "1720000000.000999", OffsetDateTime.now());
@@ -540,8 +540,8 @@ class SlackCommitHandlerTest {
     private static PendingNote editPending(String slug, LocalDate targetDate, LocalDate newDate, String myTaste) {
         Entry entry = entry(newDate, myTaste, OffsetDateTime.now());
         Note draft = new Note(
-                slug, Sourced.user("커피베라 예가체프"),
-                Sourced.user("커피베라"), List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), null)), null,
+                slug, new Sourced<>("커피베라 예가체프", Source.USER),
+                new Sourced<>("커피베라", Source.USER), List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), null)), null,
                 null, List.of(), List.of(entry), OffsetDateTime.now(), OffsetDateTime.now());
         return new PendingNote(PendingNote.Mode.EDIT, draft, new PendingNote.EditTarget(slug, targetDate),
                 null, "1720000000.000999", OffsetDateTime.now());
@@ -550,7 +550,7 @@ class SlackCommitHandlerTest {
     // 수정 대상이 될 원본 노트(엔트리 1건)를 실제 파일로 심는다 — edit 커밋의 @TempDir 재료.
     private void seedEditableNote(NoteRepository repo, String slug, LocalDate date) {
         NoteMeta meta = new NoteMeta(
-                Sourced.user("커피베라 예가체프"), Sourced.user("커피베라"),
+                new Sourced<>("커피베라 예가체프", Source.USER), new Sourced<>("커피베라", Source.USER),
                 List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), null)),
                 null, null, List.of());
         repo.upsertEntry(slug, meta, entry(date, "원래 감상", OffsetDateTime.now()), Aliases.empty());
@@ -558,7 +558,7 @@ class SlackCommitHandlerTest {
 
     private void seedNote(NoteRepository repo, String slug, String coffeeName, String roastery, LocalDate date) {
         NoteMeta meta = new NoteMeta(
-                Sourced.user(coffeeName), Sourced.user(roastery), List.of(), null, null, List.of());
+                new Sourced<>(coffeeName, Source.USER), new Sourced<>(roastery, Source.USER), List.of(), null, null, List.of());
         repo.upsertEntry(slug, meta, entry(date, "좋았다", OffsetDateTime.now(clock)), Aliases.empty());
     }
 
@@ -802,7 +802,7 @@ class SlackCommitHandlerTest {
         }
 
         @Override
-        public Note upsertEntry(String slug, NoteMeta meta, Entry entry, com.devwuu.mocha.domain.Aliases aliases) {
+        public Note upsertEntry(String slug, NoteMeta meta, Entry entry, Aliases aliases) {
             Note saved = delegate.upsertEntry(slug, meta, entry, aliases);
             order.add("commit"); // 파일 쓰기가 실제로 끝난 뒤 기록 — clear보다 앞섬을 단언
             return saved;

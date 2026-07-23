@@ -34,9 +34,9 @@ class DomainSerializationTest {
         );
         return new Note(
                 "coffeevera-yirgacheffe-g1",
-                Sourced.user("커피베라 예가체프 G1"),
-                Sourced.user("커피베라"),
-                List.of(new Bean(Sourced.user("에티오피아 예가체프"), new Sourced<>("워시드", Source.SEARCH))),
+                new Sourced<>("커피베라 예가체프 G1", Source.USER),
+                new Sourced<>("커피베라", Source.USER),
+                List.of(new Bean(new Sourced<>("에티오피아 예가체프", Source.USER), new Sourced<>("워시드", Source.SEARCH))),
                 new Sourced<>(null, Source.SEARCH),          // 미확정 값 + source 마킹
                 new Sourced<>(List.of("자스민", "베르가못"), Source.SEARCH),  // Sourced<List<String>>
                 List.of("https://example.com/coffeevera"),
@@ -319,8 +319,8 @@ class DomainSerializationTest {
     void noteWithAliasesRoundTrip() throws Exception {
         Note original = new Note(
                 "ethiopia-chelbesa",
-                Sourced.user("Ethiopia Chelbesa"),
-                Sourced.user("FroB"),
+                new Sourced<>("Ethiopia Chelbesa", Source.USER),
+                new Sourced<>("FroB", Source.USER),
                 List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), null)),
                 new Sourced<>(null, Source.SEARCH),
                 new Sourced<>(List.of(), Source.SEARCH),
@@ -371,12 +371,12 @@ class DomainSerializationTest {
         // 블렌드: 원두별 가공방식이 각 요소에 붙는다(ADR-53 동기) — process 없는 원두는 null.
         Note original = new Note(
                 "blend-note",
-                Sourced.user("시그니처 블렌드"),
-                Sourced.user("커피베라"),
+                new Sourced<>("시그니처 블렌드", Source.USER),
+                new Sourced<>("커피베라", Source.USER),
                 List.of(
-                        new Bean(Sourced.user("에티오피아 예가체프"), new Sourced<>("워시드", Source.SEARCH)),
+                        new Bean(new Sourced<>("에티오피아 예가체프", Source.USER), new Sourced<>("워시드", Source.SEARCH)),
                         new Bean(new Sourced<>("콜롬비아 후일라", Source.SEARCH), new Sourced<>("내추럴", Source.SEARCH)),
-                        new Bean(Sourced.user("브라질"), null)),
+                        new Bean(new Sourced<>("브라질", Source.USER), null)),
                 null,
                 null,
                 List.of(),
@@ -413,15 +413,15 @@ class DomainSerializationTest {
     @DisplayName("0021-TΔ1a/V-14: normalize — description이 빈 요소만 드롭하고 나머지 원두는 유지한다(저장 거부 아님)")
     void beansNormalizeDropsEmptyDescription() {
         List<Bean> normalized = Bean.normalize(Arrays.asList(
-                new Bean(Sourced.user("  에티오피아 예가체프 "), new Sourced<>("  워시드 ", Source.SEARCH)),
+                new Bean(new Sourced<>("  에티오피아 예가체프 ", Source.USER), new Sourced<>("  워시드 ", Source.SEARCH)),
                 new Bean(new Sourced<>("   ", Source.USER), new Sourced<>("내추럴", Source.SEARCH)), // 빈 설명 → 드롭
                 new Bean(null, new Sourced<>("허니", Source.SEARCH)),                                  // 설명 자체 부재 → 드롭
                 null,                                                                    // null 요소 → 드롭
-                new Bean(Sourced.user("브라질"), new Sourced<>("  ", Source.SEARCH)))); // 빈 process → null 정규화
+                new Bean(new Sourced<>("브라질", Source.USER), new Sourced<>("  ", Source.SEARCH)))); // 빈 process → null 정규화
 
         assertThat(normalized).containsExactly(
-                new Bean(Sourced.user("에티오피아 예가체프"), new Sourced<>("워시드", Source.SEARCH)),
-                new Bean(Sourced.user("브라질"), null));
+                new Bean(new Sourced<>("에티오피아 예가체프", Source.USER), new Sourced<>("워시드", Source.SEARCH)),
+                new Bean(new Sourced<>("브라질", Source.USER), null));
     }
 
     @Test

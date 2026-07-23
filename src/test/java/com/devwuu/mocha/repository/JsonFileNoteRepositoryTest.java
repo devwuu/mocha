@@ -61,10 +61,10 @@ class JsonFileNoteRepositoryTest {
 
     private static NoteMeta sampleMeta() {
         return new NoteMeta(
-                Sourced.user("커피베라 예가체프 G1"),
-                Sourced.user("커피베라"),
+                new Sourced<>("커피베라 예가체프 G1", Source.USER),
+                new Sourced<>("커피베라", Source.USER),
                 List.of(new Bean(new Sourced<>("에티오피아 예가체프", Source.SEARCH), new Sourced<>("워시드", Source.SEARCH))),
-                new Sourced<>(null, com.devwuu.mocha.domain.Source.SEARCH),
+                new Sourced<>(null, Source.SEARCH),
                 new Sourced<>(List.of("자스민", "베르가못"), Source.SEARCH),
                 List.of("https://example.com/coffeevera")
         );
@@ -87,7 +87,7 @@ class JsonFileNoteRepositoryTest {
     // 관측 표기 축적(TΔ3) 검증용 — 커피명·로스터리만 지정한 최소 메타.
     private static NoteMeta metaWithNames(String coffeeName, String roastery) {
         return new NoteMeta(
-                Sourced.user(coffeeName), Sourced.user(roastery),
+                new Sourced<>(coffeeName, Source.USER), new Sourced<>(roastery, Source.USER),
                 List.of(), null, null, List.of());
     }
 
@@ -228,7 +228,7 @@ class JsonFileNoteRepositoryTest {
 
         Note draft = new Note(
                 saved.slug(), saved.coffeeName(),
-                Sourced.user("커피베라 성수점"), // 노트 단위 필드도 수정 범위(커피명 제외 전부)
+                new Sourced<>("커피베라 성수점", Source.USER), // 노트 단위 필드도 수정 범위(커피명 제외 전부)
                 saved.beans(), saved.roastLevel(), saved.officialNotes(),
                 saved.sources(), List.of(entry(target, "다시 보니 복숭아향")),
                 saved.createdAt(), saved.updatedAt()
@@ -289,11 +289,11 @@ class JsonFileNoteRepositoryTest {
         // TΔ2/TΔ3 배선 전이므로 upsertEntry는 aliases를 채우지 못한다 — 파일에 직접 별칭을 실어 저장 후 로드.
         Note seeded = new Note(
                 slug,
-                Sourced.user("Ethiopia Chelbesa"), Sourced.user("FroB"),
+                new Sourced<>("Ethiopia Chelbesa", Source.USER), new Sourced<>("FroB", Source.USER),
                 List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), null)),
-                new com.devwuu.mocha.domain.Sourced<>(null, com.devwuu.mocha.domain.Source.SEARCH),
+                new Sourced<>(null, Source.SEARCH),
                 new Sourced<>(List.of(), Source.SEARCH),
-                new com.devwuu.mocha.domain.Aliases(List.of("에티오피아 첼베사"), List.of("프롭")),
+                new Aliases(List.of("에티오피아 첼베사"), List.of("프롭")),
                 List.of(),
                 List.of(entry(day1, "새콤")),
                 OffsetDateTime.now(FIXED), OffsetDateTime.now(FIXED)
@@ -307,7 +307,7 @@ class JsonFileNoteRepositoryTest {
 
         // 다른 날 재기록(withMergedEntry) — 표시값과 같은 표기로 기록하면 별칭 존치(관측 축적은 미발생)
         NoteMeta sameNotation = new NoteMeta(
-                Sourced.user("Ethiopia Chelbesa"), Sourced.user("FroB"),
+                new Sourced<>("Ethiopia Chelbesa", Source.USER), new Sourced<>("FroB", Source.USER),
                 List.of(), null, null, List.of());
         Note reRecorded = repo.upsertEntry(slug, sameNotation, entry(LocalDate.of(2026, 7, 10), "10일"), Aliases.empty());
         assertThat(reRecorded.aliases()).isEqualTo(seeded.aliases());
@@ -324,11 +324,11 @@ class JsonFileNoteRepositoryTest {
         // 표시값 Ethiopia Chelbesa / FroB, 별칭 {에티오피아 첼베사}/{프롭} 로 seed
         Note seeded = new Note(
                 slug,
-                Sourced.user("Ethiopia Chelbesa"), Sourced.user("FroB"),
+                new Sourced<>("Ethiopia Chelbesa", Source.USER), new Sourced<>("FroB", Source.USER),
                 List.of(),
-                new Sourced<>(null, com.devwuu.mocha.domain.Source.SEARCH),
+                new Sourced<>(null, Source.SEARCH),
                 new Sourced<>(List.of(), Source.SEARCH),
-                new com.devwuu.mocha.domain.Aliases(List.of("에티오피아 첼베사"), List.of("프롭")),
+                new Aliases(List.of("에티오피아 첼베사"), List.of("프롭")),
                 List.of(),
                 List.of(entry(LocalDate.of(2026, 7, 9), "1일차")),
                 OffsetDateTime.now(FIXED), OffsetDateTime.now(FIXED)
@@ -362,7 +362,7 @@ class JsonFileNoteRepositoryTest {
 
         Note draft = new Note(
                 saved.slug(),
-                Sourced.user("커피베라 예가체프 G2"), // 오타 정정 포함 예외 없이 거부(V-9)
+                new Sourced<>("커피베라 예가체프 G2", Source.USER), // 오타 정정 포함 예외 없이 거부(V-9)
                 saved.roastery(), saved.beans(), saved.roastLevel(),
                 saved.officialNotes(), saved.sources(),
                 List.of(entry(target, "감상 수정")),

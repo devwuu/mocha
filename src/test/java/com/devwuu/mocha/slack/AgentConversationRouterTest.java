@@ -17,6 +17,7 @@ import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.domain.PhotoBuffer;
 import com.devwuu.mocha.domain.Rating;
+import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.domain.Tasting;
 import com.devwuu.mocha.json.MochaObjectMapper;
@@ -280,7 +281,8 @@ class AgentConversationRouterTest {
         OffsetDateTime at = OffsetDateTime.parse("2026-07-16T10:00:00+09:00");
         Entry entry = new Entry(LocalDate.of(2026, 7, 16),
                 List.of(new Brew(null, new Tasting("새콤하고 좋았음", null, Rating.GOOD))), at);
-        Note draft = new Note("2026-07-16-102030", Sourced.user("커피베라 예가체프 G1"), Sourced.user("커피베라"),
+        Note draft = new Note("2026-07-16-102030", new Sourced<>("커피베라 예가체프 G1", Source.USER),
+                new Sourced<>("커피베라", Source.USER),
                 List.of(), null, null, List.of(), List.of(entry), at, at);
         return new PendingNote(draft, MatchInfo.newNote(), "1720000000.000789", at);
     }

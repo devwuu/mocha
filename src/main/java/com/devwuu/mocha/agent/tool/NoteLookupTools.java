@@ -92,16 +92,12 @@ class NoteLookupTools {
         aliases.addAll(note.aliases().roastery());
         return new NoteSummary(
                 note.slug(),
-                valueOf(note.coffeeName()),
-                valueOf(note.roastery()),
+                Sourced.valueOrNull(note.coffeeName()),
+                Sourced.valueOrNull(note.roastery()),
                 Aliases.dedupNormalized(aliases),
                 beansSummary(note.beans()),
                 note.officialNotes() == null ? List.of() : note.officialNotes().value(),
                 note.entries().stream().map(Entry::date).max(Comparator.naturalOrder()).orElse(null));
-    }
-
-    private static String valueOf(Sourced<String> sourced) {
-        return sourced == null ? null : sourced.value();
     }
 
     // list_notes 페이로드의 origin 항목은 beans 요약(설명 쉼표 나열)으로 채운다 — 매칭·검색 재료 용도라

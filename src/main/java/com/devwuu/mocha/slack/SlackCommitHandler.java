@@ -109,7 +109,8 @@ public class SlackCommitHandler {
         // POLICY: 외부 호출은 파일 쓰기 전에 끝낸다(CLAUDE.md §3). 생성 실패는 저장을 되돌리지 않는다 —
         //         빈 별칭으로 수렴(AliasGenerator 내부 처리) (ref: plan.md#ADR-37, §7, V-13).
         Aliases aliases = pending.match() != null && pending.match().type() == MatchInfo.MatchType.NEW
-                ? aliasGenerator.generate(valueOf(draft.coffeeName()), valueOf(draft.roastery()))
+                ? aliasGenerator.generate(
+                        Sourced.valueOrNull(draft.coffeeName()), Sourced.valueOrNull(draft.roastery()))
                 : Aliases.empty();
 
         // POLICY: 사용자 [저장] 확인을 거친 뒤에만 저장한다 (ref: plan.md#ADR-3, AC-4).
@@ -239,11 +240,6 @@ public class SlackCommitHandler {
         } catch (Exception e) {
             log.warn("미리보기 버튼 소진 실패(커밋·배달 결과 유지): channel={}", channelId, e);
         }
-    }
-
-    // 출처 표시 필드의 표시값 추출(null 안전) — 별칭 생성 입력 등 원문 문자열만 필요할 때 쓴다.
-    private static String valueOf(Sourced<String> sourced) {
-        return sourced == null ? null : sourced.value();
     }
 
     // draft(Note)에서 노트 단위 메타만 뽑는다 — 엔트리·slug·타임스탬프는 upsertEntry가 다룬다.

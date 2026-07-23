@@ -6,6 +6,7 @@ import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.domain.Rating;
+import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.domain.Tasting;
 import com.slack.api.RequestConfigurator;
@@ -38,8 +39,8 @@ class PreviewMessengerTest {
 
     private static PendingNote pending(String previewTs) {
         Note draft = new Note(
-                "coffeevera-yirgacheffe-g1", Sourced.user("커피베라 예가체프 G1"),
-                Sourced.user("커피베라"), List.of(), null, null, List.of(),
+                "coffeevera-yirgacheffe-g1", new Sourced<>("커피베라 예가체프 G1", Source.USER),
+                new Sourced<>("커피베라", Source.USER), List.of(), null, null, List.of(),
                 List.of(new Entry(LocalDate.of(2026, 7, 10),
                         List.of(new Brew(null, new Tasting("새콤함", null, Rating.GOOD))), OffsetDateTime.now())),
                 OffsetDateTime.now(), OffsetDateTime.now());

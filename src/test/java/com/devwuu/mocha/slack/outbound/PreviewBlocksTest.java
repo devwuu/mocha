@@ -60,8 +60,8 @@ class PreviewBlocksTest {
     void existingMatchAndSearchTags() {
         Note draft = new Note(
                 "coffeevera-yirgacheffe-g1",
-                Sourced.user("커피베라 예가체프 G1"),
-                Sourced.user("커피베라"),          // 사용자 값 — (검색) 없음
+                new Sourced<>("커피베라 예가체프 G1", Source.USER),
+                new Sourced<>("커피베라", Source.USER),          // 사용자 값 — (검색) 없음
                 List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), new Sourced<>("워시드", Source.SEARCH))), // 검색 보강 — (검색)
                 null,                               // 미언급 — 필드 생략
                 new Sourced<>(List.of("자몽", "홍차"), Source.SEARCH), // official_notes 검색
@@ -125,8 +125,8 @@ class PreviewBlocksTest {
     void newMatchWithoutSearch() {
         Note draft = new Note(
                 "coffeevera-yirgacheffe-g1",
-                Sourced.user("커피베라 예가체프 G1"),
-                Sourced.user("커피베라"),
+                new Sourced<>("커피베라 예가체프 G1", Source.USER),
+                new Sourced<>("커피베라", Source.USER),
                 List.of(), null,
                 null,
                 List.of(),                          // 출처 없음
@@ -154,8 +154,8 @@ class PreviewBlocksTest {
     void buildFinalizedDropsButtonsKeepsFields() {
         Note draft = new Note(
                 "coffeevera-yirgacheffe-g1",
-                Sourced.user("커피베라 예가체프 G1"),
-                Sourced.user("커피베라"),
+                new Sourced<>("커피베라 예가체프 G1", Source.USER),
+                new Sourced<>("커피베라", Source.USER),
                 List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), new Sourced<>("워시드", Source.SEARCH))),
                 null,
                 new Sourced<>(List.of("자몽", "홍차"), Source.SEARCH),
@@ -195,8 +195,8 @@ class PreviewBlocksTest {
         // photo 유래 커피명 — (사진) 표기, photo로 채운 로스터리도 (사진)
         Note photoDraft = new Note(
                 "coffeevera-yirgacheffe-g1",
-                Sourced.photo("커피베라 예가체프 G1"),
-                Sourced.photo("커피베라"),
+                new Sourced<>("커피베라 예가체프 G1", Source.PHOTO),
+                new Sourced<>("커피베라", Source.PHOTO),
                 List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), null)),
                 null, null,
                 List.of(),
@@ -214,8 +214,8 @@ class PreviewBlocksTest {
         // user 유래 커피명 — 표기 없음
         Note userDraft = new Note(
                 "coffeevera-yirgacheffe-g1",
-                Sourced.user("커피베라 예가체프 G1"),
-                Sourced.user("커피베라"),
+                new Sourced<>("커피베라 예가체프 G1", Source.USER),
+                new Sourced<>("커피베라", Source.USER),
                 List.of(), null, null,
                 List.of(),
                 List.of(entry("좋았다", Rating.GOOD)),
@@ -233,8 +233,8 @@ class PreviewBlocksTest {
     void recipeShownWhenPresent() {
         Note draft = new Note(
                 "coffeevera-yirgacheffe-g1",
-                Sourced.user("커피베라 예가체프 G1"),
-                Sourced.user("커피베라"),
+                new Sourced<>("커피베라 예가체프 G1", Source.USER),
+                new Sourced<>("커피베라", Source.USER),
                 List.of(), null, null,
                 List.of(),
                 List.of(entry("좋았다", Rating.GOOD, Recipe.normalize(new Recipe(null, 15.0, 240.0, null, null, null, "중간", null, null, null)))),
@@ -259,8 +259,8 @@ class PreviewBlocksTest {
         // 물량만 있는 부분 레시피 — 원두·분쇄도 항목은 표시하지 않음
         Note partial = new Note(
                 "coffeevera-yirgacheffe-g1",
-                Sourced.user("커피베라 예가체프 G1"),
-                Sourced.user("커피베라"),
+                new Sourced<>("커피베라 예가체프 G1", Source.USER),
+                new Sourced<>("커피베라", Source.USER),
                 List.of(), null, null, List.of(),
                 List.of(entry("좋았다", Rating.GOOD, Recipe.normalize(new Recipe(null, null, 240.0, null, null, null, null, null, null, null)))),
                 OffsetDateTime.now(), OffsetDateTime.now());
@@ -274,8 +274,8 @@ class PreviewBlocksTest {
         // 레시피 전무(null) — 영역 자체 미출력
         Note none = new Note(
                 "coffeevera-yirgacheffe-g1",
-                Sourced.user("커피베라 예가체프 G1"),
-                Sourced.user("커피베라"),
+                new Sourced<>("커피베라 예가체프 G1", Source.USER),
+                new Sourced<>("커피베라", Source.USER),
                 List.of(), null, null, List.of(),
                 List.of(entry("좋았다", Rating.GOOD, null)),
                 OffsetDateTime.now(), OffsetDateTime.now());
@@ -296,8 +296,8 @@ class PreviewBlocksTest {
                 new Brew(second, new Tasting("훨씬 나았음", null, Rating.GOOD))), OffsetDateTime.now());
         Note draft = new Note(
                 "coffeevera-yirgacheffe-g1",
-                Sourced.user("커피베라 예가체프 G1"),
-                Sourced.user("커피베라"),
+                new Sourced<>("커피베라 예가체프 G1", Source.USER),
+                new Sourced<>("커피베라", Source.USER),
                 List.of(), null, null, List.of(),
                 List.of(entry),
                 OffsetDateTime.now(), OffsetDateTime.now());
@@ -334,8 +334,8 @@ class PreviewBlocksTest {
                 "뜸 40ml 30초 → 100ml → 100ml", "다음엔 조금 굵게"));
         Note draft = new Note(
                 "coffeevera-yirgacheffe-g1",
-                Sourced.user("커피베라 예가체프 G1"),
-                Sourced.user("커피베라"),
+                new Sourced<>("커피베라 예가체프 G1", Source.USER),
+                new Sourced<>("커피베라", Source.USER),
                 List.of(), null, null, List.of(),
                 List.of(entry("좋았다", Rating.GOOD, recipe)),
                 OffsetDateTime.now(), OffsetDateTime.now());
@@ -366,8 +366,8 @@ class PreviewBlocksTest {
                 OffsetDateTime.now());
         Note draft = new Note(
                 "coffeevera-yirgacheffe-g1",
-                Sourced.user("커피베라 예가체프 G1"),
-                Sourced.user("커피베라"),
+                new Sourced<>("커피베라 예가체프 G1", Source.USER),
+                new Sourced<>("커피베라", Source.USER),
                 List.of(), null, null, List.of(),
                 List.of(entry),
                 OffsetDateTime.now(), OffsetDateTime.now());
@@ -463,8 +463,8 @@ class PreviewBlocksTest {
     private static Note editDraft(LocalDate entryDate) {
         return new Note(
                 "coffeevera-yirgacheffe-g1",
-                Sourced.user("커피베라 예가체프 G1"),
-                Sourced.user("커피베라"),
+                new Sourced<>("커피베라 예가체프 G1", Source.USER),
+                new Sourced<>("커피베라", Source.USER),
                 List.of(), null, null,
                 List.of(),
                 List.of(new Entry(entryDate,

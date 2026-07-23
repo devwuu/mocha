@@ -10,6 +10,7 @@ import com.devwuu.mocha.agent.tool.SourcedArg;
 import com.devwuu.mocha.agent.turn.TurnUserMessage;
 import com.devwuu.mocha.domain.Bean;
 import com.devwuu.mocha.domain.Brew;
+import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.PendingNote;
@@ -26,6 +27,7 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.util.Arrays;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -81,12 +83,12 @@ class ProposalValidatorsTest {
     }
 
     private static Note note(String slug, String coffeeName, String roastery, LocalDate... entryDates) {
-        List<com.devwuu.mocha.domain.Entry> entries = java.util.Arrays.stream(entryDates)
-                .map(d -> new com.devwuu.mocha.domain.Entry(
+        List<Entry> entries = Arrays.stream(entryDates)
+                .map(d -> new Entry(
                         d, List.of(new Brew(null, new Tasting("맛", null, Rating.GOOD))), OffsetDateTime.now()))
                 .toList();
-        return new Note(slug, Sourced.user(coffeeName),
-                roastery == null ? null : Sourced.user(roastery),
+        return new Note(slug, new Sourced<>(coffeeName, Source.USER),
+                roastery == null ? null : new Sourced<>(roastery, Source.USER),
                 List.of(), null, null, List.of(), entries,
                 OffsetDateTime.now(), OffsetDateTime.now());
     }
@@ -311,8 +313,8 @@ class ProposalValidatorsTest {
                                     new SourcedArg<>("내추럴", "user"))),
                     List.of(tastingBrew("좋았음", null, null))), null));
             assertThat(proposal.meta().beans()).containsExactly(
-                    new Bean(Sourced.user("에티오피아 예가체프"), new Sourced<>("워시드", Source.SEARCH)),
-                    new Bean(Sourced.user("콜롬비아"), Sourced.user("내추럴")));
+                    new Bean(new Sourced<>("에티오피아 예가체프", Source.USER), new Sourced<>("워시드", Source.SEARCH)),
+                    new Bean(new Sourced<>("콜롬비아", Source.USER), new Sourced<>("내추럴", Source.USER)));
         }
 
         @Test
@@ -323,7 +325,7 @@ class ProposalValidatorsTest {
                             new BeanArg(new SourcedArg<>("콜롬비아", "user"), new SourcedArg<>(null, null))),
                     List.of(tastingBrew("좋았음", null, null))), null));
             assertThat(proposal.meta().beans())
-                    .containsExactly(new Bean(Sourced.user("콜롬비아"), null));
+                    .containsExactly(new Bean(new Sourced<>("콜롬비아", Source.USER), null));
         }
 
         @Test
@@ -684,7 +686,7 @@ class ProposalValidatorsTest {
                     null, null, null, null);
             EditProposal proposal = okOf(editValidator.validate(
                     editArgs(target.slug(), "2026-07-13", patch), target, null));
-            assertThat(proposal.beans()).containsExactly(new Bean(Sourced.user("콜롬비아"), null));
+            assertThat(proposal.beans()).containsExactly(new Bean(new Sourced<>("콜롬비아", Source.USER), null));
         }
 
         @Test

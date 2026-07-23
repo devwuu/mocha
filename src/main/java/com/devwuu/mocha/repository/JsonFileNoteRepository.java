@@ -4,6 +4,7 @@ import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
+import com.devwuu.mocha.domain.Sourced;
 import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
@@ -117,8 +118,8 @@ public class JsonFileNoteRepository implements NoteRepository {
         //      무콜 축적한다. 노트 표시값과 같은 표기는 넣지 않고, 다른 표기만 정규화 중복 제거로 더한다.
         //      노트 단위 메타(원두 구성 등)는 종전대로 갱신하지 않고 보존한다(ADR-4, V-13, ADR-37).
         Aliases accumulated = existing.aliases().accumulate(
-                displayValue(meta.coffeeName()), displayValue(existing.coffeeName()),
-                displayValue(meta.roastery()), displayValue(existing.roastery()));
+                Sourced.valueOrNull(meta.coffeeName()), Sourced.valueOrNull(existing.coffeeName()),
+                Sourced.valueOrNull(meta.roastery()), Sourced.valueOrNull(existing.roastery()));
         return new Note(
                 existing.slug(),
                 existing.coffeeName(),
@@ -132,11 +133,6 @@ public class JsonFileNoteRepository implements NoteRepository {
                 existing.createdAt(),
                 OffsetDateTime.now(clock)
         );
-    }
-
-    // 출처 표시 필드의 표시값 추출(null 안전) — 관측 표기 축적 입력 등 원문 문자열만 필요할 때.
-    private static String displayValue(com.devwuu.mocha.domain.Sourced<String> sourced) {
-        return sourced == null ? null : sourced.value();
     }
 
     @Override

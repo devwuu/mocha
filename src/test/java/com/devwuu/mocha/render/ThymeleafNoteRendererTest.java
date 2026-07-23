@@ -86,10 +86,10 @@ class ThymeleafNoteRendererTest {
         NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create(), FIXED);
         OffsetDateTime now = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
         NoteMeta meta1 = new NoteMeta(
-                Sourced.user("예가체프 G1 워시드"),
-                Sourced.user("커피베라"),
+                new Sourced<>("예가체프 G1 워시드", Source.USER),
+                new Sourced<>("커피베라", Source.USER),
                 // description = 검색 → 감상 카드는 값만 평문 렌더(출처 표기 없음, NoteView.TasteCard)
-                List.of(new Bean(new Sourced<>("에티오피아 예가체프", Source.SEARCH), Sourced.user("워시드"))),
+                List.of(new Bean(new Sourced<>("에티오피아 예가체프", Source.SEARCH), new Sourced<>("워시드", Source.USER))),
                 new Sourced<>("라이트", Source.SEARCH),
                 new Sourced<>(List.of("자몽", "베르가못", "홍차"), Source.SEARCH),
                 List.of("https://coffeevera.example/yirgacheffe"));
@@ -97,8 +97,8 @@ class ThymeleafNoteRendererTest {
                 entry(LocalDate.parse("2026-07-10"), "새콤하고 좋았다.\n다음엔 물 온도를 낮춰봐야지.", Rating.GOOD, null, now), Aliases.empty());
 
         NoteMeta meta2 = new NoteMeta(
-                Sourced.user("콜롬비아 게이샤 워시드"),
-                Sourced.user("프릳츠"),
+                new Sourced<>("콜롬비아 게이샤 워시드", Source.USER),
+                new Sourced<>("프릳츠", Source.USER),
                 List.of(new Bean(new Sourced<>("콜롬비아", Source.SEARCH), null)),
                 null, new Sourced<>(List.of(), Source.SEARCH), List.of());
         repo.upsertEntry("2026-07-04", meta2,
@@ -114,8 +114,8 @@ class ThymeleafNoteRendererTest {
         NoteRepository repo = seedRepository(dataDir);
         OffsetDateTime now = OffsetDateTime.parse("2026-07-18T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
-                Sourced.user("레인보우 블렌드"), Sourced.user("커피가게 동경"),
-                List.of(new Bean(Sourced.user("에티오피아 예가체프"), Sourced.user("워시드"))),
+                new Sourced<>("레인보우 블렌드", Source.USER), new Sourced<>("커피가게 동경", Source.USER),
+                List.of(new Bean(new Sourced<>("에티오피아 예가체프", Source.USER), new Sourced<>("워시드", Source.USER))),
                 null, new Sourced<>(List.of(), Source.SEARCH), List.of());
         repo.upsertEntry("rainbow", meta, twoBrewEntry(LocalDate.parse("2026-07-18"), now), Aliases.empty());
 
@@ -151,8 +151,8 @@ class ThymeleafNoteRendererTest {
         NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create(), FIXED);
         OffsetDateTime now = OffsetDateTime.parse("2026-07-18T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
-                Sourced.user("예가체프 G1"), Sourced.user("커피베라"),
-                List.of(new Bean(Sourced.user("에티오피아"), null)),
+                new Sourced<>("예가체프 G1", Source.USER), new Sourced<>("커피베라", Source.USER),
+                List.of(new Bean(new Sourced<>("에티오피아", Source.USER), null)),
                 null, new Sourced<>(List.of(), Source.SEARCH), List.of());
         // 1회차 = 레시피만(감상 없음), 2회차 = 감상만(레시피 없음).
         Entry entry = new Entry(LocalDate.parse("2026-07-18"), List.of(
@@ -181,8 +181,8 @@ class ThymeleafNoteRendererTest {
         NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create(), FIXED);
         OffsetDateTime now = OffsetDateTime.parse("2026-07-18T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
-                Sourced.user("레인보우 블렌드"), Sourced.user("커피가게 동경"),
-                List.of(new Bean(Sourced.user("에티오피아"), null)),
+                new Sourced<>("레인보우 블렌드", Source.USER), new Sourced<>("커피가게 동경", Source.USER),
+                List.of(new Bean(new Sourced<>("에티오피아", Source.USER), null)),
                 null, new Sourced<>(List.of(), Source.SEARCH), List.of());
         LocalDate date = LocalDate.parse("2026-07-18");
         repo.upsertEntry("rainbow", meta, twoBrewEntry(date, now), Aliases.empty());
@@ -265,8 +265,8 @@ class ThymeleafNoteRendererTest {
         NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create(), FIXED);
         OffsetDateTime now = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
-                Sourced.user("예가체프 G1"),
-                Sourced.user("커피베라"), List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), null)),
+                new Sourced<>("예가체프 G1", Source.USER),
+                new Sourced<>("커피베라", Source.USER), List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), null)),
                 null, new Sourced<>(List.of(), Source.SEARCH), List.of());
         // 정규화본(음슴체)과 발화 원문을 서로 다른 문자열로 둔다 — 원문 유출을 판별 가능하게.
         repo.upsertEntry("2026-07-10", meta,
@@ -287,9 +287,9 @@ class ThymeleafNoteRendererTest {
         NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create(), FIXED);
         OffsetDateTime now = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
-                Sourced.user("예가체프 G1 워시드"),
-                Sourced.user("커피베라"),
-                List.of(new Bean(new Sourced<>("에티오피아 예가체프", Source.SEARCH), Sourced.user("워시드"))),
+                new Sourced<>("예가체프 G1 워시드", Source.USER),
+                new Sourced<>("커피베라", Source.USER),
+                List.of(new Bean(new Sourced<>("에티오피아 예가체프", Source.SEARCH), new Sourced<>("워시드", Source.USER))),
                 new Sourced<>("라이트", Source.SEARCH),
                 new Sourced<>(List.of("자몽", "홍차"), Source.SEARCH),
                 List.of("https://coffeevera.example/yirgacheffe"));
@@ -321,8 +321,8 @@ class ThymeleafNoteRendererTest {
         NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create(), FIXED);
         OffsetDateTime now = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
-                Sourced.user("예가체프 G1 워시드"),
-                Sourced.user("커피베라"), List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), null)),
+                new Sourced<>("예가체프 G1 워시드", Source.USER),
+                new Sourced<>("커피베라", Source.USER), List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), null)),
                 null, new Sourced<>(List.of(), Source.SEARCH), List.of());
         // 렌더는 사진을 읽지 않는다 — 엔트리에 사진 필드가 없고 템플릿에도 사진 슬롯이 없다(changes/0014 ADR-32, AC-Δ2).
         repo.upsertEntry("2026-07-10", meta,
@@ -347,9 +347,9 @@ class ThymeleafNoteRendererTest {
         NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create(), FIXED);
         OffsetDateTime now = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
-                Sourced.user("예가체프 G1 워시드"),
-                Sourced.user("커피베라"),
-                List.of(new Bean(new Sourced<>("에티오피아 예가체프", Source.SEARCH), Sourced.user("워시드"))),
+                new Sourced<>("예가체프 G1 워시드", Source.USER),
+                new Sourced<>("커피베라", Source.USER),
+                List.of(new Bean(new Sourced<>("에티오피아 예가체프", Source.SEARCH), new Sourced<>("워시드", Source.USER))),
                 new Sourced<>("라이트", Source.SEARCH),
                 new Sourced<>(List.of("자몽", "홍차"), Source.SEARCH), List.of());
         // 별칭은 표시값(커피명·로스터리)과 명확히 다른 마커 문자열 — 렌더에 새면 반드시 검출된다(V-13).
@@ -385,8 +385,8 @@ class ThymeleafNoteRendererTest {
         NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create(), FIXED);
         OffsetDateTime now = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
-                Sourced.user("예가체프 G1 워시드"),
-                Sourced.user("커피베라"), List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), null)),
+                new Sourced<>("예가체프 G1 워시드", Source.USER),
+                new Sourced<>("커피베라", Source.USER), List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), null)),
                 null, new Sourced<>(List.of(), Source.SEARCH), List.of());
         // 엔트리 + 실제 사진 파일을 data/photos/에 둔다 — 사진은 노트가 아닌 폴더에만 존재(리렌더 입력 후보로서의 파일 존재를 재현).
         repo.upsertEntry("2026-07-10", meta,
@@ -482,8 +482,8 @@ class ThymeleafNoteRendererTest {
         OffsetDateTime now = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
                 coffeeName,
-                Sourced.user("커피베라"),
-                List.of(new Bean(new Sourced<>("에티오피아 예가체프", Source.SEARCH), Sourced.user("워시드"))),
+                new Sourced<>("커피베라", Source.USER),
+                List.of(new Bean(new Sourced<>("에티오피아 예가체프", Source.SEARCH), new Sourced<>("워시드", Source.USER))),
                 new Sourced<>("라이트", Source.SEARCH),
                 new Sourced<>(List.of("자몽", "홍차"), Source.SEARCH), List.of());
         repo.upsertEntry("2026-07-10", meta,
@@ -502,7 +502,7 @@ class ThymeleafNoteRendererTest {
     void recipeBrewBakesRecipeCard(@TempDir Path dataDir, @TempDir Path artA, @TempDir Path artB) {
         Recipe recipe = new Recipe(null, 15.0, 240.0, null, null, null, "중간", null, null, null);
         for (Theme theme : new Theme[]{Theme.TYPE_A, Theme.TYPE_B}) {
-            NoteRepository repo = seedWithRecipe(dataDir, Sourced.user("예가체프 G1 워시드"), recipe);
+            NoteRepository repo = seedWithRecipe(dataDir, new Sourced<>("예가체프 G1 워시드", Source.USER), recipe);
             Path artifactDir = theme == Theme.TYPE_A ? artA : artB;
             FakeCardImageRenderer cards = renderAllWith(repo, theme, artifactDir);
 
@@ -523,7 +523,7 @@ class ThymeleafNoteRendererTest {
     @DisplayName("AC-78: recipe가 null인 회차는 레시피 카드가 생성되지 않는다(감상 카드만)")
     void recipeCardOmittedWhenRecipeAbsent(@TempDir Path dataDir, @TempDir Path artA, @TempDir Path artB) {
         for (Theme theme : new Theme[]{Theme.TYPE_A, Theme.TYPE_B}) {
-            NoteRepository repo = seedWithRecipe(dataDir, Sourced.user("예가체프 G1 워시드"), null);
+            NoteRepository repo = seedWithRecipe(dataDir, new Sourced<>("예가체프 G1 워시드", Source.USER), null);
             Path artifactDir = theme == Theme.TYPE_A ? artA : artB;
             FakeCardImageRenderer cards = renderAllWith(repo, theme, artifactDir);
 
@@ -540,7 +540,7 @@ class ThymeleafNoteRendererTest {
     void recipeCardRendersOnlyPresentItems(@TempDir Path dataDir, @TempDir Path artA, @TempDir Path artB) {
         Recipe partial = Recipe.normalize(new Recipe(null, 15.0, null, null, null, null, null, null, null, null)); // 원두만
         for (Theme theme : new Theme[]{Theme.TYPE_A, Theme.TYPE_B}) {
-            NoteRepository repo = seedWithRecipe(dataDir, Sourced.user("예가체프 G1 워시드"), partial);
+            NoteRepository repo = seedWithRecipe(dataDir, new Sourced<>("예가체프 G1 워시드", Source.USER), partial);
             Path artifactDir = theme == Theme.TYPE_A ? artA : artB;
             FakeCardImageRenderer cards = renderAllWith(repo, theme, artifactDir);
 
@@ -554,7 +554,7 @@ class ThymeleafNoteRendererTest {
     @DisplayName("NoteView.TasteCard: coffeeName source가 photo여도 카드 제목은 값만 쓰고 (사진) 표기를 달지 않는다")
     void cardTitleHasNoPhotoTag(@TempDir Path dataDir, @TempDir Path artA, @TempDir Path artB) {
         for (Theme theme : new Theme[]{Theme.TYPE_A, Theme.TYPE_B}) {
-            NoteRepository repo = seedWithRecipe(dataDir, Sourced.photo("게이샤 내추럴"), null);
+            NoteRepository repo = seedWithRecipe(dataDir, new Sourced<>("게이샤 내추럴", Source.PHOTO), null);
             Path artifactDir = theme == Theme.TYPE_A ? artA : artB;
             FakeCardImageRenderer cards = renderAllWith(repo, theme, artifactDir);
             String card = capturedHtml(cards, "cards/2026-07-10/2026-07-10-taste-1.jpg");
@@ -603,8 +603,8 @@ class ThymeleafNoteRendererTest {
         NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create(), FIXED);
         OffsetDateTime now = OffsetDateTime.parse("2026-07-18T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
-                Sourced.user("레인보우 블렌드"), Sourced.user("커피가게 동경"),
-                List.of(new Bean(Sourced.user("에티오피아"), null)),
+                new Sourced<>("레인보우 블렌드", Source.USER), new Sourced<>("커피가게 동경", Source.USER),
+                List.of(new Bean(new Sourced<>("에티오피아", Source.USER), null)),
                 null, new Sourced<>(List.of(), Source.SEARCH), List.of());
         LocalDate date = LocalDate.parse("2026-07-18");
         repo.upsertEntry("rainbow", meta, twoBrewEntry(date, now), Aliases.empty());

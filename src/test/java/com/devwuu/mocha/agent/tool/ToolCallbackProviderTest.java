@@ -596,7 +596,7 @@ class ToolCallbackProviderTest {
                     List.of(new Brew(null, new Tasting("새콤하고 좋았음", null, Rating.GOOD))),
                     OffsetDateTime.parse("2026-07-14T10:00:00+09:00")));
         }
-        return new Note(slug, Sourced.user(coffeeName), Sourced.user(roastery),
+        return new Note(slug, new Sourced<>(coffeeName, Source.USER), new Sourced<>(roastery, Source.USER),
                 List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), null)),
                 null, new Sourced<>(List.of("자스민"), Source.SEARCH),
                 aliases, List.of(), entries,
@@ -610,7 +610,7 @@ class ToolCallbackProviderTest {
                 new Brew(new Recipe(null, 15.0, 250.0, null, null, null, "210클릭 (매버릭 2.0)", null, null, null), new Tasting("새콤하고 좋았음", null, Rating.GOOD)),
                 new Brew(new Recipe(null, 15.0, 250.0, null, null, null, "205클릭 (매버릭 2.0)", null, null, null), new Tasting("더 새콤했음", null, Rating.PERFECT))),
                 OffsetDateTime.parse("2026-07-18T10:00:00+09:00"));
-        return new Note(slug, Sourced.user("Ethiopia Chelbesa"), Sourced.user("FroB"),
+        return new Note(slug, new Sourced<>("Ethiopia Chelbesa", Source.USER), new Sourced<>("FroB", Source.USER),
                 List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), null)),
                 null, new Sourced<>(List.of("자스민"), Source.SEARCH),
                 Aliases.empty(), List.of(), List.of(entry),
