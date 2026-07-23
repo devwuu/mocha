@@ -9,33 +9,22 @@ import com.devwuu.mocha.agent.tool.AgentToolkit;
 import com.devwuu.mocha.agent.tool.TastingDateDetector;
 import com.devwuu.mocha.agent.tool.TurnUtterance;
 import com.devwuu.mocha.domain.PendingNote;
-import com.devwuu.mocha.llm.AliasGenerator;
-import com.devwuu.mocha.llm.PhotoInfoExtractor;
 import com.devwuu.mocha.llm.UtteranceSegmenter;
 import com.devwuu.mocha.llm.VisionExtraction;
 import com.devwuu.mocha.llm.VisionHint;
-import com.devwuu.mocha.render.NoteRenderer;
-import com.devwuu.mocha.repository.NoteRepository;
 import com.devwuu.mocha.repository.PendingStore;
-import com.devwuu.mocha.repository.PhotoBufferStore;
-import com.devwuu.mocha.repository.PhotoStore;
 import com.devwuu.mocha.slack.inbound.IncomingAction;
 import com.devwuu.mocha.slack.inbound.IncomingMedia;
 import com.devwuu.mocha.slack.inbound.IncomingMessage;
-import com.devwuu.mocha.slack.inbound.PhotoDownloader;
 import com.devwuu.mocha.slack.inbound.SlackPhotoIntake;
 import com.devwuu.mocha.slack.outbound.MochaMessages;
 import com.devwuu.mocha.slack.outbound.PreviewBlocks;
 import com.devwuu.mocha.slack.outbound.SlackResponder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 
 import java.time.Clock;
-import java.time.Duration;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -58,7 +47,6 @@ import java.util.Objects;
  * 원문 로그 보존 — 조용한 유실 금지 (ref: specs/coffee-note-agent/plan.md#ADR-48, spec AC-63).
  */
 @Component
-@Primary
 public class AgentConversationRouter implements ConversationRouter {
 
     /** 미리보기 [저장] 버튼 action_id — {@link PreviewBlocks}와의 결정론 계약(ADR-3·ADR-20). */
@@ -80,57 +68,9 @@ public class AgentConversationRouter implements ConversationRouter {
     // 시계(Asia/Seoul — V-3, pending·트랜스크립트와 동일)는 config 공통 빈 주입(ADR-63).
     private final Clock clock;
 
-    @Autowired
+    // 협력자 조립은 config가 소유(ADR-63, RouterConfig) — 라우터는 주입만 받는다(생성자 1종,
+    // 프로덕션·테스트 공용). 공개 승격 이유는 Clock 빈과 동일(config가 타 패키지 — ADR-63).
     public AgentConversationRouter(
-            PendingStore pendingStore,
-            ConversationTranscript transcript,
-            AgentClient agentClient,
-            // tool façade·컨텍스트 조립기는 config 빈 주입(ADR-63, RouterConfig) — 라우터 내 조립 금지.
-            AgentToolkit agentTools,
-            AgentContextAssembler contextAssembler,
-            UtteranceSegmenter segmenter,
-            NoteRepository noteRepository,
-            NoteRenderer noteRenderer,
-            SlackResponder responder,
-            PhotoDownloader photoDownloader,
-            PhotoStore photoStore,
-            PhotoBufferStore photoBufferStore,
-            PhotoInfoExtractor photoInfoExtractor,
-            AliasGenerator aliasGenerator,
-            // 시계는 config 공통 빈 주입(ADR-63) — 자체 생성 금지.
-            Clock clock,
-            @Value("${mocha.photo.buffer-window}") Duration bufferWindow) {
-        // 사진·커밋 배관은 아직 여기서 조립한다 — 빈 이관은 TΔ1b2에서(그때 조립 생성자도 제거).
-        this(pendingStore, transcript, agentClient, agentTools, contextAssembler, segmenter,
-                new SlackPhotoIntake(pendingStore, responder, photoDownloader, photoStore, photoBufferStore,
-                        photoInfoExtractor, bufferWindow, clock),
-                responder, noteRepository, noteRenderer, aliasGenerator, clock);
-    }
-
-    // 커밋 핸들러가 사진 배관(photoIntake)을 라우터와 공유하도록 잇는 중간 생성자 — this(...) 단일 식
-    // 제약 때문에 photoIntake를 매개변수로 받아 두 곳에 배선한다.
-    private AgentConversationRouter(
-            PendingStore pendingStore,
-            ConversationTranscript transcript,
-            AgentClient agentClient,
-            AgentToolkit agentTools,
-            AgentContextAssembler contextAssembler,
-            UtteranceSegmenter segmenter,
-            SlackPhotoIntake photoIntake,
-            SlackResponder responder,
-            NoteRepository noteRepository,
-            NoteRenderer noteRenderer,
-            AliasGenerator aliasGenerator,
-            Clock clock) {
-        this(pendingStore, transcript, agentClient, agentTools, contextAssembler, segmenter, photoIntake,
-                responder,
-                new SlackCommitHandler(pendingStore, noteRepository, noteRenderer, responder,
-                        aliasGenerator, photoIntake),
-                clock);
-    }
-
-    // 테스트에서 협력자·시간을 주입하기 위한 생성자.
-    AgentConversationRouter(
             PendingStore pendingStore,
             ConversationTranscript transcript,
             AgentClient agentClient,

@@ -30,13 +30,13 @@ import java.util.Optional;
  * pending 로드·TTL 판정(V-7)·결손 검증은 mode와 무관하게 {@link #confirmSave}가 공통 게이트로 소유하고,
  * mode=edit 커밋만 내부 분기로 갈린다.
  * <p>이름에 Slack을 붙인 이유: {@link IncomingAction} 수신·카드 배달·버튼 소진({@link SlackResponder}) 등
- * Slack 전송 계층에 결합된 구체 핸들러다({@link SlackPhotoIntake}과 동일 규칙). 라우터가 조립하는 내부
- * 협력자라 Spring 빈이 아니다.
+ * Slack 전송 계층에 결합된 구체 핸들러다({@link SlackPhotoIntake}과 동일 규칙). 조립은 config 빈 배선이
+ * 소유한다(ADR-63, RouterConfig) — 공개 승격 이유는 Clock 빈과 동일(config가 타 패키지).
  * <p>POLICY: 사용자 [저장] 확인 없이 {@link NoteRepository} 쓰기를 호출하지 않는다 (ref: plan.md#ADR-3, AC-4).
  * <p>POLICY: [저장] 버튼 처리에 LLM 호출은 별칭 생성 1콜(match=NEW 첫 커밋 한정) 외에 없다
  * (ref: specs/coffee-note-agent/changes/0018/delta.md#AC-Δ3).
  */
-class SlackCommitHandler {
+public class SlackCommitHandler {
 
     private static final Logger log = LoggerFactory.getLogger(SlackCommitHandler.class);
 
@@ -47,7 +47,7 @@ class SlackCommitHandler {
     private final AliasGenerator aliasGenerator;
     private final SlackPhotoIntake photoIntake;
 
-    SlackCommitHandler(
+    public SlackCommitHandler(
             PendingStore pendingStore,
             NoteRepository noteRepository,
             NoteRenderer noteRenderer,
