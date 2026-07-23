@@ -67,7 +67,8 @@
           <div style="font-size:10px;color:#7c6b5b;margin-top:3px" th:if="${amt.ratio(card.recipe.doseG, card.recipe.yieldMl) != null}"
                th:text="'비율 ' + ${amt.ratio(card.recipe.doseG, card.recipe.yieldMl)}">비율 1 : 2</div>
         </div>
-        <div class="tile" th:if="${card.recipe.timeSec != null}">
+        <!--/* 시간 가드는 표기 결과(amt.time) 기준 — 반올림 0초 등 표기 불가 값의 빈 타일·'총 null' 누수 차단(changes/0025 리뷰 후속). */-->
+        <div class="tile" th:if="${amt.time(card.recipe.timeSec) != null}">
           <div style="font-size:9.5px;letter-spacing:2px;color:#8d7d6c;margin-bottom:6px">추출 시간</div>
           <div style="font-size:22px;font-weight:700;color:#2e261f" th:text="${amt.time(card.recipe.timeSec)}">28초</div>
         </div>
@@ -88,9 +89,9 @@
         <div style="font-size:9.5px;letter-spacing:2px;color:#8d7d6c;text-align:right" th:if="${card.recipe.pouring != null}">푸어링</div>
         <!--/* 총 추출 시간은 시안대로 푸어링 행에 병기(findings-TΔ0 §5.3), 푸어링이 없으면 단독 행으로. */-->
         <div style="line-height:1.7" th:if="${card.recipe.pouring != null}"
-             th:text="${card.recipe.pouring + (card.recipe.timeSec != null ? ' · 총 ' + amt.time(card.recipe.timeSec) : '')}">뜸 40ml 30초 → 100ml → 100ml · 총 2분 40초</div>
-        <div style="font-size:9.5px;letter-spacing:2px;color:#8d7d6c;text-align:right" th:if="${card.recipe.pouring == null and card.recipe.timeSec != null}">추출 시간</div>
-        <div th:if="${card.recipe.pouring == null and card.recipe.timeSec != null}" th:text="'총 ' + ${amt.time(card.recipe.timeSec)}">총 2분 40초</div>
+             th:text="${card.recipe.pouring + (amt.time(card.recipe.timeSec) != null ? ' · 총 ' + amt.time(card.recipe.timeSec) : '')}">뜸 40ml 30초 → 100ml → 100ml · 총 2분 40초</div>
+        <div style="font-size:9.5px;letter-spacing:2px;color:#8d7d6c;text-align:right" th:if="${card.recipe.pouring == null and amt.time(card.recipe.timeSec) != null}">추출 시간</div>
+        <div th:if="${card.recipe.pouring == null and amt.time(card.recipe.timeSec) != null}" th:text="'총 ' + ${amt.time(card.recipe.timeSec)}">총 2분 40초</div>
       </th:block>
       <th:block th:if="${card.espressoLayout()}">
         <div style="font-size:9.5px;letter-spacing:2px;color:#8d7d6c;text-align:right" th:if="${card.recipe.grind != null}">분쇄도</div>

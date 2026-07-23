@@ -255,6 +255,11 @@ class DomainSerializationTest {
                 "에스프레소", 18.0, null, -10.0, 28.0, 0.0, "78클릭", "  ", null, "다음엔 78클릭"));
         assertThat(expanded).isEqualTo(new Recipe(
                 "에스프레소", 18.0, null, null, 28.0, null, "78클릭", null, null, "다음엔 78클릭"));
+
+        // 비유한값(Infinity·NaN)도 위반 — 렌더 표기·비율이 재가드 없이 정렬되도록 정규화가 거른다(changes/0025 리뷰 후속).
+        Recipe nonFinite = Recipe.normalize(new Recipe(
+                null, Double.POSITIVE_INFINITY, 240.0, Double.NEGATIVE_INFINITY, Double.NaN, null, null, null, null, null));
+        assertThat(nonFinite).isEqualTo(new Recipe(null, null, 240.0, null, null, null, null, null, null, null));
     }
 
     // --- 0012 TΔ1: PendingNote mode·target (FR-21, changes/0012) ---

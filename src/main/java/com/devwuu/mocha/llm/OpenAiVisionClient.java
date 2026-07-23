@@ -11,8 +11,6 @@ import com.openai.models.responses.ResponseInputContent;
 import com.openai.models.responses.ResponseInputImage;
 import com.openai.models.responses.ResponseInputItem;
 import com.openai.models.responses.ResponseInputText;
-import com.openai.models.responses.ResponseOutputItem;
-import com.openai.models.responses.ResponseOutputMessage;
 import com.openai.models.responses.ResponseTextConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -117,7 +115,7 @@ public class OpenAiVisionClient implements VisionClient {
      */
     protected String rawRead(List<String> imageUrls, VisionHint hint) {
         Response response = client.responses().create(buildParams(imageUrls, hint));
-        return outputText(response);
+        return OpenAiResponseTexts.outputText(response);
     }
 
     // 파라미터 조립을 분리해 테스트가 SDK 호출 없이 이미지 입력·strict schema·모델 배선을 검사할 수 있게 한다.
@@ -202,22 +200,6 @@ public class OpenAiVisionClient implements VisionClient {
                 .strict(true)
                 .schema(builder.build())
                 .build();
-    }
-
-    // Responses 출력 아이템 중 메시지 텍스트만 이어붙인다.
-    private String outputText(Response response) {
-        StringBuilder sb = new StringBuilder();
-        for (ResponseOutputItem item : response.output()) {
-            if (!item.isMessage()) {
-                continue;
-            }
-            for (ResponseOutputMessage.Content content : item.asMessage().content()) {
-                if (content.isOutputText()) {
-                    sb.append(content.asOutputText().text());
-                }
-            }
-        }
-        return sb.toString();
     }
 
     // 응답에 코드펜스·설명 문구가 섞여도 첫 '{' ~ 마지막 '}' 구간만 취한다. 없으면 null(형식 실패 취급).

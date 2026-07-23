@@ -93,9 +93,8 @@ public class PreviewBlocks {
     static final String BREW_HEADER_FMT = "*%d회차*"; // 회차 구분 헤더
     private static final String BREW_RATING_FMT = "평가: %s"; // 회차 감상에 붙는 rating 표기
 
-    // POLICY: 시간·수치 표기는 RecipeAmounts(render)가 단일 소스 — 미리보기는 위임만 하고 사본을 두지 않는다.
-    //         카드↔미리보기 동일 문자열(AC-76)을 코드로 강제한다 (ref: specs/coffee-note-agent/plan.md#ADR-67).
-    private static final RecipeAmounts AMOUNTS = new RecipeAmounts();
+    // POLICY: 시간·수치 표기는 RecipeAmounts(render)가 단일 소스 — 미리보기는 정적 호출로 위임만 하고 사본을
+    //         두지 않는다. 카드↔미리보기 동일 문자열(AC-76)을 코드로 강제한다 (ref: specs/coffee-note-agent/plan.md#ADR-67).
 
     /**
      * pending을 확인 미리보기 블록 목록으로 조립한다.
@@ -299,7 +298,7 @@ public class PreviewBlocks {
         addNumberPart(parts, RECIPE_WATER_FMT, recipe.waterMl());
         addNumberPart(parts, RECIPE_YIELD_FMT, recipe.yieldMl());
         // 시간은 카드와 동일 기준 — 비양수는 null 반환이라 행 자체를 생략한다(ADR-54 정렬, ADR-67).
-        String time = AMOUNTS.time(recipe.timeSec());
+        String time = RecipeAmounts.time(recipe.timeSec());
         if (time != null) {
             parts.add(String.format(RECIPE_TIME_FMT, time));
         }
@@ -325,7 +324,7 @@ public class PreviewBlocks {
 
     // 수치 항목 1개 추가 — RecipeAmounts.num이 표기 불가로 빈 문자열을 돌려주면 항목을 만들지 않는다.
     private static void addNumberPart(List<String> parts, String format, Double value) {
-        String num = AMOUNTS.num(value);
+        String num = RecipeAmounts.num(value);
         if (!num.isEmpty()) {
             parts.add(String.format(format, num));
         }

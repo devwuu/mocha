@@ -520,6 +520,23 @@ class ThymeleafNoteRendererTest {
     }
 
     @Test
+    @DisplayName("changes/0025 리뷰 후속: 반올림 0초 timeSec은 두 테마 모두 시간 타일·행이 생략된다('총 null' 누수 차단)")
+    void recipeCardOmitsUnrenderableTime(@TempDir Path dataDir, @TempDir Path artA, @TempDir Path artB) {
+        // 0.3초는 V-8(양수 유한)을 통과해 저장까지 오지만 amt.time이 null — 템플릿 가드가 표기 결과 기준이어야 한다.
+        Recipe recipe = new Recipe(null, 15.0, 240.0, null, 0.3, null, null, null, "뜸 40ml 30초 → 200ml", null);
+        for (Theme theme : new Theme[]{Theme.TYPE_A, Theme.TYPE_B}) {
+            NoteRepository repo = seedWithRecipe(dataDir, new Sourced<>("예가체프 G1 워시드", Source.USER), recipe);
+            Path artifactDir = theme == Theme.TYPE_A ? artA : artB;
+            FakeCardImageRenderer cards = renderAllWith(repo, theme, artifactDir);
+
+            String recipeCard = capturedHtml(cards, "cards/2026-07-10/2026-07-10-recipe-1.jpg");
+            assertTrue(recipeCard.contains("뜸 40ml 30초"), theme + ": 푸어링 행은 유지");
+            assertFalse(recipeCard.contains("총 null"), theme + ": null 문자열 병기 누수 없음");
+            assertFalse(recipeCard.contains("추출 시간"), theme + ": 표기 불가 시간의 타일·행 생략");
+        }
+    }
+
+    @Test
     @DisplayName("AC-78: recipe가 null인 회차는 레시피 카드가 생성되지 않는다(감상 카드만)")
     void recipeCardOmittedWhenRecipeAbsent(@TempDir Path dataDir, @TempDir Path artA, @TempDir Path artB) {
         for (Theme theme : new Theme[]{Theme.TYPE_A, Theme.TYPE_B}) {

@@ -11,6 +11,9 @@ import java.util.regex.Pattern;
  * <p>비율·시간 표기는 저장하지 않는 파생값이다 — 렌더 시에만 계산한다(ADR-1, changes/0021 ADR-54 POLICY).
  * 파생 헬퍼는 계산 불가 시 {@code null}을 돌려줘 템플릿 {@code th:if}가 행·서브라벨을 통째 숨기게 한다
  * ({@link #num(Double)}의 빈 문자열 관용과 다른 이유).
+ * <p>전 메서드 정적 — stateless 헬퍼라 인스턴스 상태가 없고, 생성 지점이 분화해도 표기가 갈라질 수 없다
+ * (backlog CR25-4 해소, 2026-07-23 사용자 확정). 인스턴스화는 템플릿 컨텍스트 {@code amt} 주입용으로만
+ * 남긴다 — SpEL은 인스턴스 참조로도 정적 메서드를 해석하므로 템플릿 계약({@code amt.time(...)} 형태)은 불변.
  */
 public final class RecipeAmounts {
 
@@ -18,7 +21,7 @@ public final class RecipeAmounts {
     private static final Pattern GRIND = Pattern.compile("^(.+?)\\s*\\(([^()]+)\\)$");
 
     /** {@code 15.0 → "15"}, {@code 15.5 → "15.5"}. null·비유한값은 빈 문자열. */
-    public String num(Double v) {
+    public static String num(Double v) {
         if (v == null || v.isNaN() || v.isInfinite()) {
             return "";
         }
@@ -32,7 +35,7 @@ public final class RecipeAmounts {
      * 도징:추출량 비율 — {@code (18, 36) → "1 : 2"}, {@code (18, 40) → "1 : 2.2"}(소수 1자리 반올림).
      * 둘 다 양수일 때만 계산하고 아니면 {@code null}(비율 줄 생략 — ADR-54, AC-76).
      */
-    public String ratio(Double doseG, Double yieldMl) {
+    public static String ratio(Double doseG, Double yieldMl) {
         if (doseG == null || yieldMl == null || doseG <= 0 || yieldMl <= 0) {
             return null;
         }
@@ -45,7 +48,7 @@ public final class RecipeAmounts {
      * null·비양수는 {@code null}(행 생략 — ADR-54). 가드는 반올림 <em>후</em> 값 기준이다 —
      * {@code 0.3}처럼 반올림하면 0초가 되는 입력이 "0초"로 새는 것을 막는다(changes/0025 TΔ1c 정렬).
      */
-    public String time(Double timeSec) {
+    public static String time(Double timeSec) {
         if (timeSec == null || timeSec.isNaN() || timeSec.isInfinite()) {
             return null; // 비유한값은 num과 동일하게 표기 불가 취급(Math.round(∞)=Long.MAX 누수 차단)
         }
@@ -66,7 +69,7 @@ public final class RecipeAmounts {
      * 값+그라인더 서브라벨 분리 표시로 되돌린다(파생 표기 — 저장 형식은 한 문자열 그대로).
      * 괄호가 없으면 원문 그대로, null이면 null.
      */
-    public String grindValue(String grind) {
+    public static String grindValue(String grind) {
         if (grind == null) {
             return null;
         }
@@ -78,7 +81,7 @@ public final class RecipeAmounts {
      * grind의 그라인더명 부분 — {@code "210클릭 (매버릭 2.0)" → "매버릭 2.0"}. 괄호가 없으면 {@code null}
      * (서브라벨 생략). "기준" 접미는 템플릿이 붙인다.
      */
-    public String grindGrinder(String grind) {
+    public static String grindGrinder(String grind) {
         if (grind == null) {
             return null;
         }

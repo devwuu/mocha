@@ -9,8 +9,6 @@ import com.openai.models.responses.Response;
 import com.openai.models.responses.ResponseCreateParams;
 import com.openai.models.responses.ResponseFormatTextJsonSchemaConfig;
 import com.openai.models.responses.ResponseInputItem;
-import com.openai.models.responses.ResponseOutputItem;
-import com.openai.models.responses.ResponseOutputMessage;
 import com.openai.models.responses.ResponseTextConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -77,7 +75,7 @@ public class OpenAiAliasGenerator implements AliasGenerator {
      */
     protected String call(String userPrompt) {
         Response response = client.responses().create(buildParams(userPrompt));
-        return outputText(response);
+        return OpenAiResponseTexts.outputText(response);
     }
 
     // 파라미터 조립을 분리해 테스트가 SDK 호출 없이 strict schema·모델 배선을 검사할 수 있게 한다.
@@ -117,22 +115,6 @@ public class OpenAiAliasGenerator implements AliasGenerator {
                 .strict(true)
                 .schema(builder.build())
                 .build();
-    }
-
-    // Responses 출력 아이템 중 메시지 텍스트만 이어붙인다.
-    private static String outputText(Response response) {
-        StringBuilder sb = new StringBuilder();
-        for (ResponseOutputItem item : response.output()) {
-            if (!item.isMessage()) {
-                continue;
-            }
-            for (ResponseOutputMessage.Content content : item.asMessage().content()) {
-                if (content.isOutputText()) {
-                    sb.append(content.asOutputText().text());
-                }
-            }
-        }
-        return sb.toString();
     }
 
     /** data-model §4.1 요청 스키마 대응 페이로드 — coffee_name/roastery로 직렬화(snake_case). */

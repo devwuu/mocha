@@ -66,6 +66,8 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
 
     private final KoreanDates dates = new KoreanDates();
     private final RatingStyle ratingStyle = new RatingStyle();
+    // 템플릿 컨텍스트 `amt` 주입용 심 — 표기 로직은 전부 정적(RecipeAmounts), SpEL이 인스턴스 참조로
+    // 정적 메서드를 해석하므로 템플릿 계약은 불변(backlog CR25-4 해소).
     private final RecipeAmounts recipeAmounts = new RecipeAmounts();
 
     public ThymeleafNoteRenderer(

@@ -31,7 +31,7 @@ public record Recipe(
 ) {
 
     /**
-     * V-8 정규화. 수치 필드의 위반 값(음수·0)과 텍스트 필드의 공백은 <b>해당 항목만</b> null로 드롭하고,
+     * V-8 정규화. 수치 필드의 위반 값(음수·0·비유한값)과 텍스트 필드의 공백은 <b>해당 항목만</b> null로 드롭하고,
      * 전 필드가 null이면 Recipe 자체를 {@code null}로 정규화한다(레시피 카드 미생성 근거).
      * <p>레시피는 부속 정보라 위반이 있어도 저장을 거부하지 않는다 (ref: data-model.md#V-8).
      *
@@ -61,9 +61,10 @@ public record Recipe(
         return normalized;
     }
 
-    // V-8: 수치 필드는 양수 number 또는 null. 0·음수는 위반 → null로 드롭.
+    // V-8: 수치 필드는 양수 유한 number 또는 null. 0·음수·비유한값(Infinity — NaN은 v>0이 걸러줌)은 위반 → null로 드롭.
+    // 비유한값을 여기서 한 번 걸러 렌더 표기(RecipeAmounts)·미리보기·비율 계산이 재가드 없이 정렬된다(changes/0025 리뷰 후속).
     private static Double positiveOrNull(Double v) {
-        return v != null && v > 0 ? v : null;
+        return v != null && !v.isInfinite() && v > 0 ? v : null;
     }
 
     // V-8: 텍스트 필드는 string 또는 null. 공백·빈 문자열은 null로 드롭.

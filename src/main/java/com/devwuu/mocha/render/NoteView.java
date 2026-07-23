@@ -67,10 +67,13 @@ public final class NoteView {
             return recipe.method() != null && recipe.method().contains("에스프레소");
         }
 
+        // 시간의 표시 가능 여부는 표기 단일 소스(RecipeAmounts.time)에 위임 — 반올림 0초 등 표기 불가 값이
+        // 타일·행 유무 판정만 참으로 만드는 어긋남 방지(changes/0025 리뷰 후속, 템플릿 가드와 동일 기준).
+
         /** 수치 타일 영역에 오를 값이 하나라도 있는가 — 없으면 타일 행 자체를 숨긴다(구 AC-25 승계). */
         public boolean hasNumericTiles() {
             return espressoLayout()
-                    ? recipe.doseG() != null || recipe.yieldMl() != null || recipe.timeSec() != null
+                    ? recipe.doseG() != null || recipe.yieldMl() != null || RecipeAmounts.time(recipe.timeSec()) != null
                     : recipe.doseG() != null || recipe.waterMl() != null || recipe.grind() != null;
         }
 
@@ -80,7 +83,7 @@ public final class NoteView {
                     ? recipe.grind() != null || recipe.machine() != null || recipe.tempC() != null
                             || recipe.waterMl() != null || recipe.pouring() != null
                     : recipe.tempC() != null || recipe.machine() != null || recipe.yieldMl() != null
-                            || recipe.pouring() != null || recipe.timeSec() != null;
+                            || recipe.pouring() != null || RecipeAmounts.time(recipe.timeSec()) != null;
         }
     }
 }

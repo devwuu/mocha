@@ -287,7 +287,8 @@ class PreviewBlocksTest {
     @Test
     @DisplayName("changes/0025 TΔ1c: 표기 불가 수치(반올림 0초·비유한값)는 카드 기준으로 행이 생략된다")
     void recipeOmitsUnrenderableNumbers() {
-        // normalize의 V-8(양수만)을 통과하지만 표기 불가인 값들 — timeSec 0.3(반올림 0초)·doseG Infinity.
+        // timeSec 0.3은 V-8(양수 유한)을 통과하지만 반올림하면 0초 — 표기 계층이 행을 생략한다.
+        // doseG Infinity는 리뷰 후속으로 V-8이 정규화에서 드롭한다(비유한값 위반) — 어느 계층이 막든 행 미출력.
         Recipe edge = Recipe.normalize(new Recipe(
                 null, Double.POSITIVE_INFINITY, 240.0, null, 0.3, null, null, null, null, null));
         Note draft = new Note(
