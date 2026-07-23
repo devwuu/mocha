@@ -1,6 +1,5 @@
 package com.devwuu.mocha.config;
 
-import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.llm.OpenAiAliasGenerator;
 import com.devwuu.mocha.llm.OpenAiVisionClient;
 import com.devwuu.mocha.llm.VisionClient;
@@ -11,6 +10,7 @@ import com.openai.client.okhttp.OpenAIOkHttpClient;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * 에이전트 루프 밖 보조 콜(vision OCR·별칭 생성) 어댑터 + OCR 전처리({@link PhotoInfoExtractor}) 빈 배선
@@ -36,8 +36,9 @@ public class LlmConfig {
     @Bean
     public VisionClient visionClient(
             OpenAIClient openAiClient,
-            @Value("${mocha.vision.model:gpt-5.4-mini}") String model) {
-        return new OpenAiVisionClient(openAiClient, model, MochaObjectMapper.create());
+            @Value("${mocha.vision.model:gpt-5.4-mini}") String model,
+            ObjectMapper mapper) {
+        return new OpenAiVisionClient(openAiClient, model, mapper);
     }
 
     // 별칭 생성 경계(ADR-37 — [저장] 신규 커밋 시 1콜) — 텍스트 전용 최경량 전용 키(mocha.alias.model,
@@ -45,8 +46,9 @@ public class LlmConfig {
     @Bean
     public AliasGenerator aliasGenerator(
             OpenAIClient openAiClient,
-            @Value("${mocha.alias.model:gpt-5.4-nano}") String model) {
-        return new OpenAiAliasGenerator(openAiClient, model, MochaObjectMapper.create());
+            @Value("${mocha.alias.model:gpt-5.4-nano}") String model,
+            ObjectMapper mapper) {
+        return new OpenAiAliasGenerator(openAiClient, model, mapper);
     }
 
     // 수신 사진 OCR(루프 전 전처리, FR-19/ADR-23) — VisionClient(전용 키 mocha.vision.model — ADR-50) 재사용.

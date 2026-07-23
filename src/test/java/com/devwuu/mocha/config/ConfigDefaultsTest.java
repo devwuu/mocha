@@ -14,14 +14,19 @@ import com.devwuu.mocha.render.Theme;
 import com.devwuu.mocha.repository.NoteRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.convert.ApplicationConversionService;
+import org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.test.util.ReflectionTestUtils;
+import tools.jackson.databind.ObjectMapper;
 
 import java.lang.reflect.Proxy;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -38,6 +43,9 @@ class ConfigDefaultsTest {
             // Boot 런타임과 동일한 문자열→Duration("1h") 변환을 켠다 — 실제 앱 컨텍스트와 조건을 맞춘다.
             .withInitializer(context -> context.getBeanFactory()
                     .setConversionService(ApplicationConversionService.getSharedInstance()))
+            // Jackson 자동구성을 실제 앱과 동일하게 켠다(starter-json) — Boot의 @Primary JsonMapper와의
+            // 공존 조건까지 가드하기 위함(TΔ1a2 리뷰 발견: ObjectMapper 상위 타입 빈은 Boot가 안 물러난다).
+            .withConfiguration(AutoConfigurations.of(JacksonAutoConfiguration.class))
             // CommonConfig: 트랜스크립트 빈이 공통 Clock 빈을 주입받는다(ADR-63) — 실제 앱 컨텍스트와 동일 배선.
             .withUserConfiguration(CommonConfig.class, LlmConfig.class, AgentConfig.class);
 
@@ -64,6 +72,27 @@ class ConfigDefaultsTest {
         // 이 빈이 다른 존으로 바뀌면 V-3 날짜 스탬핑(pending TTL·노트 date)이 조용히 어긋나므로 여기서 박는다.
         runner.run(context ->
                 assertThat(context.getBean(Clock.class).getZone()).isEqualTo(ZoneId.of("Asia/Seoul")));
+    }
+
+    @Test
+    @DisplayName("ADR-63: 공통 ObjectMapper 빈은 도메인 JSON 규칙(snake_case·오프셋 보존)을 지닌다 — 유일한 생성 지점 가드")
+    void commonObjectMapperBeanCarriesMochaRules() {
+        // 규칙 불변식은 이제 CommonConfig 빈 정의 1곳만 강제한다(자체 생성 9곳 제거, changes/0024 TΔ1a2) —
+        // 이 빈이 기본 매퍼로 바뀌면 노트 JSON 필드명(data-model — coffee_name 등)·오프셋 왕복 동일성이
+        // 조용히 어긋나므로 여기서 박는다. 러너에 Jackson 자동구성이 켜져 있어(위 주석) Boot 기본 매퍼가
+        // 이 빈을 가리는 회귀(@Primary 승자 역전)도 함께 잡는다.
+        runner.run(context -> {
+            ObjectMapper mapper = context.getBean(ObjectMapper.class);
+            assertThat(mapper.writeValueAsString(new Probe("예가체프", null)))
+                    .isEqualTo("{\"coffee_name\":\"예가체프\",\"tasted_at\":null}");
+            // ADJUST_DATES_TO_CONTEXT_TIME_ZONE=false — 원 오프셋(+09:00) 보존, UTC 정규화 금지.
+            assertThat(mapper.readValue("{\"tasted_at\":\"2026-07-23T09:30:00+09:00\"}", Probe.class)
+                    .tastedAt().getOffset()).isEqualTo(ZoneOffset.ofHours(9));
+        });
+    }
+
+    // snake_case·오프셋 규칙 관측용 최소 표본 — 도메인 record를 끌어오지 않고 규칙만 본다.
+    private record Probe(String coffeeName, OffsetDateTime tastedAt) {
     }
 
     @Test

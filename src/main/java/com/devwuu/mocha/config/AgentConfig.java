@@ -3,13 +3,13 @@ package com.devwuu.mocha.config;
 import com.devwuu.mocha.agent.AgentClient;
 import com.devwuu.mocha.agent.OpenAiAgentClient;
 import com.devwuu.mocha.agent.conversation.ConversationTranscript;
-import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.llm.OpenAiUtteranceSegmenter;
 import com.devwuu.mocha.llm.UtteranceSegmenter;
 import com.openai.client.OpenAIClient;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import tools.jackson.databind.ObjectMapper;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -34,9 +34,9 @@ public class AgentConfig {
             @Value("${mocha.agent.model:gpt-5.4}") String model,
             @Value("${mocha.agent.max-tool-calls:8}") int maxToolCalls,
             @Value("${mocha.agent.max-turn-tokens:100000}") int maxTurnTokens,
-            @Value("${mocha.agent.turn-timeout:60s}") Duration turnTimeout) {
-        return new OpenAiAgentClient(openAiClient, model, maxToolCalls, maxTurnTokens, turnTimeout,
-                MochaObjectMapper.create());
+            @Value("${mocha.agent.turn-timeout:60s}") Duration turnTimeout,
+            ObjectMapper mapper) {
+        return new OpenAiAgentClient(openAiClient, model, maxToolCalls, maxTurnTokens, turnTimeout, mapper);
     }
 
     // 다중 날짜 세그먼트 분리 경계(ADR-61) — 탐지기가 절대 날짜 2개 이상을 찾은 턴에만 루프 전 1콜.
@@ -44,8 +44,9 @@ public class AgentConfig {
     @Bean
     public UtteranceSegmenter utteranceSegmenter(
             OpenAIClient openAiClient,
-            @Value("${mocha.agent.segmenter-model:gpt-5.4-mini}") String model) {
-        return new OpenAiUtteranceSegmenter(openAiClient, model, MochaObjectMapper.create());
+            @Value("${mocha.agent.segmenter-model:gpt-5.4-mini}") String model,
+            ObjectMapper mapper) {
+        return new OpenAiUtteranceSegmenter(openAiClient, model, mapper);
     }
 
     @Bean

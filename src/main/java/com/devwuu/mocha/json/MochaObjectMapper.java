@@ -1,6 +1,5 @@
 package com.devwuu.mocha.json;
 
-import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.PropertyNamingStrategies;
 import tools.jackson.databind.cfg.DateTimeFeature;
 import tools.jackson.databind.json.JsonMapper;
@@ -19,7 +18,10 @@ public final class MochaObjectMapper {
     private MochaObjectMapper() {
     }
 
-    public static ObjectMapper create() {
+    // 반환 타입은 구체 JsonMapper — config 공통 빈이 이 타입으로 노출돼야 Boot Jackson 자동구성의
+    // @ConditionalOnMissingBean(JsonMapper)이 물러난다(상위 ObjectMapper로 선언하면 Boot의 @Primary
+    // 기본 매퍼가 살아남아 전 주입 지점을 가로챈다 — changes/0024 TΔ1a2 리뷰 발견).
+    public static JsonMapper create() {
         return JsonMapper.builder()
                 .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
                 // OffsetDateTime 원 오프셋(예: +09:00) 보존 — UTC로 정규화하지 않음(왕복 동일성).

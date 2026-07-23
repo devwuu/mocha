@@ -1,7 +1,9 @@
 package com.devwuu.mocha.config;
 
+import com.devwuu.mocha.json.MochaObjectMapper;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.time.Clock;
 import java.time.ZoneId;
@@ -20,5 +22,17 @@ public class CommonConfig {
     @Bean
     public Clock clock() {
         return Clock.system(ZoneId.of("Asia/Seoul"));
+    }
+
+    // 도메인 JSON 규칙(snake_case·오프셋 보존)의 단일 생성 지점(ADR-63) — 규칙 자체는
+    // MochaObjectMapper가 소유하고, 여기는 인스턴스 생성만 소유한다. Jackson 3 ObjectMapper는
+    // 불변이라 싱글턴 공유가 안전하다.
+    // 선언 타입은 구체 JsonMapper여야 한다 — Boot Jackson 자동구성(@ConditionalOnMissingBean,
+    // 추론 타입 JsonMapper)이 이 빈을 보고 물러나 앱의 유일한 매퍼가 된다. 상위 ObjectMapper로
+    // 선언하면 Boot의 @Primary 기본 매퍼(snake_case 아님)가 전 주입 지점을 가로챈다 —
+    // ConfigDefaultsTest의 ADR-63 가드가 이 조건을 자동구성 포함 컨텍스트로 박는다.
+    @Bean
+    public JsonMapper objectMapper() {
+        return MochaObjectMapper.create();
     }
 }

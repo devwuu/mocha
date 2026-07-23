@@ -10,7 +10,6 @@ import com.devwuu.mocha.agent.tool.ProposalValidator;
 import com.devwuu.mocha.agent.tool.TastingDateDetector;
 import com.devwuu.mocha.agent.tool.TurnUtterance;
 import com.devwuu.mocha.domain.PendingNote;
-import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.llm.AliasGenerator;
 import com.devwuu.mocha.llm.PhotoInfoExtractor;
 import com.devwuu.mocha.llm.UtteranceSegmenter;
@@ -36,6 +35,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.ObjectMapper;
 
 import java.nio.file.Path;
 import java.time.Clock;
@@ -99,15 +99,17 @@ public class AgentConversationRouter implements ConversationRouter {
             PhotoBufferStore photoBufferStore,
             PhotoInfoExtractor photoInfoExtractor,
             AliasGenerator aliasGenerator,
+            // 시계·JSON 매퍼는 config 공통 빈 주입(ADR-63) — 자체 생성 금지.
             Clock clock,
+            ObjectMapper mapper,
             @Value("${mocha.artifact.dir}") String artifactDir,
             @Value("${mocha.photo.buffer-window}") Duration bufferWindow) {
         // tool façade·컨텍스트 조립기·커밋 핸들러는 프레임워크 무관 내부 협력자라 여기서 조립한다(Spring 빈이 아니다).
         this(pendingStore, transcript, agentClient,
                 new AgentToolkit(noteRepository, noteRenderer, responder, Path.of(artifactDir),
-                        MochaObjectMapper.create(), pendingStore, previewMessenger, new ProposalValidator(clock),
+                        mapper, pendingStore, previewMessenger, new ProposalValidator(clock),
                         transcript, clock),
-                new AgentContextAssembler(MochaObjectMapper.create(), clock),
+                new AgentContextAssembler(mapper, clock),
                 segmenter,
                 new SlackPhotoIntake(pendingStore, responder, photoDownloader, photoStore, photoBufferStore,
                         photoInfoExtractor, bufferWindow, clock),
