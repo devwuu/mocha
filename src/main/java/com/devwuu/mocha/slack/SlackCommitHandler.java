@@ -84,13 +84,8 @@ public class SlackCommitHandler {
         String slug = draft.slug();
         Entry entry = latestEntry(draft);
         boolean editMode = pending.mode() == PendingNote.Mode.EDIT;
-        // 커밋 대상은 draft.slug()(신규는 제안 시점에 할당, 기존은 매칭 slug). 결손이면 저장하지 않는다.
-        // edit 모드는 갱신 대상 참조(target)도 필수다(data-model §2.3).
-        if (slug == null || slug.isBlank() || entry == null || (editMode && pending.target() == null)) {
-            log.warn("[저장] 무효 — 손상된 pending(slug/entry/target 결손): user={} slug={}", userId, slug);
-            responder.post(action.channelId(), MochaMessages.BROKEN_PENDING);
-            return;
-        }
+        // pending 구조 무결성(slug·엔트리·edit target 존재)은 저장소 로드 경계가 보장한다 — 여기서 재검증하지
+        // 않는다(훼손 파일은 get()에서 정리 후 부재로 수렴) (ref: plan.md#ADR-66 POLICY, data-model §2.3).
 
         // edit 커밋은 별도 경로 — 신규 기록(record) 흐름은 mode 도입 전과 동일하게 유지한다(delta AC-Δ6).
         if (editMode) {

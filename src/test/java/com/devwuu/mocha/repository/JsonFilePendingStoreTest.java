@@ -11,6 +11,7 @@ import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.domain.Tasting;
 import com.devwuu.mocha.json.MochaObjectMapper;
+import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -211,6 +212,48 @@ class JsonFilePendingStoreTest {
 
         assertThat(store.get(USER)).isEmpty();
         assertThat(pendingFile()).doesNotExist();
+    }
+
+    // --- 0025 TΔ2b-2 직후 리뷰(CR25-6): createdAt·coffee_name 무결성 + draft 정규화 (ADR-66 ②) ---
+
+    @Test
+    @DisplayName("0025-CR25-6/ADR-66: createdAt 누락은 isExpired NPE 대신 empty 반환 + 파일 삭제")
+    void corruptMissingCreatedAtIsDiscarded() throws Exception {
+        // createdAt=null이면 종전 isExpired의 Duration.between(null,…)이 NPE로 샜다 — 관문에서 막는다.
+        writePendingWithout(sampleDraft(OffsetDateTime.now(FIXED)), "created_at");
+        JsonFilePendingStore store = new JsonFilePendingStore(dataDir, MochaObjectMapper.create(), TTL, FIXED);
+
+        assertThat(store.get(USER)).isEmpty();
+        assertThat(pendingFile()).doesNotExist();
+    }
+
+    @Test
+    @DisplayName("0025-CR25-6/ADR-66: draft.coffee_name 결손은 empty 반환 + 파일 삭제(모델 대면 null 차단)")
+    void corruptBlankCoffeeNameIsDiscarded() throws Exception {
+        writePendingTree(sampleDraft(OffsetDateTime.now(FIXED)),
+                tree -> ((ObjectNode) tree.get("draft")).remove("coffee_name"));
+        JsonFilePendingStore store = new JsonFilePendingStore(dataDir, MochaObjectMapper.create(), TTL, FIXED);
+
+        assertThat(store.get(USER)).isEmpty();
+        assertThat(pendingFile()).doesNotExist();
+    }
+
+    @Test
+    @DisplayName("0025-CR25-6/ADR-66: 수기 편집 draft의 무효 beans 요소는 로드 시 드롭(노트 읽기와 동일 위생), 파일은 무변경")
+    void corruptDraftBeanElementIsNormalizedOnLoad() throws Exception {
+        // description 부재 bean 요소(V-14 위반)를 draft.beans에 혼입 — 로드 정규화로 드롭돼야 한다.
+        writePendingTree(sampleDraft(OffsetDateTime.now(FIXED)), tree -> {
+            ArrayNode beans = (ArrayNode) tree.get("draft").get("beans");
+            beans.addObject().putNull("process"); // description 없는 무효 원두
+        });
+        JsonFilePendingStore store = new JsonFilePendingStore(dataDir, MochaObjectMapper.create(), TTL, FIXED);
+
+        var loaded = store.get(USER);
+        assertThat(loaded).isPresent();
+        assertThat(loaded.orElseThrow().draft().beans())
+                .as("V-14 위반 요소(무효 원두)는 드롭되고 정상 원두만 유지된다")
+                .hasSize(1);
+        assertThat(pendingFile()).exists(); // 로드 정규화는 파일을 다시 쓰지 않는다(메모리 정규화만)
     }
 
     // 유효 pending을 직렬화한 트리에서 특정 최상위 필드만 제거해 훼손 파일을 만든다(필드명 수기 실수 회피).

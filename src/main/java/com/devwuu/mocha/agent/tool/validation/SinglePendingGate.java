@@ -10,8 +10,8 @@ import java.time.LocalDate;
  * 단일 대기 게이트 패밀리(FR-22/AC-30) — 확인 대기(pending) 중 다른 대상의 제안을 거부하고, 같은
  * 대상의 재호출만 FR-5 갱신 경로로 통과시킨다. record·edit 진입점이 거부 문안을 공유한다
  * (ref: specs/coffee-note-agent/plan.md#ADR-45·ADR-64 — 추출은 배치 변경, 판정·문안 불변).
- * <p>예외 — 훼손 pending(draft·target·coffee_name 누락) null 가드는 추출 시점(0024 리뷰 반영)에 추가된
- * 신규 판정 동작이다: 종전 NPE→일반 tool 오류 대신 사유 있는 거부("대상 미상")로 수렴한다.
+ * <p>pending의 구조 무결성(mode별 draft·target 존재)은 저장소 로드 경계가 보장하므로(ADR-66 — 훼손은
+ * get()에서 정리 후 부재로 수렴) 여기서 재검증하지 않는다: 종전 훼손 pending null 가드는 0025에서 제거됐다.
  */
 final class SinglePendingGate {
 
@@ -30,7 +30,6 @@ final class SinglePendingGate {
             return;
         }
         if (pending.mode() == PendingNote.Mode.RECORD
-                && pending.draft() != null
                 && sameNormalized(proposedCoffeeName, draftCoffeeName(pending))
                 && roasteryCompatible(proposedRoastery, pending.draft().roastery())) {
             return; // FR-5: 대기 중 수정 발화 = 같은 커피의 propose_record 재호출 → 갱신 경로.
@@ -67,23 +66,18 @@ final class SinglePendingGate {
         return sameNormalized(proposed, draft);
     }
 
-    // 훼손 pending(draft·coffee_name 누락) null 가드 — 판정·사유 조립 양쪽에서 NPE 대신 거부로 수렴시킨다
-    // (ADR-45 POLICY, 0024 리뷰 반영 — edit의 target null 가드와 대칭).
+    // draft의 커피명 표시값 — null 안전 추출은 Sourced.valueOrNull 단일 소스에 위임한다(ADR-67).
+    // draft 존재는 저장소 로드 경계가 보장한다(ADR-66) — 여기서 재검증하지 않는다.
     private static String draftCoffeeName(PendingNote pending) {
-        if (pending.draft() == null || pending.draft().coffeeName() == null) {
-            return null;
-        }
-        return pending.draft().coffeeName().value();
+        return Sourced.valueOrNull(pending.draft().coffeeName());
     }
 
     private static String pendingBlocksReason(PendingNote pending) {
-        // target·draft null 가드 — 역직렬화된 pending에 target(mode=edit)이나 draft(mode=record)가 빠진
-        // 비정상 상태(위 통과 판정이 이미 대비하는 상태)에서도 NPE가 아니라 사유 있는 거부로 수렴한다
-        // (ADR-45 POLICY, 0024 리뷰 반영).
-        String draftCoffeeName = draftCoffeeName(pending);
+        // pending의 구조 무결성(mode별 draft·target 존재)은 저장소 로드 경계가 보장하므로 재검증 없이 참조한다
+        // (ref: plan.md#ADR-66 POLICY, data-model §2.3).
         String current = pending.mode() == PendingNote.Mode.EDIT
-                ? "수정 세션(" + (pending.target() == null ? "대상 미상" : pending.target().slug()) + ")"
-                : "새 기록(" + (draftCoffeeName == null ? "대상 미상" : draftCoffeeName) + ")";
+                ? "수정 세션(" + pending.target().slug() + ")"
+                : "새 기록(" + draftCoffeeName(pending) + ")";
         return "확인 대기 중인 " + current + "이 이미 있다 — 단일 대기 원칙상 다른 제안을 받을 수 없다. "
                 + "사용자에게 먼저 [저장]이나 [취소]로 마무리해 달라고 안내해라.";
     }

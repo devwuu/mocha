@@ -624,32 +624,9 @@ class ProposalValidatorsTest {
                     .contains("[저장]");
         }
 
-        @Test
-        @DisplayName("단일 대기: target이 빠진 edit pending(비정상 역직렬화)도 NPE 없이 사유 있는 거부로 수렴한다 — ADR-45 POLICY")
-        void editPendingWithoutTargetStillRejectsWithReason() {
-            // mode=edit인데 target=null — pending.json 수기 편집 등으로만 가능한 비정상 상태.
-            PendingNote corrupt = new PendingNote(PendingNote.Mode.EDIT,
-                    note("2026-07-13-102030", "커피베라 예가체프 G1", "커피베라", LocalDate.of(2026, 7, 13)),
-                    null, null, "ts-1", OffsetDateTime.now());
-            assertThat(rejectionOf(editValidator.validate(
-                    editArgs(target.slug(), "2026-07-13", ProposeEditArgs.Patch.empty()), target, corrupt)))
-                    .contains("수정 세션").contains("[저장]");
-            assertThat(rejectionOf(validateRecord(recordArgs(), corrupt)))
-                    .contains("수정 세션").contains("[저장]");
-        }
-
-        @Test
-        @DisplayName("단일 대기: draft가 빠진 record pending(비정상 역직렬화)도 NPE 없이 사유 있는 거부로 수렴한다 — ADR-45 POLICY")
-        void recordPendingWithoutDraftStillRejectsWithReason() {
-            // mode=record인데 draft=null — pending.json 수기 편집 등으로만 가능한 비정상 상태(edit의 target null과 대칭).
-            PendingNote corrupt = new PendingNote(PendingNote.Mode.RECORD, null, null,
-                    MatchInfo.newNote(), "ts-1", OffsetDateTime.now());
-            assertThat(rejectionOf(validateRecord(recordArgs(), corrupt)))
-                    .contains("새 기록").contains("대상 미상").contains("[저장]");
-            assertThat(rejectionOf(editValidator.validate(
-                    editArgs(target.slug(), "2026-07-13", ProposeEditArgs.Patch.empty()), target, corrupt)))
-                    .contains("새 기록").contains("대상 미상").contains("[저장]");
-        }
+        // 훼손 pending(target·draft 결손)의 방어는 저장소 로드 경계로 이관됐다(ADR-66, 0025 TΔ2b) — 소비처(게이트)
+        // 재검증 분기 제거. get()이 훼손 파일을 정리 후 부재로 수렴시켜 게이트에는 온전한 pending만 도달한다.
+        // 훼손 시나리오는 JsonFilePendingStoreTest의 무결성 테스트가 소유한다(corruptMissingDraft·corruptEditWithoutTarget 등).
 
         @Test
         @DisplayName("§3.4: patch의 brews는 통째 교체로 정규화되어 도착한다 — 빈 회차 드롭 포함(V-15)")

@@ -259,19 +259,8 @@ class SlackCommitHandlerTest {
         assertEquals(List.of(MochaMessages.CANCELED), responder.messages);
     }
 
-    @Test
-    @DisplayName("손상된 pending(slug 결손)에 [저장] → 저장하지 않고 방어 안내한다")
-    void confirmSaveRejectsBrokenPending() {
-        NoteRepository repo = noteRepository();
-        pendingStore.setPending(pendingWith(null)); // slug 미할당 draft
-
-        handler(repo).confirmSave(action(AgentConversationRouter.ACTION_SAVE));
-
-        assertTrue(repo.findAll().isEmpty(), "slug 없는 draft는 저장하지 않는다");
-        assertTrue(noteRenderer.entryCards.isEmpty());
-        assertEquals(0, pendingStore.clearCount, "손상 pending은 커밋 clear 대상이 아니다");
-        assertEquals(List.of(MochaMessages.BROKEN_PENDING), responder.messages);
-    }
+    // 손상 pending(slug·entry·edit target 결손)의 방어는 저장소 로드 경계로 이관됐다(ADR-66, 0025 TΔ2b) —
+    // 소비처 재검증 분기 제거. 훼손 시나리오는 JsonFilePendingStoreTest의 무결성 테스트가 소유한다.
 
     // --- 버튼 1회 소진(ADR-20, AC-22) — 구 TΔ2(changes/0009) 절 포팅 ---
 
@@ -498,22 +487,8 @@ class SlackCommitHandlerTest {
         assertEquals(1, repo.findBySlug("yirga").orElseThrow().entries().size(), "엔트리는 저장되되 사진 필드는 없다");
     }
 
-    @Test
-    @DisplayName("손상 edit pending(target 결손)에 [저장] → 저장하지 않고 방어 안내한다")
-    void confirmSaveRejectsEditPendingWithoutTarget() {
-        NoteRepository repo = noteRepository();
-        seedEditableNote(repo, "yirga", LocalDate.of(2026, 7, 8));
-        PendingNote broken = new PendingNote(PendingNote.Mode.EDIT,
-                editPending("yirga", LocalDate.of(2026, 7, 8), LocalDate.of(2026, 7, 9), "고친 감상").draft(),
-                null, null, "1720000000.000999", OffsetDateTime.now()); // target 결손
-        pendingStore.setPending(broken);
-
-        handler(repo).confirmSave(action(AgentConversationRouter.ACTION_SAVE));
-
-        assertEquals("원래 감상", tasteOf(repo.findBySlug("yirga").orElseThrow().entries().get(0)), "원본 무변화");
-        assertEquals(0, pendingStore.clearCount, "손상 pending은 커밋 clear 대상이 아니다");
-        assertEquals(List.of(MochaMessages.BROKEN_PENDING), responder.messages);
-    }
+    // 손상 edit pending(target 결손) 방어도 저장소 로드 경계로 이관됐다(ADR-66, 0025 TΔ2b) —
+    // JsonFilePendingStoreTest.corruptEditWithoutTargetIsDiscarded가 소유한다.
 
     // ---- 헬퍼 ----
 

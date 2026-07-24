@@ -2,6 +2,7 @@ package com.devwuu.mocha.repository;
 
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.PendingNote;
+import com.devwuu.mocha.domain.Sourced;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.core.JacksonException;
@@ -89,6 +90,15 @@ public class JsonFilePendingStore implements PendingStore {
         if (isExpired(pending)) {
             return Optional.empty();
         }
+        // 노트 읽기와 동일한 위생 — draft의 무효 beans/brews 요소를 저장 경로와 같은 정규화(V-8·V-14·V-15)로
+        // 드롭한다. 앱이 쓴 데이터엔 no-op. 파일은 다시 쓰지 않는다(메모리 정규화만) — 소비처는 draft의
+        // 요소 무결성도 재검증하지 않는다 (ref: plan.md#ADR-66, JsonFileNoteRepository.read 선례).
+        Note sanitized = pending.draft().normalized();
+        if (sanitized != pending.draft()) {
+            log.warn("pending 로드 위생(ADR-66): draft 무효 요소 드롭 — {} (수기 편집 위반 추정, 파일은 다시 쓰지 않음)",
+                    pendingFile.getFileName());
+            pending = pending.withDraft(sanitized);
+        }
         return Optional.of(pending);
     }
 
@@ -107,6 +117,7 @@ public class JsonFilePendingStore implements PendingStore {
     }
 
     // data-model §2.3 로드 무결성 집합 — 훼손 사유 문자열(정상이면 null).
+    // 필수 필드(mode·createdAt·draft·slug·coffee_name·엔트리, edit의 target)의 부재·공백을 판정한다.
     // 최상위·엔트리 null은 JSON `null`/필드 부재에서 나올 수 있어 여기서 방어한다(도메인 record는 entries를
     // 정규화하지 않는다 — Note는 beans만). 무결성 검사 자체가 NPE로 새면 로드 경계 관문이 무력화된다.
     private String integrityDefect(PendingNote pending) {
@@ -116,12 +127,22 @@ public class JsonFilePendingStore implements PendingStore {
         if (pending.mode() == null) {
             return "mode 필드 결손";
         }
+        // createdAt은 TTL 판정(isExpired)의 필수 입력 — 결손이면 만료 계산이 NPE로 새므로 관문에서 먼저 막는다.
+        if (pending.createdAt() == null) {
+            return "createdAt 필드 결손";
+        }
         Note draft = pending.draft();
         if (draft == null) {
             return "draft 필드 결손";
         }
         if (draft.slug() == null || draft.slug().isBlank()) {
             return "draft.slug 공백";
+        }
+        // coffee_name은 기록 정체성(record는 propose 시 필수, edit draft는 원본 노트 사본) — 결손이면 소비처가
+        // 모델 대면 사유에 커피명 대신 null을 노출하므로 관문에서 막는다(RecordProposalValidator 필수 검증과 대칭).
+        String coffeeName = Sourced.valueOrNull(draft.coffeeName());
+        if (coffeeName == null || coffeeName.isBlank()) {
+            return "draft.coffee_name 공백";
         }
         if (draft.entries() == null || draft.entries().isEmpty()) {
             return "draft 엔트리 0건";
