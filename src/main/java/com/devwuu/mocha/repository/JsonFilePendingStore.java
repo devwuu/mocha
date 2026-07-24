@@ -1,6 +1,10 @@
 package com.devwuu.mocha.repository;
 
+import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.PendingNote;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
@@ -21,6 +25,8 @@ import java.util.Optional;
  * 쓰기 도중 죽어도 원본이 깨지지 않게 한다(CLAUDE.md §3). get은 TTL 초과분을 만료 처리한다(V-7).
  */
 public class JsonFilePendingStore implements PendingStore {
+
+    private static final Logger log = LoggerFactory.getLogger(JsonFilePendingStore.class);
 
     private final Path pendingFile;
     private final ObjectMapper mapper;
@@ -58,7 +64,27 @@ public class JsonFilePendingStore implements PendingStore {
         if (!Files.isRegularFile(pendingFile)) {
             return Optional.empty();
         }
-        PendingNote pending = read();
+        // 일시적 읽기 오류(디스크·권한)는 훼손이 아니다 — 파일을 지우지 않고 전파한다(기존 read() 동작 유지).
+        byte[] bytes;
+        try {
+            bytes = Files.readAllBytes(pendingFile);
+        } catch (IOException e) {
+            throw new UncheckedIOException("pending 읽기 실패: " + pendingFile, e);
+        }
+        // POLICY: 저장소 읽기 경계가 유일한 무결성 관문 — 파싱 실패·필수 필드 결손 pending은 훼손으로
+        //         판정해 경고 로그 + 파일 정리 후 "대기 없음"으로 수렴한다(TTL 만료와 같은 부류, 다음
+        //         제안으로 자가 회복). 소비처는 로드된 pending의 구조 무결성을 재검증하지 않는다
+        //         (ref: specs/coffee-note-agent/plan.md#ADR-66, data-model.md#2.3).
+        PendingNote pending;
+        try {
+            pending = mapper.readValue(bytes, PendingNote.class);
+        } catch (JacksonException e) {
+            return discardCorrupt("파싱 실패: " + e.getMessage());
+        }
+        String defect = integrityDefect(pending);
+        if (defect != null) {
+            return discardCorrupt(defect);
+        }
         // POLICY: TTL 초과 pending은 유효한 대기로 취급하지 않는다 (ref: data-model.md#V-7, plan §5).
         if (isExpired(pending)) {
             return Optional.empty();
@@ -80,11 +106,41 @@ public class JsonFilePendingStore implements PendingStore {
         return age.compareTo(ttl) > 0;
     }
 
-    private PendingNote read() {
-        try {
-            return mapper.readValue(Files.readAllBytes(pendingFile), PendingNote.class);
-        } catch (IOException e) {
-            throw new UncheckedIOException("pending 읽기 실패: " + pendingFile, e);
+    // data-model §2.3 로드 무결성 집합 — 훼손 사유 문자열(정상이면 null).
+    // 최상위·엔트리 null은 JSON `null`/필드 부재에서 나올 수 있어 여기서 방어한다(도메인 record는 entries를
+    // 정규화하지 않는다 — Note는 beans만). 무결성 검사 자체가 NPE로 새면 로드 경계 관문이 무력화된다.
+    private String integrityDefect(PendingNote pending) {
+        if (pending == null) {
+            return "최상위 null";
         }
+        if (pending.mode() == null) {
+            return "mode 필드 결손";
+        }
+        Note draft = pending.draft();
+        if (draft == null) {
+            return "draft 필드 결손";
+        }
+        if (draft.slug() == null || draft.slug().isBlank()) {
+            return "draft.slug 공백";
+        }
+        if (draft.entries() == null || draft.entries().isEmpty()) {
+            return "draft 엔트리 0건";
+        }
+        if (pending.mode() == PendingNote.Mode.EDIT && pending.target() == null) {
+            return "edit 모드 target 결손";
+        }
+        return null;
+    }
+
+    // 훼손 pending 정리 — 경고 로그 + 파일 삭제 후 "대기 없음"으로 수렴(ADR-66 ②).
+    private Optional<PendingNote> discardCorrupt(String reason) {
+        log.warn("pending 로드 위생(ADR-66): 훼손 pending 정리 — {} ({} 삭제)", reason, pendingFile.getFileName());
+        try {
+            Files.deleteIfExists(pendingFile);
+        } catch (IOException e) {
+            // 정리 실패(읽기 전용 디렉토리 등)도 "대기 없음"으로 degrade — 턴을 깨지 않는다(ADR-66 converge to empty).
+            log.warn("훼손 pending 정리 실패 — 대기 없음으로 처리하고 진행: {}", pendingFile, e);
+        }
+        return Optional.empty();
     }
 }

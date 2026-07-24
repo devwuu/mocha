@@ -11,10 +11,12 @@ import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.domain.Tasting;
 import com.devwuu.mocha.json.MochaObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
@@ -23,6 +25,7 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -117,6 +120,115 @@ class JsonFilePendingStoreTest {
     }
 
     // (0012 이전 pending.json 하위 호환 테스트는 제거 — 기존 데이터는 배포 전 수동 삭제로 결정, delta 비범위.)
+
+    // --- 0025 TΔ2b-1: 로드 무결성 — 훼손 pending은 경고 로그 + 파일 정리 후 empty (ADR-66 ②, AC-Δ2 ②) ---
+
+    @Test
+    @DisplayName("0025-TΔ2b-1/AC-Δ2②: 비JSON 바이트(파싱 실패)는 empty 반환 + 파일 삭제")
+    void corruptNonJsonIsDiscarded() throws Exception {
+        Files.writeString(pendingFile(), "this-is-not-json{{{");
+        JsonFilePendingStore store = new JsonFilePendingStore(dataDir, MochaObjectMapper.create(), TTL, FIXED);
+
+        assertThat(store.get(USER)).isEmpty();
+        assertThat(pendingFile()).doesNotExist();
+    }
+
+    @Test
+    @DisplayName("0025-TΔ2b-1/AC-Δ2②: mode 누락은 empty 반환 + 파일 삭제")
+    void corruptMissingModeIsDiscarded() throws Exception {
+        writePendingWithout(sampleDraft(OffsetDateTime.now(FIXED)), "mode");
+        JsonFilePendingStore store = new JsonFilePendingStore(dataDir, MochaObjectMapper.create(), TTL, FIXED);
+
+        assertThat(store.get(USER)).isEmpty();
+        assertThat(pendingFile()).doesNotExist();
+    }
+
+    @Test
+    @DisplayName("0025-TΔ2b-1/AC-Δ2②: draft 누락은 empty 반환 + 파일 삭제")
+    void corruptMissingDraftIsDiscarded() throws Exception {
+        writePendingWithout(sampleDraft(OffsetDateTime.now(FIXED)), "draft");
+        JsonFilePendingStore store = new JsonFilePendingStore(dataDir, MochaObjectMapper.create(), TTL, FIXED);
+
+        assertThat(store.get(USER)).isEmpty();
+        assertThat(pendingFile()).doesNotExist();
+    }
+
+    @Test
+    @DisplayName("0025-TΔ2b-1/AC-Δ2②: draft.slug 공백은 empty 반환 + 파일 삭제")
+    void corruptBlankSlugIsDiscarded() throws Exception {
+        writePendingTree(sampleDraft(OffsetDateTime.now(FIXED)),
+                tree -> ((ObjectNode) tree.get("draft")).put("slug", "  "));
+        JsonFilePendingStore store = new JsonFilePendingStore(dataDir, MochaObjectMapper.create(), TTL, FIXED);
+
+        assertThat(store.get(USER)).isEmpty();
+        assertThat(pendingFile()).doesNotExist();
+    }
+
+    @Test
+    @DisplayName("0025-TΔ2b-1/AC-Δ2②: draft 엔트리 0건은 empty 반환 + 파일 삭제")
+    void corruptZeroEntriesIsDiscarded() throws Exception {
+        writePendingTree(sampleDraft(OffsetDateTime.now(FIXED)),
+                tree -> ((ObjectNode) tree.get("draft")).set("entries", tree.arrayNode()));
+        JsonFilePendingStore store = new JsonFilePendingStore(dataDir, MochaObjectMapper.create(), TTL, FIXED);
+
+        assertThat(store.get(USER)).isEmpty();
+        assertThat(pendingFile()).doesNotExist();
+    }
+
+    @Test
+    @DisplayName("0025-TΔ2b-1/ADR-66: draft.entries 필드 부재(정규화 안 됨)도 NPE 없이 empty로 수렴")
+    void corruptNullEntriesIsDiscarded() throws Exception {
+        // Note는 beans만 정규화하고 entries는 null 가능 — 무결성 검사가 NPE로 새지 않는지 가드.
+        writePendingTree(sampleDraft(OffsetDateTime.now(FIXED)),
+                tree -> ((ObjectNode) tree.get("draft")).remove("entries"));
+        JsonFilePendingStore store = new JsonFilePendingStore(dataDir, MochaObjectMapper.create(), TTL, FIXED);
+
+        assertThat(store.get(USER)).isEmpty();
+        assertThat(pendingFile()).doesNotExist();
+    }
+
+    @Test
+    @DisplayName("0025-TΔ2b-1/ADR-66: 최상위 JSON null도 NPE 없이 empty로 수렴 + 파일 삭제")
+    void corruptTopLevelNullIsDiscarded() throws Exception {
+        Files.writeString(pendingFile(), "null");
+        JsonFilePendingStore store = new JsonFilePendingStore(dataDir, MochaObjectMapper.create(), TTL, FIXED);
+
+        assertThat(store.get(USER)).isEmpty();
+        assertThat(pendingFile()).doesNotExist();
+    }
+
+    @Test
+    @DisplayName("0025-TΔ2b-1/AC-Δ2②: edit 모드인데 target 누락은 empty 반환 + 파일 삭제")
+    void corruptEditWithoutTargetIsDiscarded() throws Exception {
+        OffsetDateTime createdAt = OffsetDateTime.now(FIXED);
+        PendingNote editPending = new PendingNote(
+                PendingNote.Mode.EDIT,
+                sampleDraft(createdAt).draft(),
+                new PendingNote.EditTarget("coffeevera-yirgacheffe-g1", LocalDate.of(2026, 7, 9)),
+                null, "1720570200.000100", createdAt);
+        writePendingWithout(editPending, "target");
+        JsonFilePendingStore store = new JsonFilePendingStore(dataDir, MochaObjectMapper.create(), TTL, FIXED);
+
+        assertThat(store.get(USER)).isEmpty();
+        assertThat(pendingFile()).doesNotExist();
+    }
+
+    // 유효 pending을 직렬화한 트리에서 특정 최상위 필드만 제거해 훼손 파일을 만든다(필드명 수기 실수 회피).
+    private void writePendingWithout(PendingNote pending, String field) throws Exception {
+        writePendingTree(pending, tree -> tree.remove(field));
+    }
+
+    // 유효 pending을 직렬화한 트리를 임의로 변형해 훼손 파일을 만든다.
+    private void writePendingTree(PendingNote pending, Consumer<ObjectNode> mutator) throws Exception {
+        var mapper = MochaObjectMapper.create();
+        ObjectNode tree = (ObjectNode) mapper.readTree(mapper.writeValueAsBytes(pending));
+        mutator.accept(tree);
+        Files.write(pendingFile(), mapper.writeValueAsBytes(tree));
+    }
+
+    private Path pendingFile() {
+        return dataDir.resolve("pending.json");
+    }
 
     @Test
     @DisplayName("clear 후 조회는 빈 Optional / 부재 시에도 빈 Optional")
