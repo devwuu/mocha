@@ -1,6 +1,9 @@
 package com.devwuu.mocha.repository;
 
+import com.devwuu.mocha.image.ImageFormat;
+
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -25,6 +28,8 @@ public class LocalPhotoStore implements PhotoStore {
 
     // slug 세그먼트와 절대 겹치지 않는 예약 디렉토리(slug 문법상 '.' 불가).
     private static final String STAGING = ".staging";
+    // 매직바이트 판정에 필요한 선두 길이 — WEBP/HEIC의 브랜드가 8~11바이트라 12면 충분(여유 16).
+    private static final int MAGIC_PREFIX = 16;
     // 파일명 안전 문자만 허용 — 그 외는 '_'로 치환(경로 이스케이프·구분자 차단).
     private static final Pattern UNSAFE = Pattern.compile("[^a-zA-Z0-9._-]");
 
@@ -55,7 +60,7 @@ public class LocalPhotoStore implements PhotoStore {
         }
         List<StagedImage> images = new ArrayList<>();
         try {
-            for (Path src : listSorted(staging)) {
+            for (Path src : listStagedPhotos(staging)) {
                 images.add(new StagedImage(src.getFileName().toString(), Files.readAllBytes(src)));
             }
         } catch (IOException e) {
@@ -74,14 +79,15 @@ public class LocalPhotoStore implements PhotoStore {
         List<String> relPaths = new ArrayList<>();
         try {
             Files.createDirectories(target);
-            List<Path> staged = listSorted(staging);
+            List<Path> staged = listStagedPhotos(staging);
             for (Path src : staged) {
                 String name = uniqueName(target, src.getFileName().toString());
                 move(src, target.resolve(name));
                 // V-4: JSON에는 photos/ 로 시작하는 상대 경로만. 구분자는 '/'로 고정(플랫폼 무관·file:// 링크용).
                 relPaths.add("photos/" + slug + "/" + date + "/" + name);
             }
-            Files.deleteIfExists(staging);
+            // 걸러진 비사진 잔재(.DS_Store 등)까지 지우고 폴더를 접는다 — 스테이징은 커밋 후 소멸이 불변식.
+            deleteStaging(staging);
         } catch (IOException e) {
             throw new UncheckedIOException("사진 커밋 실패: " + target, e);
         }
@@ -94,11 +100,8 @@ public class LocalPhotoStore implements PhotoStore {
         if (!Files.isDirectory(staging)) {
             return;
         }
-        try (Stream<Path> entries = Files.list(staging)) {
-            for (Path p : entries.toList()) {
-                Files.deleteIfExists(p);
-            }
-            Files.deleteIfExists(staging);
+        try {
+            deleteStaging(staging);
         } catch (IOException e) {
             throw new UncheckedIOException("사진 스테이징 폐기 실패: " + staging, e);
         }
@@ -154,6 +157,40 @@ public class LocalPhotoStore implements PhotoStore {
                     .sorted(Comparator.comparing(p -> p.getFileName().toString()))
                     .toList();
         }
+    }
+
+    /**
+     * 스테이징 열람은 사진만 본다 — 판정은 매직바이트(입구 게이트 ADR-29와 같은 어휘), 확장자·메타는 신뢰하지 않는다.
+     * <p>{@code readStaged}·{@code commit}이 공유하는 유일한 열람 지점이라, 여기서 거른 파일은 OCR 배치에도
+     * 아카이브에도 들어가지 않는다. 스테이징엔 vision 지원 포맷과 HEIC 대체 썸네일만 정상 유입되므로
+     * {@code UNKNOWN} 제외로 충분하다. 아카이브 열람({@code moveEntryPhotos})은 대상이 아니다 — 이미 저장된
+     * 파일을 걸러내면 날짜 이동에서 잔재가 남아 폴더가 접히지 않는다.
+     */
+    // POLICY: 저장소 읽기 경계가 유일한 무결성 관문 — 소비처는 로드된 객체의 구조 무결성을 재검증하지 않는다 (ref: specs/coffee-note-agent/plan.md#ADR-66)
+    private List<Path> listStagedPhotos(Path staging) throws IOException {
+        List<Path> photos = new ArrayList<>();
+        for (Path file : listSorted(staging)) {
+            if (isPhoto(file)) {
+                photos.add(file);
+            }
+        }
+        return photos;
+    }
+
+    private static boolean isPhoto(Path file) throws IOException {
+        try (InputStream in = Files.newInputStream(file)) {
+            return ImageFormat.detect(in.readNBytes(MAGIC_PREFIX)) != ImageFormat.UNKNOWN;
+        }
+    }
+
+    // 스테이징 소멸: 남은 항목(걸러진 비사진 포함)을 지운 뒤 폴더까지 제거 — 커밋·폐기 공용.
+    private static void deleteStaging(Path staging) throws IOException {
+        try (Stream<Path> entries = Files.list(staging)) {
+            for (Path p : entries.toList()) {
+                Files.deleteIfExists(p);
+            }
+        }
+        Files.deleteIfExists(staging);
     }
 
     // 대상 디렉토리에 같은 이름이 있으면 base-2.ext, base-3.ext … 로 유일화(스테이징 중복·재기록 충돌 모두 대응).

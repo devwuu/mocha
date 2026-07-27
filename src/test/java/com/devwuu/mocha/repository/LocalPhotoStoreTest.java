@@ -29,10 +29,15 @@ class LocalPhotoStoreTest {
         this.store = new LocalPhotoStore(dataDir);
     }
 
+    // 스테이징 열람이 매직바이트로 사진만 통과시키므로(TΔ2c/ADR-66 ③) 픽스처도 실제 JPEG 선두를 갖춘다.
+    private static byte[] jpeg(int marker) {
+        return new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) marker};
+    }
+
     @Test
     @DisplayName("T4-1: 스테이징은 slug 미확정이라 photos/.staging/<user> 아래 원본을 보관한다")
     void stagesOriginalUnderStagingDir() {
-        store.stage(USER, "bean.jpg", new byte[]{1, 2, 3});
+        store.stage(USER, "bean.jpg", jpeg(1));
 
         Path staged = dataDir.resolve("photos").resolve(".staging").resolve(USER).resolve("bean.jpg");
         assertThat(staged).exists();
@@ -43,8 +48,8 @@ class LocalPhotoStoreTest {
     @Test
     @DisplayName("T4-1: commit은 스테이징을 photos/<slug>/<date>/로 옮기고 photos/ 상대 경로만 반환한다 (V-4)")
     void commitMovesToSlugDateAndReturnsRelativePaths() throws IOException {
-        store.stage(USER, "a.jpg", new byte[]{1});
-        store.stage(USER, "b.jpg", new byte[]{2});
+        store.stage(USER, "a.jpg", jpeg(1));
+        store.stage(USER, "b.jpg", jpeg(2));
 
         List<String> relPaths = store.commit(USER, "2026-07-11", "2026-07-11");
 
@@ -59,19 +64,19 @@ class LocalPhotoStoreTest {
         });
         // 실제 원본이 최종 경로로 이동했고 스테이징은 비었다.
         Path finalDir = dataDir.resolve("photos").resolve("2026-07-11").resolve("2026-07-11");
-        assertThat(Files.readAllBytes(finalDir.resolve("a.jpg"))).containsExactly(1);
-        assertThat(Files.readAllBytes(finalDir.resolve("b.jpg"))).containsExactly(2);
+        assertThat(Files.readAllBytes(finalDir.resolve("a.jpg"))).containsExactly(jpeg(1));
+        assertThat(Files.readAllBytes(finalDir.resolve("b.jpg"))).containsExactly(jpeg(2));
         assertThat(dataDir.resolve("photos").resolve(".staging").resolve(USER)).doesNotExist();
     }
 
     @Test
     @DisplayName("T4-1: 같은 slug/date에 같은 파일명이 다시 오면 -N 접미로 유일화한다(재기록 충돌)")
     void deduplicatesCollidingFilenamesInTarget() {
-        store.stage(USER, "photo.jpg", new byte[]{1});
+        store.stage(USER, "photo.jpg", jpeg(1));
         store.commit(USER, "coffeevera", "2026-07-11");
 
         // 같은 날 재기록 — 파일명이 겹쳐도 덮어쓰지 않고 새 이름을 받는다.
-        store.stage(USER, "photo.jpg", new byte[]{2});
+        store.stage(USER, "photo.jpg", jpeg(2));
         List<String> second = store.commit(USER, "coffeevera", "2026-07-11");
 
         assertThat(second).containsExactly("photos/coffeevera/2026-07-11/photo-2.jpg");
@@ -80,8 +85,8 @@ class LocalPhotoStoreTest {
     @Test
     @DisplayName("T4-1: 스테이징 내 파일명 충돌도 -N으로 유일화해 유실 없이 모두 보관한다")
     void deduplicatesCollidingFilenamesInStaging() {
-        store.stage(USER, "img.jpg", new byte[]{1});
-        store.stage(USER, "img.jpg", new byte[]{2});
+        store.stage(USER, "img.jpg", jpeg(1));
+        store.stage(USER, "img.jpg", jpeg(2));
 
         List<String> relPaths = store.commit(USER, "note", "2026-07-11");
 
@@ -94,7 +99,7 @@ class LocalPhotoStoreTest {
     @Test
     @DisplayName("T4-1: 경로 이스케이프 문자가 섞인 파일명은 안전 문자로 정규화해 대상 디렉토리를 벗어나지 않는다")
     void sanitizesUnsafeFilenames() {
-        store.stage(USER, "../../evil name.jpg", new byte[]{9});
+        store.stage(USER, "../../evil name.jpg", jpeg(9));
 
         List<String> relPaths = store.commit(USER, "note", "2026-07-11");
 
@@ -113,8 +118,8 @@ class LocalPhotoStoreTest {
     @Test
     @DisplayName("TΔ3(0014): moveEntryPhotos는 옛 날짜 폴더 파일 전부를 새 날짜로 옮기고 빈 옛 폴더를 제거한다 (AC-Δ4)")
     void moveEntryPhotosMovesAllFilesAndRemovesEmptySource() {
-        store.stage(USER, "a.jpg", new byte[]{1});
-        store.stage(USER, "b.jpg", new byte[]{2});
+        store.stage(USER, "a.jpg", jpeg(1));
+        store.stage(USER, "b.jpg", jpeg(2));
         store.commit(USER, "yirga", "2026-07-08");
 
         store.moveEntryPhotos("yirga", "2026-07-08", "2026-07-09");
@@ -130,18 +135,18 @@ class LocalPhotoStoreTest {
     @DisplayName("TΔ3(0014): 이동처에 같은 이름 파일이 있으면 -N 접미로 병합해 유실 없이 보관한다 (AC-Δ4)")
     void moveEntryPhotosMergesCollidingFilenames() throws IOException {
         // 새 날짜 폴더에 이미 photo.jpg가 있는 상태(그 날짜에 먼저 올린 사진).
-        store.stage(USER, "photo.jpg", new byte[]{9});
+        store.stage(USER, "photo.jpg", jpeg(9));
         store.commit(USER, "yirga", "2026-07-09");
         // 옛 날짜 폴더에도 같은 이름 photo.jpg.
-        store.stage(USER, "photo.jpg", new byte[]{1});
+        store.stage(USER, "photo.jpg", jpeg(1));
         store.commit(USER, "yirga", "2026-07-08");
 
         store.moveEntryPhotos("yirga", "2026-07-08", "2026-07-09");
 
         Path to = dataDir.resolve("photos").resolve("yirga").resolve("2026-07-09");
         // 기존 파일은 덮이지 않고 이동분은 -2로 유일화 — 둘 다 보존된다.
-        assertThat(Files.readAllBytes(to.resolve("photo.jpg"))).containsExactly(9);
-        assertThat(Files.readAllBytes(to.resolve("photo-2.jpg"))).containsExactly(1);
+        assertThat(Files.readAllBytes(to.resolve("photo.jpg"))).containsExactly(jpeg(9));
+        assertThat(Files.readAllBytes(to.resolve("photo-2.jpg"))).containsExactly(jpeg(1));
         assertThat(dataDir.resolve("photos").resolve("yirga").resolve("2026-07-08")).doesNotExist();
     }
 
@@ -156,9 +161,31 @@ class LocalPhotoStoreTest {
     }
 
     @Test
+    @DisplayName("TΔ2c(0025): 스테이징에 섞인 비사진 파일은 readStaged·commit 어디에도 들어가지 않는다 (AC-Δ2 ③)")
+    void excludesNonPhotoFilesFromStagedReadAndCommit() throws IOException {
+        store.stage(USER, "bean.jpg", jpeg(1));
+        // Finder가 흘린 .DS_Store — stage() 입구 게이트를 거치지 않고 파일시스템에서 직접 유입되는 경로.
+        Path staging = dataDir.resolve("photos").resolve(".staging").resolve(USER);
+        Files.write(staging.resolve(".DS_Store"), new byte[]{0, 0, 0, 1, 'B', 'u', 'd', '1'});
+
+        // OCR 배치가 비사진 바이트를 vision에 넘기지 않는다.
+        assertThat(store.readStaged(USER)).extracting(StagedImage::name).containsExactly("bean.jpg");
+
+        List<String> relPaths = store.commit(USER, "yirga", "2026-07-27");
+
+        // 아카이브에도 새지 않고, 정상 사진은 그대로 커밋된다.
+        assertThat(relPaths).containsExactly("photos/yirga/2026-07-27/bean.jpg");
+        Path archived = dataDir.resolve("photos").resolve("yirga").resolve("2026-07-27");
+        assertThat(archived.resolve("bean.jpg")).exists();
+        assertThat(archived.resolve(".DS_Store")).doesNotExist();
+        // 걸러진 잔재까지 정리돼 스테이징은 소멸한다(커밋 후 스테이징 없음 불변식).
+        assertThat(staging).doesNotExist();
+    }
+
+    @Test
     @DisplayName("T4-1: discard는 스테이징만 폐기한다([취소]/TTL 정리)")
     void discardRemovesStagingOnly() {
-        store.stage(USER, "x.jpg", new byte[]{1});
+        store.stage(USER, "x.jpg", jpeg(1));
 
         store.discard(USER);
 
