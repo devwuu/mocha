@@ -105,8 +105,12 @@ public class RecordProposalValidator {
     // 거부 사유는 판단 근거(탐지 집합·위반 이유·다음 행동)를 담아 루프 내 자가 정정을 돕는다 —
     // bare rejection 금지(ADR-60 POLICY).
     private void requireSingleDateOrSegmented(TurnUserMessage utterance, LocalDate targetDate) {
-        NavigableSet<LocalDate> detected = TastingDateDetector.detect(
-                utterance == null ? null : utterance.rawText(), LocalDate.now(clock));
+        // 원문이 없으면 탐지할 날짜도 없다 — 게이트 비발동을 여기서 명시한다(타 클래스의 detect(null)=빈 집합
+        // 암묵 불변식에 기대지 않기 위함. 판정 결과는 동일).
+        if (utterance == null) {
+            return;
+        }
+        NavigableSet<LocalDate> detected = TastingDateDetector.detect(utterance.rawText(), LocalDate.now(clock));
         if (detected.size() < 2) {
             return;
         }
