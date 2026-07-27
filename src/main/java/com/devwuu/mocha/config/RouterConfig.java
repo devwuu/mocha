@@ -61,7 +61,9 @@ public class RouterConfig {
             NoteRepository noteRepository,
             NoteRenderer noteRenderer,
             SlackResponder responder,
-            @Value("${mocha.artifact.dir:./artifact}") String artifactDir,
+            // 산출 루트 선언은 RenderConfig가 소유하는 상수 하나를 공유한다 — 렌더러가 쓰는 디렉터리와
+            // 조회 tool이 카드를 찾는 디렉터리가 갈라지지 않게(changes/0025 CR25-9, ADR-50 POLICY).
+            @Value(RenderConfig.DEFAULT_ARTIFACT_DIR) String artifactDir,
             ObjectMapper mapper,
             PendingStore pendingStore,
             PreviewMessenger previewMessenger,

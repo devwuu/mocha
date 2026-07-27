@@ -8,8 +8,6 @@ import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
 import com.devwuu.mocha.agent.prompt.TurnPrompt;
 import com.devwuu.mocha.agent.tool.ToolCallback;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
-import com.devwuu.mocha.agent.tool.validation.EditProposalValidator;
-import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
 import com.devwuu.mocha.domain.Brew;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
@@ -54,6 +52,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import static com.devwuu.mocha.agent.tool.ToolCallbackProviderFixture.toolkit;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -86,9 +85,14 @@ class AgentConversationRouterTest {
                 url -> jpegBytes(), photoStore, photoBufferStore, photoInfoExtractor,
                 Duration.ofMinutes(3), clock);
         // fake ChatClient는 tool 실행기를 부르지 않으므로 lookup·제안 협력자는 미접촉 — 장착 목록 계약만 쓴다.
-        ToolCallbackProvider toolCallbackProvider = new ToolCallbackProvider(null, null, responder,
-                Path.of("unused-artifact"), MochaObjectMapper.create(), pendingStore, null,
-                new RecordProposalValidator(clock), new EditProposalValidator(), transcript, clock);
+        ToolCallbackProvider toolCallbackProvider = toolkit()
+                .responder(responder)
+                .artifactDir(Path.of("unused-artifact"))
+                .mapper(MochaObjectMapper.create())
+                .pendingStore(pendingStore)
+                .transcript(transcript)
+                .clock(clock)
+                .build();
         router = new AgentConversationRouter(pendingStore, transcript, chatClient, toolCallbackProvider,
                 new TurnPromptAssembler(MochaObjectMapper.create(), clock), segmenter, photoIntake,
                 responder, commitHandler, clock);

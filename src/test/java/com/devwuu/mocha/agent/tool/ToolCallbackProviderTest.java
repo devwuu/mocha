@@ -84,6 +84,9 @@ class ToolCallbackProviderTest {
         responder = new RecordingResponder();
         previewMessenger = new CapturingPreviewMessenger();
         transcript = new FoldingChatMemory(20, Duration.ofHours(1), clock);
+        // R-7 명시 예외: 실 협력자 조립 자체가 검증 대상이라 픽스처(ToolCallbackProviderFixture)를 경유하지
+        // 않는다 — 위치 인자 배선이 어긋나면 픽스처 경유 테스트는 함께 눈이 멀기 때문에 원 생성자를 그대로
+        // 통과시키는 지점을 하나 남긴다(TΔ4b, changes/0025).
         toolCallbackProvider = new ToolCallbackProvider(noteRepository, renderer, responder, artifactDir, mapper,
                 pendingStore, previewMessenger, new RecordProposalValidator(clock),
                 new EditProposalValidator(), transcript, clock);

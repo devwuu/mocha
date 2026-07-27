@@ -5,8 +5,6 @@ import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
 import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
 import com.devwuu.mocha.agent.prompt.TurnPrompt;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
-import com.devwuu.mocha.agent.tool.validation.EditProposalValidator;
-import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
 import com.devwuu.mocha.agent.turn.TurnUserMessage;
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Entry;
@@ -40,6 +38,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 
+import static com.devwuu.mocha.agent.tool.ToolCallbackProviderFixture.toolkit;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
@@ -67,10 +66,17 @@ class BeansExtractionSmokeTest {
         Clock clock = Clock.fixed(Instant.parse("2026-07-21T01:00:00Z"), ZoneId.of("Asia/Seoul"));
 
         InMemoryPendingStore pendingStore = new InMemoryPendingStore();
-        ToolCallbackProvider toolkit = new ToolCallbackProvider(new EmptyNoteRepository(), new NoOpRenderer(),
-                new PrintingResponder(), Path.of("build/smoke-artifact"), mapper, pendingStore,
-                new StubPreviewMessenger(), new RecordProposalValidator(clock), new EditProposalValidator(),
-                new FoldingChatMemory(20, Duration.ofHours(1), clock), clock);
+        ToolCallbackProvider toolkit = toolkit()
+                .noteRepository(new EmptyNoteRepository())
+                .noteRenderer(new NoOpRenderer())
+                .responder(new PrintingResponder())
+                .artifactDir(Path.of("build/smoke-artifact"))
+                .mapper(mapper)
+                .pendingStore(pendingStore)
+                .previewMessenger(new StubPreviewMessenger())
+                .transcript(new FoldingChatMemory(20, Duration.ofHours(1), clock))
+                .clock(clock)
+                .build();
 
         // AC-64 수준의 블렌드 발화 — 원두별 가공방식이 갈린다. 기대: beans 요소 2개(에티오피아=워시드,
         // 콜롬비아=내추럴), 원산지 쉼표 나열 ❌.

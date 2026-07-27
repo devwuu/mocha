@@ -6,8 +6,6 @@ import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
 import com.devwuu.mocha.agent.prompt.TurnPrompt;
 import com.devwuu.mocha.agent.tool.ToolCallback;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
-import com.devwuu.mocha.agent.tool.validation.EditProposalValidator;
-import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
 import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.llm.PhotoInfoExtractor;
@@ -37,6 +35,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.stream.Stream;
 
+import static com.devwuu.mocha.agent.tool.ToolCallbackProviderFixture.toolkit;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -89,9 +88,14 @@ class Change0023RegressionGuardTest {
         SlackPhotoIntake photoIntake = new SlackPhotoIntake(pendingStore, responder,
                 url -> new byte[0], photoStore, photoBufferStore, new StubPhotoInfoExtractor(),
                 Duration.ofMinutes(3), clock);
-        ToolCallbackProvider toolCallbackProvider = new ToolCallbackProvider(null, null, responder,
-                Path.of("unused-artifact"), mapper, pendingStore, null, new RecordProposalValidator(clock),
-                new EditProposalValidator(), transcript, clock);
+        ToolCallbackProvider toolCallbackProvider = toolkit()
+                .responder(responder)
+                .artifactDir(Path.of("unused-artifact"))
+                .mapper(mapper)
+                .pendingStore(pendingStore)
+                .transcript(transcript)
+                .clock(clock)
+                .build();
         // 버튼 미수신 경로만 돌리므로 커밋 핸들러는 접촉되지 않는다 — 접촉되면 null 협력자로 즉시 실패한다.
         AgentConversationRouter router = new AgentConversationRouter(pendingStore, transcript, chatClient,
                 toolCallbackProvider, new TurnPromptAssembler(mapper, clock), segmenter, photoIntake,

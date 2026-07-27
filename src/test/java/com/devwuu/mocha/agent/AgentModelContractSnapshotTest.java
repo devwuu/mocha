@@ -16,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
+import static com.devwuu.mocha.agent.tool.ToolCallbackProviderFixture.toolkit;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -46,8 +47,7 @@ class AgentModelContractSnapshotTest {
      */
     private static String serializeCurrentContract() {
         // 협력자는 전부 null — executor는 호출하지 않고 정의만 캡처한다(정의는 협력자 무관 상수).
-        ToolCallbackProvider toolkit = new ToolCallbackProvider(null, null, null, null, null, null,
-                null, null, null, null, null);
+        ToolCallbackProvider toolkit = toolkit().build();
         List<ToolCallback> tools = toolkit.forTurn("U-snapshot", "C-snapshot", new TurnUserMessage("스냅샷", null));
 
         StringBuilder contract = new StringBuilder();

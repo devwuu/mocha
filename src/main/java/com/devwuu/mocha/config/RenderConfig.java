@@ -25,6 +25,13 @@ import java.nio.file.Path;
 @Configuration
 public class RenderConfig {
 
+    // POLICY: mocha.* 키는 코드 default를 갖는다 — 설정 부재로 기동이 막히지 않는다
+    // (ref: specs/coffee-note-agent/plan.md#ADR-50 POLICY). 값은 plan §5 문서값(./artifact)과 일치시킨다.
+    // 산출 루트를 읽는 두 빈(여기 noteRenderer · RouterConfig의 toolCallbackProvider)이 이 상수 하나를 공유한다 —
+    // 리터럴 2벌이면 한쪽만 바뀌었을 때 렌더러가 쓴 카드를 조회 tool이 다른 디렉터리에서 찾아 "카드 없음"이 되고
+    // 전 테스트는 그린으로 남는다(changes/0025 CR25-9, RepositoryConfig.DEFAULT_DATA_DIR 선례).
+    static final String DEFAULT_ARTIFACT_DIR = "${mocha.artifact.dir:./artifact}";
+
     /** 오프라인 실행용 Thymeleaf 엔진. 테스트도 이 팩토리를 재사용해 프로덕션과 같은 해석 규칙을 쓴다. */
     public static SpringTemplateEngine offlineTemplateEngine() {
         ClassLoaderTemplateResolver resolver = new ClassLoaderTemplateResolver();
@@ -48,10 +55,7 @@ public class RenderConfig {
             NoteRepository noteRepository,
             SpringTemplateEngine noteTemplateEngine,
             CardImageRenderer cardImageRenderer,
-            // POLICY: mocha.* 키는 코드 default를 갖는다(ADR-50) — 산출 루트 기본값은 plan §5의 ./artifact.
-            //         RouterConfig의 같은 키 선언과 문자 일치를 유지한다(한쪽만 바뀌면 두 빈이 다른 디렉터리를
-            //         보는 드리프트, changes/0025 TΔ3d/RB-B6).
-            @Value("${mocha.artifact.dir:./artifact}") String artifactDir,
+            @Value(DEFAULT_ARTIFACT_DIR) String artifactDir,
             // 기본 테마는 type-a 세리프 (ref: plan.md#ADR-54, changes/0021 TΔ5a 사용자 확정).
             @Value("${mocha.artifact.theme:type-a}") String theme) {
         return new ThymeleafNoteRenderer(
