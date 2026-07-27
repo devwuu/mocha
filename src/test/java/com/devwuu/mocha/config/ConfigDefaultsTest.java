@@ -3,15 +3,35 @@ package com.devwuu.mocha.config;
 import com.devwuu.mocha.agent.ChatClient;
 import com.devwuu.mocha.agent.OpenAiChatClient;
 import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
+import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
+import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
+import com.devwuu.mocha.agent.tool.validation.EditProposalValidator;
+import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
+import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.llm.AliasGenerator;
 import com.devwuu.mocha.llm.OpenAiAliasGenerator;
 import com.devwuu.mocha.llm.OpenAiUtteranceSegmenter;
+import com.devwuu.mocha.llm.PhotoInfoExtractor;
 import com.devwuu.mocha.llm.UtteranceSegmenter;
 import com.devwuu.mocha.llm.VisionClient;
 import com.devwuu.mocha.render.CardImageRenderer;
 import com.devwuu.mocha.render.NoteRenderer;
 import com.devwuu.mocha.render.Theme;
+import com.devwuu.mocha.repository.JsonFileNoteRepository;
+import com.devwuu.mocha.repository.JsonFilePendingStore;
+import com.devwuu.mocha.repository.JsonFilePhotoBufferStore;
+import com.devwuu.mocha.repository.LocalPhotoStore;
 import com.devwuu.mocha.repository.NoteRepository;
+import com.devwuu.mocha.repository.PendingStore;
+import com.devwuu.mocha.repository.PhotoBufferStore;
+import com.devwuu.mocha.repository.PhotoStore;
+import com.devwuu.mocha.slack.SlackCommitHandler;
+import com.devwuu.mocha.slack.inbound.PhotoDownloader;
+import com.devwuu.mocha.slack.inbound.SlackPhotoIntake;
+import com.devwuu.mocha.slack.outbound.PreviewBlocks;
+import com.devwuu.mocha.slack.outbound.PreviewMessenger;
+import com.devwuu.mocha.slack.outbound.SlackResponder;
+import com.slack.api.methods.MethodsClient;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -28,6 +48,7 @@ import java.lang.reflect.Proxy;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
@@ -40,14 +61,14 @@ import static org.assertj.core.api.Assertions.assertThat;
  * {@code transcript-ttl}·{@code mocha.vision.model}·{@code mocha.alias.model})이 전부 미설정이어도
  * 코드 default로 빈이 뜨는지 검증한다. 구 키(mocha.llm.*·mocha.search.*)는 TΔ8b에서 폐기돼
  * 어떤 프로퍼티도 채우지 않는다.
+ * <p>TΔ4a(changes/0025, R-1) — 배선 커버 확대: {@code RepositoryConfig}·{@code RouterConfig}도
+ * 스텁 러너로 기동 단언한다(AC-Δ4). 0024가 라우터 생성자 안 조립을 config로 이관하면서(ADR-63)
+ * 배선 오류가 앱 기동 시점에만 드러나게 됐고, 그 표적 가드가 없었다.
  */
 class ConfigDefaultsTest {
 
-    private final ApplicationContextRunner runner = new ApplicationContextRunner()
-            .withInitializer(ConfigDefaultsTest::isolateFromAmbientEnvironment)
-            // Boot 런타임과 동일한 문자열→Duration("1h") 변환을 켠다 — 실제 앱 컨텍스트와 조건을 맞춘다.
-            .withInitializer(context -> context.getBeanFactory()
-                    .setConversionService(ApplicationConversionService.getSharedInstance()))
+    // 격리·Duration 변환은 isolatedRunner()가 소유 — 러너가 늘어도 토대가 갈라지지 않게 한다(TΔ4a).
+    private final ApplicationContextRunner runner = isolatedRunner()
             // Jackson 자동구성을 실제 앱과 동일하게 켠다(starter-json) — Boot의 @Primary JsonMapper와의
             // 공존 조건까지 가드하기 위함(TΔ1a2 리뷰 발견: ObjectMapper 상위 타입 빈은 Boot가 안 물러난다).
             .withConfiguration(AutoConfigurations.of(JacksonAutoConfiguration.class))
@@ -159,14 +180,101 @@ class ConfigDefaultsTest {
                 });
     }
 
+    @Test
+    @DisplayName("AC-Δ4(changes/0025 TΔ4a): RepositoryConfig가 mocha.data.dir·mocha.pending.ttl로 저장소 4종을 띄운다")
+    void repositoryBeansWireFromDataDirAndTtl() {
+        // R-1: 저장소 배선은 `mocha.data.dir` 하나에서 경로가 파생되고(plan §5·CLAUDE.md §3) TTL은 문자열
+        // 변환을 거친다 — 어느 쪽이 어긋나도 앱 기동 시점에야 드러났다. 생성자는 파일 I/O를 하지 않아
+        // 실제 디렉터리는 생기지 않는다.
+        repositoryRunner()
+                .withPropertyValues("mocha.data.dir=build/test-data", "mocha.pending.ttl=30m")
+                .run(context -> {
+                    assertThat(context.getBean(NoteRepository.class)).isInstanceOf(JsonFileNoteRepository.class);
+                    assertThat(context.getBean(PhotoStore.class)).isInstanceOf(LocalPhotoStore.class);
+                    assertThat(context.getBean(PhotoBufferStore.class)).isInstanceOf(JsonFilePhotoBufferStore.class);
+
+                    PendingStore pendingStore = context.getBean(PendingStore.class);
+                    assertThat(pendingStore).isInstanceOf(JsonFilePendingStore.class);
+                    // 경로는 설정 키에서만 파생된다(CLAUDE.md §3) — 하드코딩 회귀를 여기서 잡는다.
+                    assertThat(ReflectionTestUtils.getField(pendingStore, "pendingFile"))
+                            .isEqualTo(Path.of("build/test-data/pending.json"));
+                    assertThat(ReflectionTestUtils.getField(pendingStore, "ttl")).isEqualTo(Duration.ofMinutes(30));
+                });
+    }
+
+    @Test
+    @DisplayName("ADR-50(changes/0025 CR25-8): mocha.data.dir·mocha.pending.ttl 미설정 시 저장소가 코드 default로 뜬다")
+    void repositoryBeansStartWithDefaults() {
+        // CR25-8: RB-B6이 mocha.artifact.dir만 고쳐 이 두 키는 무기본값으로 남아 있었다 — application.yaml을
+        // 싣지 않는 컨텍스트에서 placeholder 미해결로 기동이 막힌다(TΔ3d가 자매 키에서 없앤 바로 그 실패).
+        // 값은 plan §5 문서값(./data · 24시간)과 일치해야 한다.
+        repositoryRunner().run(context -> {
+            assertThat(ReflectionTestUtils.getField(context.getBean(NoteRepository.class), "notesDir"))
+                    .isEqualTo(Path.of("./data/notes"));
+            assertThat(ReflectionTestUtils.getField(context.getBean(PendingStore.class), "ttl"))
+                    .isEqualTo(Duration.ofHours(24));
+        });
+    }
+
+    @Test
+    @DisplayName("AC-Δ4(changes/0025 TΔ4a): RouterConfig가 협력자 스텁만으로 턴 배선 6종을 조립한다")
+    void routerBeansAssembleFromCollaborators() {
+        // R-1: 0024 TΔ1b가 라우터 생성자 안 조립을 이 config로 이관했다(ADR-63) — 주입 지점이 늘어난 만큼
+        // 배선 누락이 기동 실패로만 드러난다. 협력자는 전부 스텁이라 이 테스트는 "조립되는가"만 본다.
+        routerRunner().run(context -> {
+            assertThat(context.getBean(RecordProposalValidator.class)).isNotNull();
+            assertThat(context.getBean(EditProposalValidator.class)).isNotNull();
+            assertThat(context.getBean(TurnPromptAssembler.class)).isNotNull();
+            assertThat(context.getBean(ToolCallbackProvider.class)).isNotNull();
+            assertThat(context.getBean(SlackCommitHandler.class)).isNotNull();
+
+            SlackPhotoIntake photoIntake = context.getBean(SlackPhotoIntake.class);
+            // 버퍼 창(FR-10·ADR-31)은 이 config만 default를 선언한다 — 미설정 기동을 함께 박는다.
+            assertThat(ReflectionTestUtils.getField(photoIntake, "bufferWindow")).isEqualTo(Duration.ofMinutes(10));
+        });
+    }
+
     // 렌더 배선만 띄우는 최소 러너 — 협력자는 스텁, 프로퍼티는 각 테스트가 필요한 것만 얹는다.
     private static ApplicationContextRunner renderRunner() {
-        return new ApplicationContextRunner()
-                .withInitializer(ConfigDefaultsTest::isolateFromAmbientEnvironment)
+        return isolatedRunner()
                 .withUserConfiguration(RenderConfig.class)
-                .withBean(NoteRepository.class, ConfigDefaultsTest::noteRepositoryStub)
+                .withBean(NoteRepository.class, () -> stub(NoteRepository.class))
                 .withBean(CardImageRenderer.class, () -> (html, baseDir, out) -> {
                 });
+    }
+
+    // 저장소 배선 러너 — 전역 빈(Clock·ObjectMapper)은 실제 CommonConfig에서 받아 앱과 조건을 맞춘다.
+    private static ApplicationContextRunner repositoryRunner() {
+        return isolatedRunner().withUserConfiguration(CommonConfig.class, RepositoryConfig.class);
+    }
+
+    // 턴 협력자 배선 러너 — 의존 빈 13종을 스텁으로 채운다(인터페이스는 Proxy, 구체 클래스는 무해한 실인스턴스).
+    private static ApplicationContextRunner routerRunner() {
+        return isolatedRunner()
+                .withUserConfiguration(RouterConfig.class)
+                .withBean(NoteRepository.class, () -> stub(NoteRepository.class))
+                .withBean(NoteRenderer.class, () -> stub(NoteRenderer.class))
+                .withBean(SlackResponder.class, () -> stub(SlackResponder.class))
+                .withBean(PendingStore.class, () -> stub(PendingStore.class))
+                .withBean(PhotoDownloader.class, () -> stub(PhotoDownloader.class))
+                .withBean(PhotoStore.class, () -> stub(PhotoStore.class))
+                .withBean(PhotoBufferStore.class, () -> stub(PhotoBufferStore.class))
+                .withBean(AliasGenerator.class, () -> stub(AliasGenerator.class))
+                .withBean(PreviewMessenger.class, () -> new PreviewMessenger(new PreviewBlocks(),
+                        stub(MethodsClient.class)))
+                .withBean(PhotoInfoExtractor.class, () -> new PhotoInfoExtractor(null, 4))
+                .withBean(FoldingChatMemory.class, () -> new FoldingChatMemory(20, Duration.ofHours(1),
+                        Clock.systemUTC()))
+                .withBean(Clock.class, () -> Clock.fixed(Instant.EPOCH, ZoneId.of("Asia/Seoul")))
+                .withBean(ObjectMapper.class, MochaObjectMapper::create);
+    }
+
+    // 이 클래스의 모든 러너가 공유하는 토대 — 환경 격리(CR25-7)와 Boot 런타임과 동일한 문자열→Duration 변환.
+    private static ApplicationContextRunner isolatedRunner() {
+        return new ApplicationContextRunner()
+                .withInitializer(ConfigDefaultsTest::isolateFromAmbientEnvironment)
+                .withInitializer(context -> context.getBeanFactory()
+                        .setConversionService(ApplicationConversionService.getSharedInstance()));
     }
 
     // POLICY: "키 미설정 → 코드 default" 단언은 주변 환경과 격리한다 (ref: plan.md#ADR-50 POLICY).
@@ -180,11 +288,23 @@ class ConfigDefaultsTest {
         sources.remove(StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME);
     }
 
-    // 렌더러 빈 배선에만 필요한 무동작 스텁 — 이 테스트에서 어떤 저장소 메서드도 불리지 않는다.
-    private static NoteRepository noteRepositoryStub() {
-        return (NoteRepository) Proxy.newProxyInstance(
-                NoteRepository.class.getClassLoader(), new Class<?>[]{NoteRepository.class},
+    // 배선 단언에만 필요한 무동작 스텁 — 이 테스트들은 빈 조립만 보고 어떤 협력자 메서드도 부르지 않으므로,
+    // 호출되면 즉시 터뜨려 "스텁이 조용히 동작을 대신하는" 착시를 막는다.
+    @SuppressWarnings("unchecked")
+    private static <T> T stub(Class<T> type) {
+        return (T) Proxy.newProxyInstance(type.getClassLoader(), new Class<?>[]{type},
                 (proxy, method, args) -> {
+                    // Object 3종은 정체성으로 답한다 — 단언이 실패하면 AssertJ가 actual의 toString()으로 실패
+                    // 메시지를 만드는데, 여기서 터지면 진짜 배선 실패 대신 "UnsupportedOperationException:
+                    // toString"이 보고된다(가드가 발동하는 바로 그 순간에 엉뚱한 원인을 가리킴).
+                    if (method.getDeclaringClass() == Object.class) {
+                        return switch (method.getName()) {
+                            case "toString" -> "stub<" + type.getSimpleName() + ">";
+                            case "equals" -> proxy == args[0];
+                            case "hashCode" -> System.identityHashCode(proxy);
+                            default -> throw new UnsupportedOperationException(method.getName());
+                        };
+                    }
                     throw new UnsupportedOperationException(method.getName());
                 });
     }

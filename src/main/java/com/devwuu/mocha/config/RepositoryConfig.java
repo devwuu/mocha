@@ -25,29 +25,34 @@ import java.time.Duration;
 @Configuration
 public class RepositoryConfig {
 
+    // POLICY: mocha.* 키는 코드 default를 갖는다 — 설정 부재로 기동이 막히지 않는다
+    // (ref: specs/coffee-note-agent/plan.md#ADR-50 POLICY). 값은 plan §5 문서값(./data · 24시간)과 일치시킨다.
+    // changes/0025 CR25-8: RB-B6이 mocha.artifact.dir만 고쳐 같은 부류가 이 파일에 남아 있었다.
+    private static final String DEFAULT_DATA_DIR = "${mocha.data.dir:./data}";
+
     @Bean
     public NoteRepository noteRepository(
-            @Value("${mocha.data.dir}") String dataDir, ObjectMapper mapper, Clock clock) {
+            @Value(DEFAULT_DATA_DIR) String dataDir, ObjectMapper mapper, Clock clock) {
         return new JsonFileNoteRepository(Path.of(dataDir), mapper, clock);
     }
 
     @Bean
     public PendingStore pendingStore(
-            @Value("${mocha.data.dir}") String dataDir,
-            @Value("${mocha.pending.ttl}") Duration ttl,
+            @Value(DEFAULT_DATA_DIR) String dataDir,
+            @Value("${mocha.pending.ttl:24h}") Duration ttl,
             ObjectMapper mapper,
             Clock clock) {
         return new JsonFilePendingStore(Path.of(dataDir), mapper, ttl, clock);
     }
 
     @Bean
-    public PhotoStore photoStore(@Value("${mocha.data.dir}") String dataDir) {
+    public PhotoStore photoStore(@Value(DEFAULT_DATA_DIR) String dataDir) {
         return new LocalPhotoStore(Path.of(dataDir));
     }
 
     @Bean
     public PhotoBufferStore photoBufferStore(
-            @Value("${mocha.data.dir}") String dataDir, ObjectMapper mapper) {
+            @Value(DEFAULT_DATA_DIR) String dataDir, ObjectMapper mapper) {
         return new JsonFilePhotoBufferStore(Path.of(dataDir), mapper);
     }
 }
