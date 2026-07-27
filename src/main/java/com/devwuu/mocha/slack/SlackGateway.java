@@ -90,7 +90,7 @@ public class SlackGateway implements SmartLifecycle {
             return;
         }
         router.onMessage(new IncomingMessage(
-                event.getUser(), event.getChannel(), event.getText(), event.getTs()));
+                event.getUser(), event.getChannel(), event.getText()));
     }
 
     /**
@@ -122,12 +122,12 @@ public class SlackGateway implements SmartLifecycle {
         List<IncomingPhoto> photos = imagePhotos(event.getFiles());
         if (!photos.isEmpty()) {
             router.onMedia(new IncomingMedia(
-                    event.getUser(), event.getChannel(), photos, event.getTs()));
+                    event.getUser(), event.getChannel(), photos));
         }
         String text = event.getText();
         if (text != null && !text.isBlank()) {
             router.onMessage(new IncomingMessage(
-                    event.getUser(), event.getChannel(), text, event.getTs()));
+                    event.getUser(), event.getChannel(), text));
         }
     }
 

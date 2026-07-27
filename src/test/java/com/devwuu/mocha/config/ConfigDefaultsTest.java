@@ -18,6 +18,9 @@ import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.convert.ApplicationConversionService;
 import org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.core.env.MutablePropertySources;
+import org.springframework.core.env.StandardEnvironment;
 import org.springframework.test.util.ReflectionTestUtils;
 import tools.jackson.databind.ObjectMapper;
 
@@ -41,6 +44,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ConfigDefaultsTest {
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
+            .withInitializer(ConfigDefaultsTest::isolateFromAmbientEnvironment)
             // Boot 런타임과 동일한 문자열→Duration("1h") 변환을 켠다 — 실제 앱 컨텍스트와 조건을 맞춘다.
             .withInitializer(context -> context.getBeanFactory()
                     .setConversionService(ApplicationConversionService.getSharedInstance()))
@@ -139,13 +143,41 @@ class ConfigDefaultsTest {
         });
     }
 
+    @Test
+    @DisplayName("CR25-7: default 기동 단언은 주변 환경(시스템 프로퍼티·환경변수)에 오염되지 않는다")
+    void defaultAssertionsAreIsolatedFromAmbientEnvironment() {
+        // 이 클래스의 모든 단언이 "키 미설정 → 코드 default"를 주장하므로, 환경 소스가 남아 있으면 주장 자체가
+        // 거짓이 된다(개발자가 MOCHA_ARTIFACT_DIR을 export하면 빨개졌다 — CR25-7 실측). 격리를 여기서 박아
+        // 러너가 확장될 때(TΔ4a) 새 키가 같은 함정에 빠지는 것을 막는다. 프로세스 환경변수는 테스트에서
+        // 심을 수 없으니, 같은 격리로 함께 떨어져 나가는 시스템 프로퍼티로 관측한다.
+        renderRunner()
+                .withSystemProperties("mocha.artifact.dir=/tmp/ambient-artifact")
+                .run(context -> {
+                    NoteRenderer renderer = context.getBean(NoteRenderer.class);
+                    assertThat(ReflectionTestUtils.getField(renderer, "artifactDir"))
+                            .isEqualTo(Path.of("./artifact"));
+                });
+    }
+
     // 렌더 배선만 띄우는 최소 러너 — 협력자는 스텁, 프로퍼티는 각 테스트가 필요한 것만 얹는다.
     private static ApplicationContextRunner renderRunner() {
         return new ApplicationContextRunner()
+                .withInitializer(ConfigDefaultsTest::isolateFromAmbientEnvironment)
                 .withUserConfiguration(RenderConfig.class)
                 .withBean(NoteRepository.class, ConfigDefaultsTest::noteRepositoryStub)
                 .withBean(CardImageRenderer.class, () -> (html, baseDir, out) -> {
                 });
+    }
+
+    // POLICY: "키 미설정 → 코드 default" 단언은 주변 환경과 격리한다 (ref: plan.md#ADR-50 POLICY).
+    // StandardEnvironment가 기본 탑재하는 systemEnvironment·systemProperties를 떼지 않으면 relaxed binding이
+    // MOCHA_ARTIFACT_DIR 같은 개발자 환경변수를 잡아, 코드 default가 아니라 그 환경값을 단언하게 된다
+    // (CR25-7 실측: MOCHA_ARTIFACT_DIR 지정 시 이 클래스가 빨개졌다). withPropertyValues로 각 테스트가
+    // 명시적으로 얹는 소스는 이 제거 대상이 아니므로 영향 없다.
+    private static void isolateFromAmbientEnvironment(ConfigurableApplicationContext context) {
+        MutablePropertySources sources = context.getEnvironment().getPropertySources();
+        sources.remove(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME);
+        sources.remove(StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME);
     }
 
     // 렌더러 빈 배선에만 필요한 무동작 스텁 — 이 테스트에서 어떤 저장소 메서드도 불리지 않는다.

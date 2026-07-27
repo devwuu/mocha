@@ -102,12 +102,12 @@ class Change0023RegressionGuardTest {
                 new UtteranceSegmenter.Segment(LocalDate.of(2026, 7, 15), "7/15 에티오피아 새콤했음"),
                 new UtteranceSegmenter.Segment(LocalDate.of(2026, 7, 16), "7/16 케냐 진했음"));
         router.onMessage(new IncomingMessage(USER, CHANNEL,
-                "7/15 에티오피아 새콤했음. 7/16 케냐 진했음", "1720000000.000123"));
+                "7/15 에티오피아 새콤했음. 7/16 케냐 진했음"));
 
         // 턴 2: 세그먼터 실패 폴백 턴(AC-Δ2) — 주입 없이 진행돼도 파일 부작용이 없어야 한다.
         segmenter.failure = new IllegalStateException("세그먼터 응답 스키마 위반");
         router.onMessage(new IncomingMessage(USER, CHANNEL,
-                "7/18 콜롬비아. 7/19 브라질도 마셨어", "1720000000.000456"));
+                "7/18 콜롬비아. 7/19 브라질도 마셨어"));
 
         assertThat(chatClient.calls).isEqualTo(2); // 두 턴 모두 정상 진행(sanity)
         // 세그먼트 이어가기 상태는 메모리 트랜스크립트에만 쌓인다 — 제안 없는 턴 2개가 문맥으로 남는다(FR-23).

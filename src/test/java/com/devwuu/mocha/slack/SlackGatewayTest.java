@@ -135,7 +135,6 @@ class SlackGatewayTest {
         assertEquals("U1", msg.userId());
         assertEquals("C1", msg.channelId());
         assertEquals("커피베라 예가체프 마셨는데 새콤하고 좋았다", msg.text());
-        assertEquals("1720000000.000100", msg.ts());
         assertTrue(router.actions.isEmpty());
     }
 

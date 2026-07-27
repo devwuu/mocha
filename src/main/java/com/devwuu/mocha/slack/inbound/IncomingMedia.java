@@ -12,7 +12,6 @@ import java.util.List;
  * @param userId    보낸 사용자 id (단일 사용자 전제, NFR-6).
  * @param channelId 수신 채널 id — 미리보기/응답 전송 대상.
  * @param photos    수신 사진 목록(1건 이상).
- * @param ts        Slack 메시지 timestamp — 버퍼 그룹핑 기준 시각.
  */
-public record IncomingMedia(String userId, String channelId, List<IncomingPhoto> photos, String ts) {
+public record IncomingMedia(String userId, String channelId, List<IncomingPhoto> photos) {
 }

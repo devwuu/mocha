@@ -161,7 +161,7 @@ class AgentConversationRouterTest {
     @DisplayName("FR-10/TΔ8a: 사진 수신은 버퍼·스테이징 배관(SlackPhotoIntake) 직접 배선 — 에이전트·flow 미경유")
     void mediaDelegatesWithoutAgent() {
         IncomingPhoto photo = new IncomingPhoto("https://slack/bag.jpg", "bag.jpg", "image/jpeg", List.of());
-        router.onMedia(new IncomingMedia(USER, CHANNEL, List.of(photo), "1720000000.000111"));
+        router.onMedia(new IncomingMedia(USER, CHANNEL, List.of(photo)));
 
         assertThat(photoStore.staged.get(USER)).extracting(StagedImage::name).containsExactly("bag.jpg");
         assertThat(photoBufferStore.get(USER)).isPresent(); // pending 없음 → 버퍼에 담아 텍스트를 기다린다
@@ -260,7 +260,7 @@ class AgentConversationRouterTest {
     // ---- 헬퍼 ----
 
     private static IncomingMessage message(String text) {
-        return new IncomingMessage(USER, CHANNEL, text, "1720000000.000123");
+        return new IncomingMessage(USER, CHANNEL, text);
     }
 
     private static IncomingAction action(String actionId) {
