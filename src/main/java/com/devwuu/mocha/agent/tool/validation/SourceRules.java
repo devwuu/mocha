@@ -71,14 +71,15 @@ final class SourceRules {
             throw new RejectedException(field + "의 source가 없다 — 값을 채웠으면 출처(" +
                     allowedLabels(allowed) + ")를 함께 보고해라(V-5).");
         }
+        // 정의되지 않은 source든 정의됐지만 이 필드에 허용 안 된 source든 거부 사유는 같다(V-5) —
+        // 파싱 실패를 null로 수렴시켜 동일 문안을 한 곳에서만 만든다.
         Source source;
         try {
             source = Source.from(raw);
         } catch (IllegalArgumentException e) {
-            throw new RejectedException(field + "의 source '" + raw + "'는 허용되지 않는다 — "
-                    + allowedLabels(allowed) + " 중 하나여야 한다(V-5).");
+            source = null;
         }
-        if (!allowed.contains(source)) {
+        if (source == null || !allowed.contains(source)) {
             throw new RejectedException(field + "의 source '" + raw + "'는 허용되지 않는다 — "
                     + allowedLabels(allowed) + " 중 하나여야 한다(V-5).");
         }
