@@ -1,6 +1,6 @@
 # 모카(Mocha) — 클래스 역할과 기능 흐름
 
-> 이 문서는 `src/main/java/com/devwuu/mocha/` 전체 클래스(104개)의 역할과, 기능별 처리 흐름을 그래프로 정리한 참조 문서다.
+> 이 문서는 `src/main/java/com/devwuu/mocha/` 전체 클래스(105개)의 역할과, 기능별 처리 흐름을 그래프로 정리한 참조 문서다.
 > 소스와 spec(`specs/coffee-note-agent/`)을 기준으로 작성했으며, 도메인 특유 용어는 §1 용어 사전에 정의를 두었다. 본문에서 처음 나오는 용어는 **굵게** 표시한다.
 > 에이전트 계층 공개 타입의 명명은 Spring AI 어휘에 대응한다(plan ADR-65) — 대응표는 §5가 소유한다.
 
@@ -199,16 +199,16 @@ flowchart TB
 | `SlackGateway` | class | Slack Socket Mode 수신 진입점. Bolt 이벤트를 내부 값객체(`Incoming*`)로 파싱해 라우터에 넘기는 얇은 계층으로, 즉시 ack + 백그라운드 처리로 재전송 루프를 막고 봇 자신의 메시지를 걸러 에코 루프를 차단한다. Slack SDK 타입이 이 클래스 밖으로 새지 않는다. `--rerender` 프로파일에서는 비활성. |
 | `ConversationRouter` | interface | 수신 이벤트(메시지/버튼/사진)를 받는 라우팅 경계. 게이트웨이(파싱)와 분기 로직을 분리한다. |
 | `AgentConversationRouter` | class | 메인 라우터. 협력자는 config(`RouterConfig`)가 조립해 주입한다 — 생성자 1종, 협력자 `new` 0건(ADR-63). 텍스트는 [사진 버퍼 흡수 → OCR 전처리 → 다중 날짜 탐지·세그먼트 분해(해당 턴만) → 컨텍스트 조립 → 에이전트 턴 → 응답]으로, 버튼은 `SlackCommitHandler` + 커밋 접힘으로, 사진은 `SlackPhotoIntake`로 보낸다. 턴 실패 시 pending·노트 무변화 + 폴백 안내로 수렴시키는 지점이기도 하다. |
-| `SlackCommitHandler` | class | **[저장]/[취소] 버튼의 커밋 전담.** 저장 시: pending 검증(TTL 등) → 스테이징 사진 아카이브 이동 → (신규 노트면) 별칭 생성 1콜 → 노트 JSON 커밋 → 회차 카드 증분 렌더 + Slack 업로드 → 버튼 소진. 취소 시: pending·스테이징 폐기 + 안내. 사용자 확인 없이는 절대 노트를 쓰지 않는다는 정책의 구현 지점. |
+| `SlackCommitHandler` | class | **[저장]/[취소] 버튼의 커밋 전담.** 저장 시: pending 유효성 확인(존재·TTL — 구조 무결성은 저장소 로드 경계가 보장하므로 여기서 재검증하지 않는다, ADR-66 POLICY) → 스테이징 사진 아카이브 이동 → (신규 노트면) 별칭 생성 1콜 → 노트 JSON 커밋 → 회차 카드 증분 렌더 + Slack 업로드 → 버튼 소진. 취소 시: pending·스테이징 폐기 + 안내. 사용자 확인 없이는 절대 노트를 쓰지 않는다는 정책의 구현 지점. |
 | `StagingSweeper` | class | 앱 시작 시 1회 실행되는 스윕 훅 — pending·버퍼 어디에도 속하지 않는 고아 스테이징 사진만 청소한다. |
 
 ### 3.2 `slack.inbound` — 수신 값객체·사진 유입 (8개)
 
 | 클래스 | 종류 | 역할 |
 |---|---|---|
-| `IncomingMessage` | record | 평문 메시지의 내부 표현 (userId·channelId·text·ts). |
-| `IncomingAction` | record | 버튼 액션의 내부 표현. `actionId`로 저장/취소를 구분하고 `messageTs`가 버튼 소진 대상 미리보기를 가리킨다. |
-| `IncomingMedia` | record | 사진 묶음 수신의 내부 표현. `ts`가 버퍼 그룹핑 기준 시각. |
+| `IncomingMessage` | record | 평문 메시지의 내부 표현 (userId·channelId·text). |
+| `IncomingAction` | record | 버튼 액션의 내부 표현 (userId·channelId·actionId). `actionId`로 저장/취소를 구분한다. 버튼 소진 대상 미리보기는 이 값객체가 아니라 pending의 `previewTs`가 가리킨다 — 커밋 핸들러가 pending clear 이전에 확보한다. |
+| `IncomingMedia` | record | 사진 묶음 수신의 내부 표현 (userId·channelId·photos). 버퍼 그룹핑(FR-10)의 기준 시각은 이 값객체가 나르지 않는다 — `SlackPhotoIntake`가 수신 시점에 `Clock`으로 찍어 `PhotoBuffer.lastMediaAt`에 남긴다(changes/0025 CR25-7 문구 정정). |
 | `IncomingPhoto` | record | 사진 1건 (url·파일명·MIME·썸네일 후보 목록). HEIC 대체용 썸네일 URL을 최대 해상도 우선으로 싣는다. |
 | `PhotoDownloader` | interface | "URL → 바이트" 사진 다운로드 경계(HTTP·토큰 세부 은닉). |
 | `SlackPhotoDownloader` | class | 구현체 — Slack `url_private`를 봇 토큰 Bearer 인증으로 GET. 실패는 `PhotoDownloadException`으로 수렴. |
@@ -222,7 +222,7 @@ flowchart TB
 | `SlackResponder` | interface | 결과 통지 송신 경계 — 안내 텍스트(`post`), 카드 JPG 업로드(`postImage`), 버튼 소진(`finalizePreview`). 에이전트 tool 계층도 응답 창구로 재사용한다. |
 | `SlackApiResponder` | class | 구현체 — Slack MethodsClient로 chatPostMessage / filesUploadV2 / chatUpdate 실행. 카드 업로드 실패만 예외로 던져 호출부가 텍스트 폴백하게 한다. |
 | `PreviewMessenger` | class | 미리보기 전송/갱신 어댑터 — `preview_ts` 유무에 따라 신규 전송 또는 같은 메시지 edit. 제안 tool이 미리보기를 보내는 창구. |
-| `PreviewBlocks` | class | pending → 미리보기 Block Kit 변환 순수 함수. 출처 태그(`(검색)`/`(사진)`), edit 모드 ✏️ 헤더, 날짜 충돌 경고, [저장]/[취소] 버튼, 버튼 소진 후 블록까지 조립한다. |
+| `PreviewBlocks` | class | pending → 미리보기 Block Kit 변환 순수 함수. 출처 태그(`(검색)`/`(사진)`), edit 모드 ✏️ 헤더, 날짜 충돌 경고, [저장]/[취소] 버튼, 버튼 소진 후 블록까지 조립한다. 시간·수치 표기는 자체 계산하지 않고 `RecipeAmounts`(render)에 위임하고(ADR-67 ① — 미리보기↔카드 표기 일치 AC-76의 코드 강제화, 표기 불가 수치는 카드와 같이 행 생략), 표시값 추출은 `Sourced.valueOrNull`을 쓴다. |
 | `MochaMessages` | final class | 모카(강아지 "~멍" 톤) 사용자 안내 문구 상수 모음(저장 완료·취소·폴백·포맷 미지원 등). |
 
 ### 3.4 `agent` — 루프 드라이버 (3개)
@@ -230,7 +230,7 @@ flowchart TB
 | 클래스 | 종류 | 역할 |
 |---|---|---|
 | `ChatClient` | interface | 에이전트 루프 드라이버의 경계(Spring AI 원명 채택 — ADR-65 ①). "모델↔tool 루프를 상한까지 돌리고 최종 텍스트를 반환한다"는 계약만 정의 — 루프 밖 코드가 OpenAI SDK를 모르게 한다. |
-| `OpenAiChatClient` | class | OpenAI Responses API 기반 구현체. 모델 호출 → function call 수집 → tool 실행 → 결과를 다음 입력에 실어 재호출을 반복하고, tool 호출이 없는 응답이 오면 그 텍스트로 턴을 마친다. 턴 상한 3종(tool 호출 수·누적 토큰·경과 시간 — ADR-62) 검사, 미등록 tool·실행 오류를 `{"error": 사유}` tool 결과로 돌려주는 정정 루프, 내장 web_search 관측·누적 usage 로그를 담당한다. |
+| `OpenAiChatClient` | class | OpenAI Responses API 기반 구현체. 모델 호출 → function call 수집 → tool 실행 → 결과를 다음 입력에 실어 재호출을 반복하고, tool 호출이 없는 응답이 오면 그 텍스트로 턴을 마친다. 턴 상한 3종(tool 호출 수·누적 토큰·경과 시간 — ADR-62) 검사, 미등록 tool·실행 오류를 `{"error": 사유}` tool 결과로 돌려주는 정정 루프, 내장 web_search 관측·누적 usage 로그를 담당한다. 오류 결과 형태는 자체 정의 없이 `ToolSupport.errorOutput`을 호출한다 — 모델이 tool 구현과 드라이버에서 한 형태만 본다(ADR-67 ②). |
 | `AgentException` | exception | 턴 실패 신호(모델 오류·상한 도달). 라우터가 이를 받아 결정론 폴백으로 수렴시킨다. |
 
 ### 3.5 `agent.conversation` — 대화 문맥 (2개)
@@ -265,7 +265,7 @@ flowchart TB
 | `ToolCallbackProvider` | class | tool 5종의 façade — 읽기 tool(`NoteLookupTools`)과 쓰기 tool(`ProposalTools`)을 조립하고, 턴마다 userId(pending 소유자)·channelId(배달처)·`TurnUserMessage`(게이트 판정 입력)를 바인딩한 tool 목록을 공급한다(`forTurn`). |
 | `NoteLookupTools` | class | **읽기 tool 3종**: `list_notes`(전체 노트 메타+별칭 — 매칭·검색의 출발점), `get_note`(노트 전체, 미존재 slug는 오류 = 환각 필터), `send_entry_card`(기존 회차 카드 JPG 재전송, 파일 부재 시에만 증분 렌더). 노트·pending 파일을 절대 바꾸지 않는다. |
 | `ProposalTools` | class | **쓰기 제안 tool 2종**: `propose_record`(신규 기록 제안)·`propose_edit`(저장 노트 수정 제안). 인자 파싱 → 서버 검증(진입점 2종에 위임) → pending 생성/갱신 → 미리보기 전송 → 트랜스크립트 접힘까지가 효과의 전부(커밋은 버튼만). strict schema 문자열도 여기서 정의한다. 날짜 이동 충돌(V-10) 계산도 이 제안 수용 지점의 몫. |
-| `ToolSupport` | final class | tool 공용 유틸 — 오류 결과 형태(`{"error":...}`) 통일, slug 리졸브. |
+| `ToolSupport` | final class | tool 공용 유틸 — 모델 대면 오류 결과 형태(`{"error": 사유}`)의 **단일 정의 지점**(public `errorOutput` — tool 구현 역할 클래스 2종에 더해 루프 드라이버 `OpenAiChatClient`도 호출, ADR-67 ②)과 slug 리졸브를 소유한다. |
 | `GetNoteArgs` / `SendEntryCardArgs` | record | 읽기 tool 인자 값객체. |
 | `ProposeRecordArgs` / `ProposeEditArgs` | record | 제안 tool 인자의 미검증 원시형. `ProposeEditArgs.Patch`에는 커피명 필드 자체가 없어 이름 변경이 구조적으로 불가능하다. |
 | `SourcedArg<T>` | record | 출처 표시 필드의 미검증 원시형(source가 String) — 검증 후 도메인 `Sourced`(enum)로 승격된다. |
@@ -288,7 +288,7 @@ flowchart TB
 | `ToolValidation<T>` | sealed interface | 검증 결과 타입 — `Ok(값)` 또는 `Rejected(사유)`. |
 | `RejectedException` | exception | 사유를 담아 `Rejected`로 수렴하는 패키지 내부 신호 — 진입점이 잡아 거부 결과로 변환한다. |
 
-### 3.10 `llm` — 루프 밖 보조 LLM 콜 (9개)
+### 3.10 `llm` — 루프 밖 보조 LLM 콜 (10개)
 
 | 클래스 | 종류 | 역할 |
 |---|---|---|
@@ -301,6 +301,7 @@ flowchart TB
 | `OpenAiUtteranceSegmenter` | class | 구현체 — Responses API structured output(strict schema), 전용 경량 키 `mocha.agent.segmenter-model`. |
 | `VisionExtraction` | record | OCR 결과 값객체(미확인은 null). `empty()`가 실패·무정보의 표준 수렴값. |
 | `VisionHint` | record | OCR 문맥 힌트(이미 아는 커피명·로스터리) — 오독을 줄이는 용도. 사진만 온 흐름에서는 둘 다 null. |
+| `OpenAiResponseTexts` | final class (패키지-프라이빗) | Responses 응답에서 메시지 텍스트를 뽑는 `outputText`의 단일 정의 — 어댑터 3종(별칭·세그먼터·vision)이 각자 갖고 있던 동일 구현 3벌을 합친 것(ADR-67 ④). 공용 `util/`이 아니라 소비자와 같은 `llm` 패키지에 둔다. |
 
 ### 3.11 `render` — JSON → 회차 카드 (11개)
 
@@ -314,7 +315,7 @@ flowchart TB
 | `NoteView` | final class | 템플릿용 뷰 모델 컨테이너 — `TasteCard`(감상 카드)·`RecipeCard`(레시피 카드) 등 중첩 record. 카드 단위 = 회차 파트 1건. |
 | `KoreanDates` | final class | 템플릿 헬퍼 — 한국어 날짜 포맷("2026년 7월 10일" 등). |
 | `RatingStyle` | final class | 템플릿 헬퍼 — 평가 4범주의 배지 색상. |
-| `RecipeAmounts` | final class | 템플릿 헬퍼 — 레시피 수량·파생 표기(15.0→"15", 비율 1:N, "N분 N초"). 파생값은 저장하지 않고 렌더 시 계산한다(ADR-1). |
+| `RecipeAmounts` | final class | 템플릿 헬퍼이자 **시간·수치 표기의 단일 소스** — 레시피 수량·파생 표기(15.0→"15", 비율 1:N, "N분 N초")를 소유하고 Slack 미리보기(`PreviewBlocks`)도 여기에 위임한다(ADR-67 ① — AC-76 표기 일치의 코드 강제화). 파생값은 저장하지 않고 렌더 시 계산한다(ADR-1). 표기 불가 수치(null·비양수·비유한값)는 `null`을 돌려줘 카드·미리보기가 그 행을 통째로 생략하게 한다. 전 메서드 정적 — 인스턴스는 템플릿 컨텍스트 `amt` 주입용 심으로만 남긴다(생성 지점이 분화해도 표기가 갈라질 수 없음). |
 | `Theme` | enum | 렌더 테마(TYPE_A 세리프·명조 / TYPE_B 귀여운·고딕+마스코트) — 템플릿 폴더와 번들 폰트 선택. |
 | `RerenderRunner` | class | `--rerender` CLI 진입점 — 전체 리렌더 후 종료. 이 프로파일에서는 Slack 게이트웨이가 비활성이라 상주 인스턴스와 무관하게 안전하다. |
 
@@ -322,13 +323,13 @@ flowchart TB
 
 | 클래스 | 종류 | 역할 |
 |---|---|---|
-| `Note` | record | 커피 1종의 최상위 애그리게이트 — slug, 커피명·로스터리·로스팅 정도(출처 표시), 원두 구성(`beans`), 공식 노트, 별칭, 검색 출처 링크, 엔트리 목록, 타임스탬프. |
+| `Note` | record | 커피 1종의 최상위 애그리게이트 — slug, 커피명·로스터리·로스팅 정도(출처 표시), 원두 구성(`beans`), 공식 노트, 별칭, 검색 출처 링크, 엔트리 목록, 타임스탬프. 배열 컴포넌트(`beans`·`entries`)의 존재는 생성자가 보장하고(null → 빈 배열, V-14·V-3), 로드 경계 위생 `normalized()`(V-8·V-14·V-15 적용, 무변경이면 자기 반환)의 단일 지점도 여기 있다(ADR-66). |
 | `Bean` | record | 원두 1종(`Note.beans` 요소) — description(원산지·품종 자유 텍스트)+process(가공방식), 각각 `Sourced`. V-14 정규화(빈 요소만 드롭) 내장. |
 | `Entry` | record | 날짜별 시음 기록 1건 — 날짜(entries 내 유일 키)·회차 배열 `brews`·갱신 시각. 구 엔트리 레벨 감상·평가·레시피 단일 필드는 폐지(ADR-59 — 회차 안에만). |
 | `Brew` | record | 회차 1개(`Entry.brews` 요소) — recipe·tasting 1:1 쌍(둘 중 하나만도 허용, 둘 다 null이면 드롭). V-15 정규화 내장. |
 | `Tasting` | record | 회차 맛 감상 — my_taste(+원문 병존 불변식 내장)·rating. |
 | `Recipe` | record | 회차 추출 레시피 — flat 10필드 전부 nullable + 정규화 로직. 사용자 발화 전용(source 개념 없음). |
-| `Sourced<T>` | record | 값+출처 래퍼. |
+| `Sourced<T>` | record | 값+출처 래퍼. null 안전 표시값 추출(`valueOrNull`)의 단일 헬퍼 정의를 소유한다 — 클래스별 private 헬퍼 5벌을 대체(ADR-67 ③). |
 | `Source` | enum | 출처 3종(user/photo/search). 정의 외 값은 역직렬화 거부. |
 | `Rating` | enum | 평가 4범주. 한국어 라벨로 직렬화. |
 | `Aliases` | record | 별칭 목록 + 축적 로직 — 관측 표기 병합(`accumulate`), 정규화(소문자화·공백 제거) 기준 중복 제거. 정규화는 대조 기준일 뿐 저장값은 첫 등장 표기를 보존. |
@@ -344,13 +345,13 @@ flowchart TB
 | 클래스 | 종류 | 역할 |
 |---|---|---|
 | `NoteRepository` | interface | 노트 저장소 경계 — 전체/단건 조회, 충돌 없는 slug 발급, 엔트리 병합 저장(`upsertEntry`), 수정 커밋(`applyEdit`). |
-| `JsonFileNoteRepository` | class | 구현체 — `data/notes/<slug>.json` 읽기/쓰기. 같은 날짜는 회차 병합·다른 날짜는 엔트리 추가(하루 2엔트리 금지), 신규 노트에는 별칭 심기·기존 노트에는 관측 표기 축적, 수정 커밋 시 커피명 불변 이중 방어와 날짜 이동 덮어쓰기 처리. |
+| `JsonFileNoteRepository` | class | 구현체 — `data/notes/<slug>.json` 읽기/쓰기. 같은 날짜는 회차 병합·다른 날짜는 엔트리 추가(하루 2엔트리 금지), 신규 노트에는 별칭 심기·기존 노트에는 관측 표기 축적, 수정 커밋 시 커피명 불변 이중 방어와 날짜 이동 덮어쓰기 처리. 읽기 경로는 로드 경계 위생 지점이기도 하다 — 로드한 노트에 저장 경로와 같은 `Note.normalized()`를 적용해 수기 편집 JSON의 무효 요소를 드롭하고 경고 로그를 남긴다(파일은 다시 쓰지 않는 메모리 정규화 — ADR-66 ①). |
 | `PendingStore` | interface | pending 저장소 경계 — put/get/clear. |
-| `JsonFilePendingStore` | class | 구현체 — `data/pending.json` 단일 파일. TTL 초과분은 get에서 빈 값으로 수렴(만료 pending은 유효 대기가 아님). |
+| `JsonFilePendingStore` | class | 구현체 — `data/pending.json` 단일 파일. `get`이 **유일한 무결성 관문**이다(ADR-66 ②): 파싱 실패·필수 필드 결손(mode·createdAt·draft 부재, draft의 slug·coffee_name 공백, 엔트리 0건, edit의 target 부재·target.slug 공백)은 훼손으로 판정해 경고 로그 + 파일 정리 후 빈 값으로, TTL 초과분도 빈 값으로 수렴한다(둘 다 "대기 없음" 부류 — 다음 제안으로 자가 회복). 통과한 draft에는 노트 읽기와 같은 `Note.normalized()`를 적용한다. |
 | `PhotoBufferStore` | interface | 사진 버퍼 저장소 경계 — put/get/clear. |
 | `JsonFilePhotoBufferStore` | class | 구현체 — `data/photo-buffer.json`. 윈도우 판정은 저장소가 아니라 수신 경로가 한다. |
 | `PhotoStore` | interface | 사진 파일 저장소 경계 — 스테이징(`stage`/`readStaged`/`discard`), 아카이브 확정(`commit`), 날짜 이동(`moveEntryPhotos`), 고아 청소용 사용자 목록(`stagedUserIds`). |
-| `LocalPhotoStore` | class | 구현체 — `data/photos/.staging/<userId>/`(임시)와 `data/photos/<slug>/<date>/`(확정) 레이아웃 관리. 파일명 안전화·충돌 시 `-N` 유일화. |
+| `LocalPhotoStore` | class | 구현체 — `data/photos/.staging/<userId>/`(임시)와 `data/photos/<slug>/<date>/`(확정) 레이아웃 관리. 파일명 안전화·충돌 시 `-N` 유일화. 스테이징 열람은 `listStagedPhotos`(매직바이트 `ImageFormat.detect` 필터) 한 지점을 경유해 `.DS_Store` 같은 비사진 파일을 `readStaged`·`commit` 양쪽에서 제외한다 — OCR 배치·아카이브 오염 차단(ADR-66 ③). 아카이브 열람(`moveEntryPhotos`)은 필터 없이 전부 옮긴다(기존 잔재를 걸러내면 옛 폴더가 남아 날짜 이동이 실패). 걸러진 잔재 정리는 `commit`·`discard`가 공용 헬퍼로 처리해 "커밋 후 스테이징 소멸" 불변식을 지킨다. |
 | `StagedImage` | record | 스테이징 사진 1장(파일명+바이트) — OCR의 입력 단위. |
 
 ### 3.14 `config` · 기타 (10개)
@@ -362,7 +363,7 @@ flowchart TB
 | `RepositoryConfig` | @Configuration | 저장소 4종 빈 조립. 경로는 전부 `mocha.data.dir`에서만. |
 | `LlmConfig` | @Configuration | OpenAI 클라이언트 + 보조 콜(vision·별칭) 빈 조립. 역할별 모델 키 분리(`mocha.vision.model`·`mocha.alias.model`). |
 | `AgentConfig` | @Configuration | 에이전트 루프 드라이버(`mocha.agent.model`·상한 3종 키)와 트랜스크립트(턴 상한·TTL), 세그먼터(`mocha.agent.segmenter-model`) 빈 조립. |
-| `RenderConfig` | @Configuration | Thymeleaf 오프라인 템플릿 엔진 + 렌더러 빈 조립(`mocha.artifact.dir`·테마). |
+| `RenderConfig` | @Configuration | Thymeleaf 오프라인 템플릿 엔진 + 렌더러 빈 조립(`mocha.artifact.dir`·테마). `mocha.artifact.dir` 기본값 선언(`DEFAULT_ARTIFACT_DIR = ${mocha.artifact.dir:./artifact}`)을 소유하고 `RouterConfig`가 이를 참조한다 — 리터럴 2벌이면 한쪽만 바뀔 때 카드 산출 위치와 조회 위치가 갈라진다(ADR-50 "코드 default 필수"). |
 | `SlackConfig` | @Configuration | Slack 송신용 MethodsClient 빈(봇 토큰). 수신(Socket Mode)은 게이트웨이가 앱 토큰으로 별도 배선. |
 | `MochaObjectMapper` | final class | 도메인 JSON 직렬화 규칙의 단일 출처 — snake_case, 타임존 오프셋 보존. 인스턴스 생성은 `CommonConfig` 빈이 소유(ADR-63). |
 | `ImageFormat` | enum | 매직바이트 이미지 포맷 판별(JPEG/PNG/GIF/WebP=vision 지원, HEIC=썸네일 대체, UNKNOWN=거부). |
@@ -438,8 +439,8 @@ flowchart TB
 flowchart TB
     A["[저장] 버튼 클릭"] --> B[SlackGateway → Router.onAction<br/>action_id = mocha_save]
     B --> C[SlackCommitHandler.confirmSave]
-    C --> D{pending 유효?<br/>존재 · TTL · 필수 필드}
-    D -->|아니오| E[만료·파손 안내 — 저장 없음]
+    C --> D{pending 유효?<br/>존재 · TTL — 구조 무결성은<br/>저장소 로드 경계가 보장 ADR-66}
+    D -->|아니오| E[만료·부재 안내 — 저장 없음<br/>대기 중이던 스테이징도 폐기]
     D -->|예, record 모드| F[PhotoStore.commit<br/>스테이징 → photos/slug/date/ 아카이브]
     F --> G{match = new?}
     G -->|예 — 신규 노트| H[AliasGenerator.generate<br/>별칭 LLM 1콜 — 실패해도 빈 별칭으로 저장 계속]
