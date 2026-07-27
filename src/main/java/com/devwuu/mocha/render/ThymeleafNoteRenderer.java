@@ -43,7 +43,7 @@ import java.util.stream.Stream;
  * <p>카드 HTML은 <b>파일로 남기지 않는다</b> — 카드를 굽는 순간의 중간 입력일 뿐이다(ADR-10).
  * <p>디자인은 {@link Theme}(type-a 세리프 / type-b 귀여운)로 고르며 {@code templates/<theme>/} 폴더를 탄다.
  * 카드 디자인 원본은 {@code design/} 시안 — 변경은 시안 갱신 → 템플릿 재이식, 이식 편차는 델타 명시분만(ADR-54 POLICY).
- * <p>POLICY: 렌더러는 JSON 외 어떤 상태도 읽지 않는다 — {@link NoteRepository#findAll()}만이 입력이고
+ * <p>POLICY: 렌더러는 JSON 외 어떤 상태도 읽지 않는다 — {@link NoteRepository} 조회만이 입력이고
  * 산출물은 언제든 전체 재생성 가능한 파생물이다(ref: plan.md#ADR-1, AC-6/AC-Δ7).
  * <p>POLICY: HTML의 모든 링크·이미지는 상대 경로만 쓴다 — {@code file://} 직접 열람 보장(ref: plan.md, AC-Δ5).
  * <p>POLICY: 렌더 엔진(Playwright/Chromium) 타입은 {@link CardImageRenderer} 경계 뒤에만 존재한다 — 렌더러는
@@ -98,7 +98,7 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
 
     @Override
     public List<Path> renderEntryCard(String slug, LocalDate date) {
-        Note note = noteRepository.findAll().stream().filter(n -> n.slug().equals(slug)).findFirst()
+        Note note = noteRepository.findBySlug(slug)
                 .orElseThrow(() -> new IllegalArgumentException("카드 렌더 대상 노트 없음: slug=" + slug));
         Entry entry = note.entries() == null ? null : note.entries().stream()
                 .filter(e -> e.date().equals(date)).findFirst().orElse(null);
