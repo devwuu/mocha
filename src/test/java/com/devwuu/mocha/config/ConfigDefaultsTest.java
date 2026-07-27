@@ -22,6 +22,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import tools.jackson.databind.ObjectMapper;
 
 import java.lang.reflect.Proxy;
+import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.OffsetDateTime;
@@ -118,15 +119,32 @@ class ConfigDefaultsTest {
     @Test
     @DisplayName("ADR-50/ADR-54(changes/0021 TΔ5a): mocha.artifact.theme 미설정 시 기본 테마 type-a(세리프)로 렌더러가 뜬다")
     void rendererDefaultsToTypeATheme() {
-        new ApplicationContextRunner()
-                .withUserConfiguration(RenderConfig.class)
+        renderRunner()
                 .withPropertyValues("mocha.artifact.dir=build/test-artifact")
-                .withBean(NoteRepository.class, ConfigDefaultsTest::noteRepositoryStub)
-                .withBean(CardImageRenderer.class, () -> (html, baseDir, out) -> {
-                })
                 .run(context -> {
                     NoteRenderer renderer = context.getBean(NoteRenderer.class);
                     assertThat(ReflectionTestUtils.getField(renderer, "theme")).isEqualTo(Theme.TYPE_A);
+                });
+    }
+
+    @Test
+    @DisplayName("ADR-50(changes/0025 TΔ3d): mocha.artifact.dir 미설정 시 렌더러가 코드 default ./artifact로 뜬다")
+    void rendererDefaultsToArtifactDir() {
+        // RB-B6: RouterConfig만 `:./artifact`를 갖고 RenderConfig는 무기본값이라 키 미설정이면 기동 자체가
+        // 막혔다(= RouterConfig의 default는 도달 불가한 죽은 선언). 두 선언을 일치시킨 뒤의 기동을 여기서 박아
+        // 한쪽만 바뀌는 드리프트를 잡는다 — 렌더러 생성자는 파일 I/O를 하지 않아 실제 디렉터리는 생기지 않는다.
+        renderRunner().run(context -> {
+            NoteRenderer renderer = context.getBean(NoteRenderer.class);
+            assertThat(ReflectionTestUtils.getField(renderer, "artifactDir")).isEqualTo(Path.of("./artifact"));
+        });
+    }
+
+    // 렌더 배선만 띄우는 최소 러너 — 협력자는 스텁, 프로퍼티는 각 테스트가 필요한 것만 얹는다.
+    private static ApplicationContextRunner renderRunner() {
+        return new ApplicationContextRunner()
+                .withUserConfiguration(RenderConfig.class)
+                .withBean(NoteRepository.class, ConfigDefaultsTest::noteRepositoryStub)
+                .withBean(CardImageRenderer.class, () -> (html, baseDir, out) -> {
                 });
     }
 

@@ -48,9 +48,11 @@ public class RenderConfig {
             NoteRepository noteRepository,
             SpringTemplateEngine noteTemplateEngine,
             CardImageRenderer cardImageRenderer,
-            @Value("${mocha.artifact.dir}") String artifactDir,
-            // POLICY: mocha.* 키는 코드 default를 갖는다(ADR-50) — 기본 테마는 type-a 세리프
-            //         (ref: plan.md#ADR-54, changes/0021 TΔ5a 사용자 확정).
+            // POLICY: mocha.* 키는 코드 default를 갖는다(ADR-50) — 산출 루트 기본값은 plan §5의 ./artifact.
+            //         RouterConfig의 같은 키 선언과 문자 일치를 유지한다(한쪽만 바뀌면 두 빈이 다른 디렉터리를
+            //         보는 드리프트, changes/0025 TΔ3d/RB-B6).
+            @Value("${mocha.artifact.dir:./artifact}") String artifactDir,
+            // 기본 테마는 type-a 세리프 (ref: plan.md#ADR-54, changes/0021 TΔ5a 사용자 확정).
             @Value("${mocha.artifact.theme:type-a}") String theme) {
         return new ThymeleafNoteRenderer(
                 noteRepository, noteTemplateEngine, Path.of(artifactDir), Theme.from(theme), cardImageRenderer);
