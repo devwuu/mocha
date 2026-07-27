@@ -18,8 +18,12 @@
   - 예: `OpenAiChatClient`, `JsonFileNoteRepository`, `ThymeleafNoteRenderer`, `PlaywrightCardImageRenderer`, `LocalPhotoStore`
   - 나쁜 예: `ChatClientImpl`, `DefaultNoteRepository`, `NoteRepositoryImpl` — `Impl`/`Default` 접두·접미어는 의존 정보를 숨기므로 금지.
 - 클래스 내부에서도 외부 의존(HTTP 클라이언트, 파일 시스템, 프로세스 실행 등)은 필드·생성자 시그니처에 드러나야 한다. 메서드 깊숙한 곳에서 몰래 `new`로 외부 자원을 만들지 않는다.
+- **표준·프레임워크에 대응 개념이 있으면 그 용어를 따른다.** 우리가 만드는 타입이 Spring AI(또는 Spring, JDK)의 기존 개념과 같은 역할이면 자체 조어를 만들지 말고 대응되는 이름을 쓴다.
+  - 예: LLM 대화 호출 경계는 `ChatClient`, 툴 정의 공급은 `ToolCallback`/`ToolCallbackProvider`, 모델 호출은 `ChatModel` — Spring AI 용어와 1:1로 읽히게 한다.
+  - 나쁜 예: 같은 역할에 `LlmCaller`, `PromptExecutor`, `FunctionSpecHolder` 같은 자체 조어를 붙이는 것. 프레임워크 문서·스택트레이스와 어휘가 어긋나 대응 관계를 매번 추론해야 한다.
+  - 단, 역할이 실제로 다르면 표준 이름을 억지로 빌려 오지 않는다(같은 이름 다른 의미가 더 나쁘다). 우리 도메인 고유 개념(`NoteRepository`, `PhotoBufferStore` 등)은 도메인 어휘를 쓴다.
 
-**리뷰 질문**: 이 클래스 이름만 보고 뭘 쓰는지 알 수 있는가? 숨은 외부 의존이 있는가?
+**리뷰 질문**: 이 클래스 이름만 보고 뭘 쓰는지 알 수 있는가? 숨은 외부 의존이 있는가? 표준(Spring AI 등)에 이미 같은 역할의 이름이 있는데 자체 조어를 쓰고 있지는 않은가?
 
 ## 2. 추상화는 교체 가능성이 실재하는 경계에만
 
@@ -143,6 +147,7 @@ LLM 응답을 파싱·검증 없이 그대로 사용하는 경로는 flag:
 ## 리뷰 체크리스트 (요약)
 
 - [ ] 구현체 이름이 의존 대상을 드러내는가 (`Impl`/`Default` 없음)
+- [ ] 표준·프레임워크(Spring AI 등)에 대응되는 개념은 그 용어를 따르는가 (불필요한 자체 조어 없음)
 - [ ] 새 인터페이스가 §2 허용 경계 표 안에 있는가
 - [ ] 사용처 없는 코드·파라미터·주석 코드가 없는가
 - [ ] 계층 패키지(port/adapter/usecase 류)·중복 DTO 계층이 없는가
