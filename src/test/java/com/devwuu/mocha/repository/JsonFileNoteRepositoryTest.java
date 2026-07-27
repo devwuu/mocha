@@ -416,6 +416,27 @@ class JsonFileNoteRepositoryTest {
     }
 
     @Test
+    @DisplayName("0025-CR25-10/ADR-66: entries 키가 없는 수기 편집 JSON도 NPE 없이 로드 — 빈 엔트리로 수렴, 정상 노트 조회 불변")
+    void loadTolueratesNoteJsonWithoutEntriesKey() throws java.io.IOException {
+        // 로드 경계가 전 노트에 normalized()를 거는데 그 정규화가 entries null에 NPE로 새면, 노트 1건의
+        // 결손이 findAll을 통해 조회·매칭·전체 렌더를 통째로 마비시킨다 — 도메인 생성자가 배열을 보장한다(V-3).
+        java.nio.file.Path notesDir = dataDir.resolve("notes");
+        java.nio.file.Files.createDirectories(notesDir);
+        java.nio.file.Files.writeString(notesDir.resolve("no-entries.json"), """
+                {"slug":"no-entries",
+                 "coffee_name":{"value":"엔트리 없는 노트","source":"user"},
+                 "created_at":"2026-07-01T10:00:00+09:00","updated_at":"2026-07-01T10:00:00+09:00"}
+                """);
+        // 같은 저장소에 정상 노트도 둔다 — 결손 1건이 나머지 조회를 오염시키지 않는지 함께 본다.
+        repo.upsertEntry("coffeevera-yirgacheffe-g1", sampleMeta(),
+                entry(LocalDate.of(2026, 7, 10), "정상 노트"), Aliases.empty());
+
+        Note loaded = repo.findBySlug("no-entries").orElseThrow();
+        assertThat(loaded.entries()).isEmpty();
+        assertThat(repo.findAll()).hasSize(2);
+    }
+
+    @Test
     @DisplayName("V-9: applyEdit coffee_name 변경 시도 거부 — 커밋 없음, 원본 무변화")
     void applyEditRejectsCoffeeNameChange() {
         String slug = "coffeevera-yirgacheffe-g1";

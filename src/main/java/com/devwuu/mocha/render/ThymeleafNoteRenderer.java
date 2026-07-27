@@ -100,7 +100,8 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
     public List<Path> renderEntryCard(String slug, LocalDate date) {
         Note note = noteRepository.findBySlug(slug)
                 .orElseThrow(() -> new IllegalArgumentException("카드 렌더 대상 노트 없음: slug=" + slug));
-        Entry entry = note.entries() == null ? null : note.entries().stream()
+        // entries 배열 존재는 도메인 생성자가 보장한다(V-3 — CR25-10) — null 재검증 없음(ADR-66 POLICY).
+        Entry entry = note.entries().stream()
                 .filter(e -> e.date().equals(date)).findFirst().orElse(null);
         if (entry == null) {
             throw new IllegalArgumentException("카드 렌더 대상 엔트리 없음: slug=" + slug + " date=" + date);
@@ -240,10 +241,8 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
     // 모든 (노트,엔트리)를 엔트리 date 내림차순 + slug 오름차순으로 평탄화한다(결정론적 재현성, AC-Δ7).
     private static List<EntryRef> orderedEntries(List<Note> notes) {
         List<EntryRef> refs = new ArrayList<>();
+        // entries 배열 존재는 도메인 생성자가 보장한다(V-3 — CR25-10) — null 재검증 없음(ADR-66 POLICY).
         for (Note note : notes) {
-            if (note.entries() == null) {
-                continue;
-            }
             for (Entry entry : note.entries()) {
                 refs.add(new EntryRef(note, entry));
             }

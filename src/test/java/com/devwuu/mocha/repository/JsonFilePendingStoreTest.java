@@ -177,9 +177,10 @@ class JsonFilePendingStoreTest {
     }
 
     @Test
-    @DisplayName("0025-TΔ2b-1/ADR-66: draft.entries 필드 부재(정규화 안 됨)도 NPE 없이 empty로 수렴")
+    @DisplayName("0025-TΔ2b-1/ADR-66: draft.entries 필드 부재도 NPE 없이 empty로 수렴")
     void corruptNullEntriesIsDiscarded() throws Exception {
-        // Note는 beans만 정규화하고 entries는 null 가능 — 무결성 검사가 NPE로 새지 않는지 가드.
+        // 도메인 생성자가 entries 부재를 빈 배열로 수렴시키고(V-3, CR25-10) 관문이 "엔트리 0건"으로 잡는다 —
+        // 어느 층이 바뀌어도 이 경로가 NPE로 새지 않는지 가드한다.
         writePendingTree(sampleDraft(OffsetDateTime.now(FIXED)),
                 tree -> ((ObjectNode) tree.get("draft")).remove("entries"));
         JsonFilePendingStore store = new JsonFilePendingStore(dataDir, MochaObjectMapper.create(), TTL, FIXED);
@@ -208,6 +209,24 @@ class JsonFilePendingStoreTest {
                 new PendingNote.EditTarget("coffeevera-yirgacheffe-g1", LocalDate.of(2026, 7, 9)),
                 null, "1720570200.000100", createdAt);
         writePendingWithout(editPending, "target");
+        JsonFilePendingStore store = new JsonFilePendingStore(dataDir, MochaObjectMapper.create(), TTL, FIXED);
+
+        assertThat(store.get(USER)).isEmpty();
+        assertThat(pendingFile()).doesNotExist();
+    }
+
+    @Test
+    @DisplayName("0025-CR25-10/ADR-66: edit 모드 target.slug 공백은 empty 반환 + 파일 삭제(게이트 NPE·모델 대면 null 차단)")
+    void corruptEditWithBlankTargetSlugIsDiscarded() throws Exception {
+        // slug 결손 target이 통과하면 SinglePendingGate의 같은 대상 판정이 slug 비교에서 NPE로 새고,
+        // 거부 사유에는 리터럴 "null"이 노출된다(draft.coffee_name과 동일 부류).
+        OffsetDateTime createdAt = OffsetDateTime.now(FIXED);
+        PendingNote editPending = new PendingNote(
+                PendingNote.Mode.EDIT,
+                sampleDraft(createdAt).draft(),
+                new PendingNote.EditTarget("coffeevera-yirgacheffe-g1", LocalDate.of(2026, 7, 9)),
+                null, "1720570200.000100", createdAt);
+        writePendingTree(editPending, tree -> ((ObjectNode) tree.get("target")).remove("slug"));
         JsonFilePendingStore store = new JsonFilePendingStore(dataDir, MochaObjectMapper.create(), TTL, FIXED);
 
         assertThat(store.get(USER)).isEmpty();

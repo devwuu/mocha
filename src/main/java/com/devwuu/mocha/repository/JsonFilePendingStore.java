@@ -117,9 +117,9 @@ public class JsonFilePendingStore implements PendingStore {
     }
 
     // data-model §2.3 로드 무결성 집합 — 훼손 사유 문자열(정상이면 null).
-    // 필수 필드(mode·createdAt·draft·slug·coffee_name·엔트리, edit의 target)의 부재·공백을 판정한다.
-    // 최상위·엔트리 null은 JSON `null`/필드 부재에서 나올 수 있어 여기서 방어한다(도메인 record는 entries를
-    // 정규화하지 않는다 — Note는 beans만). 무결성 검사 자체가 NPE로 새면 로드 경계 관문이 무력화된다.
+    // 필수 필드(mode·createdAt·draft·slug·coffee_name·엔트리, edit의 target·target.slug)의 부재·공백을 판정한다.
+    // 최상위 null은 JSON `null`/필드 부재에서 나올 수 있어 여기서 방어한다(엔트리 배열 자체의 null은 도메인
+    // 생성자가 빈 배열로 수렴시킨다 — V-3, CR25-10). 무결성 검사 자체가 NPE로 새면 로드 경계 관문이 무력화된다.
     private String integrityDefect(PendingNote pending) {
         if (pending == null) {
             return "최상위 null";
@@ -144,11 +144,19 @@ public class JsonFilePendingStore implements PendingStore {
         if (coffeeName == null || coffeeName.isBlank()) {
             return "draft.coffee_name 공백";
         }
-        if (draft.entries() == null || draft.entries().isEmpty()) {
+        if (draft.entries().isEmpty()) {
             return "draft 엔트리 0건";
         }
-        if (pending.mode() == PendingNote.Mode.EDIT && pending.target() == null) {
-            return "edit 모드 target 결손";
+        if (pending.mode() == PendingNote.Mode.EDIT) {
+            if (pending.target() == null) {
+                return "edit 모드 target 결손";
+            }
+            // target.slug는 수정 대상의 정체성 — 결손이면 소비처가 갱신 대상을 찾을 수 없다. 게이트의
+            // 같은 대상 판정(SinglePendingGate.requireSameEditTargetOrFree)이 slug 비교에서 NPE로 새고,
+            // 거부 사유에는 커피명 대신 리터럴 "null"이 노출된다(draft.coffee_name과 동일 부류, CR25-10).
+            if (pending.target().slug() == null || pending.target().slug().isBlank()) {
+                return "edit 모드 target.slug 공백";
+            }
         }
         return null;
     }

@@ -34,8 +34,13 @@ public record Note(
         OffsetDateTime updatedAt
 ) {
     // V-14: beans는 null 불가 — 정보 전무면 빈 배열(요소 검증·드롭은 저장·로드 경계의 Bean.normalize 몫, ADR-66).
+    // V-3: entries도 같은 부류의 배열(null 불가) — 수기 편집 JSON의 키 누락을 여기서 빈 배열로 수렴시킨다.
+    //      로드 경계(ADR-66)가 전 노트에 normalized()를 거는데, 그 정규화 자체가 entries null에 NPE로 새면
+    //      노트 1건의 결손이 findAll을 통해 전체 조회·렌더를 마비시킨다(CR25-10, changes/0025).
+    //      Entry.brews(V-15)·beans(V-14)와 동일한 "배열은 도메인 생성자가 보장" 대칭.
     public Note {
         beans = beans == null ? List.of() : List.copyOf(beans);
+        entries = entries == null ? List.of() : List.copyOf(entries);
     }
 
     /**
