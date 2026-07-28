@@ -116,9 +116,13 @@ public class AgentConversationRouter implements ConversationRouter {
             TurnPrompt context = promptAssembler.assemble(
                     message.text(), transcript.view(userId), pendingBefore, ocr, segments);
 
-            log.info("에이전트 턴 진입: user={} buffered={} pending={} segments={}",
+            // POLICY: 턴 진입 관측에 사용자 발화 원문을 함께 남긴다 — 종전에는 폴백(ADR-48) 1지점에만 원문이
+            //         남아 outcome=완료로 끝난 행동 실패의 원문이 회수되지 않았고, 그 결과 박제 루프(ADR-69 ①)의
+            //         회수 경로가 성립하지 않았다. 원문은 개인 데이터이므로 logs/ 비커밋 규칙이 그대로 적용된다
+            //         (ref: specs/coffee-note-agent/plan.md §6 ADR-44 관측·#ADR-69, NFR-7/ADR-21, 루트 CLAUDE.md §5).
+            log.info("에이전트 턴 진입: user={} buffered={} pending={} segments={} 원문={}",
                     userId, bufferNames.size(), pendingBefore != null,
-                    segments == null ? "-" : segments.size());
+                    segments == null ? "-" : segments.size(), message.text());
             // TΔ2b 배선: 턴 원문·세그먼트를 제안 검증기까지 나른다(다중 날짜 게이트 V-16의 판정 입력, ADR-60).
             // 라우터가 1회 만들어 조립기와 같은 값을 넘긴다 — 턴 안에서 값이 일관된다(findings-TΔ0 §C-5).
             TurnUserMessage utterance = new TurnUserMessage(message.text(), segments);

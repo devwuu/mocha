@@ -1,5 +1,8 @@
 package com.devwuu.mocha.slack;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.devwuu.mocha.agent.ChatClient;
 import com.devwuu.mocha.agent.AgentException;
 import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
@@ -34,9 +37,11 @@ import com.devwuu.mocha.slack.inbound.IncomingPhoto;
 import com.devwuu.mocha.slack.inbound.SlackPhotoIntake;
 import com.devwuu.mocha.slack.outbound.MochaMessages;
 import com.devwuu.mocha.slack.outbound.SlackResponder;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
 import java.time.Clock;
@@ -78,9 +83,13 @@ class AgentConversationRouterTest {
     private final StubPhotoInfoExtractor photoInfoExtractor = new StubPhotoInfoExtractor();
     private final FakeSegmenter segmenter = new FakeSegmenter();
     private AgentConversationRouter router;
+    private ListAppender<ILoggingEvent> logs;
 
     @BeforeEach
     void setUp() {
+        logs = new ListAppender<>();
+        logs.start();
+        ((Logger) LoggerFactory.getLogger(AgentConversationRouter.class)).addAppender(logs);
         SlackPhotoIntake photoIntake = new SlackPhotoIntake(pendingStore, responder,
                 url -> jpegBytes(), photoStore, photoBufferStore, photoInfoExtractor,
                 Duration.ofMinutes(3), clock);
@@ -96,6 +105,23 @@ class AgentConversationRouterTest {
         router = new AgentConversationRouter(pendingStore, transcript, chatClient, toolCallbackProvider,
                 new TurnPromptAssembler(MochaObjectMapper.create(), clock), segmenter, photoIntake,
                 responder, commitHandler, clock);
+    }
+
+    @AfterEach
+    void tearDown() {
+        ((Logger) LoggerFactory.getLogger(AgentConversationRouter.class)).detachAppender(logs);
+    }
+
+    @Test
+    @DisplayName("AC-Δ8(0026): 성공 턴에서도 턴 진입 관측 로그에 발화 원문이 실린다 — 박제 회수 경로(ADR-69 ①)")
+    void turnEntryObservationCarriesRawUtterance() {
+        chatClient.reply = "맛있었겠다 멍! 🐾";
+
+        router.onMessage(message("어제 마신 예가체프 새콤했어"));
+
+        assertThat(responder.posted).containsExactly("맛있었겠다 멍! 🐾"); // 폴백 아닌 성공 턴
+        assertThat(logs.list).extracting(ILoggingEvent::getFormattedMessage)
+                .anyMatch(m -> m.startsWith("에이전트 턴 진입") && m.contains("어제 마신 예가체프 새콤했어"));
     }
 
     @Test
