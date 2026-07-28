@@ -1,0 +1,44 @@
+# eval 케이스 포맷 샘플 — 전부 합성 데이터다(개인 데이터 0, 루트 CLAUDE.md §5).
+#
+# 실케이스(eval/cases/)는 실발화 그대로라 비커밋이고, 커밋 영역에 남는 케이스는 이 한 건뿐이다.
+# EvalCaseLoaderTest가 이 파일을 소비하므로 포맷이 바뀌면 이 샘플이 먼저 깨진다(ADR-68 — 샘플에 소비자를 붙인다).
+#
+# id는 폴더명(sample-case)이 소유한다 — 이 파일에 쓰지 않는다.
+
+# 이 케이스가 어느 관측에서 왔는가. 실케이스는 델타 번호·로그 날짜를 적는다(ADR-69 ① 박제).
+origin: "합성 샘플 — 실사용 관측 아님(포맷 예시 겸 러너 드라이런용, changes/0026 TΔ1)"
+
+# 고정 시각(instant). 날짜만이 아니라 시각까지 고정한다 — pending slug가 시각에서 파생된다.
+today: "2026-03-14T09:30:00+09:00"
+
+# 발화 시퀀스. 2개 이상이면 멀티턴(같은 라우터 인스턴스에 순차 주입).
+utterances:
+  - "오늘 아침에 샘플로스터스 코스믹베리 15g 받아서 240ml 내렸어. 2분 40초 걸렸고 분쇄도는 코만단테 22클릭이었음. 새콤달콤하고 베리 향이 확 올라와서 맛있었어"
+
+# 턴 진입 전 저장소 상태 — 케이스 폴더에 동봉한 픽스처를 폴더 상대 경로로 가리킨다.
+initial:
+  notes: notes          # <slug>.json 모음 디렉터리
+  # pending: pending.json   # 초기 확인 대기(단일 대기 게이트 케이스에서 쓴다)
+
+# 기대 계약 — 구조·계약만 단언한다. 응답 문구는 단언하지 않는다(ADR-68 POLICY).
+expect:
+  pending:
+    state: created      # created | absent | unchanged
+    mode: record        # record | edit
+    draft:              # Note 구조(snake_case) 경로 부분 일치 — 케이스가 실제로 보려는 필드만
+      - path: entries[0].date
+        value: "2026-03-14"
+      - path: entries[0].brews
+        size: 1
+      - path: entries[0].brews[0].recipe.grind
+        value: "22클릭 (코만단테)"
+      - path: entries[0].brews[0].tasting.my_taste
+        present: true
+  tools:
+    sequence_contains: [propose_record]   # 부분 시퀀스(순서 유지, 사이에 다른 호출 허용)
+    calls:
+      - name: propose_record
+        min: 1
+  rejections:
+    max: 0              # 서버 검증 거부 없이 한 번에 통과해야 한다
+  unchanged_notes: true # 제안만 — 커밋은 [저장] 버튼에서만 일어난다(ADR-3)

@@ -1,0 +1,68 @@
+{
+  "slug": "sample-roasters-lunar-citrus",
+  "coffee_name": {
+    "value": "루나 시트러스",
+    "source": "user"
+  },
+  "roastery": {
+    "value": "샘플로스터스",
+    "source": "user"
+  },
+  "beans": [
+    {
+      "description": {
+        "value": "에티오피아 구지",
+        "source": "user"
+      },
+      "process": {
+        "value": "워시드",
+        "source": "user"
+      }
+    }
+  ],
+  "roast_level": {
+    "value": "라이트",
+    "source": "user"
+  },
+  "official_notes": {
+    "value": [
+      "자몽",
+      "홍차"
+    ],
+    "source": "search"
+  },
+  "aliases": {
+    "coffee_name": [],
+    "roastery": []
+  },
+  "sources": [],
+  "entries": [
+    {
+      "date": "2026-02-02",
+      "brews": [
+        {
+          "recipe": {
+            "method": "핸드드립",
+            "dose_g": 15.0,
+            "water_ml": 240.0,
+            "yield_ml": null,
+            "time_sec": 150.0,
+            "temp_c": 92.0,
+            "grind": "24클릭 (코만단테)",
+            "machine": null,
+            "pouring": null,
+            "feedback": null
+          },
+          "tasting": {
+            "my_taste": "산미가 밝고 홍차 같은 여운이 남",
+            "my_taste_original": "산미가 밝고 홍차 같은 여운이 남",
+            "rating": "맛있다"
+          }
+        }
+      ],
+      "updated_at": "2026-02-02T21:10:00+09:00"
+    }
+  ],
+  "created_at": "2026-02-02T21:10:00+09:00",
+  "updated_at": "2026-02-02T21:10:00+09:00"
+}

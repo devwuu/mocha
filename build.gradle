@@ -45,6 +45,11 @@ dependencies {
 
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+	// eval 케이스(case.yaml) 파싱 전용 — 테스트 스코프 (ref: plan.md#ADR-68, changes/0026).
+	// 런타임 데이터는 전부 JSON이라 프로덕션에는 YAML이 없다. 케이스 파일만 사람이 손으로 쓰는 자산이라
+	// 주석·멀티라인 발화가 필요해 YAML을 골랐고, 그 대가를 테스트 스코프에 가둔다.
+	testImplementation 'tools.jackson.dataformat:jackson-dataformat-yaml'
 }
 
 tasks.withType(JavaCompile).configureEach {
