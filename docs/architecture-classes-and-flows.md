@@ -1,8 +1,9 @@
 # 모카(Mocha) — 클래스 역할과 기능 흐름
 
-> 이 문서는 `src/main/java/com/devwuu/mocha/` 전체 클래스(105개)의 역할과, 기능별 처리 흐름을 그래프로 정리한 참조 문서다.
+> 이 문서는 `src/main/java/com/devwuu/mocha/` 전체 클래스(105개)의 역할과 기능별 처리 흐름, 그리고 그것을 검증하는 테스트 하네스를 그래프로 정리한 참조 문서다.
 > 소스와 spec(`specs/coffee-note-agent/`)을 기준으로 작성했으며, 도메인 특유 용어는 §1 용어 사전에 정의를 두었다. 본문에서 처음 나오는 용어는 **굵게** 표시한다.
-> 에이전트 계층 공개 타입의 명명은 Spring AI 어휘에 대응한다(plan ADR-65) — 대응표는 §5가 소유한다.
+> 에이전트 계층 공개 타입의 명명은 Spring AI 어휘에 대응한다(plan ADR-65) — 대응표는 §6이 소유한다.
+> §1~§4는 `src/main`의 구조를, §5는 그 구조를 무엇으로 검증하는지(테스트 하네스, `src/test`)를 다룬다.
 
 ---
 
@@ -12,7 +13,8 @@
 2. [전체 아키텍처 개관](#2-전체-아키텍처-개관)
 3. [패키지별 클래스 역할](#3-패키지별-클래스-역할)
 4. [기능별 흐름 그래프](#4-기능별-흐름-그래프)
-5. [모카 ↔ Spring AI 대응표](#5-모카--spring-ai-대응표-adr-65)
+5. [테스트 하네스](#5-테스트-하네스--계약-관측-행동-회귀)
+6. [모카 ↔ Spring AI 대응표](#6-모카--spring-ai-대응표-adr-65)
 
 ---
 
@@ -61,7 +63,7 @@
 | **다중 날짜 게이트 / 세그먼트 분해** | 한 발화에 서로 다른 절대 시음 날짜가 2개 이상 섞였을 때의 이중 장치(plan ADR-60·61). 결정론 **날짜 탐지기**(정규식, 상대 날짜 제외)가 다중 날짜를 보고하면 **세그먼터**(LLM 1콜)가 원문을 날짜별로 분해해 컨텍스트에 주입하고, 에이전트는 가장 이른 날짜만 제안한다. `propose_record` 서버 검증의 게이트(V-16)가 뭉뚱그림 제안을 최종 방어한다 — edit 경로에는 적용하지 않는다(날짜 이동·정정 보호). |
 | **환각 필터(hallucination filter)** | 모델이 지어낸 실존하지 않는 slug·엔트리를 대상으로 제안이 진행되지 않게 막는 서버 검사. 미존재 대상은 오류 사유를 tool 결과로 돌려줘 에이전트가 루프 안에서 정정한다. |
 | **strict schema** | 제안 tool 인자의 JSON 스키마 강제(전 필드 required, additionalProperties=false). 인자의 **형태**는 스키마가, **값 수준 규칙**(rating 4범주 등)은 서버 검증(`RecordProposalValidator`·`EditProposalValidator`)이 담당한다. |
-| **폴백(fallback)** | 에이전트 턴 실패 시(LLM 오류·턴 상한 3종 도달 — tool 호출 수·누적 토큰·경과 시간, plan ADR-62) 수렴하는 결정론 경로 — pending·노트를 건드리지 않고 "다시 보내달라" 안내만 하며, 사용자 원문은 파일 로그에 남아 유실되지 않는다. |
+| **폴백(fallback)** | 에이전트 턴 실패 시(LLM 오류·턴 상한 3종 도달 — tool 호출 수·누적 토큰·경과 시간, plan ADR-62) 수렴하는 결정론 경로 — pending·노트를 건드리지 않고 "다시 보내달라" 안내만 하며, 사용자 원문은 파일 로그에 남아 유실되지 않는다. 원문은 폴백 로그에만이 아니라 **턴 진입 관측 로그에도** 남는다(ADR-69 ① 박제 회수 경로 — `outcome=완료`로 끝난 행동 실패의 원문까지 회수). |
 
 ### 사진 처리
 
@@ -198,9 +200,9 @@ flowchart TB
 |---|---|---|
 | `SlackGateway` | class | Slack Socket Mode 수신 진입점. Bolt 이벤트를 내부 값객체(`Incoming*`)로 파싱해 라우터에 넘기는 얇은 계층으로, 즉시 ack + 백그라운드 처리로 재전송 루프를 막고 봇 자신의 메시지를 걸러 에코 루프를 차단한다. Slack SDK 타입이 이 클래스 밖으로 새지 않는다. `--rerender` 프로파일에서는 비활성. |
 | `ConversationRouter` | interface | 수신 이벤트(메시지/버튼/사진)를 받는 라우팅 경계. 게이트웨이(파싱)와 분기 로직을 분리한다. |
-| `AgentConversationRouter` | class | 메인 라우터. 협력자는 config(`RouterConfig`)가 조립해 주입한다 — 생성자 1종, 협력자 `new` 0건(ADR-63). 텍스트는 [사진 버퍼 흡수 → OCR 전처리 → 다중 날짜 탐지·세그먼트 분해(해당 턴만) → 컨텍스트 조립 → 에이전트 턴 → 응답]으로, 버튼은 `SlackCommitHandler` + 커밋 접힘으로, 사진은 `SlackPhotoIntake`로 보낸다. 턴 실패 시 pending·노트 무변화 + 폴백 안내로 수렴시키는 지점이기도 하다. |
-| `SlackCommitHandler` | class | **[저장]/[취소] 버튼의 커밋 전담.** 저장 시: pending 유효성 확인(존재·TTL — 구조 무결성은 저장소 로드 경계가 보장하므로 여기서 재검증하지 않는다, ADR-66 POLICY) → 스테이징 사진 아카이브 이동 → (신규 노트면) 별칭 생성 1콜 → 노트 JSON 커밋 → 회차 카드 증분 렌더 + Slack 업로드 → 버튼 소진. 취소 시: pending·스테이징 폐기 + 안내. 사용자 확인 없이는 절대 노트를 쓰지 않는다는 정책의 구현 지점. |
-| `StagingSweeper` | class | 앱 시작 시 1회 실행되는 스윕 훅 — pending·버퍼 어디에도 속하지 않는 고아 스테이징 사진만 청소한다. |
+| `AgentConversationRouter` | class | 메인 라우터. 협력자는 config(`RouterConfig`)가 조립해 주입한다 — 생성자 1종, 협력자 `new` 0건(ADR-63). 텍스트는 [사진 버퍼 흡수 → OCR 전처리 → 다중 날짜 탐지·세그먼트 분해(해당 턴만) → 컨텍스트 조립 → 에이전트 턴 → 응답]으로, 버튼은 `SlackCommitHandler` + 커밋 접힘으로, 사진은 `SlackPhotoIntake`로 보낸다. 턴 실패 시 pending·노트 무변화 + 폴백 안내로 수렴시키는 지점이기도 하다. **턴 진입 관측 로그에 사용자 발화 원문을 싣는 지점**이기도 하다(성공 턴 포함 — 행동 실패를 eval 케이스로 회수하는 경로, ADR-69 ①). 원문은 개인 데이터라 `logs/` 비커밋 규칙이 그대로 적용된다(NFR-7). |
+| `SlackCommitHandler` | class | **[저장]/[취소] 버튼의 커밋 전담.** 저장 시: pending 유효성 확인(존재·TTL — 구조 무결성은 저장소 로드 경계가 보장하므로 여기서 재검증하지 않는다, ADR-66 POLICY) → 스테이징 사진 아카이브 이동 → (신규 노트면) 별칭 생성 1콜 → 노트 JSON 커밋 → 회차 카드 증분 렌더 + Slack 업로드 → 버튼 소진. edit 커밋은 [저장] 시점에 대상 노트·엔트리가 살아 있는지 다시 확인하고, 소실됐으면 커밋 없이 만료 경로(pending·스테이징 정리 + 안내)로 수렴한다(V-7 준용). 취소 시: pending·스테이징·버퍼 폐기 + 안내. 사용자 확인 없이는 절대 노트를 쓰지 않는다는 정책의 구현 지점. |
+| `StagingSweeper` | class | 앱 시작 시 1회 실행되는 스윕 훅(`ApplicationRunner`, `!rerender` 프로파일 — 리렌더 실행은 대기 상태를 건드리지 않는다) — pending·버퍼 어디에도 속하지 않는 고아 스테이징 사진만 청소한다. |
 
 ### 3.2 `slack.inbound` — 수신 값객체·사진 유입 (8개)
 
@@ -269,7 +271,7 @@ flowchart TB
 | `GetNoteArgs` / `SendEntryCardArgs` | record | 읽기 tool 인자 값객체. |
 | `ProposeRecordArgs` / `ProposeEditArgs` | record | 제안 tool 인자의 미검증 원시형. `ProposeEditArgs.Patch`에는 커피명 필드 자체가 없어 이름 변경이 구조적으로 불가능하다. |
 | `SourcedArg<T>` | record | 출처 표시 필드의 미검증 원시형(source가 String) — 검증 후 도메인 `Sourced`(enum)로 승격된다. |
-| `BeanArg` / `BrewArg` | record | beans(원두 구성)·brews(회차) 인자의 미검증 원시형 — 검증 후 도메인 `Bean`·`Brew`로 승격된다(changes/0021). |
+| `BeanArg` / `BrewArg` | record | beans(원두 구성)·brews(회차) 인자의 미검증 원시형 — 검증 후 도메인 `Bean`·`Brew`로 승격된다(changes/0021). `BrewArg.recipe`는 전 필드 nullable 원시값이라 도메인 `Recipe`를 그대로 재사용하고(V-8 정규화는 검증 단계), 감상만 중첩 record `BrewArg.TastingArg`(rating이 String — V-1 위반을 역직렬화 예외가 아니라 사유 있는 거부로 다루기 위함)로 따로 받는다. |
 | `NoteSummary` | record | `list_notes` 응답 항목(slug·커피명·로스터리·별칭·원두 구성 요약·공식 노트·최근 시음일). |
 | `RecordProposal` / `EditProposal` | record | 검증 통과 후 정규화된 도메인 제안 — pending draft 조립·갱신의 입력. |
 
@@ -310,7 +312,7 @@ flowchart TB
 | `NoteRenderer` | interface | 렌더 경계 — 전체 리렌더(`renderAll`), 엔트리의 회차 카드 증분 렌더(`renderEntryCard` — 그 엔트리의 카드 전부를 List로 반환), 카드 삭제(`removeEntryCard`, 날짜 이동 시). |
 | `ThymeleafNoteRenderer` | class | 주 구현체 — 노트 JSON을 읽어 회차마다 감상 카드(tasting 있는 회차)·레시피 카드(recipe 있는 회차) HTML을 Thymeleaf로 조판해 JPG로 굽고, 고아 카드를 정리한다. 폰트·마스코트 자산 복사도 담당. index.html은 산출하지 않는다(ADR-55 — artifact/ 아래 HTML 산출 금지). |
 | `CardImageRenderer` | interface | "카드 HTML → JPG 래스터화" 경계. |
-| `PlaywrightCardImageRenderer` | class | 구현체 — Playwright 헤드리스 Chromium으로 1080×1350 뷰포트 스크린샷을 JPG로 저장(순수 Java로는 flexbox·이모지·웹폰트 렌더가 불가능해 실제 브라우저 엔진 사용). 오프라인 컨텍스트로 CDN 미의존을 강제. |
+| `PlaywrightCardImageRenderer` | class | 구현체 — Playwright 헤드리스 Chromium으로 뷰포트 스크린샷을 JPG로 저장(순수 Java로는 flexbox·이모지·웹폰트 렌더가 불가능해 실제 브라우저 엔진 사용). 뷰포트·품질은 설정 키(`mocha.card.width`·`mocha.card.height`·`mocha.card.jpg-quality` — 기본 1080×1350·0.9). 오프라인 컨텍스트로 CDN 미의존을 강제하고, 템플릿 autofit 완료 마커를 기다린 뒤 촬영한다. 렌더 계층에서 유일하게 `@Component`로 자체 등록된다(`RenderConfig` 미조립). |
 | `CardFiles` | final class | 회차 카드 JPG 경로 규약(`cards/<slug>/<date>-taste-<n>.jpg`·`-recipe-<n>.jpg`)의 단일 소유 — 렌더러(산출·정리)와 `send_entry_card`(파생물 재사용 판정)가 공유한다. |
 | `NoteView` | final class | 템플릿용 뷰 모델 컨테이너 — `TasteCard`(감상 카드)·`RecipeCard`(레시피 카드) 등 중첩 record. 카드 단위 = 회차 파트 1건. |
 | `KoreanDates` | final class | 템플릿 헬퍼 — 한국어 날짜 포맷("2026년 7월 10일" 등). |
@@ -340,7 +342,7 @@ flowchart TB
 
 ### 3.13 `repository` — 파일 저장소 (9개)
 
-모든 구현체 공통: 쓰기는 임시 `.tmp` 파일 → 원자적 move, 시계·직렬화는 config 공통 빈(`Clock` Asia/Seoul·`ObjectMapper` — ADR-63) 주입.
+JSON 저장소 3종 공통: 쓰기는 임시 `.tmp` 파일 → 원자적 move, 직렬화는 config 공통 `ObjectMapper` 빈(ADR-63) 주입. `Clock`(Asia/Seoul)은 시각 판정이 있는 노트·pending 저장소만 받고, `LocalPhotoStore`는 파일 이동만 하므로 데이터 디렉터리 경로 하나만 받는다.
 
 | 클래스 | 종류 | 역할 |
 |---|---|---|
@@ -361,9 +363,9 @@ flowchart TB
 | `CommonConfig` | @Configuration | 전역 성격 공통 빈(ADR-63) — `Clock`(Asia/Seoul)·`ObjectMapper`(`MochaObjectMapper.create()`) 각 1빈. 프로덕션에서 이 둘의 직접 생성은 여기뿐이다. |
 | `RouterConfig` | @Configuration | 에이전트 턴 협력자 배선(ADR-63) — 검증기 2종·`TurnPromptAssembler`·`ToolCallbackProvider`·`SlackPhotoIntake`·`SlackCommitHandler`를 조립한다. "누가 무엇으로 조립되는가"가 이 한 클래스에서 읽힌다. |
 | `RepositoryConfig` | @Configuration | 저장소 4종 빈 조립. 경로는 전부 `mocha.data.dir`에서만. |
-| `LlmConfig` | @Configuration | OpenAI 클라이언트 + 보조 콜(vision·별칭) 빈 조립. 역할별 모델 키 분리(`mocha.vision.model`·`mocha.alias.model`). |
+| `LlmConfig` | @Configuration | OpenAI 클라이언트 + 루프 밖 보조 콜(vision·별칭) 어댑터 + OCR 전처리(`PhotoInfoExtractor`) 빈 조립. 역할별 모델 키 분리(`mocha.vision.model`·`mocha.alias.model`)와 OCR 장수 상한(`mocha.vision.max-images`)을 소유한다. 세그먼터는 `AgentConfig` 몫. |
 | `AgentConfig` | @Configuration | 에이전트 루프 드라이버(`mocha.agent.model`·상한 3종 키)와 트랜스크립트(턴 상한·TTL), 세그먼터(`mocha.agent.segmenter-model`) 빈 조립. |
-| `RenderConfig` | @Configuration | Thymeleaf 오프라인 템플릿 엔진 + 렌더러 빈 조립(`mocha.artifact.dir`·테마). `mocha.artifact.dir` 기본값 선언(`DEFAULT_ARTIFACT_DIR = ${mocha.artifact.dir:./artifact}`)을 소유하고 `RouterConfig`가 이를 참조한다 — 리터럴 2벌이면 한쪽만 바뀔 때 카드 산출 위치와 조회 위치가 갈라진다(ADR-50 "코드 default 필수"). |
+| `RenderConfig` | @Configuration | Thymeleaf 오프라인 템플릿 엔진 + 노트 렌더러 빈 조립(`mocha.artifact.dir`·테마 — 카드 래스터라이저는 `@Component` 자체 등록이라 여기서 조립하지 않는다). `mocha.artifact.dir` 기본값 선언(`DEFAULT_ARTIFACT_DIR = ${mocha.artifact.dir:./artifact}`)을 소유하고 `RouterConfig`가 이를 참조한다 — 리터럴 2벌이면 한쪽만 바뀔 때 카드 산출 위치와 조회 위치가 갈라진다(ADR-50 "코드 default 필수"). |
 | `SlackConfig` | @Configuration | Slack 송신용 MethodsClient 빈(봇 토큰). 수신(Socket Mode)은 게이트웨이가 앱 토큰으로 별도 배선. |
 | `MochaObjectMapper` | final class | 도메인 JSON 직렬화 규칙의 단일 출처 — snake_case, 타임존 오프셋 보존. 인스턴스 생성은 `CommonConfig` 빈이 소유(ADR-63). |
 | `ImageFormat` | enum | 매직바이트 이미지 포맷 판별(JPEG/PNG/GIF/WebP=vision 지원, HEIC=썸네일 대체, UNKNOWN=거부). |
@@ -446,7 +448,9 @@ flowchart TB
     G -->|예 — 신규 노트| H[AliasGenerator.generate<br/>별칭 LLM 1콜 — 실패해도 빈 별칭으로 저장 계속]
     G -->|아니오 — 기존 노트| I
     H --> I[NoteRepository.upsertEntry<br/>같은 날짜=회차 병합 · 다른 날짜=엔트리 추가<br/>기존 노트면 관측 표기를 별칭에 축적]
-    D -->|예, edit 모드| J[NoteRepository.applyEdit<br/>엔트리 갱신 · 날짜 이동 시 덮어쓰기<br/>+ 옛 카드 삭제 · 사진 폴더 이동]
+    D -->|예, edit 모드| J0{수정 대상 노트·엔트리<br/>아직 살아 있나?}
+    J0 -->|아니오 — 소실| E
+    J0 -->|예| J[PhotoStore.commit — 수정 중 스테이징된 새 사진 아카이브<br/>NoteRepository.applyEdit — 엔트리 갱신 · 날짜 이동 시 덮어쓰기<br/>날짜 이동이면 옛 카드 삭제 · 사진 폴더 이동 — 둘 다 best-effort]
     I --> K[pending · 버퍼 clear]
     J --> K
     K --> L[NoteRenderer.renderEntryCard<br/>그 엔트리의 회차 카드 전부 증분 렌더]
@@ -527,9 +531,73 @@ flowchart TB
 
 ---
 
-## 5. 모카 ↔ Spring AI 대응표 (ADR-65)
+## 5. 테스트 하네스 — 계약·관측·행동 회귀
 
-에이전트 계층 공개 타입의 명명은 Spring AI 2.0 어휘에 대응시킨다 — **개명 결정과 3규칙은 plan ADR-65가, 대응 관계 전체 표(대응 없음 명시 포함)는 이 §5가 소유한다**(ADR-65의 구→신 나열은 결정 시점의 이력 기록). 기준 3규칙: ① 역할·의미 일치 = 원명 채택, ② 역할 대응·의미 상이 = Spring AI 어휘 + 차이 수식어(거짓 동의어 금지), ③ 대응물 없음 = 현행 유지 + 대응 없음 명시. Spring AI 실제 도입은 비범위다(Responses API·내장 web_search 미지원 — 재론 조건은 changes/0024 delta 참조).
+여기까지가 `src/main`의 구조라면, 이 절은 그 구조를 **무엇이 지키고 있는가**다. 검증은 세 부류로 갈리고, 가르는 기준은 "LLM을 실제로 부르는가"와 "무엇을 답하는가"다(백엔드 `CLAUDE.md` §5.3, plan ADR-68·69).
+
+| 분류 | LLM·외부 | 실행 | 답하는 질문 | 태그 |
+|---|---|---|---|---|
+| **단위** | fake로 대체 | `./gradlew test`(기본) | 계약이 지켜지는가 — 파싱·검증·분기를 결정론으로 | 없음 |
+| **스모크** | 실 OpenAI / 실 Chromium | `./gradlew chromiumTest` (OpenAI 프로브는 태스크 정의가 주석 상태 — 필요할 때 되살린다) | 배선이 실제로 도는가 — 산출물은 관측 자료 | `@Tag("openai")`·`@Tag("chromium")` |
+| **eval** | 실 OpenAI(루프·세그먼터) | `./gradlew evalTest` | 행동이 회귀했는가 — 실발화 리플레이 + 구조 단언 | `@Tag("eval")` |
+
+기본 `test`는 세 태그를 전부 제외한다 — 클론 직후 `./gradlew test`는 **API 콜 0·브라우저 기동 0**이다.
+
+두 부류는 이 3분류에 얹힌 별도 가드다:
+
+- **계약 스냅샷**(`AgentModelContractSnapshotTest`) — tool 5종의 name·description·`parametersSchema` + 시스템 프롬프트를 `src/test/resources/contract/`의 캡처와 **바이트 단위**로 비교한다. 구조 재정비(조립 이관·패키지 분할·개명) 중 모델 대면 표면이 안 바뀌었음의 증거이고, 의도된 계약 변경은 `-Dmocha.contract.recapture=true` 1회 실행으로 재캡처해 **스냅샷 diff 자체를 리뷰 대상**으로 만든다. 내장 web_search 장착(`OpenAiChatClient`)과 턴 컨텍스트 조립(`TurnPromptAssembler`)은 이 스냅샷 밖 — 각자의 테스트가 본다.
+- **언어 정책 동일성**(`LanguagePolicyParityTest`) — 같은 문구가 에이전트 시스템 프롬프트와 vision 프롬프트 양쪽에 인코딩되므로(ADR-38·53), 한쪽만 고치는 부분 수정을 코드로 막는다.
+
+### 5.1 eval 하네스 (`src/test/.../eval/` — 러너 1 + 지원 8, 그 밖에 로더·경로 단위 테스트 2건)
+
+**무엇을 재는가**: 실발화를 고정 시각으로 리플레이하고 **사후 상태**(pending diff·tool 시퀀스·검증 거부·노트 무변화)만으로 통과를 가른다. 응답 문구는 단언하지 않는다 — 같은 계약을 지키면서 문장은 매번 다른 것이 정상이고, 문구를 걸면 모델 교체마다 케이스가 무의미하게 빨개진다(ADR-68 POLICY).
+
+**진입점이 루프가 아니라 라우터인 이유**: `AgentConversationRouter.onMessage`로 주입한다. 날짜 탐지기 → 세그먼터 → 게이트로 이어지는 **루프 전 전처리 구간**이 실측 실패가 몰린 자리인데, 루프 레벨로 진입하면 그 구간이 통째로 빠진다.
+
+| 클래스 | 종류 | 역할 |
+|---|---|---|
+| `EvalCaseRunnerTest` | `@Tag("eval")` 러너 | 케이스마다 `@TestFactory` dynamic test 1건. 케이스당 `-Dmocha.eval.repetitions`(기본 3)회 반복해 **전 회차 통과해야 그린**(비결정 출력에서 "가끔 맞는다"는 충족이 아니다). 통과 회차도 tool 시퀀스·소요를 표준출력에 남긴다 — 다음 변경의 비교 기준선. 키·케이스 부재는 실패가 아니라 **스킵**. |
+| `EvalCase` | record | 케이스 1건의 인메모리 표현 — `origin`(어느 관측에서 왔는가·필수)·`today`(instant 고정)·발화 시퀀스·초기 상태·기대 계약. 중첩 record로 `Initial`·`Expect`·`Pending`(CREATED/ABSENT/UNCHANGED)·`Tools`·`Call`·`Count`·`PathAssertion`. id는 **폴더명이 소유**한다(진실 이중화 방지). |
+| `EvalCaseLoader` | class | `<cases-dir>/<id>/case.yaml` 스캔·파싱·검증. **검증이 본체다** — 모르는 필드·빈 기대·모순된 기대·실재하지 않는 픽스처 참조를 전부 사유와 함께 터뜨려 "아무것도 단언하지 않는 케이스가 조용히 통과하는" 초록 거짓말을 끊는다. 디렉터리 부재·빈 목록만은 실패가 아니다(스킵으로 수렴). |
+| `EvalCaseFormatException` | exception | 케이스 스키마 위반 신호 — 메시지에 케이스 id + 필드 경로 + 사유를 담는다(bare rejection 금지). 실패 메시지가 곧 포맷 문서 역할을 한다. |
+| `EvalPath` | class | 케이스 단언 경로(`entries[0].brews[0].recipe.grind`) 파서 — 필드 하강 + 배열 인덱스만. JSONPath류를 끌어오지 않는 right-sizing이자, 오타가 "매치 없음"으로 조용히 넘어가지 않고 로더에서 터지게 하는 장치. 필드명은 저장 포맷 그대로 snake_case(판정 대상이 직렬화된 JSON이라서). |
+| `EvalHarness` | class | 조립·실행부 — 케이스 1회분 협력자를 엮어 발화를 순차 주입하고 사후 상태(`Run`)를 캡처한다. `Settings`가 프로덕션 기본값(모델·상한 3종·TTL 등)을 한 곳에 복제해 드리프트를 눈에 보이게 둔다. |
+| `EvalJudge` | class | `Run` 하나만 보고 위반 **사유 문자열 목록**을 만든다(첫 실패에서 멈추지 않는다 — 실 API 비용이 드는 하네스에서 재실행이 제일 비싸다). |
+| `EvalFakes` | class | 대체물 모음 — Slack 응답 캡처·미리보기 stub·no-op 렌더러·빈 사진 협력자 3종. v1은 텍스트 턴만 다루므로 사진 경로는 **접촉되지 않는 것이 정상**이라 stub이 아닌 빈 구현이고, 접촉하면 `UnsupportedOperationException`으로 드러난다. |
+| `RecordingToolCallbacks` | class | 실 `ToolCallbackProvider`가 장착한 tool 목록을 감싸 호출명·인자 JSON·결과를 순서대로 적재하는 데코레이터. `ToolCallback`이 record라 같은 4필드 + 래핑 executor로 재구성하면 끝 — **새 인터페이스 0건**, 모델이 보는 tool 정의는 한 글자도 안 바뀐다. `onMessage`가 예외를 삼키는 구조라(ADR-48) "무엇이 왜 거부됐나"는 여기 기록된 `{"error": 사유}`에만 남는다. |
+
+**실물과 대체물의 경계** — 원칙은 "판정 대상은 실물, 부수효과만 대체"다:
+
+| 실물 그대로 | 대체 |
+|---|---|
+| `OpenAiChatClient`(실 LLM 루프)·`OpenAiUtteranceSegmenter`·시스템 프롬프트·검증기 2종·`TastingDateDetector`·`TurnPromptAssembler`·`FoldingChatMemory` | Slack 송신(`SlackResponder` 캡처·`PreviewMessenger` stub) |
+| `JsonFileNoteRepository`·`JsonFilePendingStore` — 인메모리 Map이 아니라 `@TempDir` 위 **실 JSON 파일**(pending diff가 판정 대상이라 직렬화 왕복 자체가 검증에 포함된다) | 렌더(no-op — Chromium 미기동), 사진 협력자 3종(빈 구현) |
+| 고정 `Clock`(케이스 `today`의 instant — pending slug가 시각에서 파생돼 날짜만 고정하면 재현이 흔들린다) | `SlackCommitHandler`는 `null` — `onMessage` 경로가 접촉하지 않는다는 정직한 신호 |
+
+```mermaid
+flowchart TB
+    Y[["eval/cases/&lt;id&gt;/case.yaml<br/>+ 동봉 픽스처(notes·pending)"]] --> L[EvalCaseLoader<br/>스캔·파싱·스키마 검증 — 위반은 사유와 함께 실패]
+    L --> R{{EvalCaseRunnerTest<br/>케이스당 3회 반복}}
+    R --> H[EvalHarness.run<br/>TempDir 저장소 · 고정 Clock · fake Slack/렌더/사진]
+    H --> ROUTER[AgentConversationRouter.onMessage<br/>발화 시퀀스 순차 주입]
+    ROUTER <-.->|"실 LLM 루프 · 세그먼터"| OA(["OpenAI"])
+    ROUTER --> REC[RecordingToolCallbacks<br/>tool 호출·인자·거부 사유 적재]
+    REC --> RUN[["Run — pending before/after · 노트 스냅샷<br/>tool 시퀀스 · 응답 텍스트 · 소요"]]
+    RUN --> J[EvalJudge<br/>구조·계약만 판정 → 위반 사유 목록]
+    J --> V{전 회차 통과?}
+    V -->|예| G[그린 — 시퀀스·소요를 baseline으로 출력]
+    V -->|아니오| F[실패 — 회차별 tool 시퀀스·거부 사유·pending diff 출력]
+```
+
+**케이스 자산의 위치와 취급**: 실케이스는 `eval/cases/`(레포 루트)에 두고 **비커밋**이다(`.gitignore`의 `/eval/*`) — 실발화 원문이라 `data/`·`logs/`와 같은 개인 데이터 취급(루트 `CLAUDE.md` §5). 커밋 영역에 남는 케이스는 합성 데이터 1건(`src/test/resources/eval/sample-case/`)뿐이고, 로더 테스트가 이 샘플을 소비하므로 **포맷이 바뀌면 샘플이 먼저 깨진다**.
+
+**운영 규칙(ADR-69)**: ① 관측된 행동 실패는 케이스로 **박제**한다 — 그래서 라우터가 턴 진입 로그에 원문을 남기고(§3.1), 케이스 `origin`이 필수다. ② **행동 레이어**(시스템 프롬프트·`mocha.agent.model`·tool 스키마·검증기·세그먼터)를 바꾸면 `evalTest` 전/후 결과를 델타에 기록한다 — `REVIEW.md` 체크리스트가 강제한다. 모델·세그먼터는 `-Dmocha.eval.model`·`-Dmocha.eval.segmenter-model`로 덮어 재측정할 수 있다(테스트 JVM `-D` 전용 — `mocha.*` 런타임 설정 키가 아니다).
+
+---
+
+## 6. 모카 ↔ Spring AI 대응표 (ADR-65)
+
+에이전트 계층 공개 타입의 명명은 Spring AI 2.0 어휘에 대응시킨다 — **개명 결정과 3규칙은 plan ADR-65가, 대응 관계 전체 표(대응 없음 명시 포함)는 이 §6이 소유한다**(ADR-65의 구→신 나열은 결정 시점의 이력 기록). 기준 3규칙: ① 역할·의미 일치 = 원명 채택, ② 역할 대응·의미 상이 = Spring AI 어휘 + 차이 수식어(거짓 동의어 금지), ③ 대응물 없음 = 현행 유지 + 대응 없음 명시. Spring AI 실제 도입은 비범위다(Responses API·내장 web_search 미지원 — 재론 조건은 changes/0024 delta 참조).
 
 | 모카 | Spring AI 2.0 | 규칙 | 비고 |
 |---|---|---|---|
