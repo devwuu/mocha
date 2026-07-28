@@ -61,7 +61,8 @@ tasks.withType(JavaCompile).configureEach {
 tasks.named('test') {
 	useJUnitPlatform {
 		// 실 외부 호출 스모크는 기본 실행에서 제외 — 무거운 Chromium(ADR-11), 비용 발생 OpenAI 호출.
-		excludeTags 'chromium', 'openai'
+		// eval(행동 회귀 — 실 LLM + 계약 단언, ADR-68)도 같은 이유로 온디맨드만: 기본 test에 API 콜 0(AC-Δ2).
+		excludeTags 'chromium', 'openai', 'eval'
 	}
 	// 계약 스냅샷 재캡처 게이트(-Dmocha.contract.recapture=true)를 테스트 JVM으로 전달
 	// (AgentModelContractSnapshotTest.recaptureSnapshot — 의도된 계약 변경 시에만).
@@ -89,6 +90,30 @@ tasks.named('test') {
 //		systemProperty 'mocha.probe.model', System.getProperty('mocha.probe.model')
 //	}
 //}
+
+// 행동 eval 하네스만 온디맨드: `./gradlew evalTest` (.env.local의 OPENAI_API_KEY 필요, 비용 발생 — ADR-68).
+// 케이스(eval/cases/)는 실발화라 비커밋이다 — 없으면 실패가 아니라 스킵으로 끝난다(AC-Δ2).
+tasks.register('evalTest', Test) {
+	group = 'verification'
+	description = 'Run @Tag("eval") behavior regression cases against the real LLM (metered, manual).'
+	testClassesDirs = sourceSets.test.output.classesDirs
+	classpath = sourceSets.test.runtimeClasspath
+	useJUnitPlatform {
+		includeTags 'eval'
+	}
+	testLogging {
+		// 회차별 tool 시퀀스·거부 사유·pending diff가 표준출력으로 나온다 — 통과 회차도 남는다(AC-Δ4).
+		showStandardStreams = true
+	}
+	// 행동 관측은 코드 무변경이어도 매번 다시 돈다 — UP-TO-DATE 스킵 방지(구 openaiTest 패턴 승계).
+	outputs.upToDateWhen { false }
+	// 케이스 루트·반복 수·모델 재정의를 테스트 JVM으로 전달. mocha.* 런타임 설정 키가 아니라 -D 전용(plan §5).
+	['mocha.eval.cases-dir', 'mocha.eval.repetitions', 'mocha.eval.model', 'mocha.eval.segmenter-model'].each { key ->
+		if (System.getProperty(key) != null) {
+			systemProperty key, System.getProperty(key)
+		}
+	}
+}
 
 // 실 Chromium 스모크만 온디맨드 실행: `./gradlew chromiumTest` (사전에 installChromium 필요).
 tasks.register('chromiumTest', Test) {
