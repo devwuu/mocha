@@ -14,6 +14,7 @@ import com.openai.models.responses.ResponseFunctionToolCall;
 import com.openai.models.responses.ResponseInputItem;
 import com.openai.models.responses.ResponseOutputItem;
 import com.openai.models.responses.ResponseOutputMessage;
+import com.openai.models.responses.ResponseStatus;
 import com.openai.models.responses.WebSearchTool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,6 +27,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * OpenAI Responses API 기반 {@link ChatClient} 구현 — 모델 호출↔tool 실행 루프 드라이버
@@ -53,24 +55,30 @@ public class OpenAiChatClient implements ChatClient {
     private final int maxToolCalls;
     private final int maxTurnTokens;
     private final Duration turnTimeout;
+    private final int maxOutputTokens;
     private final ObjectMapper mapper;
     private final Clock clock;
 
     /**
-     * @param model         에이전트 루프 모델(mocha.agent.model — web_search·다중 tool 호출 품질 필요, ADR-50)
-     * @param maxToolCalls  function tool 실행 횟수 상한(mocha.agent.max-tool-calls, ADR-44)
-     * @param maxTurnTokens 턴 누적 토큰 상한 — 이터레이션별 usage(in+out) 합산(mocha.agent.max-turn-tokens, ADR-62)
-     * @param turnTimeout   턴 경과 시간 상한 — 이터레이션 경계 판정 + 요청 타임아웃 파생원(mocha.agent.turn-timeout,
-     *                      ADR-62·70 ①)
-     * @param clock         턴 경과 시간의 시간원(ADR-63 공통 Clock 빈) — 잔여 예산 계산을 테스트에서 결정론화한다
+     * @param model           에이전트 루프 모델(mocha.agent.model — web_search·다중 tool 호출 품질 필요, ADR-50)
+     * @param maxToolCalls    function tool 실행 횟수 상한(mocha.agent.max-tool-calls, ADR-44)
+     * @param maxTurnTokens   턴 누적 토큰 상한 — 이터레이션별 usage(in+out) 합산(mocha.agent.max-turn-tokens,
+     *                        ADR-62)
+     * @param turnTimeout     턴 경과 시간 상한 — 이터레이션 경계 판정 + 요청 타임아웃 파생원
+     *                        (mocha.agent.turn-timeout, ADR-62·70 ①)
+     * @param maxOutputTokens 응답 1건의 출력 토큰 상한 — 요청에 실어 폭주를 발생 전에 자른다
+     *                        (mocha.agent.max-output-tokens, ADR-70 ②)
+     * @param clock           턴 경과 시간의 시간원(ADR-63 공통 Clock 빈) — 잔여 예산 계산을 테스트에서 결정론화한다
      */
     public OpenAiChatClient(OpenAIClient client, String model, int maxToolCalls,
-                            int maxTurnTokens, Duration turnTimeout, ObjectMapper mapper, Clock clock) {
+                            int maxTurnTokens, Duration turnTimeout, int maxOutputTokens,
+                            ObjectMapper mapper, Clock clock) {
         this.client = client;
         this.model = model;
         this.maxToolCalls = maxToolCalls;
         this.maxTurnTokens = maxTurnTokens;
         this.turnTimeout = turnTimeout;
+        this.maxOutputTokens = maxOutputTokens;
         this.mapper = mapper;
         this.clock = clock;
     }
@@ -128,6 +136,16 @@ public class OpenAiChatClient implements ChatClient {
             if (response.usage().isPresent()) {
                 cumulativeInputTokens += response.usage().get().inputTokens();
                 cumulativeOutputTokens += response.usage().get().outputTokens();
+            }
+
+            // AC-Δ8: 완료되지 않은 응답(잘림·실패·취소)은 최종 텍스트로 내보내지 않는다 — 불완전한 답변보다
+            // 폴백 안내가 낫다(ADR-70 ② / plan §7). 판정이 output 순회 전에 있어 잘린 function_call 인자로
+            // tool을 실행하는 것도 함께 막힌다.
+            // status는 Optional이라 **값이 있고 COMPLETED가 아닐 때만** 걸린다 — status 없는 응답을 실패로
+            // 오판하지 않는 조건이다(findings-TΔ4 §1.5).
+            if (response.status().filter(status -> !ResponseStatus.COMPLETED.equals(status)).isPresent()) {
+                throw unfinishedResponse(response, toolSequence, executedToolCalls, started,
+                        cumulativeInputTokens, cumulativeOutputTokens);
             }
 
             List<ResponseFunctionToolCall> calls = new ArrayList<>();
@@ -220,6 +238,43 @@ public class OpenAiChatClient implements ChatClient {
     }
 
     /**
+     * 완료되지 않은 응답의 수렴 — <b>사유를 갈라</b> 관측한다(AC-Δ9). 셋을 구분한다: 출력 상한 절단
+     * (= {@code max-output-tokens} 상향 신호) / 그 외 미완결 사유({@code content_filter}·미상) /
+     * 응답 실패·취소({@code status=failed|cancelled}, 서버측 생성 실패). 하나로 묶으면 상한과 무관한
+     * 실패가 상한 조정 신호를 오염시켜 무엇을 고쳐야 하는지 로그로 판별되지 않는다(plan §6).
+     * <p>최종 텍스트 없이 끝난 턴({@code runTurn}의 {@code finalText.isEmpty()})과도 별개다 — 빈 응답과
+     * 잘린 응답은 원인이 다르고, 잘린 응답은 텍스트가 <b>있어도</b> 내보내지 않는다.
+     */
+    private AgentException unfinishedResponse(Response response, List<String> toolSequence,
+                                              int executedToolCalls, long started,
+                                              long cumulativeInputTokens, long cumulativeOutputTokens) {
+        String responseRef = " — 턴 중단 (response.id=" + response.id() + ")";
+        if (response.status().filter(ResponseStatus.INCOMPLETE::equals).isPresent()) {
+            Optional<Response.IncompleteDetails.Reason> reason = response.incompleteDetails()
+                    .flatMap(Response.IncompleteDetails::reason);
+            boolean outputCapReached = reason
+                    .filter(Response.IncompleteDetails.Reason.MAX_OUTPUT_TOKENS::equals).isPresent();
+            String reasonText = reason.map(Response.IncompleteDetails.Reason::asString).orElse("미상");
+            logTurnObservation(outputCapReached ? "출력 상한 절단" : "미완결 응답(사유=" + reasonText + ")",
+                    toolSequence, executedToolCalls, started, cumulativeInputTokens, cumulativeOutputTokens);
+            return new AgentException(outputCapReached
+                    ? "응답이 출력 상한(" + maxOutputTokens + ") 도달로 잘림" + responseRef
+                    : "응답이 미완결로 도착(사유=" + reasonText + ")" + responseRef);
+        }
+        // failed·cancelled 등 — 상한과 무관한 서버측 실패다. 종전에는 이 응답이 outcome=완료로 찍힌 뒤
+        // "최종 텍스트 없이 끝남"으로 수렴해 실패한 턴이 완료로 관측됐고 error 내용도 남지 않았다
+        // (0027 TΔ6 리뷰 반영, 사용자 확정 2026-07-30 — REVIEW.md 관측 축: 같은 폴백의 원인은 로그에서 갈려야 한다).
+        String status = response.status().map(ResponseStatus::asString).orElse("미상");
+        String error = response.error()
+                .map(detail -> detail.code().asString() + ": " + detail.message())
+                .orElse("사유 미상");
+        logTurnObservation("응답 실패(status=" + status + ")", toolSequence, executedToolCalls, started,
+                cumulativeInputTokens, cumulativeOutputTokens);
+        return new AgentException("모델 응답이 완료되지 않음(status=" + status + ", error=" + error + ")"
+                + responseRef);
+    }
+
+    /**
      * 잔여 예산 절단 판별 — OkHttp {@code callTimeout} 초과는 {@link InterruptedIOException}으로 올라와
      * SDK가 {@code OpenAIIoException}으로 감싼다(changes/0027 findings-TΔ4 §1.2). 일반 네트워크·API 실패와
      * 갈라야 상한 사유 구분(AC-Δ9)이 성립하므로 원인 체인에서 그 타입을 찾는다.
@@ -250,9 +305,14 @@ public class OpenAiChatClient implements ChatClient {
     // 요청 조립 — tool 정의(function 5종 + 내장 web_search)는 매 요청 재전송(findings-TΔ0 §SDK).
     ResponseCreateParams buildParams(String instructions, List<ToolCallback> tools,
                                      List<ResponseInputItem> input, String previousResponseId) {
+        // POLICY: 응답 1건의 출력 토큰 상한을 요청에 싣는다 — 상한 없는 루프 모델 호출 금지
+        //         (ref: specs/coffee-note-agent/plan.md#ADR-70 POLICY). 누적 상한(ADR-62 ②)은 응답 도착 후
+        //         합산 판정이라 단일 응답 폭주의 비용은 이미 지불된 뒤였다. reasoning 토큰도 이 상한에
+        //         포함된다(SDK 문서 — plan §5 max-output-tokens 비고).
         ResponseCreateParams.Builder builder = ResponseCreateParams.builder()
                 .model(model)
                 .instructions(instructions)
+                .maxOutputTokens(maxOutputTokens)
                 .inputOfResponse(List.copyOf(input));
         tools.forEach(tool -> builder.addTool(toFunctionTool(tool)));
         builder.addTool(webSearchTool());

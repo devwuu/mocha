@@ -84,6 +84,9 @@ class ConfigDefaultsTest {
             // changes/0021 TΔ3b: 경량(gpt-5.4-mini)의 AC-77 반복 위반 관측으로 gpt-5.4 교체(사용자 확정).
             assertThat(ReflectionTestUtils.getField(chatClient, "model")).isEqualTo("gpt-5.4");
             assertThat(ReflectionTestUtils.getField(chatClient, "maxToolCalls")).isEqualTo(8);
+            // changes/0027 TΔ6(ADR-70 ②): 응답당 출력 상한도 미설정 프로파일에서 코드 default로 뜬다 —
+            // 값은 plan §5 문서값(4000, findings-TΔ4 §4.4)과 일치해야 한다.
+            assertThat(ReflectionTestUtils.getField(chatClient, "maxOutputTokens")).isEqualTo(4000);
 
             FoldingChatMemory transcript = context.getBean(FoldingChatMemory.class);
             assertThat(ReflectionTestUtils.getField(transcript, "maxTurns")).isEqualTo(20);

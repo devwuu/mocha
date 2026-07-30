@@ -35,10 +35,15 @@ public class AgentConfig {
             @Value("${mocha.agent.max-tool-calls:8}") int maxToolCalls,
             @Value("${mocha.agent.max-turn-tokens:100000}") int maxTurnTokens,
             @Value("${mocha.agent.turn-timeout:60s}") Duration turnTimeout,
+            // 응답 1건의 출력 토큰 상한(ADR-70 ②) — 초기값은 0026 eval 21턴 실측의 약 4배 여유
+            // (changes/0027 findings-TΔ4 §4.4, 사용자 확정 2026-07-30). reasoning 토큰이 이 상한에 포함되므로
+            // 절단(incomplete/max_output_tokens)이 관측되면 상향한다.
+            @Value("${mocha.agent.max-output-tokens:4000}") int maxOutputTokens,
             ObjectMapper mapper,
             // 턴 경과 시간의 시간원 — 이터레이션 경계 판정과 요청 타임아웃 잔여 예산(ADR-70 ①)이 같은 시계를 본다.
             Clock clock) {
-        return new OpenAiChatClient(openAiClient, model, maxToolCalls, maxTurnTokens, turnTimeout, mapper, clock);
+        return new OpenAiChatClient(openAiClient, model, maxToolCalls, maxTurnTokens, turnTimeout,
+                maxOutputTokens, mapper, clock);
     }
 
     // 다중 날짜 세그먼트 분리 경계(ADR-61) — 탐지기가 절대 날짜 2개 이상을 찾은 턴에만 루프 전 1콜.

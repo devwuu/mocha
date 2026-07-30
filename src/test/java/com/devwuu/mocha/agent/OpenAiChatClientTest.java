@@ -10,12 +10,14 @@ import com.openai.core.RequestOptions;
 import com.openai.models.responses.FunctionTool;
 import com.openai.models.responses.Response;
 import com.openai.models.responses.ResponseCreateParams;
+import com.openai.models.responses.ResponseError;
 import com.openai.models.responses.ResponseFunctionToolCall;
 import com.openai.models.responses.ResponseFunctionWebSearch;
 import com.openai.models.responses.ResponseInputItem;
 import com.openai.models.responses.ResponseOutputItem;
 import com.openai.models.responses.ResponseOutputMessage;
 import com.openai.models.responses.ResponseOutputText;
+import com.openai.models.responses.ResponseStatus;
 import com.openai.models.responses.ResponseUsage;
 import com.openai.models.responses.Tool;
 import com.openai.models.responses.ToolChoiceOptions;
@@ -71,7 +73,9 @@ class OpenAiChatClientTest {
 
         ScriptedChatClient(int maxToolCalls, int maxTurnTokens, Duration turnTimeout, List<Response> script,
                            Clock clock) {
-            super(null, "test-model", maxToolCalls, maxTurnTokens, turnTimeout, MochaObjectMapper.create(), clock);
+            // 출력 상한은 운영 기본값(ADR-70 ②) — 값 전달 자체는 buildParams 단언이 본다.
+            super(null, "test-model", maxToolCalls, maxTurnTokens, turnTimeout, 4_000,
+                    MochaObjectMapper.create(), clock);
             this.script = new ArrayDeque<>(script);
         }
 
@@ -400,6 +404,121 @@ class OpenAiChatClientTest {
     }
 
     @Test
+    @DisplayName("AC-Δ7 (ADR-70 ②): 요청에 max_output_tokens가 실린다 — 주입된 설정값이 그대로 전달된다")
+    void carriesMaxOutputTokensOnRequest() {
+        // 상한 없는 루프 모델 호출 금지(ADR-70 POLICY) — 종전에는 요청에 이 필드가 없어 누적 상한(ADR-62 ②)의
+        // 사후 판정만 남았다. 설정 키 값이 요청까지 흐르는지를 보려 운영 기본값(4000)과 다른 값을 주입한다.
+        OpenAiChatClient client = new OpenAiChatClient(null, "test-model", 8, 100_000,
+                Duration.ofSeconds(60), 1_234, MochaObjectMapper.create(), Clock.systemUTC());
+
+        ResponseCreateParams params = client.buildParams("시스템 프롬프트", List.of(), List.of(), null);
+
+        assertThat(params.maxOutputTokens()).contains(1_234L);
+    }
+
+    @Test
+    @DisplayName("AC-Δ8 (ADR-70 ②): 출력 상한에 걸려 잘린 응답은 최종 텍스트로 반환되지 않고 폴백으로 수렴한다")
+    void fallsBackWhenResponseIsTruncatedByOutputCap() {
+        // 잘린 텍스트가 **있어도** 내보내지 않는다 — 불완전한 답변보다 재요청 안내가 낫다(plan §7).
+        ScriptedChatClient client = new ScriptedChatClient(8, List.of(
+                incompleteResponse("resp_1", Response.IncompleteDetails.Reason.MAX_OUTPUT_TOKENS,
+                        message("와이키키는 산미가 좋은 커피로 케냐 산지의"))));
+
+        assertThatThrownBy(() -> client.runTurn(context("와이키키 설명해줘"), List.of()))
+                .isInstanceOf(AgentException.class)
+                .hasMessageContaining("출력 상한")
+                // 빈 텍스트로 끝난 턴과 뒤섞이지 않는다 — 원인이 다르면 메시지도 갈려야 한다(AC-Δ9).
+                .hasMessageNotContaining("최종 텍스트");
+        // AC-Δ9: 출력 상한 절단은 기존 턴 상한 3종·요청 타임아웃 절단과 구분되는 사유로 남는다
+        // (잦으면 max-output-tokens 상향 근거 — plan §6).
+        assertThat(logs.list).anySatisfy(event -> assertThat(event.getFormattedMessage())
+                .contains("에이전트 턴 관측")
+                .contains("outcome=출력 상한 절단"));
+        assertThat(logs.list).noneSatisfy(event ->
+                assertThat(event.getFormattedMessage()).contains("outcome=완료"));
+    }
+
+    @Test
+    @DisplayName("AC-Δ9 (ADR-70 ②): 출력 상한이 아닌 미완결 사유는 절단과 갈려 남는다 — 상한 조정 신호 오염 금지")
+    void separatesNonOutputCapIncompleteReasonFromOutputCapTruncation() {
+        // content_filter는 max-output-tokens와 무관하다 — 같은 사유로 묶으면 "상한을 올려라"는 잘못된
+        // 조정 신호가 된다(plan §6, TΔ5의 타임아웃 오분류와 같은 종류의 함정).
+        ScriptedChatClient client = new ScriptedChatClient(8, List.of(
+                incompleteResponse("resp_1", Response.IncompleteDetails.Reason.CONTENT_FILTER,
+                        message("음"))));
+
+        assertThatThrownBy(() -> client.runTurn(context("이상한 요청"), List.of()))
+                .isInstanceOf(AgentException.class)
+                .hasMessageContaining("미완결")
+                .hasMessageContaining("content_filter")
+                .hasMessageNotContaining("출력 상한");
+        assertThat(logs.list).anySatisfy(event -> assertThat(event.getFormattedMessage())
+                .contains("에이전트 턴 관측")
+                .contains("outcome=미완결 응답(사유=content_filter)"));
+        assertThat(logs.list).noneSatisfy(event ->
+                assertThat(event.getFormattedMessage()).contains("출력 상한 절단"));
+    }
+
+    @Test
+    @DisplayName("AC-Δ8 (ADR-70 ②): 미완결 응답의 function_call은 실행되지 않는다 — 잘린 인자로 tool 디스패치 금지")
+    void neverDispatchesToolCallsFromTruncatedResponse() {
+        // 판정이 output 순회 **위**에 있다는 데 전적으로 의존하는 보호다 — 판정이 아래로 내려가면
+        // 잘린 JSON 인자로 tool이 돌고도 스위트는 그린으로 남는다(0027 TΔ6 리뷰 반영). 여기서 박는다.
+        AtomicInteger executions = new AtomicInteger();
+        ScriptedChatClient client = new ScriptedChatClient(8, List.of(
+                incompleteResponse("resp_1", Response.IncompleteDetails.Reason.MAX_OUTPUT_TOKENS,
+                        functionCall("call_1", "get_note", "{\"slug\":\"waik"))));
+
+        assertThatThrownBy(() -> client.runTurn(context("와이키키 보여줘"),
+                List.of(getNoteTool(args -> {
+                    executions.incrementAndGet();
+                    return "{}";
+                }))))
+                .isInstanceOf(AgentException.class)
+                .hasMessageContaining("출력 상한");
+        assertThat(executions).hasValue(0);
+    }
+
+    @Test
+    @DisplayName("AC-Δ9 (ADR-70 ②): 사유 없는 미완결 응답도 '미상'으로 수렴한다 — 사유 부재가 판정을 흔들지 않는다")
+    void convergesWhenIncompleteResponseCarriesNoReason() {
+        // reason 없는 INCOMPLETE도 가능하다(findings-TΔ4 §1.5-2) — 사유 미상까지 폴백 문구가 커버해야
+        // 한다는 요구를 테스트로 고정한다.
+        ScriptedChatClient client = new ScriptedChatClient(8, List.of(
+                incompleteResponse("resp_1", null, message("와이키키는"))));
+
+        assertThatThrownBy(() -> client.runTurn(context("와이키키 설명해줘"), List.of()))
+                .isInstanceOf(AgentException.class)
+                .hasMessageContaining("미완결")
+                .hasMessageContaining("미상")
+                // 사유를 모르는 것과 출력 상한 도달은 다른 조정 신호다.
+                .hasMessageNotContaining("출력 상한");
+        assertThat(logs.list).anySatisfy(event -> assertThat(event.getFormattedMessage())
+                .contains("outcome=미완결 응답(사유=미상)"));
+    }
+
+    @Test
+    @DisplayName("AC-Δ9 (0027 TΔ6 리뷰): status=failed 응답은 완료로 관측되지 않고 error 사유와 함께 폴백한다")
+    void reportsFailedResponseAsDistinctOutcomeWithError() {
+        // 종전에는 이 응답이 outcome=완료로 찍힌 뒤 "최종 텍스트 없이 끝남"으로 수렴해, 실패한 턴이 완료로
+        // 기록되고 원인(error)은 로그 어디에도 남지 않았다 — REVIEW.md 관측 축이 금지하는 형태다.
+        ScriptedChatClient client = new ScriptedChatClient(8, List.of(
+                failedResponse("resp_1", ResponseError.Code.SERVER_ERROR, "internal error")));
+
+        assertThatThrownBy(() -> client.runTurn(context("안녕"), List.of()))
+                .isInstanceOf(AgentException.class)
+                .hasMessageContaining("status=failed")
+                .hasMessageContaining("server_error")
+                // 빈 응답(최종 텍스트 없음)과 원인이 다르므로 메시지도 갈린다.
+                .hasMessageNotContaining("최종 텍스트");
+        assertThat(logs.list).anySatisfy(event -> assertThat(event.getFormattedMessage())
+                .contains("에이전트 턴 관측")
+                .contains("outcome=응답 실패(status=failed)"));
+        assertThat(logs.list).noneSatisfy(event ->
+                assertThat(event.getFormattedMessage()).contains("outcome=완료"));
+    }
+
+    @Test
     @DisplayName("AC-Δ9: 턴 관측 로그에 tool 시퀀스(web_search 포함)·호출 수가 남는다 (plan §6)")
     void logsTurnObservationWithToolSequence() {
         ScriptedChatClient client = new ScriptedChatClient(8, List.of(
@@ -420,7 +539,7 @@ class OpenAiChatClientTest {
     void wrapsModelCallFailureAsAgentException() {
         // client=null인 실 send 경로 — SDK 호출 시도가 RuntimeException으로 실패한다.
         OpenAiChatClient client = new OpenAiChatClient(null, "test-model", 8,
-                100_000, Duration.ofSeconds(60), MochaObjectMapper.create(), Clock.systemUTC());
+                100_000, Duration.ofSeconds(60), 4_000, MochaObjectMapper.create(), Clock.systemUTC());
 
         assertThatThrownBy(() -> client.runTurn(context("안녕"), List.of()))
                 .isInstanceOf(AgentException.class)
@@ -509,6 +628,31 @@ class OpenAiChatClientTest {
                                 .build())
                         .totalTokens(inputTokens + outputTokens)
                         .build())
+                .build();
+    }
+
+    /**
+     * 미완결 응답 — 출력 상한 절단(AC-Δ8) 조립. {@code status}가 Optional이라 기존 fake는 비워 두고
+     * 여기서만 INCOMPLETE를 세팅한다(findings-TΔ4 §1.5 — 정상 응답을 절단으로 오판하지 않는 조건).
+     * {@code reason=null}이면 사유 없는 미완결(같은 §1.5-2가 요구한 경계)이다.
+     */
+    private static Response incompleteResponse(String id, Response.IncompleteDetails.Reason reason,
+                                               ResponseOutputItem... items) {
+        Response.IncompleteDetails.Builder details = Response.IncompleteDetails.builder();
+        if (reason != null) {
+            details.reason(reason);
+        }
+        return response(id, items).toBuilder()
+                .status(ResponseStatus.INCOMPLETE)
+                .incompleteDetails(details.build())
+                .build();
+    }
+
+    /** 서버측 생성 실패 응답 — status=failed + error(0027 TΔ6 리뷰: 완료로 오관측되던 경로). */
+    private static Response failedResponse(String id, ResponseError.Code code, String message) {
+        return response(id).toBuilder()
+                .status(ResponseStatus.FAILED)
+                .error(ResponseError.builder().code(code).message(message).build())
                 .build();
     }
 

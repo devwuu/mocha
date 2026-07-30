@@ -69,6 +69,10 @@ final class EvalHarness {
         static final int MAX_TOOL_CALLS = 8;          // mocha.agent.max-tool-calls
         static final int MAX_TURN_TOKENS = 100_000;   // mocha.agent.max-turn-tokens
         static final Duration TURN_TIMEOUT = Duration.ofSeconds(60);   // mocha.agent.turn-timeout
+        // mocha.agent.max-output-tokens (changes/0027 TΔ6). 재조정 트리거(plan §5 — 절단 관측 시 상향)가
+        // 발동하면 yaml·AgentConfig와 **함께** 이 값과 스모크 2건의 위치 인자도 옮긴다 — 한쪽만 올리면
+        // AC-Δ12의 전/후 측정이 프로덕션 행동을 재지 못한다.
+        static final int MAX_OUTPUT_TOKENS = 4_000;
         static final Duration PENDING_TTL = Duration.ofHours(24);      // mocha.pending.ttl
         static final int TRANSCRIPT_MAX_TURNS = 20;                    // mocha.agent.transcript-max-turns
         static final Duration TRANSCRIPT_TTL = Duration.ofHours(1);    // mocha.agent.transcript-ttl
@@ -161,7 +165,8 @@ final class EvalHarness {
                 // 드라이버 시계만 실시간 — 케이스 날짜는 고정(clock)이지만 턴 경과·요청 잔여 예산(ADR-70 ①)은
                 // 실제 소요를 재야 상한이 실효한다. millis만 쓰므로 존은 무관하다.
                 new OpenAiChatClient(openAi, settings.agentModel(), Settings.MAX_TOOL_CALLS,
-                        Settings.MAX_TURN_TOKENS, Settings.TURN_TIMEOUT, mapper, Clock.systemUTC()),
+                        Settings.MAX_TURN_TOKENS, Settings.TURN_TIMEOUT, Settings.MAX_OUTPUT_TOKENS,
+                        mapper, Clock.systemUTC()),
                 recorder,
                 new TurnPromptAssembler(mapper, clock),
                 new OpenAiUtteranceSegmenter(openAi, settings.segmenterModel(), mapper),
