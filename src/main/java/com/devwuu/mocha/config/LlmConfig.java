@@ -23,6 +23,13 @@ import tools.jackson.databind.ObjectMapper;
 @Configuration
 public class LlmConfig {
 
+    // POLICY: 이 빈에 전역 타임아웃을 걸지 않는다 — ADR-70 POLICY는 에이전트 루프 한정이고, 루프는 요청별
+    //         옵션으로 턴 잔여 예산을 실어 보낸다(OpenAiChatClient.send — 요청별 값이 클라이언트 기본값을
+    //         덮는다, 0027 findings-TΔ4 §1.2). 전역 값은 이 빈을 공유하는 보조 콜 3종(vision·alias·segmenter)을
+    //         한 값으로 묶어 결정 없이 상한을 확정하는 셈이 된다. 보조 콜의 상한은 턴 예산에서 파생될 수
+    //         없고(턴 밖이다) 적정값도 미관측이라 후속 델타의 몫이다 — 그때까지 SDK 기본값(10분 × 3시도)에
+    //         노출된 상태로 남는 것은 인지된 공백이다
+    //         (ref: specs/coffee-note-agent/plan.md#ADR-70 POLICY 적용 범위 노트).
     @Bean
     public OpenAIClient openAiClient(@Value("${mocha.openai.api-key:}") String apiKey) {
         return OpenAIOkHttpClient.builder()

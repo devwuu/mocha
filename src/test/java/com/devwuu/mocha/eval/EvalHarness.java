@@ -158,8 +158,10 @@ final class EvalHarness {
         AgentConversationRouter router = new AgentConversationRouter(
                 pendingStore,
                 transcript,
+                // 드라이버 시계만 실시간 — 케이스 날짜는 고정(clock)이지만 턴 경과·요청 잔여 예산(ADR-70 ①)은
+                // 실제 소요를 재야 상한이 실효한다. millis만 쓰므로 존은 무관하다.
                 new OpenAiChatClient(openAi, settings.agentModel(), Settings.MAX_TOOL_CALLS,
-                        Settings.MAX_TURN_TOKENS, Settings.TURN_TIMEOUT, mapper),
+                        Settings.MAX_TURN_TOKENS, Settings.TURN_TIMEOUT, mapper, Clock.systemUTC()),
                 recorder,
                 new TurnPromptAssembler(mapper, clock),
                 new OpenAiUtteranceSegmenter(openAi, settings.segmenterModel(), mapper),

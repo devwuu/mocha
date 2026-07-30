@@ -5,6 +5,7 @@ import com.devwuu.mocha.agent.tool.ToolCallback;
 import com.devwuu.mocha.agent.tool.ToolSupport;
 import com.openai.client.OpenAIClient;
 import com.openai.core.JsonValue;
+import com.openai.core.RequestOptions;
 import com.openai.models.responses.EasyInputMessage;
 import com.openai.models.responses.FunctionTool;
 import com.openai.models.responses.Response;
@@ -18,6 +19,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.databind.ObjectMapper;
 
+import java.io.InterruptedIOException;
+import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -36,32 +39,45 @@ public class OpenAiChatClient implements ChatClient {
 
     private static final Logger log = LoggerFactory.getLogger(OpenAiChatClient.class);
 
+    /**
+     * 요청을 내보낼 최소 잔여 예산 — 이보다 적게 남았으면 호출하지 않고 턴 타임아웃으로 수렴한다
+     * (ADR-70 ①). 근거: 콜 1회 턴의 관측 최소 소요가 2,869ms(0026 findings-TΔ3 §2 {@code smalltalk-boundary})라
+     * 1초 미만 예산으로는 성공 여지가 사실상 없고, 그런 호출은 SDK 재시도(2회)까지 붙어 백오프만 더한다.
+     * 하한을 크게 잡으면 응답 가능한 호출을 선제 포기하므로 작게 둔다 — 목적은 확실히 실패할 호출의 차단뿐이다.
+     * 별도 설정 키를 만들지 않는다(ADR-70 POLICY — 턴 예산 파생 강제).
+     */
+    private static final long MIN_REQUEST_BUDGET_MS = 1_000;
+
     private final OpenAIClient client;
     private final String model;
     private final int maxToolCalls;
     private final int maxTurnTokens;
     private final Duration turnTimeout;
     private final ObjectMapper mapper;
+    private final Clock clock;
 
     /**
      * @param model         에이전트 루프 모델(mocha.agent.model — web_search·다중 tool 호출 품질 필요, ADR-50)
      * @param maxToolCalls  function tool 실행 횟수 상한(mocha.agent.max-tool-calls, ADR-44)
      * @param maxTurnTokens 턴 누적 토큰 상한 — 이터레이션별 usage(in+out) 합산(mocha.agent.max-turn-tokens, ADR-62)
-     * @param turnTimeout   턴 경과 시간 상한 — 이터레이션 경계 판정(mocha.agent.turn-timeout, ADR-62)
+     * @param turnTimeout   턴 경과 시간 상한 — 이터레이션 경계 판정 + 요청 타임아웃 파생원(mocha.agent.turn-timeout,
+     *                      ADR-62·70 ①)
+     * @param clock         턴 경과 시간의 시간원(ADR-63 공통 Clock 빈) — 잔여 예산 계산을 테스트에서 결정론화한다
      */
     public OpenAiChatClient(OpenAIClient client, String model, int maxToolCalls,
-                            int maxTurnTokens, Duration turnTimeout, ObjectMapper mapper) {
+                            int maxTurnTokens, Duration turnTimeout, ObjectMapper mapper, Clock clock) {
         this.client = client;
         this.model = model;
         this.maxToolCalls = maxToolCalls;
         this.maxTurnTokens = maxTurnTokens;
         this.turnTimeout = turnTimeout;
         this.mapper = mapper;
+        this.clock = clock;
     }
 
     @Override
     public String runTurn(TurnPrompt context, List<ToolCallback> tools) {
-        long started = System.currentTimeMillis();
+        long started = clock.millis();
         Map<String, ToolCallback> toolsByName = new LinkedHashMap<>();
         tools.forEach(tool -> toolsByName.put(tool.name(), tool));
 
@@ -74,7 +90,37 @@ public class OpenAiChatClient implements ChatClient {
         List<String> toolSequence = new ArrayList<>();
 
         while (true) {
-            Response response = send(buildParams(context.instructions(), tools, pendingInput, previousResponseId));
+            // POLICY: 턴 예산(turn-timeout)의 잔여를 모델 호출마다 요청 타임아웃으로 파생 강제한다 —
+            //         타임아웃 미설정(SDK 기본값 의존) 금지, 별도 요청 타임아웃 설정 키 금지
+            //         (ref: specs/coffee-note-agent/plan.md#ADR-70 POLICY). 파생이므로 두 값이 어긋날 여지가
+            //         구조적으로 없다. 종전에는 상한 판정이 이터레이션 경계에만 있어 진행 중인 단일 호출이
+            //         SDK 기본값(10분 × 3시도 ≈ 30분 — changes/0027 findings-TΔ4 §2)까지 늘어졌다.
+            long remainingMs = turnTimeout.toMillis() - (clock.millis() - started);
+            if (remainingMs < MIN_REQUEST_BUDGET_MS) {
+                // 예산이 없거나 성공 여지가 없으면 호출하지 않는다 — 사유는 아래 이터레이션 경계 판정(ADR-62)과 동일하다.
+                throw turnTimeoutExceeded(toolSequence, executedToolCalls, started,
+                        cumulativeInputTokens, cumulativeOutputTokens);
+            }
+
+            Response response;
+            try {
+                response = send(buildParams(context.instructions(), tools, pendingInput, previousResponseId),
+                        RequestOptions.builder().timeout(Duration.ofMillis(remainingMs)).build());
+            } catch (AgentException e) {
+                // 절단 판정은 예외 타입 + **예산이 실제로 소진됐는지**를 함께 본다. 잔여 예산에서 파생되는 것은
+                // Timeout.request뿐이고 connect는 SDK 기본 1분 고정이라(findings-TΔ4 §1.2), 예산이 남은 채로 온
+                // 타임아웃은 절단이 아니라 네트워크 실패다 — 그것을 절단으로 찍으면 "turn-timeout을 올려라"는
+                // 잘못된 신호가 되어 AC-Δ9의 판별력이 뒤집힌다(turn-timeout > 1분 설정에서 실제로 갈린다).
+                if (!isRequestTimeout(e) || clock.millis() - started < turnTimeout.toMillis()) {
+                    throw e;
+                }
+                // AC-Δ9: 요청 레벨 절단은 기존 턴 상한 3종(ADR-62)과 사유가 갈려야 어느 상한을 조정할지
+                // 로그만으로 판별된다(plan §6 — 잦으면 turn-timeout 상향 근거).
+                logTurnObservation("요청 타임아웃 절단", toolSequence, executedToolCalls, started,
+                        cumulativeInputTokens, cumulativeOutputTokens);
+                throw new AgentException("모델 호출이 턴 잔여 예산(" + remainingMs
+                        + "ms) 안에 끝나지 않아 절단 — 턴 중단", e);
+            }
             previousResponseId = response.id();
             pendingInput.clear();
 
@@ -119,12 +165,9 @@ public class OpenAiChatClient implements ChatClient {
                 throw new AgentException("턴 누적 토큰 상한(" + maxTurnTokens + ") 도달 — 누적 "
                         + cumulativeTokens + ", 턴 중단");
             }
-            long elapsedMs = System.currentTimeMillis() - started;
-            if (elapsedMs >= turnTimeout.toMillis()) {
-                logTurnObservation("턴 타임아웃 도달", toolSequence, executedToolCalls, started,
+            if (clock.millis() - started >= turnTimeout.toMillis()) {
+                throw turnTimeoutExceeded(toolSequence, executedToolCalls, started,
                         cumulativeInputTokens, cumulativeOutputTokens);
-                throw new AgentException("턴 경과 시간 상한(" + turnTimeout.toSeconds() + "s) 도달 — 경과 "
-                        + elapsedMs + "ms, 턴 중단");
             }
 
             for (ResponseFunctionToolCall call : calls) {
@@ -165,12 +208,40 @@ public class OpenAiChatClient implements ChatClient {
     }
 
     /**
+     * 턴 경과 시간 상한 도달(ADR-62 ③) — 예산 소진 시 호출 전 판정과 이터레이션 경계 판정이 같은 사유·같은
+     * 관측으로 수렴하게 한 곳에 둔다.
+     */
+    private AgentException turnTimeoutExceeded(List<String> toolSequence, int executedToolCalls, long started,
+                                               long cumulativeInputTokens, long cumulativeOutputTokens) {
+        logTurnObservation("턴 타임아웃 도달", toolSequence, executedToolCalls, started,
+                cumulativeInputTokens, cumulativeOutputTokens);
+        return new AgentException("턴 경과 시간 상한(" + turnTimeout.toSeconds() + "s) 도달 — 경과 "
+                + (clock.millis() - started) + "ms, 턴 중단");
+    }
+
+    /**
+     * 잔여 예산 절단 판별 — OkHttp {@code callTimeout} 초과는 {@link InterruptedIOException}으로 올라와
+     * SDK가 {@code OpenAIIoException}으로 감싼다(changes/0027 findings-TΔ4 §1.2). 일반 네트워크·API 실패와
+     * 갈라야 상한 사유 구분(AC-Δ9)이 성립하므로 원인 체인에서 그 타입을 찾는다.
+     */
+    private static boolean isRequestTimeout(Throwable failure) {
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof InterruptedIOException) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * SDK 호출 경계 — 테스트는 이 메서드를 override해 결정론적 응답으로 대체한다(CLAUDE.md §5.2,
      * 실 API 스모크는 수동). 호출 실패는 {@link AgentException}으로 수렴한다(ADR-48 폴백 대상).
+     * <p>{@code options}는 호출 시점의 턴 잔여 예산을 담은 요청 타임아웃이다(ADR-70 ①) — 요청별 값이
+     * 클라이언트 기본값을 덮으므로 SDK 기본 타임아웃에 의존하지 않는다. 시임은 이 메서드 하나로 유지한다.
      */
-    protected Response send(ResponseCreateParams params) {
+    protected Response send(ResponseCreateParams params, RequestOptions options) {
         try {
-            return client.responses().create(params);
+            return client.responses().create(params, options);
         } catch (RuntimeException e) {
             throw new AgentException("에이전트 모델 호출 실패", e);
         }
@@ -248,7 +319,7 @@ public class OpenAiChatClient implements ChatClient {
     private void logTurnObservation(String outcome, List<String> toolSequence, int executedToolCalls,
                                     long started, long cumulativeInputTokens, long cumulativeOutputTokens) {
         log.info("에이전트 턴 관측: outcome={} toolSequence={} functionCalls={} elapsedMs={} cumulativeUsage=in:{} out:{}",
-                outcome, toolSequence, executedToolCalls, System.currentTimeMillis() - started,
+                outcome, toolSequence, executedToolCalls, clock.millis() - started,
                 cumulativeInputTokens, cumulativeOutputTokens);
     }
 }

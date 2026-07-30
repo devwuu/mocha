@@ -6,6 +6,7 @@ import ch.qos.logback.core.read.ListAppender;
 import com.devwuu.mocha.agent.prompt.TurnPrompt;
 import com.devwuu.mocha.agent.tool.ToolCallback;
 import com.devwuu.mocha.json.MochaObjectMapper;
+import com.openai.core.RequestOptions;
 import com.openai.models.responses.FunctionTool;
 import com.openai.models.responses.Response;
 import com.openai.models.responses.ResponseCreateParams;
@@ -25,7 +26,12 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 
+import java.io.InterruptedIOException;
+import java.net.SocketTimeoutException;
+import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -43,10 +49,16 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 class OpenAiChatClientTest {
 
-    /** {@code send} 시임을 미리 준비한 응답 시퀀스로 대체하는 스텁 — 보낸 요청 params를 캡처한다. */
+    /**
+     * {@code send} 시임을 미리 준비한 응답 시퀀스로 대체하는 스텁 — 보낸 요청 params·요청 옵션을 캡처한다.
+     * 시계를 받는 생성자는 잔여 예산 파생(ADR-70 ①) 검증용이다.
+     */
     static class ScriptedChatClient extends OpenAiChatClient {
         private final Deque<Response> script;
         final List<ResponseCreateParams> sent = new ArrayList<>();
+        final List<RequestOptions> sentOptions = new ArrayList<>();
+        /** 호출 1건이 소비하는 시간 — SteppingClock과 함께 "늘어지는 모델 호출"을 결정론으로 흉내낸다. */
+        Runnable onSend = () -> { };
 
         ScriptedChatClient(int maxToolCalls, List<Response> script) {
             // 토큰·타임아웃 상한은 운영 기본값 — 상한 무관 테스트가 걸리지 않게 넉넉히 둔다.
@@ -54,15 +66,27 @@ class OpenAiChatClientTest {
         }
 
         ScriptedChatClient(int maxToolCalls, int maxTurnTokens, Duration turnTimeout, List<Response> script) {
-            super(null, "test-model", maxToolCalls, maxTurnTokens, turnTimeout, MochaObjectMapper.create());
+            this(maxToolCalls, maxTurnTokens, turnTimeout, script, Clock.systemUTC());
+        }
+
+        ScriptedChatClient(int maxToolCalls, int maxTurnTokens, Duration turnTimeout, List<Response> script,
+                           Clock clock) {
+            super(null, "test-model", maxToolCalls, maxTurnTokens, turnTimeout, MochaObjectMapper.create(), clock);
             this.script = new ArrayDeque<>(script);
         }
 
         @Override
-        protected Response send(ResponseCreateParams params) {
+        protected Response send(ResponseCreateParams params, RequestOptions options) {
             sent.add(params);
+            sentOptions.add(options);
+            onSend.run();
             // 마지막 응답은 반복 반환 — 상한 중단 테스트가 "끝없이 tool을 부르는 모델"을 흉내낸다.
             return script.size() > 1 ? script.pop() : script.peek();
+        }
+
+        /** 캡처된 요청 타임아웃(= 그 호출 시점의 턴 잔여 예산). */
+        Duration requestTimeoutOf(int callIndex) {
+            return sentOptions.get(callIndex).getTimeout().request();
         }
     }
 
@@ -165,14 +189,123 @@ class OpenAiChatClientTest {
             executions.incrementAndGet();
             return "{}";
         });
-        // timeout=0 — 첫 이터레이션 경계에서 즉시 도달(실제 대기 없는 결정론 판정).
-        ScriptedChatClient client = new ScriptedChatClient(8, 100_000, Duration.ZERO, List.of(
-                response("resp_1", functionCall("call_1", "get_note", "{\"slug\":\"x\"}"))));
+        // 첫 호출은 예산(30s) 안에서 시작하지만 그 호출이 40초를 쓴다 → 이터레이션 경계에서 도달.
+        // (changes/0027 TΔ5: 종전 timeout=0 조립은 이제 호출 전 판정에 걸리므로 경계 판정 커버가
+        //  사라진다 — 시계를 흘려 "늦게 끝난 호출"로 바꿔 ADR-62 경로를 그대로 검증한다.)
+        SteppingClock clock = new SteppingClock();
+        ScriptedChatClient client = new ScriptedChatClient(8, 100_000, Duration.ofSeconds(30), List.of(
+                response("resp_1", functionCall("call_1", "get_note", "{\"slug\":\"x\"}"))), clock);
+        client.onSend = () -> clock.advance(Duration.ofSeconds(40));
 
         assertThatThrownBy(() -> client.runTurn(context("기록해줘"), List.of(tool)))
                 .isInstanceOf(AgentException.class)
                 .hasMessageContaining("경과 시간 상한");
+        assertThat(client.sent).hasSize(1);
         assertThat(executions).hasValue(0);
+        assertThat(logs.list).anySatisfy(event -> assertThat(event.getFormattedMessage())
+                .contains("에이전트 턴 관측")
+                .contains("턴 타임아웃 도달"));
+    }
+
+    @Test
+    @DisplayName("AC-Δ6 (ADR-70 ①): 요청 타임아웃이 turn-timeout 잔여 예산에서 파생된다 — 경과에 따라 줄어든다")
+    void derivesRequestTimeoutFromRemainingTurnBudget() {
+        SteppingClock clock = new SteppingClock();
+        ScriptedChatClient client = new ScriptedChatClient(8, 100_000, Duration.ofSeconds(60), List.of(
+                response("resp_1", functionCall("call_1", "get_note", "{\"slug\":\"x\"}")),
+                response("resp_2", message("찾았다멍"))), clock);
+        // 첫 호출이 15초, tool 실행이 5초를 쓴다 → 두 번째 호출의 잔여는 60 - 20 = 40초.
+        client.onSend = () -> clock.advance(Duration.ofSeconds(15));
+
+        String result = client.runTurn(context("와이키키 보여줘"), List.of(getNoteTool(args -> {
+            clock.advance(Duration.ofSeconds(5));
+            return "{}";
+        })));
+
+        assertThat(result).isEqualTo("찾았다멍");
+        // 별도 설정 키가 아니라 파생값이다 — 첫 호출은 예산 전체, 이후는 경과분만큼 줄어든다.
+        assertThat(client.requestTimeoutOf(0)).isEqualTo(Duration.ofSeconds(60));
+        assertThat(client.requestTimeoutOf(1)).isEqualTo(Duration.ofSeconds(40));
+    }
+
+    @Test
+    @DisplayName("AC-Δ6 (ADR-70 ①): 잔여 예산이 없으면 모델을 호출하지 않고 턴 타임아웃 경로로 수렴한다")
+    void skipsModelCallWhenBudgetExhausted() {
+        // timeout=0 — 첫 호출 시점에 이미 잔여가 없다. 예산 없는 호출을 내보내지 않는 것이 요점이다.
+        ScriptedChatClient client = new ScriptedChatClient(8, 100_000, Duration.ZERO, List.of(
+                response("resp_1", message("안녕하다멍"))));
+
+        assertThatThrownBy(() -> client.runTurn(context("안녕"), List.of()))
+                .isInstanceOf(AgentException.class)
+                .hasMessageContaining("경과 시간 상한");
+        assertThat(client.sent).isEmpty();
+        // 사유는 기존 턴 타임아웃과 동일 축에 남는다 — 새 사유를 만들지 않는다(ADR-62 판정 로직 불변).
+        assertThat(logs.list).anySatisfy(event -> assertThat(event.getFormattedMessage())
+                .contains("에이전트 턴 관측")
+                .contains("턴 타임아웃 도달"));
+    }
+
+    @Test
+    @DisplayName("AC-Δ9 (ADR-70 ①): 요청 타임아웃 절단은 기존 턴 상한 3종과 구분되는 사유로 관측된다")
+    void reportsRequestTimeoutTruncationAsDistinctOutcome() {
+        SteppingClock clock = new SteppingClock();
+        ScriptedChatClient client = new ScriptedChatClient(8, 100_000, Duration.ofSeconds(60),
+                List.of(response("resp_1", message("안녕하다멍"))), clock);
+        // 호출이 잔여 예산을 전부 소진하고 끊긴다 — OkHttp callTimeout 초과의 실제 전파 형태를
+        // 흉내낸다(SDK가 IOException을 감싸 올린다, findings-TΔ4 §1.2).
+        client.onSend = () -> {
+            clock.advance(Duration.ofSeconds(60));
+            throw new AgentException("에이전트 모델 호출 실패", new InterruptedIOException("timeout"));
+        };
+
+        assertThatThrownBy(() -> client.runTurn(context("안녕"), List.of()))
+                .isInstanceOf(AgentException.class)
+                .hasMessageContaining("잔여 예산")
+                .hasMessageContaining("절단");
+        // 턴 타임아웃 도달·누적 토큰 상한과 갈려야 어느 상한을 조정할지 로그만으로 판별된다.
+        assertThat(logs.list).anySatisfy(event -> assertThat(event.getFormattedMessage())
+                .contains("에이전트 턴 관측")
+                .contains("요청 타임아웃 절단"));
+        assertThat(logs.list).noneSatisfy(event ->
+                assertThat(event.getFormattedMessage()).contains("턴 타임아웃 도달"));
+    }
+
+    @Test
+    @DisplayName("AC-Δ9 (ADR-70 ①): 예산이 남은 채 온 타임아웃은 절단이 아니라 호출 실패로 남는다 — 오분류 금지")
+    void doesNotLabelNetworkTimeoutAsBudgetTruncationWhileBudgetRemains() {
+        // connect 타임아웃은 잔여 예산에서 파생되지 않고 SDK 기본 1분 고정이다(findings-TΔ4 §1.2) —
+        // turn-timeout을 1분 위로 올리면 예산이 남은 채로 SocketTimeoutException이 올라올 수 있다.
+        // 그것을 절단으로 찍으면 "turn-timeout 상향"이라는 잘못된 조정 신호가 된다(plan §6).
+        SteppingClock clock = new SteppingClock();
+        ScriptedChatClient client = new ScriptedChatClient(8, 100_000, Duration.ofMinutes(2),
+                List.of(response("resp_1", message("안녕하다멍"))), clock);
+        client.onSend = () -> {
+            clock.advance(Duration.ofSeconds(60));  // 예산 2분 중 1분만 소진 — 아직 남아 있다
+            throw new AgentException("에이전트 모델 호출 실패", new SocketTimeoutException("connect timed out"));
+        };
+
+        assertThatThrownBy(() -> client.runTurn(context("안녕"), List.of()))
+                .isInstanceOf(AgentException.class)
+                .hasMessageContaining("모델 호출 실패")
+                .hasMessageNotContaining("절단");
+        assertThat(logs.list).noneSatisfy(event ->
+                assertThat(event.getFormattedMessage()).contains("요청 타임아웃 절단"));
+    }
+
+    @Test
+    @DisplayName("AC-Δ6 (ADR-70 ①): 잔여 예산이 하한 미만이면 확실히 실패할 호출을 내보내지 않는다")
+    void skipsModelCallWhenRemainingBudgetIsBelowFloor() {
+        SteppingClock clock = new SteppingClock();
+        ScriptedChatClient client = new ScriptedChatClient(8, 100_000, Duration.ofSeconds(5), List.of(
+                response("resp_1", functionCall("call_1", "get_note", "{\"slug\":\"x\"}")),
+                response("resp_2", message("찾았다멍"))), clock);
+        // 첫 호출 4.5초 → 잔여 500ms. 이터레이션 경계 판정(경과 4.5s < 5s)은 통과하지만 호출할 예산은 아니다.
+        client.onSend = () -> clock.advance(Duration.ofMillis(4_500));
+
+        assertThatThrownBy(() -> client.runTurn(context("와이키키 보여줘"), List.of(getNoteTool(args -> "{}"))))
+                .isInstanceOf(AgentException.class)
+                .hasMessageContaining("경과 시간 상한");
+        assertThat(client.sent).hasSize(1);
         assertThat(logs.list).anySatisfy(event -> assertThat(event.getFormattedMessage())
                 .contains("에이전트 턴 관측")
                 .contains("턴 타임아웃 도달"));
@@ -287,7 +420,7 @@ class OpenAiChatClientTest {
     void wrapsModelCallFailureAsAgentException() {
         // client=null인 실 send 경로 — SDK 호출 시도가 RuntimeException으로 실패한다.
         OpenAiChatClient client = new OpenAiChatClient(null, "test-model", 8,
-                100_000, Duration.ofSeconds(60), MochaObjectMapper.create());
+                100_000, Duration.ofSeconds(60), MochaObjectMapper.create(), Clock.systemUTC());
 
         assertThatThrownBy(() -> client.runTurn(context("안녕"), List.of()))
                 .isInstanceOf(AgentException.class)
@@ -305,6 +438,33 @@ class OpenAiChatClientTest {
     }
 
     // ---- fake 조립 헬퍼 ----
+
+    /**
+     * 테스트에서 시간을 임의로 흘리는 시계 — 잔여 예산 파생·경과 판정을 실제 대기 없이 결정론화한다
+     * (FoldingChatMemoryTest.SteppingClock 선례, CLAUDE.md §5.2).
+     */
+    static class SteppingClock extends Clock {
+        private Instant current = Instant.parse("2026-07-30T10:00:00Z");
+
+        void advance(Duration step) {
+            current = current.plus(step);
+        }
+
+        @Override
+        public Instant instant() {
+            return current;
+        }
+
+        @Override
+        public ZoneId getZone() {
+            return ZoneId.of("Asia/Seoul");
+        }
+
+        @Override
+        public Clock withZone(ZoneId zone) {
+            throw new UnsupportedOperationException();
+        }
+    }
 
     private static TurnPrompt context(String userText) {
         return new TurnPrompt("시스템 프롬프트", List.of(TurnPrompt.Message.user(userText)));
