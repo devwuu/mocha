@@ -138,9 +138,23 @@ public class OpenAiChatClient implements ChatClient {
                 cumulativeOutputTokens += response.usage().get().outputTokens();
             }
 
+            // 관측은 판정보다 먼저 — web_search는 서버측에서 이미 실행 완료된 채 도착하므로(왕복·상한 비대상,
+            // findings-TΔ0 §SDK) 응답이 아래에서 절단·실패로 수렴하더라도 이 턴에 검색이 있었다는 사실은
+            // 남아야 한다. 종전에는 판정이 이 순회 위에 있어 절단된 응답의 web_search가 toolSequence에서
+            // 사라졌고, 그 결과 "출력을 부풀린 것이 검색인가"(= 상한 상향 vs 프롬프트 수정, plan §6)를
+            // 로그로 가릴 수 없었다 — 상한 사유 구분(AC-Δ9)이 있어도 시퀀스가 비면 판별이 반쪽이다
+            // (0027 TΔ7 리뷰 2차, 사용자 확정 2026-07-30).
+            for (ResponseOutputItem item : response.output()) {
+                if (item.isWebSearchCall()) {
+                    toolSequence.add("web_search");
+                    log.info("에이전트 web_search: {}", item.asWebSearchCall().action());
+                }
+            }
+
             // AC-Δ8: 완료되지 않은 응답(잘림·실패·취소)은 최종 텍스트로 내보내지 않는다 — 불완전한 답변보다
-            // 폴백 안내가 낫다(ADR-70 ② / plan §7). 판정이 output 순회 전에 있어 잘린 function_call 인자로
-            // tool을 실행하는 것도 함께 막힌다.
+            // 폴백 안내가 낫다(ADR-70 ② / plan §7). 판정이 아래 순회(function_call 디스패치·텍스트 수집) 전에
+            // 있어 잘린 function_call 인자로 tool을 실행하는 것도 함께 막힌다 — 위 관측 순회는 부작용이
+            // 없으므로 판정 위에 둬도 이 보호가 유지된다.
             // status는 Optional이라 **값이 있고 COMPLETED가 아닐 때만** 걸린다 — status 없는 응답을 실패로
             // 오판하지 않는 조건이다(findings-TΔ4 §1.5).
             if (response.status().filter(status -> !ResponseStatus.COMPLETED.equals(status)).isPresent()) {
@@ -151,16 +165,12 @@ public class OpenAiChatClient implements ChatClient {
             List<ResponseFunctionToolCall> calls = new ArrayList<>();
             StringBuilder finalText = new StringBuilder();
             for (ResponseOutputItem item : response.output()) {
-                if (item.isWebSearchCall()) {
-                    // 서버측에서 이미 실행 완료 — 상한 비대상, 실제 검색 쿼리만 관측(findings-TΔ0 §SDK)
-                    toolSequence.add("web_search");
-                    log.info("에이전트 web_search: {}", item.asWebSearchCall().action());
-                } else if (item.isFunctionCall()) {
+                if (item.isFunctionCall()) {
                     calls.add(item.asFunctionCall());
                 } else if (item.isMessage()) {
                     appendMessageText(item.asMessage(), finalText);
                 }
-                // reasoning 등 그 외 아이템은 디스패치·응답 텍스트와 무관 — 무시
+                // web_search(위에서 관측)·reasoning 등은 디스패치·응답 텍스트와 무관 — 무시
             }
 
             if (calls.isEmpty()) {
@@ -309,10 +319,18 @@ public class OpenAiChatClient implements ChatClient {
         //         (ref: specs/coffee-note-agent/plan.md#ADR-70 POLICY). 누적 상한(ADR-62 ②)은 응답 도착 후
         //         합산 판정이라 단일 응답 폭주의 비용은 이미 지불된 뒤였다. reasoning 토큰도 이 상한에
         //         포함된다(SDK 문서 — plan §5 max-output-tokens 비고).
+        // POLICY: LLM API로 전송되는 사용자 원문의 서버측 보존은 ADR-71이 단일 소유한다 — 요청에 store를
+        //         항상 명시하고 SDK·서버 기본값에 의존하지 않는다
+        //         (ref: specs/coffee-note-agent/plan.md#ADR-71 POLICY, 루트 CLAUDE.md §5).
+        //         true = 보존 유지(= 현행 동작). 이 루프는 이터레이션 상태를 previous_response_id로 잇고
+        //         reasoning 연속성까지 서버측 보존에 전적으로 의존하므로(findings-TΔ4 §3), 값을 바꾸는 것은
+        //         구조 변경이다 — 바꾸려면 코드가 아니라 ADR-71을 먼저 갱신한다.
+        //         SDK는 미지정 시 요청 본문에서 필드를 아예 빼므로(findings-TΔ4 §1.4) 명시가 곧 의존 제거다.
         ResponseCreateParams.Builder builder = ResponseCreateParams.builder()
                 .model(model)
                 .instructions(instructions)
                 .maxOutputTokens(maxOutputTokens)
+                .store(true)
                 .inputOfResponse(List.copyOf(input));
         tools.forEach(tool -> builder.addTool(toFunctionTool(tool)));
         builder.addTool(webSearchTool());

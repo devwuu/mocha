@@ -417,6 +417,20 @@ class OpenAiChatClientTest {
     }
 
     @Test
+    @DisplayName("AC-Δ10 (ADR-71): 요청에 store가 명시된다 — 기본값 암묵 의존 없이 보존 유지")
+    void carriesExplicitStoreOnRequest() {
+        // covers POLICY: LLM 전송 원문의 서버측 보존은 ADR-71 단일 소유, 기본값 의존 금지.
+        // 값(true)은 현행 동작과 동일 — 이 task는 동작 변경이 아니라 암묵 의존 제거다. SDK는 미지정 시
+        // 필드 자체를 요청에서 빼므로(findings-TΔ4 §1.4) "실렸는가"가 곧 명시 여부다.
+        OpenAiChatClient client = new OpenAiChatClient(null, "test-model", 8, 100_000,
+                Duration.ofSeconds(60), 4_000, MochaObjectMapper.create(), Clock.systemUTC());
+
+        ResponseCreateParams params = client.buildParams("시스템 프롬프트", List.of(), List.of(), null);
+
+        assertThat(params.store()).contains(true);
+    }
+
+    @Test
     @DisplayName("AC-Δ8 (ADR-70 ②): 출력 상한에 걸려 잘린 응답은 최종 텍스트로 반환되지 않고 폴백으로 수렴한다")
     void fallsBackWhenResponseIsTruncatedByOutputCap() {
         // 잘린 텍스트가 **있어도** 내보내지 않는다 — 불완전한 답변보다 재요청 안내가 낫다(plan §7).
@@ -519,6 +533,38 @@ class OpenAiChatClientTest {
     }
 
     @Test
+    @DisplayName("AC-Δ9 (0027 TΔ7 리뷰): 절단된 응답의 web_search도 tool 시퀀스에 남는다 — 조정 신호 유실 금지")
+    void observesWebSearchOfAbortedResponse() {
+        // 검색 후 긴 답변을 쓰다 상한에 걸린 턴. toolSequence가 비면 로그만으로 "출력을 부풀린 것이 검색인가"를
+        // 가릴 수 없어 plan §6의 조정 판단(상한 상향 vs 프롬프트 수정)이 막힌다.
+        ScriptedChatClient client = new ScriptedChatClient(8, List.of(
+                incompleteResponse("resp_1", Response.IncompleteDetails.Reason.MAX_OUTPUT_TOKENS,
+                        webSearchCall("ws_1"), message("와이키키는 부산 모모스커피의"))));
+
+        assertThatThrownBy(() -> client.runTurn(context("와이키키 알려줘"), List.of()))
+                .isInstanceOf(AgentException.class);
+
+        assertThat(logs.list).anySatisfy(event -> assertThat(event.getFormattedMessage())
+                .contains("에이전트 턴 관측")
+                .contains("outcome=출력 상한 절단")
+                .contains("toolSequence=[web_search]"));
+    }
+
+    @Test
+    @DisplayName("AC-Δ8 (findings-TΔ4 §1.5): status 없는 응답은 실패로 오판되지 않고 정상 완료된다")
+    void treatsMissingStatusAsCompleted() {
+        // 판정이 "status가 있고 COMPLETED가 아닐 때"인 이유 — SDK 타입이 Optional이라 부재가 성립하고,
+        // 부재를 실패로 읽으면 정상 턴이 폴백으로 죽는다. 완료 판정 쪽(status=completed)은 기본 fake가 본다.
+        ScriptedChatClient client = new ScriptedChatClient(8, List.of(
+                statuslessResponse("resp_1", message("괜찮은 커피다멍"))));
+
+        assertThat(client.runTurn(context("안녕"), List.of())).isEqualTo("괜찮은 커피다멍");
+        assertThat(logs.list).anySatisfy(event -> assertThat(event.getFormattedMessage())
+                .contains("에이전트 턴 관측")
+                .contains("outcome=완료"));
+    }
+
+    @Test
     @DisplayName("AC-Δ9: 턴 관측 로그에 tool 시퀀스(web_search 포함)·호출 수가 남는다 (plan §6)")
     void logsTurnObservationWithToolSequence() {
         ScriptedChatClient client = new ScriptedChatClient(8, List.of(
@@ -595,7 +641,24 @@ class OpenAiChatClientTest {
                 "required":["slug"],"additionalProperties":false}""", executor);
     }
 
+    /**
+     * 정상 응답 fake — 실 Responses API는 {@code status}를 <b>항상</b> 주고 완결이면 {@code completed}이므로
+     * 기본 fake도 그렇게 맞춘다(0027 TΔ7 리뷰 2차, 사용자 확정 2026-07-30). 종전에는 비워 뒀는데, 그러면
+     * {@code OpenAiChatClient}의 미완결 판정에서 <b>정상 경로를 통과시키는 쪽</b>이 어느 테스트로도 커버되지
+     * 않아 판정 술어가 틀려도(예: {@code status().isPresent()}) 전 케이스 그린이었다 — 프로덕션 턴 100%가
+     * 폴백으로 죽는 변조가 통과했다.
+     */
     private static Response response(String id, ResponseOutputItem... items) {
+        return statuslessResponse(id, items).toBuilder()
+                .status(ResponseStatus.COMPLETED)
+                .build();
+    }
+
+    /**
+     * {@code status} 없는 응답 — SDK 타입이 {@code Optional}이라 성립하는 경계다. 이것을 실패로 오판하지
+     * 않는 것이 판정의 조건이므로(findings-TΔ4 §1.5) 전용 fake로 남긴다.
+     */
+    private static Response statuslessResponse(String id, ResponseOutputItem... items) {
         return Response.builder()
                 .id(id)
                 .createdAt(0.0)
@@ -632,9 +695,8 @@ class OpenAiChatClientTest {
     }
 
     /**
-     * 미완결 응답 — 출력 상한 절단(AC-Δ8) 조립. {@code status}가 Optional이라 기존 fake는 비워 두고
-     * 여기서만 INCOMPLETE를 세팅한다(findings-TΔ4 §1.5 — 정상 응답을 절단으로 오판하지 않는 조건).
-     * {@code reason=null}이면 사유 없는 미완결(같은 §1.5-2가 요구한 경계)이다.
+     * 미완결 응답 — 출력 상한 절단(AC-Δ8) 조립. {@code reason=null}이면 사유 없는 미완결
+     * (findings-TΔ4 §1.5-2가 요구한 경계)이다.
      */
     private static Response incompleteResponse(String id, Response.IncompleteDetails.Reason reason,
                                                ResponseOutputItem... items) {
