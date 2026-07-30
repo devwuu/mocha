@@ -55,6 +55,10 @@ mocha:
     # 작업 트랜스크립트 턴 수 상한·TTL (ADR-46) — 초과분 드롭·경과 시 빈 문맥.
     transcript-max-turns: 20
     transcript-ttl: 1h
+    # 다중 날짜 세그먼트 분리 전용 경량 모델 (ADR-50·61 — 분리만 하는 좁은 작업이라 루프 모델과 분리).
+    # 값은 코드 default와 동일(AgentConfig) → 동작 무변경. 위 상한 키들과 함께 yaml로 올렸다
+    # (changes/0027 TΔ4b — ADR-50 "yml에 초기값 명시" 관례 누락 보정).
+    # 이 키는 행동 레이어다(delta 0027 UNCHANGED 행) — 값을 바꾸면 evalTest 전/후 기록이 필요하다(ADR-69 ②).
     segmenter-model: gpt-5.4-mini
   vision:
     # 수신 사진 OCR 전용 경량 모델 (ADR-50 — 구 search.model 공용에서 분리, 전처리에 상위 모델 낭비 금지).
