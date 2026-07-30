@@ -15,6 +15,7 @@
 - `specs/` — 기능별 명세(SDD). **모든 기능 요구사항·설계 결정의 source of truth.** 현재 유일 기능: `specs/coffee-note-agent/`.
 - 백엔드(Java/Spring) — 소스 트리. 해당 디렉터리의 `CLAUDE.md`가 구현 규칙을 규정한다.
 - `data/` — **런타임 산출(원본 데이터)**: 노트 JSON·사진·pending. 커밋하지 않는다(§5).
+  - ⚠️ **0028 진행 중 — ADR-72로 개정 예정.** 노트 JSON·pending은 DB로 이관되어 소멸하고 `data/`에는 **사진만 잔존**한다. 갱신은 `changes/0028-rdb-storage`의 **TΔ13**이 소유한다. 커밋 금지 규칙(§5)은 그대로다.
 - `artifact/` — **런타임 산출(파생물)**: 엔트리 카드 JPG·index HTML·썸네일. JSON에서 전체 재생성 가능하므로 커밋하지 않는다.
 - (이후 모듈이 추가되면 각 모듈 루트에 `CLAUDE.md`를 둔다.)
 
