@@ -36,11 +36,18 @@ mocha:
     # 에이전트 루프 모델 — web_search 가용·다중 tool 호출 품질 필요. 초기값 gpt-5.4-mini(0018 TΔ0a 실측)는
     # 다중 날짜 분리 규칙(AC-77) 반복 위반 관측으로 gpt-5.4로 교체(changes/0021 TΔ3b 스모크, 2026-07-21 사용자 확정).
     model: gpt-5.4
-    # 턴당 function tool 실행 상한 — 도달 시 결정론 폴백(ADR-48).
+    # 턴 상한 3종(ADR-44·62) — 도달 시 결정론 폴백(ADR-48). 값은 코드 default와 동일(ADR-50 관례).
+    # 턴당 function tool 실행 상한.
     max-tool-calls: 8
+    # 턴 누적 토큰 상한 — 이터레이션별 usage(in+out) 합산 판정. 관측 표본 부족(6건)으로 보수적 시작,
+    # 누적 usage 관측이 쌓이면 조정(plan §5·§6, changes/0027 findings-TΔ4 §4.1).
+    max-turn-tokens: 100000
+    # 턴 경과 시간 상한 — 이터레이션 경계 판정. 관측 최대 8초 대비 보수적 여유(plan §5).
+    turn-timeout: 60s
     # 작업 트랜스크립트 턴 수 상한·TTL (ADR-46) — 초과분 드롭·경과 시 빈 문맥.
     transcript-max-turns: 20
     transcript-ttl: 1h
+    segmenter-model: gpt-5.4-mini
   vision:
     # 수신 사진 OCR 전용 경량 모델 (ADR-50 — 구 search.model 공용에서 분리, 전처리에 상위 모델 낭비 금지).
     model: gpt-5.4-mini
