@@ -24,6 +24,18 @@ dependencies {
 	// Thymeleaf: 정적 HTML 생성기 용법(오프라인 실행). starter-web 미포함 (ref: plan.md#ADR-7)
 	implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
 
+	// DB = source of truth (ref: changes/0028-rdb-storage/delta.md#ADR-72). 로컬 Postgres는 docker-compose.yml.
+	// JPA: Note → entries → brews → recipe/tasting 3단 중첩을 매핑으로 다룬다.
+	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+	// 스키마 소유권은 Flyway 단독 — JPA는 ddl-auto: validate로 대조만 한다(엔티티↔DDL 드리프트 검출).
+	// Spring Boot 4는 자동설정을 기술별 모듈로 쪼갰다 — flyway-core만 넣으면 라이브러리는 올라오지만
+	// 기동 시 마이그레이션이 아예 돌지 않는다(실측: flyway_schema_history 미생성). spring-boot-flyway가 자동설정 소유자이고
+	// flyway-core를 추이 포함한다. flyway-database-postgresql은 Flyway 10+에서 분리된 Postgres 방언 모듈로, 없으면 미지원 DB로 실패한다.
+	implementation 'org.springframework.boot:spring-boot-flyway'
+	runtimeOnly 'org.flywaydb:flyway-database-postgresql'
+	// 드라이버는 런타임에만 필요 — 애플리케이션 코드가 JDBC 벤더 타입을 참조하지 않게 컴파일 경로에서 뺀다(NFR-4).
+	runtimeOnly 'org.postgresql:postgresql'
+
 	// Slack Socket Mode 수신 (ref: plan.md#ADR-2). bolt-socket-mode가 bolt·slack-api-client 추이 포함
 	implementation 'com.slack.api:bolt-socket-mode:1.49.0'
 	// Socket Mode WebSocket 백엔드. bolt-socket-mode는 WS 클라이언트 구현을 포함하지 않아 별도 필요(기본 Tyrus는 javax.websocket 의존).

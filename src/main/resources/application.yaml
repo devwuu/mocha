@@ -6,6 +6,24 @@ spring:
   config:
     import: "optional:file:.env.local[.properties]"
 
+  # 저장소 = Postgres (ref: changes/0028-rdb-storage/delta.md#ADR-72). 로컬 인스턴스는 docker-compose.yml.
+  # 접속 정보는 환경변수로 덮을 수 있게 두되 default를 로컬 컨테이너에 맞춘다 — 클라우드 이전(델타 B)에서
+  # 코드·설정 변경 없이 주입만으로 대상을 바꾸기 위함. 로컬 자격증명은 비밀이 아니다(docker-compose.yml POLICY).
+  datasource:
+    url: ${MOCHA_DB_URL:jdbc:postgresql://localhost:5432/mocha}
+    username: ${MOCHA_DB_USERNAME:mocha}
+    password: ${MOCHA_DB_PASSWORD:mocha}
+  jpa:
+    hibernate:
+      # 스키마 소유권은 Flyway 단독이다. validate = 엔티티 매핑과 실제 DDL의 드리프트를 기동 시 잡는다.
+      # create/update로 두면 마이그레이션 이력과 실제 스키마가 갈라진다.
+      ddl-auto: validate
+    # 웹 계층이 없고(ADR-7) 트랜잭션 경계는 저장소 구현체가 소유한다 — 뷰까지 세션을 끌고 갈 이유가 없다.
+    open-in-view: false
+  flyway:
+    # 마이그레이션 파일명은 델타 번호와 대응시킨다(V1__0028_..., Q-10) — 스키마 이력이 델타와 1:1로 추적된다.
+    locations: classpath:db/migration
+
 # 파일 로깅 (NFR-7, ADR-21 · changes/0009). Spring 표준 logback 설정 — 콘솔과 병행해 logs/ 아래 상시 기록.
 # 레벨은 root 기본(INFO 이상 전체 — 에러 앞뒤 맥락 보존). 일 단위 롤링 + 30일 보존 + 총 300MB 상한.
 # POLICY: logs/는 개인 데이터 취급 — 사용자 메시지 원문이 남을 수 있어 커밋·공개 금지(.gitignore 유지, 루트 CLAUDE.md §5).

@@ -1,0 +1,28 @@
+# 로컬 개발용 Postgres 단일 서비스 (ref: specs/coffee-note-agent/changes/0028-rdb-storage/delta.md#ADR-72).
+# SQLite가 아니라 Postgres인 이유: 로드맵(클라우드 이전·멀티테넌시)이 전부 Postgres를 향해 중간 기착지 비용을 만들지 않는다.
+# 스키마 소유권은 Flyway에 있다 — 이 파일은 빈 DB만 준비하고 DDL은 넣지 않는다.
+#
+# 기동: docker compose up -d   /   중지: docker compose down (데이터 유지)   /   초기화: docker compose down -v
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: mocha-postgres
+    environment:
+      # POLICY: 로컬 전용 자격증명이다. 루트 CLAUDE.md §5의 비밀(Slack 토큰·OpenAI 키)과 달리
+      # 외부에 노출되지 않는 개발 DB라 평문으로 둔다. 클라우드 이전(델타 B) 시 환경변수 주입으로 바꾼다.
+      POSTGRES_DB: mocha
+      POSTGRES_USER: mocha
+      POSTGRES_PASSWORD: mocha
+    ports:
+      - "5432:5432"
+    volumes:
+      - mocha-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # 앱·Testcontainers가 붙기 전에 초기화가 끝났는지 판정한다(첫 기동은 initdb로 수 초 걸린다).
+      test: ["CMD-SHELL", "pg_isready -U mocha -d mocha"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  mocha-pgdata:
