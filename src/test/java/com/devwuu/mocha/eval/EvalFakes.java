@@ -86,12 +86,12 @@ final class EvalFakes {
         }
 
         @Override
-        public List<Path> renderEntryCard(String noteFolder, LocalDate date) {
+        public List<Path> renderEntryCard(long noteId, LocalDate date) {
             return List.of();
         }
 
         @Override
-        public void removeEntryCard(String noteFolder, LocalDate date) {
+        public void removeEntryCard(long noteId, LocalDate date) {
             // no-op
         }
     }

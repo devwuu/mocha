@@ -20,6 +20,7 @@ import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.domain.Tasting;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.render.NoteRenderer;
+import com.devwuu.mocha.repository.NoteFolderName;
 import com.devwuu.mocha.repository.NoteRepository;
 import com.devwuu.mocha.repository.PendingStore;
 import com.devwuu.mocha.slack.outbound.PreviewBlocks;
@@ -80,7 +81,7 @@ class ToolCallbackProviderTest {
 
     @BeforeEach
     void setUp() {
-        renderer = new RecordingRenderer(artifactDir);
+        renderer = new RecordingRenderer(artifactDir, noteRepository);
         responder = new RecordingResponder();
         previewMessenger = new CapturingPreviewMessenger();
         transcript = new FoldingChatMemory(20, Duration.ofHours(1), clock);
@@ -443,7 +444,7 @@ class ToolCallbackProviderTest {
         noteRepository.put(note(12L, "Ethiopia Chelbesa", "FroB",
                 Aliases.empty(), LocalDate.of(2026, 7, 13)));
         // 픽스처 엔트리 = 감상 회차 1개 → 기대 카드 집합 = <date>-taste-1.jpg 1장(changes/0021 TΔ5a).
-        Path existingCard = artifactDir.resolve("cards/12/2026-07-13-taste-1.jpg");
+        Path existingCard = artifactDir.resolve("cards/12-FroB-Ethiopia-Chelbesa/2026-07-13-taste-1.jpg");
         Files.createDirectories(existingCard.getParent());
         Files.write(existingCard, new byte[]{1});
 
@@ -469,7 +470,7 @@ class ToolCallbackProviderTest {
         assertThat(renderer.rendered).containsExactly("12/2026-07-13");
         assertThat(responder.postedImages).hasSize(1);
         assertThat(responder.postedImages.get(0).path())
-                .isEqualTo(artifactDir.resolve("cards/12/2026-07-13-taste-1.jpg"));
+                .isEqualTo(artifactDir.resolve("cards/12-FroB-Ethiopia-Chelbesa/2026-07-13-taste-1.jpg"));
         assertThat(result.get("sent").asBoolean()).isTrue();
     }
 
@@ -497,7 +498,7 @@ class ToolCallbackProviderTest {
     @DisplayName("FR-20/AC-Δ6: 회차 2개 엔트리는 회차 카드 4장 전부를 순서대로 재전송한다 — 캡션은 첫 카드에만(TΔ5b)")
     void sendEntryCardSendsAllBrewCards() throws IOException {
         noteRepository.put(twoBrewNote(18L, LocalDate.of(2026, 7, 18)));
-        List<Path> existing = seedCards("18",
+        List<Path> existing = seedCards("18-FroB-Ethiopia-Chelbesa",
                 "2026-07-18-taste-1.jpg", "2026-07-18-recipe-1.jpg",
                 "2026-07-18-taste-2.jpg", "2026-07-18-recipe-2.jpg");
 
@@ -518,7 +519,7 @@ class ToolCallbackProviderTest {
     @DisplayName("plan §7: 일부 카드 전송 실패 → 성공분은 배달하고 실패분을 결과에 명시한다(부분 폴백)")
     void sendEntryCardReportsPartialFailure() throws IOException {
         noteRepository.put(twoBrewNote(18L, LocalDate.of(2026, 7, 18)));
-        seedCards("18",
+        seedCards("18-FroB-Ethiopia-Chelbesa",
                 "2026-07-18-taste-1.jpg", "2026-07-18-recipe-1.jpg",
                 "2026-07-18-taste-2.jpg", "2026-07-18-recipe-2.jpg");
         responder.failFilenames.add("2026-07-18-recipe-1.jpg");
@@ -538,7 +539,7 @@ class ToolCallbackProviderTest {
     void sendEntryCardReturnsErrorWhenAllSendsFail() throws IOException {
         noteRepository.put(note(12L, "Ethiopia Chelbesa", "FroB",
                 Aliases.empty(), LocalDate.of(2026, 7, 13)));
-        seedCards("12", "2026-07-13-taste-1.jpg");
+        seedCards("12-FroB-Ethiopia-Chelbesa", "2026-07-13-taste-1.jpg");
         responder.failFilenames.add("2026-07-13-taste-1.jpg");
 
         JsonNode result = mapper.readTree(execute("send_entry_card",
@@ -636,7 +637,7 @@ class ToolCallbackProviderTest {
     }
 
     /** artifact/cards/<노트 폴더>/ 아래에 기존 카드 파일을 심는다 — 재사용(§3.5) 분기 픽스처.
-     *  폴더 접미는 TΔ6c가 TΔ7 생성기로 갈아끼운다 — 지금은 id만이다. */
+     *  폴더 접미는 TΔ7 생성기 산출(<id>-<로스터리>-<커피명>)이다 — 실 경로와 같은 값이어야 재사용 분기가 성립한다(TΔ6c). */
     private List<Path> seedCards(String noteFolder, String... filenames) throws IOException {
         List<Path> cards = new ArrayList<>();
         for (String filename : filenames) {
@@ -745,10 +746,12 @@ class ToolCallbackProviderTest {
 
     private static final class RecordingRenderer implements NoteRenderer {
         private final Path artifactDir;
+        private final NoteRepository noteRepository;
         private final List<String> rendered = new ArrayList<>();
 
-        private RecordingRenderer(Path artifactDir) {
+        private RecordingRenderer(Path artifactDir, NoteRepository noteRepository) {
             this.artifactDir = artifactDir;
+            this.noteRepository = noteRepository;
         }
 
         @Override
@@ -757,10 +760,13 @@ class ToolCallbackProviderTest {
         }
 
         @Override
-        public List<Path> renderEntryCard(String noteFolder, LocalDate date) {
-            rendered.add(noteFolder + "/" + date);
+        public List<Path> renderEntryCard(long noteId, LocalDate date) {
+            rendered.add(noteId + "/" + date);
+            // 실 렌더러와 같은 자리에서 접미를 만든다 — 폴더 규약(TΔ7)을 fake가 따로 정의하지 않게(TΔ6c).
+            Path noteDir = artifactDir.resolve("cards")
+                    .resolve(NoteFolderName.of(noteRepository.findById(noteId).orElseThrow()));
             // 회차화(changes/0021 TΔ5a) — 픽스처 엔트리(감상 회차 1개)의 산출 형태.
-            Path card = artifactDir.resolve("cards").resolve(noteFolder).resolve(date + "-taste-1.jpg");
+            Path card = noteDir.resolve(date + "-taste-1.jpg");
             try {
                 Files.createDirectories(card.getParent());
                 Files.write(card, new byte[]{1});
@@ -771,7 +777,7 @@ class ToolCallbackProviderTest {
         }
 
         @Override
-        public void removeEntryCard(String noteFolder, LocalDate date) {
+        public void removeEntryCard(long noteId, LocalDate date) {
             throw new UnsupportedOperationException("카드 재전송은 파생물을 지우지 않는다");
         }
     }

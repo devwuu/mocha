@@ -12,8 +12,6 @@ import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.domain.Tasting;
-import com.devwuu.mocha.json.MochaObjectMapper;
-import com.devwuu.mocha.repository.JsonFileNoteRepository;
 import com.devwuu.mocha.repository.NoteRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -24,13 +22,13 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Clock;
-import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
-import java.time.ZoneId;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -39,9 +37,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * TΔ5a(changes/0021): 렌더 파이프라인 회차화 — 산출 단위가 <b>회차 파트</b>(감상/레시피 카드,
- * {@code cards/<slug>/<date>-taste-<n>.jpg}·{@code <date>-recipe-<n>.jpg})로 전환됨을 검증한다.
- * JSON 셋(@TempDir 실 파일 I/O, CLAUDE.md §5.2·5.4) → 회차 카드 JPG. 실 래스터화는
- * {@link FakeCardImageRenderer}로 대체해 경로/파일명 규칙·카드 HTML 계약을 결정론적으로 본다(실 Chromium은 태그 분리).
+ * {@code cards/<접미>/<date>-taste-<n>.jpg}·{@code <date>-recipe-<n>.jpg})로 전환됨을 검증한다.
+ * 저장소 조회 결과(도메인 노트) → 회차 카드 JPG. 실 래스터화는 {@link FakeCardImageRenderer}로 대체해
+ * 경로/파일명 규칙·카드 HTML 계약을 결정론적으로 본다(실 Chromium은 태그 분리).
  * <ul>
  *   <li>AC-Δ6(렌더 파트): 회차 2개 엔트리 → 카드 4장, 파일명 규칙(n = 회차)</li>
  *   <li>AC-78: 레시피/감상 없는 회차는 해당 카드 미생성</li>
@@ -49,13 +47,21 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *   <li>AC-Δ7: artifact/ 삭제 후 재렌더 동일 산출(재현성), 고아 카드 정리</li>
  *   <li>AC-67(TΔ6, ADR-55): 저장·--rerender 어느 경로로도 index.html 미생성 — artifact/ 아래 HTML 산출 0건</li>
  *   <li>템플릿 계약: 4:5(1080×1350)·로컬 폰트·회차 파트 1건·note.html 폐기(ADR-54)</li>
+ *   <li>changes/0028 TΔ6c: 대상 지정이 노트 id, 카드 폴더가 {@code <id>-<로스터리>-<커피명>} 접미(AC-Δ9)</li>
  * </ul>
+ * <p>저장소는 인메모리 fake다 — 렌더 검증의 입력은 "조회 결과"이고 저장 정책(TΔ5b·5c)은 검증 대상이 아니다
+ * (모듈 CLAUDE.md §5.2 — 외부 의존은 인터페이스 stub/fake).
  */
 class ThymeleafNoteRendererTest {
 
-    // 저장소 시계 — 렌더 검증엔 시각 값이 무관하지만 생성자가 주입을 요구한다(ADR-63). 고정으로 결정론화.
-    private static final Clock FIXED =
-            Clock.fixed(Instant.parse("2026-07-16T00:30:00Z"), ZoneId.of("Asia/Seoul"));
+    private static final OffsetDateTime SAVED_AT = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
+
+    // 기대 카드 폴더 접미 — <id>-<로스터리>-<커피명>(공백은 '-', TΔ7 NoteFolderName).
+    // 리터럴로 박는다: 생성기를 안 지나고 id·slug를 그대로 쓰면 여기서 어긋난다.
+    private static final String N1 = "1-커피베라-예가체프-G1-워시드";
+    private static final String N1_SHORT = "1-커피베라-예가체프-G1";
+    private static final String N2 = "2-프릳츠-콜롬비아-게이샤-워시드";
+    private static final String RAINBOW = "3-커피가게-동경-레인보우-블렌드";
 
     private final SpringTemplateEngine engine = RenderConfig.offlineTemplateEngine();
 
@@ -81,9 +87,14 @@ class ThymeleafNoteRendererTest {
         return new Entry(date, List.of(first, second), ts);
     }
 
-    // 두 노트(각 엔트리 1건·회차 1개, 감상만). note1=검색 보강/GOOD(2026-07-10), note2=PERFECT(2026-07-04).
-    private NoteRepository seedRepository(Path dataDir) {
-        NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create(), FIXED);
+    // 저장된 노트 — 메타는 그대로 옮기고 id·엔트리만 얹는다(저장소 쓰기 경로를 지나지 않는다).
+    private static Note noteOf(long id, NoteMeta meta, Aliases aliases, Entry... entries) {
+        return new Note(id, meta.coffeeName(), meta.roastery(), meta.beans(), meta.roastLevel(),
+                meta.officialNotes(), aliases, meta.sources(), List.of(entries), SAVED_AT, SAVED_AT);
+    }
+
+    // 두 노트(각 엔트리 1건·회차 1개, 감상만). id=1 검색 보강/GOOD(2026-07-10), id=2 PERFECT(2026-07-04).
+    private InMemoryNoteRepository seedRepository() {
         OffsetDateTime now = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
         NoteMeta meta1 = new NoteMeta(
                 new Sourced<>("예가체프 G1 워시드", Source.USER),
@@ -93,62 +104,80 @@ class ThymeleafNoteRendererTest {
                 new Sourced<>("라이트", Source.SEARCH),
                 new Sourced<>(List.of("자몽", "베르가못", "홍차"), Source.SEARCH),
                 List.of("https://coffeevera.example/yirgacheffe"));
-        repo.upsertEntry("2026-07-10", meta1,
-                entry(LocalDate.parse("2026-07-10"), "새콤하고 좋았다.\n다음엔 물 온도를 낮춰봐야지.", Rating.GOOD, null, now), Aliases.empty());
-
         NoteMeta meta2 = new NoteMeta(
                 new Sourced<>("콜롬비아 게이샤 워시드", Source.USER),
                 new Sourced<>("프릳츠", Source.USER),
                 List.of(new Bean(new Sourced<>("콜롬비아", Source.SEARCH), null)),
                 null, new Sourced<>(List.of(), Source.SEARCH), List.of());
-        repo.upsertEntry("2026-07-04", meta2,
-                entry(LocalDate.parse("2026-07-04"), "화사하다.", Rating.PERFECT, null, now), Aliases.empty());
-        return repo;
+
+        return new InMemoryNoteRepository()
+                .put(noteOf(1, meta1, Aliases.empty(),
+                        entry(LocalDate.parse("2026-07-10"), "새콤하고 좋았다.\n다음엔 물 온도를 낮춰봐야지.",
+                                Rating.GOOD, null, now)))
+                .put(noteOf(2, meta2, Aliases.empty(),
+                        entry(LocalDate.parse("2026-07-04"), "화사하다.", Rating.PERFECT, null, now)));
     }
 
     // --- TΔ5a 핵심: 회차 카드 산출·파일명 규칙 ---
 
     @Test
     @DisplayName("AC-Δ6/AC-74: 회차 2개(각 레시피+감상) 엔트리 → 카드 4장, <date>-taste-<n>·<date>-recipe-<n> 파일명 규칙")
-    void twoBrewEntryBakesFourCardsWithBrewNumberedNames(@TempDir Path dataDir, @TempDir Path artifactDir) {
-        NoteRepository repo = seedRepository(dataDir);
+    void twoBrewEntryBakesFourCardsWithBrewNumberedNames(@TempDir Path artifactDir) {
         OffsetDateTime now = OffsetDateTime.parse("2026-07-18T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
                 new Sourced<>("레인보우 블렌드", Source.USER), new Sourced<>("커피가게 동경", Source.USER),
                 List.of(new Bean(new Sourced<>("에티오피아 예가체프", Source.USER), new Sourced<>("워시드", Source.USER))),
                 null, new Sourced<>(List.of(), Source.SEARCH), List.of());
-        repo.upsertEntry("rainbow", meta, twoBrewEntry(LocalDate.parse("2026-07-18"), now), Aliases.empty());
+        NoteRepository repo = seedRepository()
+                .put(noteOf(3, meta, Aliases.empty(), twoBrewEntry(LocalDate.parse("2026-07-18"), now)));
 
         FakeCardImageRenderer cards = new FakeCardImageRenderer();
         ThymeleafNoteRenderer renderer = new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_A, cards);
 
-        List<Path> baked = renderer.renderEntryCard("rainbow", LocalDate.parse("2026-07-18"));
+        List<Path> baked = renderer.renderEntryCard(3, LocalDate.parse("2026-07-18"));
 
         // 반환 순서 = 회차 오름차순, 회차 안에서는 감상 → 레시피(CardFiles.expectedCards 계약).
         assertEquals(List.of(
-                        artifactDir.resolve("cards/rainbow/2026-07-18-taste-1.jpg"),
-                        artifactDir.resolve("cards/rainbow/2026-07-18-recipe-1.jpg"),
-                        artifactDir.resolve("cards/rainbow/2026-07-18-taste-2.jpg"),
-                        artifactDir.resolve("cards/rainbow/2026-07-18-recipe-2.jpg")),
+                        artifactDir.resolve("cards/" + RAINBOW + "/2026-07-18-taste-1.jpg"),
+                        artifactDir.resolve("cards/" + RAINBOW + "/2026-07-18-recipe-1.jpg"),
+                        artifactDir.resolve("cards/" + RAINBOW + "/2026-07-18-taste-2.jpg"),
+                        artifactDir.resolve("cards/" + RAINBOW + "/2026-07-18-recipe-2.jpg")),
                 baked, "회차 2개 × (감상+레시피) = 4장, 파일명 n = 회차");
         baked.forEach(p -> assertTrue(Files.isRegularFile(p), "카드 JPG 존재: " + p));
         assertEquals(4, cards.calls.size(), "증분: 그 엔트리의 회차 카드만 굽는다");
 
         // 각 카드 HTML은 자기 회차 파트만 담는다 — 시도별 감상·피드백이 카드에 갈려 실린다(AC-75).
-        String taste1 = capturedHtml(cards, "cards/rainbow/2026-07-18-taste-1.jpg");
-        String taste2 = capturedHtml(cards, "cards/rainbow/2026-07-18-taste-2.jpg");
+        String taste1 = capturedHtml(cards, "cards/" + RAINBOW + "/2026-07-18-taste-1.jpg");
+        String taste2 = capturedHtml(cards, "cards/" + RAINBOW + "/2026-07-18-taste-2.jpg");
         assertTrue(taste1.contains("첫 시도는 새콤함"), "1회차 감상 카드 = 1회차 감상");
         assertFalse(taste1.contains("두 번째는 부드러움"), "1회차 카드에 2회차 감상 없음");
         assertTrue(taste2.contains("두 번째는 부드러움"), "2회차 감상 카드 = 2회차 감상");
-        String recipe1 = capturedHtml(cards, "cards/rainbow/2026-07-18-recipe-1.jpg");
+        String recipe1 = capturedHtml(cards, "cards/" + RAINBOW + "/2026-07-18-recipe-1.jpg");
         assertTrue(recipe1.contains("다음엔 분쇄를 더 굵게 갈 것"), "1회차 레시피 카드 = 1회차 피드백");
         assertTrue(recipe1.contains("210클릭"), "1회차 분쇄값 렌더(grind 정규화 값)");
     }
 
     @Test
+    @DisplayName("AC-Δ9(changes/0028): 카드 폴더는 <id>-<로스터리>-<커피명> 접미 — 로스터리가 없으면 세그먼트를 생략한다")
+    void cardFolderUsesGeneratedSuffix(@TempDir Path artifactDir) {
+        // 로스터리 미상 노트 — 접미가 <id>-<커피명>으로 줄고 빈 세그먼트(`7--첼베사`)가 생기지 않는다(파생 결정 1).
+        NoteMeta meta = new NoteMeta(
+                new Sourced<>("첼베사 내추럴", Source.USER), null, List.of(),
+                null, new Sourced<>(List.of(), Source.SEARCH), List.of());
+        NoteRepository repo = new InMemoryNoteRepository().put(noteOf(7, meta, Aliases.empty(),
+                entry(LocalDate.parse("2026-07-18"), "달다.", Rating.GOOD, null, SAVED_AT)));
+
+        List<Path> baked = new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_A, new FakeCardImageRenderer())
+                .renderEntryCard(7, LocalDate.parse("2026-07-18"));
+
+        assertEquals(List.of(artifactDir.resolve("cards/7-첼베사-내추럴/2026-07-18-taste-1.jpg")), baked,
+                "접미 = <id>-<커피명>(로스터리 생략), 한글 그대로");
+        assertTrue(Files.isRegularFile(baked.getFirst()), "카드 JPG 존재");
+    }
+
+    @Test
     @DisplayName("AC-78: 레시피만/감상만 있는 회차는 해당 카드만 생성된다(없는 파트 카드 미생성)")
-    void partialBrewsBakeOnlyPresentPartCards(@TempDir Path dataDir, @TempDir Path artifactDir) {
-        NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create(), FIXED);
+    void partialBrewsBakeOnlyPresentPartCards(@TempDir Path artifactDir) {
         OffsetDateTime now = OffsetDateTime.parse("2026-07-18T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
                 new Sourced<>("예가체프 G1", Source.USER), new Sourced<>("커피베라", Source.USER),
@@ -158,54 +187,55 @@ class ThymeleafNoteRendererTest {
         Entry entry = new Entry(LocalDate.parse("2026-07-18"), List.of(
                 new Brew(new Recipe(null, 15.0, 240.0, null, null, null, "중간", null, null, null), null),
                 new Brew(null, new Tasting("두 번째 잔이 더 달다", null, Rating.GOOD))), now);
-        repo.upsertEntry("partial", meta, entry, Aliases.empty());
+        NoteRepository repo = new InMemoryNoteRepository().put(noteOf(1, meta, Aliases.empty(), entry));
 
         FakeCardImageRenderer cards = new FakeCardImageRenderer();
         List<Path> baked = new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_A, cards)
-                .renderEntryCard("partial", LocalDate.parse("2026-07-18"));
+                .renderEntryCard(1, LocalDate.parse("2026-07-18"));
 
         assertEquals(List.of(
-                        artifactDir.resolve("cards/partial/2026-07-18-recipe-1.jpg"),
-                        artifactDir.resolve("cards/partial/2026-07-18-taste-2.jpg")),
+                        artifactDir.resolve("cards/" + N1_SHORT + "/2026-07-18-recipe-1.jpg"),
+                        artifactDir.resolve("cards/" + N1_SHORT + "/2026-07-18-taste-2.jpg")),
                 baked, "있는 파트만 — 1회차 레시피 카드 + 2회차 감상 카드");
-        assertFalse(Files.exists(artifactDir.resolve("cards/partial/2026-07-18-taste-1.jpg")),
+        assertFalse(Files.exists(artifactDir.resolve("cards/" + N1_SHORT + "/2026-07-18-taste-1.jpg")),
                 "감상 없는 1회차의 감상 카드 미생성(AC-78)");
-        assertFalse(Files.exists(artifactDir.resolve("cards/partial/2026-07-18-recipe-2.jpg")),
+        assertFalse(Files.exists(artifactDir.resolve("cards/" + N1_SHORT + "/2026-07-18-recipe-2.jpg")),
                 "레시피 없는 2회차의 레시피 카드 미생성(AC-78)");
         assertEquals(2, cards.calls.size(), "카드 굽기 호출도 있는 파트 수만큼");
     }
 
     @Test
     @DisplayName("TΔ5a: 회차 감소 재저장 후 renderEntryCard → 옛 번호 카드가 잔존하지 않는다")
-    void rerenderAfterBrewShrinkLeavesNoStaleCards(@TempDir Path dataDir, @TempDir Path artifactDir) {
-        NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create(), FIXED);
+    void rerenderAfterBrewShrinkLeavesNoStaleCards(@TempDir Path artifactDir) {
         OffsetDateTime now = OffsetDateTime.parse("2026-07-18T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
                 new Sourced<>("레인보우 블렌드", Source.USER), new Sourced<>("커피가게 동경", Source.USER),
                 List.of(new Bean(new Sourced<>("에티오피아", Source.USER), null)),
                 null, new Sourced<>(List.of(), Source.SEARCH), List.of());
         LocalDate date = LocalDate.parse("2026-07-18");
-        repo.upsertEntry("rainbow", meta, twoBrewEntry(date, now), Aliases.empty());
+        InMemoryNoteRepository repo = new InMemoryNoteRepository()
+                .put(noteOf(3, meta, Aliases.empty(), twoBrewEntry(date, now)));
 
         FakeCardImageRenderer cards = new FakeCardImageRenderer();
         ThymeleafNoteRenderer renderer = new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_A, cards);
-        renderer.renderEntryCard("rainbow", date);
-        assertTrue(Files.exists(artifactDir.resolve("cards/rainbow/2026-07-18-taste-2.jpg")), "감소 전 2회차 카드 존재");
+        renderer.renderEntryCard(3, date);
+        assertTrue(Files.exists(artifactDir.resolve("cards/" + RAINBOW + "/2026-07-18-taste-2.jpg")),
+                "감소 전 2회차 카드 존재");
 
         // 수정 커밋으로 회차가 2개 → 1개로 줄었다(brews 통째 교체 — ADR-59 patch 의미론).
-        Note origin = repo.findBySlug("rainbow").orElseThrow();
+        Note origin = repo.findById(3).orElseThrow();
         Entry shrunk = new Entry(date, List.of(origin.entries().getFirst().brews().getFirst()), now);
-        repo.applyEdit("rainbow", date, withOnlyEntry(origin, shrunk));
+        repo.put(withOnlyEntry(origin, shrunk));
 
-        List<Path> baked = renderer.renderEntryCard("rainbow", date);
+        List<Path> baked = renderer.renderEntryCard(3, date);
 
         assertEquals(List.of(
-                        artifactDir.resolve("cards/rainbow/2026-07-18-taste-1.jpg"),
-                        artifactDir.resolve("cards/rainbow/2026-07-18-recipe-1.jpg")),
+                        artifactDir.resolve("cards/" + RAINBOW + "/2026-07-18-taste-1.jpg"),
+                        artifactDir.resolve("cards/" + RAINBOW + "/2026-07-18-recipe-1.jpg")),
                 baked, "남은 회차 카드만 산출");
-        assertFalse(Files.exists(artifactDir.resolve("cards/rainbow/2026-07-18-taste-2.jpg")),
+        assertFalse(Files.exists(artifactDir.resolve("cards/" + RAINBOW + "/2026-07-18-taste-2.jpg")),
                 "옛 2회차 감상 카드 잔존 없음");
-        assertFalse(Files.exists(artifactDir.resolve("cards/rainbow/2026-07-18-recipe-2.jpg")),
+        assertFalse(Files.exists(artifactDir.resolve("cards/" + RAINBOW + "/2026-07-18-recipe-2.jpg")),
                 "옛 2회차 레시피 카드 잔존 없음");
     }
 
@@ -213,8 +243,8 @@ class ThymeleafNoteRendererTest {
 
     @Test
     @DisplayName("AC-67: renderAll(--rerender)이 index.html을 생성하지 않는다 — artifact/ 아래 HTML 산출 0건, 산출은 cards/ JPG뿐")
-    void renderAllProducesNoIndexHtml(@TempDir Path dataDir, @TempDir Path artifactDir) {
-        NoteRepository repo = seedRepository(dataDir);
+    void renderAllProducesNoIndexHtml(@TempDir Path artifactDir) {
+        NoteRepository repo = seedRepository();
         FakeCardImageRenderer cards = new FakeCardImageRenderer();
         new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_B, cards).renderAll();
 
@@ -224,21 +254,43 @@ class ThymeleafNoteRendererTest {
         assertEquals(java.util.Set.of(), htmlFiles(artifactDir), "artifact/ 아래 HTML 파일 0건");
 
         // 감상만 있는 회차 1개 엔트리 2건 → 감상 카드 2장(레시피 카드 없음 — AC-78).
-        assertTrue(Files.isRegularFile(artifactDir.resolve("cards/2026-07-10/2026-07-10-taste-1.jpg")), "엔트리1 감상 카드");
-        assertTrue(Files.isRegularFile(artifactDir.resolve("cards/2026-07-04/2026-07-04-taste-1.jpg")), "엔트리2 감상 카드");
+        assertTrue(Files.isRegularFile(artifactDir.resolve("cards/" + N1 + "/2026-07-10-taste-1.jpg")), "엔트리1 감상 카드");
+        assertTrue(Files.isRegularFile(artifactDir.resolve("cards/" + N2 + "/2026-07-04-taste-1.jpg")), "엔트리2 감상 카드");
         assertEquals(2, cards.calls.size(), "엔트리 2건(감상 회차 1개씩) → 카드 굽기 2회");
         // 카드는 artifact 루트를 base로 굽는다(상대 자원 해석 기준, AC-Δ5).
         assertTrue(cards.calls.stream().allMatch(c -> c.baseDir().equals(artifactDir)), "baseDir = artifact 루트");
     }
 
     @Test
+    @DisplayName("AC-Δ7/E-1(changes/0028): renderAll 산출 순서는 엔트리 date 내림차순 + 노트 id 오름차순으로 결정적이다")
+    void renderAllOrdersByDateThenNoteId(@TempDir Path artifactDir) {
+        // 같은 날짜 엔트리를 가진 노트 둘 + 더 최근 날짜 노트 하나. 두 노트의 커피명 순서를 id 순서와
+        // 일부러 어긋나게 둔다(게이샤 < 히비스커스) — 2차 키가 표기로 새면 여기서 잡힌다.
+        NoteRepository repo = new InMemoryNoteRepository()
+                .put(oneTasteNote(2, "게이샤 워시드", "프릳츠", LocalDate.parse("2026-07-10")))
+                .put(oneTasteNote(3, "레인보우 블렌드", "커피가게 동경", LocalDate.parse("2026-07-11")))
+                .put(oneTasteNote(1, "히비스커스 블렌드", "커피베라", LocalDate.parse("2026-07-10")));
+
+        FakeCardImageRenderer cards = new FakeCardImageRenderer();
+        new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_A, cards).renderAll();
+
+        // 2차 키가 id가 아니면(구 slug 자리에 커피명 등이 들어오면) 이 순서가 어긋난다 — E-1의 승계 지점.
+        assertEquals(List.of(
+                        artifactDir.resolve("cards/" + RAINBOW + "/2026-07-11-taste-1.jpg"),
+                        artifactDir.resolve("cards/1-커피베라-히비스커스-블렌드/2026-07-10-taste-1.jpg"),
+                        artifactDir.resolve("cards/2-프릳츠-게이샤-워시드/2026-07-10-taste-1.jpg")),
+                cards.calls.stream().map(FakeCardImageRenderer.Call::out).toList(),
+                "date 내림차순 → 같은 date는 노트 id 오름차순");
+    }
+
+    @Test
     @DisplayName("ADR-54: 감상 카드 HTML이 4:5·로컬 폰트·회차 파트 1건이고 print/A시리즈가 없다")
-    void tasteCardHtmlIsFourFiveWithLocalFont(@TempDir Path dataDir, @TempDir Path artifactDir) {
-        NoteRepository repo = seedRepository(dataDir);
+    void tasteCardHtmlIsFourFiveWithLocalFont(@TempDir Path artifactDir) {
+        NoteRepository repo = seedRepository();
         FakeCardImageRenderer cards = new FakeCardImageRenderer();
         new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_B, cards).renderAll();
 
-        String cardHtml = capturedHtml(cards, "cards/2026-07-10/2026-07-10-taste-1.jpg");
+        String cardHtml = capturedHtml(cards, "cards/" + N1 + "/2026-07-10-taste-1.jpg");
 
         // 4:5 = 1080×1350 뷰포트.
         assertTrue(cardHtml.contains("1080px") && cardHtml.contains("1350px"), "4:5(1080×1350) 규칙");
@@ -261,30 +313,28 @@ class ThymeleafNoteRendererTest {
 
     @Test
     @DisplayName("AC-Δ5(changes/0013): 감상 카드는 my_taste(정규화)만 렌더하고 my_taste_original(원문)은 노출하지 않는다")
-    void tasteCardRendersNormalizedTasteAndHidesOriginal(@TempDir Path dataDir, @TempDir Path artifactDir) {
-        NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create(), FIXED);
+    void tasteCardRendersNormalizedTasteAndHidesOriginal(@TempDir Path artifactDir) {
         OffsetDateTime now = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
                 new Sourced<>("예가체프 G1", Source.USER),
                 new Sourced<>("커피베라", Source.USER), List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), null)),
                 null, new Sourced<>(List.of(), Source.SEARCH), List.of());
         // 정규화본(음슴체)과 발화 원문을 서로 다른 문자열로 둔다 — 원문 유출을 판별 가능하게.
-        repo.upsertEntry("2026-07-10", meta,
+        NoteRepository repo = new InMemoryNoteRepository().put(noteOf(1, meta, Aliases.empty(),
                 entry(LocalDate.parse("2026-07-10"), "새콤하고 좋았음", "새콤하고 좋았다구우",
-                        Rating.GOOD, null, now), Aliases.empty());
+                        Rating.GOOD, null, now)));
 
         FakeCardImageRenderer cards = new FakeCardImageRenderer();
         new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_B, cards).renderAll();
 
-        String cardHtml = capturedHtml(cards, "cards/2026-07-10/2026-07-10-taste-1.jpg");
+        String cardHtml = capturedHtml(cards, "cards/" + N1_SHORT + "/2026-07-10-taste-1.jpg");
         assertTrue(cardHtml.contains("새콤하고 좋았음"), "정규화본(my_taste) 렌더");
         assertFalse(cardHtml.contains("새콤하고 좋았다구우"), "원문(my_taste_original)은 카드에 노출 안 됨(V-11)");
     }
 
     @Test
     @DisplayName("같은 커피를 다른 날 기록하면 엔트리마다 별도 카드가 생기고, 카드 HTML은 자기 날짜 회차만 담는다")
-    void sameCoffeeDifferentDatesYieldSeparateCards(@TempDir Path dataDir, @TempDir Path artifactDir) {
-        NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create(), FIXED);
+    void sameCoffeeDifferentDatesYieldSeparateCards(@TempDir Path artifactDir) {
         OffsetDateTime now = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
                 new Sourced<>("예가체프 G1 워시드", Source.USER),
@@ -293,22 +343,21 @@ class ThymeleafNoteRendererTest {
                 new Sourced<>("라이트", Source.SEARCH),
                 new Sourced<>(List.of("자몽", "홍차"), Source.SEARCH),
                 List.of("https://coffeevera.example/yirgacheffe"));
-        // 같은 노트(slug)에 다른 날짜 엔트리 2건.
-        repo.upsertEntry("yirgacheffe", meta,
-                entry(LocalDate.parse("2026-07-04"), "첫날: 새콤하고 좋았다.", Rating.GOOD, null, now), Aliases.empty());
-        repo.upsertEntry("yirgacheffe", meta,
-                entry(LocalDate.parse("2026-07-10"), "둘째 날: 물 온도를 낮추니 부드럽다.", Rating.PERFECT, null, now), Aliases.empty());
+        // 같은 노트(id)에 다른 날짜 엔트리 2건.
+        NoteRepository repo = new InMemoryNoteRepository().put(noteOf(1, meta, Aliases.empty(),
+                entry(LocalDate.parse("2026-07-04"), "첫날: 새콤하고 좋았다.", Rating.GOOD, null, now),
+                entry(LocalDate.parse("2026-07-10"), "둘째 날: 물 온도를 낮추니 부드럽다.", Rating.PERFECT, null, now)));
 
         FakeCardImageRenderer cards = new FakeCardImageRenderer();
         new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_B, cards).renderAll();
 
-        // 엔트리마다 별도 카드(같은 slug, 다른 date).
-        assertTrue(Files.isRegularFile(artifactDir.resolve("cards/yirgacheffe/2026-07-04-taste-1.jpg")), "첫날 카드");
-        assertTrue(Files.isRegularFile(artifactDir.resolve("cards/yirgacheffe/2026-07-10-taste-1.jpg")), "둘째 날 카드");
+        // 엔트리마다 별도 카드(같은 노트, 다른 date).
+        assertTrue(Files.isRegularFile(artifactDir.resolve("cards/" + N1 + "/2026-07-04-taste-1.jpg")), "첫날 카드");
+        assertTrue(Files.isRegularFile(artifactDir.resolve("cards/" + N1 + "/2026-07-10-taste-1.jpg")), "둘째 날 카드");
 
         // 각 카드 HTML은 자기 엔트리(날짜) 회차 감상만 담는다(AC-Δ4).
-        String firstCard = capturedHtml(cards, "cards/yirgacheffe/2026-07-04-taste-1.jpg");
-        String secondCard = capturedHtml(cards, "cards/yirgacheffe/2026-07-10-taste-1.jpg");
+        String firstCard = capturedHtml(cards, "cards/" + N1 + "/2026-07-04-taste-1.jpg");
+        String secondCard = capturedHtml(cards, "cards/" + N1 + "/2026-07-10-taste-1.jpg");
         assertTrue(firstCard.contains("첫날: 새콤하고 좋았다."), "첫날 카드에 첫날 감상");
         assertFalse(firstCard.contains("둘째 날"), "첫날 카드에 둘째 날 감상 없음");
         assertTrue(secondCard.contains("둘째 날: 물 온도를 낮추니 부드럽다."), "둘째 날 카드에 둘째 날 감상");
@@ -317,21 +366,20 @@ class ThymeleafNoteRendererTest {
 
     @Test
     @DisplayName("AC-Δ2(changes/0014): 사진이 있는 엔트리도 카드 HTML에 사진·썸네일 요소가 없다(아카이브 전용)")
-    void cardHasNoPhotoOrThumbElements(@TempDir Path dataDir, @TempDir Path artifactDir) {
-        NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create(), FIXED);
+    void cardHasNoPhotoOrThumbElements(@TempDir Path artifactDir) {
         OffsetDateTime now = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
                 new Sourced<>("예가체프 G1 워시드", Source.USER),
                 new Sourced<>("커피베라", Source.USER), List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), null)),
                 null, new Sourced<>(List.of(), Source.SEARCH), List.of());
         // 렌더는 사진을 읽지 않는다 — 엔트리에 사진 필드가 없고 템플릿에도 사진 슬롯이 없다(changes/0014 ADR-32, AC-Δ2).
-        repo.upsertEntry("2026-07-10", meta,
-                entry(LocalDate.parse("2026-07-10"), "새콤하다.", Rating.GOOD, null, now), Aliases.empty());
+        NoteRepository repo = new InMemoryNoteRepository().put(noteOf(1, meta, Aliases.empty(),
+                entry(LocalDate.parse("2026-07-10"), "새콤하다.", Rating.GOOD, null, now)));
 
         FakeCardImageRenderer cards = new FakeCardImageRenderer();
         new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_B, cards).renderAll();
 
-        String cardHtml = capturedHtml(cards, "cards/2026-07-10/2026-07-10-taste-1.jpg");
+        String cardHtml = capturedHtml(cards, "cards/" + N1 + "/2026-07-10-taste-1.jpg");
         // 사진·썸네일 경로/요소가 산출 HTML에 전혀 없다(사진 유무 무관 동일 레이아웃).
         assertFalse(cardHtml.contains("photos/"), "카드에 사진 경로 없음");
         assertFalse(cardHtml.contains("thumbs/"), "카드에 썸네일 경로 없음");
@@ -343,8 +391,7 @@ class ThymeleafNoteRendererTest {
 
     @Test
     @DisplayName("AC-Δ10⑥/V-13(changes/0016): aliases를 채운 노트도 카드 HTML에 별칭 문자열이 나타나지 않는다")
-    void aliasesNeverAppearInRenderedOutput(@TempDir Path dataDir, @TempDir Path artA, @TempDir Path artB) {
-        NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create(), FIXED);
+    void aliasesNeverAppearInRenderedOutput(@TempDir Path artA, @TempDir Path artB) {
         OffsetDateTime now = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
                 new Sourced<>("예가체프 G1 워시드", Source.USER),
@@ -356,9 +403,9 @@ class ThymeleafNoteRendererTest {
         Aliases aliases = new Aliases(
                 List.of("yirgacheffe-ALIAS-LEAK", "이르가체프이표기마커"),
                 List.of("coffeevera-ALIAS-LEAK"));
-        // 신규 slug → 별칭이 노트 초기 별칭으로 심긴다(upsertEntry 4-arg, ADR-37).
-        Note saved = repo.upsertEntry("2026-07-10", meta,
-                entry(LocalDate.parse("2026-07-10"), "새콤하다.", Rating.GOOD, null, now), aliases);
+        Note saved = noteOf(1, meta, aliases,
+                entry(LocalDate.parse("2026-07-10"), "새콤하다.", Rating.GOOD, null, now));
+        NoteRepository repo = new InMemoryNoteRepository().put(saved);
         // 가드 유효성 전제: 별칭이 실제로 노트에 심겼다(빈 별칭이면 가드가 무의미해진다).
         assertFalse(saved.aliases().coffeeName().isEmpty(), "별칭이 노트에 심겼다(가드 유효성 전제)");
 
@@ -369,7 +416,7 @@ class ThymeleafNoteRendererTest {
             FakeCardImageRenderer cards = new FakeCardImageRenderer();
             new ThymeleafNoteRenderer(repo, engine, artifactDir, theme, cards).renderAll();
 
-            String cardHtml = capturedHtml(cards, "cards/2026-07-10/2026-07-10-taste-1.jpg");
+            String cardHtml = capturedHtml(cards, "cards/" + N1 + "/2026-07-10-taste-1.jpg");
             for (String marker : markers) {
                 assertFalse(cardHtml.contains(marker), theme + " 카드에 별칭 미출현(V-13): " + marker);
             }
@@ -379,53 +426,52 @@ class ThymeleafNoteRendererTest {
     }
 
     @Test
-    @DisplayName("AC-Δ3(changes/0014): data/photos/를 통째로 옮겨둬도 renderAll 산출(카드)이 동일하다 — 리렌더 입력은 JSON뿐")
+    @DisplayName("AC-Δ3(changes/0014): data/photos/를 통째로 옮겨둬도 renderAll 산출(카드)이 동일하다 — 리렌더 입력은 저장소뿐")
     void renderAllIsIndependentOfPhotosDirectory(
             @TempDir Path dataDir, @TempDir Path withPhotosDir, @TempDir Path withoutPhotosDir) throws IOException {
-        NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create(), FIXED);
         OffsetDateTime now = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
                 new Sourced<>("예가체프 G1 워시드", Source.USER),
                 new Sourced<>("커피베라", Source.USER), List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), null)),
                 null, new Sourced<>(List.of(), Source.SEARCH), List.of());
         // 엔트리 + 실제 사진 파일을 data/photos/에 둔다 — 사진은 노트가 아닌 폴더에만 존재(리렌더 입력 후보로서의 파일 존재를 재현).
-        repo.upsertEntry("2026-07-10", meta,
-                entry(LocalDate.parse("2026-07-10"), "새콤하다.", Rating.GOOD, null, now), Aliases.empty());
-        Path photosDir = dataDir.resolve("photos/2026-07-10/2026-07-10");
+        NoteRepository repo = new InMemoryNoteRepository().put(noteOf(1, meta, Aliases.empty(),
+                entry(LocalDate.parse("2026-07-10"), "새콤하다.", Rating.GOOD, null, now)));
+        Path photosDir = dataDir.resolve("photos/" + N1 + "/2026-07-10");
         Files.createDirectories(photosDir);
         Files.write(photosDir.resolve("a.jpg"), new byte[]{1, 2, 3});
 
         // (1) 사진 폴더가 있는 상태로 렌더.
         FakeCardImageRenderer cardsWith = new FakeCardImageRenderer();
         new ThymeleafNoteRenderer(repo, engine, withPhotosDir, Theme.TYPE_B, cardsWith).renderAll();
-        String cardWith = capturedHtml(cardsWith, "cards/2026-07-10/2026-07-10-taste-1.jpg");
+        String cardWith = capturedHtml(cardsWith, "cards/" + N1 + "/2026-07-10-taste-1.jpg");
 
         // data/photos/를 통째로 옮겨둔다(삭제로 갈음) — 리렌더 입력에서 사진이 사라진 상태.
         deleteRecursively(dataDir.resolve("photos"));
         assertFalse(Files.exists(dataDir.resolve("photos")), "photos/ 옮겨둠");
 
-        // (2) 사진 폴더가 없는 상태로 재렌더 — JSON만으로 카드가 생성돼야 한다(NFR-3, AC-6).
+        // (2) 사진 폴더가 없는 상태로 재렌더 — 저장소만으로 카드가 생성돼야 한다(NFR-3, AC-6).
         FakeCardImageRenderer cardsWithout = new FakeCardImageRenderer();
         new ThymeleafNoteRenderer(repo, engine, withoutPhotosDir, Theme.TYPE_B, cardsWithout).renderAll();
-        assertTrue(Files.isRegularFile(withoutPhotosDir.resolve("cards/2026-07-10/2026-07-10-taste-1.jpg")),
+        assertTrue(Files.isRegularFile(withoutPhotosDir.resolve("cards/" + N1 + "/2026-07-10-taste-1.jpg")),
                 "사진 없이도 카드 생성");
-        String cardWithout = capturedHtml(cardsWithout, "cards/2026-07-10/2026-07-10-taste-1.jpg");
+        String cardWithout = capturedHtml(cardsWithout, "cards/" + N1 + "/2026-07-10-taste-1.jpg");
 
-        // 산출 동일 — 렌더는 JSON만 읽고 data/photos/ 존재 여부에 의존하지 않는다(AC-Δ3).
+        // 산출 동일 — 렌더는 저장소만 읽고 data/photos/ 존재 여부에 의존하지 않는다(AC-Δ3).
         assertEquals(cardWith, cardWithout, "카드 HTML이 사진 폴더 유무와 무관하게 동일");
         assertEquals(cardFiles(withPhotosDir), cardFiles(withoutPhotosDir), "카드 파일 집합 동일");
     }
 
     @Test
-    @DisplayName("AC-Δ7/AC-6(개정형): artifact/ 삭제 후 재렌더하면 JSON만으로 전체 회차 카드가 동일하게 복원된다")
-    void reRenderIsReproducible(@TempDir Path dataDir, @TempDir Path artifactDir) {
-        NoteRepository repo = seedRepository(dataDir);
+    @DisplayName("AC-Δ7/AC-6(개정형): artifact/ 삭제 후 재렌더하면 저장소만으로 전체 회차 카드가 동일하게 복원된다")
+    void reRenderIsReproducible(@TempDir Path artifactDir) {
+        NoteRepository repo = seedRepository();
 
         FakeCardImageRenderer cards1 = new FakeCardImageRenderer();
         ThymeleafNoteRenderer renderer1 = new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_A, cards1);
         renderer1.renderAll();
         java.util.Set<String> cardFilesFirst = cardFiles(artifactDir);
-        String cardFirst = capturedHtml(cards1, "cards/2026-07-10/2026-07-10-taste-1.jpg");
+        String cardFirst = capturedHtml(cards1, "cards/" + N1 + "/2026-07-10-taste-1.jpg");
 
         deleteRecursively(artifactDir);
         assertFalse(Files.exists(artifactDir.resolve("cards")), "artifact/ 비워짐");
@@ -433,20 +479,20 @@ class ThymeleafNoteRendererTest {
         FakeCardImageRenderer cards2 = new FakeCardImageRenderer();
         new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_A, cards2).renderAll();
         assertEquals(cardFilesFirst, cardFiles(artifactDir), "카드 파일 집합 재현성");
-        assertEquals(cardFirst, capturedHtml(cards2, "cards/2026-07-10/2026-07-10-taste-1.jpg"), "카드 HTML 재현성");
+        assertEquals(cardFirst, capturedHtml(cards2, "cards/" + N1 + "/2026-07-10-taste-1.jpg"), "카드 HTML 재현성");
         assertEquals(cards1.calls.size(), cards2.calls.size(), "카드 굽기 횟수 재현성");
     }
 
     @Test
     @DisplayName("AC-Δ7(증분)/AC-67: renderEntryCard는 대상 엔트리 카드만 새로 굽고 경로 목록을 반환하며 index.html을 만들지 않는다")
-    void renderEntryCardBakesEntryCardsAndReturnsPaths(@TempDir Path dataDir, @TempDir Path artifactDir) {
-        NoteRepository repo = seedRepository(dataDir);
+    void renderEntryCardBakesEntryCardsAndReturnsPaths(@TempDir Path artifactDir) {
+        NoteRepository repo = seedRepository();
         FakeCardImageRenderer cards = new FakeCardImageRenderer();
         ThymeleafNoteRenderer renderer = new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_B, cards);
 
-        List<Path> baked = renderer.renderEntryCard("2026-07-10", LocalDate.parse("2026-07-10"));
+        List<Path> baked = renderer.renderEntryCard(1, LocalDate.parse("2026-07-10"));
 
-        assertEquals(List.of(artifactDir.resolve("cards/2026-07-10/2026-07-10-taste-1.jpg")), baked,
+        assertEquals(List.of(artifactDir.resolve("cards/" + N1 + "/2026-07-10-taste-1.jpg")), baked,
                 "반환 목록 = 그 엔트리 회차 카드(감상 회차 1개 → 1장)");
         assertTrue(Files.isRegularFile(baked.getFirst()), "카드 JPG 존재");
         assertEquals(1, cards.calls.size(), "증분: 대상 엔트리 카드만 굽는다(전체 재래스터화 없음)");
@@ -457,15 +503,15 @@ class ThymeleafNoteRendererTest {
 
     @Test
     @DisplayName("ADR-54: mocha.artifact.theme(type-a/type-b)로 카드 디자인이 갈린다")
-    void themeSelectsCardDesign(@TempDir Path dataDir, @TempDir Path artifactA, @TempDir Path artifactB) {
-        NoteRepository repo = seedRepository(dataDir);
+    void themeSelectsCardDesign(@TempDir Path artifactA, @TempDir Path artifactB) {
+        NoteRepository repo = seedRepository();
         FakeCardImageRenderer cardsA = new FakeCardImageRenderer();
         FakeCardImageRenderer cardsB = new FakeCardImageRenderer();
         new ThymeleafNoteRenderer(repo, engine, artifactA, Theme.TYPE_A, cardsA).renderAll();
         new ThymeleafNoteRenderer(repo, engine, artifactB, Theme.TYPE_B, cardsB).renderAll();
 
-        String serifCard = capturedHtml(cardsA, "cards/2026-07-10/2026-07-10-taste-1.jpg");
-        String cuteCard = capturedHtml(cardsB, "cards/2026-07-10/2026-07-10-taste-1.jpg");
+        String serifCard = capturedHtml(cardsA, "cards/" + N1 + "/2026-07-10-taste-1.jpg");
+        String cuteCard = capturedHtml(cardsB, "cards/" + N1 + "/2026-07-10-taste-1.jpg");
         assertTrue(serifCard.contains("Gowun Batang") && serifCard.contains("COFFEE NOTE"), "type-a=세리프");
         assertTrue(cuteCard.contains("Gowun Dodum") && cuteCard.contains("mascot-face.png"), "type-b=귀여운(마스코트)");
         // 공통: 두 테마 모두 4:5 + 감상 영역, 이모티콘 없는 rating 뱃지(ADR-54 편차①).
@@ -477,8 +523,7 @@ class ThymeleafNoteRendererTest {
     // --- 레시피 카드(회차 파트) 생성 분기 ---
 
     // recipe·coffeeName만 갈아끼우는 단일 엔트리(회차 1개: 감상+recipe) 노트 seed. 나머지 메타는 고정.
-    private NoteRepository seedWithRecipe(Path dataDir, Sourced<String> coffeeName, Recipe recipe) {
-        NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create(), FIXED);
+    private NoteRepository seedWithRecipe(Sourced<String> coffeeName, Recipe recipe) {
         OffsetDateTime now = OffsetDateTime.parse("2026-07-10T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
                 coffeeName,
@@ -486,9 +531,8 @@ class ThymeleafNoteRendererTest {
                 List.of(new Bean(new Sourced<>("에티오피아 예가체프", Source.SEARCH), new Sourced<>("워시드", Source.USER))),
                 new Sourced<>("라이트", Source.SEARCH),
                 new Sourced<>(List.of("자몽", "홍차"), Source.SEARCH), List.of());
-        repo.upsertEntry("2026-07-10", meta,
-                entry(LocalDate.parse("2026-07-10"), "새콤하다.", Rating.GOOD, recipe, now), Aliases.empty());
-        return repo;
+        return new InMemoryNoteRepository().put(noteOf(1, meta, Aliases.empty(),
+                entry(LocalDate.parse("2026-07-10"), "새콤하다.", Rating.GOOD, recipe, now)));
     }
 
     private FakeCardImageRenderer renderAllWith(NoteRepository repo, Theme theme, Path artifactDir) {
@@ -499,37 +543,37 @@ class ThymeleafNoteRendererTest {
 
     @Test
     @DisplayName("ADR-54·59: recipe 있는 회차는 두 테마 모두 레시피 카드가 별도로 구워지고 수치가 렌더된다")
-    void recipeBrewBakesRecipeCard(@TempDir Path dataDir, @TempDir Path artA, @TempDir Path artB) {
+    void recipeBrewBakesRecipeCard(@TempDir Path artA, @TempDir Path artB) {
         Recipe recipe = new Recipe(null, 15.0, 240.0, null, null, null, "중간", null, null, null);
         for (Theme theme : new Theme[]{Theme.TYPE_A, Theme.TYPE_B}) {
-            NoteRepository repo = seedWithRecipe(dataDir, new Sourced<>("예가체프 G1 워시드", Source.USER), recipe);
+            NoteRepository repo = seedWithRecipe(new Sourced<>("예가체프 G1 워시드", Source.USER), recipe);
             Path artifactDir = theme == Theme.TYPE_A ? artA : artB;
             FakeCardImageRenderer cards = renderAllWith(repo, theme, artifactDir);
 
-            assertTrue(Files.isRegularFile(artifactDir.resolve("cards/2026-07-10/2026-07-10-recipe-1.jpg")),
+            assertTrue(Files.isRegularFile(artifactDir.resolve("cards/" + N1 + "/2026-07-10-recipe-1.jpg")),
                     theme + ": 레시피 카드 별도 산출");
-            String recipeCard = capturedHtml(cards, "cards/2026-07-10/2026-07-10-recipe-1.jpg");
+            String recipeCard = capturedHtml(cards, "cards/" + N1 + "/2026-07-10-recipe-1.jpg");
             assertTrue(recipeCard.contains("15g"), theme + ": 원두 15g(소수점 없이)");
             assertTrue(recipeCard.contains("240ml"), theme + ": 물 240ml");
             assertTrue(recipeCard.contains("중간"), theme + ": 분쇄도 중간");
             assertTrue(recipeCard.contains("1080px") && recipeCard.contains("1350px"), theme + ": 레시피 카드도 4:5");
             // 감상 카드에는 레시피 영역이 없다 — 레시피는 레시피 카드로 완전 이관(ADR-54).
-            String tasteCard = capturedHtml(cards, "cards/2026-07-10/2026-07-10-taste-1.jpg");
+            String tasteCard = capturedHtml(cards, "cards/" + N1 + "/2026-07-10-taste-1.jpg");
             assertFalse(tasteCard.contains("240ml"), theme + ": 감상 카드에 레시피 수치 없음");
         }
     }
 
     @Test
     @DisplayName("changes/0025 리뷰 후속: 반올림 0초 timeSec은 두 테마 모두 시간 타일·행이 생략된다('총 null' 누수 차단)")
-    void recipeCardOmitsUnrenderableTime(@TempDir Path dataDir, @TempDir Path artA, @TempDir Path artB) {
+    void recipeCardOmitsUnrenderableTime(@TempDir Path artA, @TempDir Path artB) {
         // 0.3초는 V-8(양수 유한)을 통과해 저장까지 오지만 amt.time이 null — 템플릿 가드가 표기 결과 기준이어야 한다.
         Recipe recipe = new Recipe(null, 15.0, 240.0, null, 0.3, null, null, null, "뜸 40ml 30초 → 200ml", null);
         for (Theme theme : new Theme[]{Theme.TYPE_A, Theme.TYPE_B}) {
-            NoteRepository repo = seedWithRecipe(dataDir, new Sourced<>("예가체프 G1 워시드", Source.USER), recipe);
+            NoteRepository repo = seedWithRecipe(new Sourced<>("예가체프 G1 워시드", Source.USER), recipe);
             Path artifactDir = theme == Theme.TYPE_A ? artA : artB;
             FakeCardImageRenderer cards = renderAllWith(repo, theme, artifactDir);
 
-            String recipeCard = capturedHtml(cards, "cards/2026-07-10/2026-07-10-recipe-1.jpg");
+            String recipeCard = capturedHtml(cards, "cards/" + N1 + "/2026-07-10-recipe-1.jpg");
             assertTrue(recipeCard.contains("뜸 40ml 30초"), theme + ": 푸어링 행은 유지");
             assertFalse(recipeCard.contains("총 null"), theme + ": null 문자열 병기 누수 없음");
             assertFalse(recipeCard.contains("추출 시간"), theme + ": 표기 불가 시간의 타일·행 생략");
@@ -538,15 +582,15 @@ class ThymeleafNoteRendererTest {
 
     @Test
     @DisplayName("AC-78: recipe가 null인 회차는 레시피 카드가 생성되지 않는다(감상 카드만)")
-    void recipeCardOmittedWhenRecipeAbsent(@TempDir Path dataDir, @TempDir Path artA, @TempDir Path artB) {
+    void recipeCardOmittedWhenRecipeAbsent(@TempDir Path artA, @TempDir Path artB) {
         for (Theme theme : new Theme[]{Theme.TYPE_A, Theme.TYPE_B}) {
-            NoteRepository repo = seedWithRecipe(dataDir, new Sourced<>("예가체프 G1 워시드", Source.USER), null);
+            NoteRepository repo = seedWithRecipe(new Sourced<>("예가체프 G1 워시드", Source.USER), null);
             Path artifactDir = theme == Theme.TYPE_A ? artA : artB;
             FakeCardImageRenderer cards = renderAllWith(repo, theme, artifactDir);
 
-            assertTrue(Files.isRegularFile(artifactDir.resolve("cards/2026-07-10/2026-07-10-taste-1.jpg")),
+            assertTrue(Files.isRegularFile(artifactDir.resolve("cards/" + N1 + "/2026-07-10-taste-1.jpg")),
                     theme + ": 감상 카드는 산출");
-            assertFalse(Files.exists(artifactDir.resolve("cards/2026-07-10/2026-07-10-recipe-1.jpg")),
+            assertFalse(Files.exists(artifactDir.resolve("cards/" + N1 + "/2026-07-10-recipe-1.jpg")),
                     theme + ": 레시피 없는 회차의 레시피 카드 미생성");
             assertEquals(1, cards.calls.size(), theme + ": 굽기 호출도 1회뿐");
         }
@@ -554,14 +598,14 @@ class ThymeleafNoteRendererTest {
 
     @Test
     @DisplayName("FR-7: recipe가 일부만 있으면(원두만) 레시피 카드에 있는 항목만 표시한다")
-    void recipeCardRendersOnlyPresentItems(@TempDir Path dataDir, @TempDir Path artA, @TempDir Path artB) {
+    void recipeCardRendersOnlyPresentItems(@TempDir Path artA, @TempDir Path artB) {
         Recipe partial = Recipe.normalize(new Recipe(null, 15.0, null, null, null, null, null, null, null, null)); // 원두만
         for (Theme theme : new Theme[]{Theme.TYPE_A, Theme.TYPE_B}) {
-            NoteRepository repo = seedWithRecipe(dataDir, new Sourced<>("예가체프 G1 워시드", Source.USER), partial);
+            NoteRepository repo = seedWithRecipe(new Sourced<>("예가체프 G1 워시드", Source.USER), partial);
             Path artifactDir = theme == Theme.TYPE_A ? artA : artB;
             FakeCardImageRenderer cards = renderAllWith(repo, theme, artifactDir);
 
-            String recipeCard = capturedHtml(cards, "cards/2026-07-10/2026-07-10-recipe-1.jpg");
+            String recipeCard = capturedHtml(cards, "cards/" + N1 + "/2026-07-10-recipe-1.jpg");
             assertTrue(recipeCard.contains("15g"), theme + ": 원두 표시");
             assertFalse(recipeCard.contains("240ml"), theme + ": 물 항목 미출력");
         }
@@ -569,12 +613,12 @@ class ThymeleafNoteRendererTest {
 
     @Test
     @DisplayName("NoteView.TasteCard: coffeeName source가 photo여도 카드 제목은 값만 쓰고 (사진) 표기를 달지 않는다")
-    void cardTitleHasNoPhotoTag(@TempDir Path dataDir, @TempDir Path artA, @TempDir Path artB) {
+    void cardTitleHasNoPhotoTag(@TempDir Path artA, @TempDir Path artB) {
         for (Theme theme : new Theme[]{Theme.TYPE_A, Theme.TYPE_B}) {
-            NoteRepository repo = seedWithRecipe(dataDir, new Sourced<>("게이샤 내추럴", Source.PHOTO), null);
+            NoteRepository repo = seedWithRecipe(new Sourced<>("게이샤 내추럴", Source.PHOTO), null);
             Path artifactDir = theme == Theme.TYPE_A ? artA : artB;
             FakeCardImageRenderer cards = renderAllWith(repo, theme, artifactDir);
-            String card = capturedHtml(cards, "cards/2026-07-10/2026-07-10-taste-1.jpg");
+            String card = capturedHtml(cards, "cards/1-커피베라-게이샤-내추럴/2026-07-10-taste-1.jpg");
             assertTrue(card.contains("게이샤 내추럴"), theme + ": 제목에 커피명 값");
             assertFalse(card.contains("(사진)"), theme + ": 제목=정체성 → (사진) 무표기");
         }
@@ -582,89 +626,97 @@ class ThymeleafNoteRendererTest {
 
     // --- removeEntryCard + renderAll 고아 카드 정리(AC-39·AC-Δ7) ---
 
-    // 원본 노트의 단일 엔트리를 replacement로 바꾼 edit draft(엔트리 1건) — applyEdit 입력.
+    // 감상 회차 1개짜리 엔트리 1건 노트 — 정렬·고아 정리 픽스처.
+    private static Note oneTasteNote(long id, String coffeeName, String roastery, LocalDate date) {
+        NoteMeta meta = new NoteMeta(
+                new Sourced<>(coffeeName, Source.USER), new Sourced<>(roastery, Source.USER),
+                List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), null)),
+                null, new Sourced<>(List.of(), Source.SEARCH), List.of());
+        return noteOf(id, meta, Aliases.empty(), entry(date, "새콤하다.", Rating.GOOD, null, SAVED_AT));
+    }
+
+    // 원본 노트의 단일 엔트리를 replacement로 바꾼 노트 — 수정 커밋 결과의 대역.
     private static Note withOnlyEntry(Note origin, Entry replacement) {
-        return new Note(origin.slug(), origin.coffeeName(), origin.roastery(), origin.beans(),
+        return new Note(origin.id(), origin.coffeeName(), origin.roastery(), origin.beans(),
                 origin.roastLevel(), origin.officialNotes(), origin.sources(),
                 List.of(replacement), origin.createdAt(), origin.updatedAt());
     }
 
-    private static Note moveDateDraft(Note origin, LocalDate newDate) {
+    private static Note movedDate(Note origin, LocalDate newDate) {
         Entry e = origin.entries().get(0);
         return withOnlyEntry(origin, new Entry(newDate, e.brews(), e.updatedAt()));
     }
 
     @Test
     @DisplayName("AC-39: 날짜 이동 커밋 후 옛 카드 삭제→새 카드 증분 렌더 → 옛 날짜 카드 부재·새 카드 존재")
-    void dateMoveCleansOldCards(@TempDir Path dataDir, @TempDir Path artifactDir) {
-        NoteRepository repo = seedRepository(dataDir);
+    void dateMoveCleansOldCards(@TempDir Path artifactDir) {
+        InMemoryNoteRepository repo = seedRepository();
         ThymeleafNoteRenderer renderer =
                 new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_B, new FakeCardImageRenderer());
         renderer.renderAll();
-        assertTrue(Files.isRegularFile(artifactDir.resolve("cards/2026-07-10/2026-07-10-taste-1.jpg")), "이동 전 카드 존재");
+        assertTrue(Files.isRegularFile(artifactDir.resolve("cards/" + N1 + "/2026-07-10-taste-1.jpg")), "이동 전 카드 존재");
 
         // edit 커밋(07-10 → 07-11) 후 파생물 정리 순서: 옛 카드 삭제 → 새 카드 증분 렌더.
-        Note origin = repo.findBySlug("2026-07-10").orElseThrow();
-        repo.applyEdit("2026-07-10", LocalDate.parse("2026-07-10"), moveDateDraft(origin, LocalDate.parse("2026-07-11")));
-        renderer.removeEntryCard("2026-07-10", LocalDate.parse("2026-07-10"));
-        renderer.renderEntryCard("2026-07-10", LocalDate.parse("2026-07-11"));
+        repo.put(movedDate(repo.findById(1).orElseThrow(), LocalDate.parse("2026-07-11")));
+        renderer.removeEntryCard(1, LocalDate.parse("2026-07-10"));
+        renderer.renderEntryCard(1, LocalDate.parse("2026-07-11"));
 
-        assertFalse(Files.exists(artifactDir.resolve("cards/2026-07-10/2026-07-10-taste-1.jpg")), "옛 date 카드 부재");
-        assertTrue(Files.isRegularFile(artifactDir.resolve("cards/2026-07-10/2026-07-11-taste-1.jpg")), "새 date 카드 존재");
-        assertTrue(Files.isRegularFile(artifactDir.resolve("cards/2026-07-04/2026-07-04-taste-1.jpg")), "다른 엔트리 카드는 유지");
+        assertFalse(Files.exists(artifactDir.resolve("cards/" + N1 + "/2026-07-10-taste-1.jpg")), "옛 date 카드 부재");
+        assertTrue(Files.isRegularFile(artifactDir.resolve("cards/" + N1 + "/2026-07-11-taste-1.jpg")), "새 date 카드 존재");
+        assertTrue(Files.isRegularFile(artifactDir.resolve("cards/" + N2 + "/2026-07-04-taste-1.jpg")), "다른 노트 카드는 유지");
     }
 
     @Test
     @DisplayName("AC-39(회차화): removeEntryCard는 그 엔트리의 회차 카드 전부를 삭제한다")
-    void removeEntryCardDeletesAllBrewCardsOfEntry(@TempDir Path dataDir, @TempDir Path artifactDir) {
-        NoteRepository repo = new JsonFileNoteRepository(dataDir, MochaObjectMapper.create(), FIXED);
+    void removeEntryCardDeletesAllBrewCardsOfEntry(@TempDir Path artifactDir) {
         OffsetDateTime now = OffsetDateTime.parse("2026-07-18T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
                 new Sourced<>("레인보우 블렌드", Source.USER), new Sourced<>("커피가게 동경", Source.USER),
                 List.of(new Bean(new Sourced<>("에티오피아", Source.USER), null)),
                 null, new Sourced<>(List.of(), Source.SEARCH), List.of());
         LocalDate date = LocalDate.parse("2026-07-18");
-        repo.upsertEntry("rainbow", meta, twoBrewEntry(date, now), Aliases.empty());
+        NoteRepository repo = new InMemoryNoteRepository()
+                .put(noteOf(3, meta, Aliases.empty(), twoBrewEntry(date, now)));
 
         ThymeleafNoteRenderer renderer =
                 new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_A, new FakeCardImageRenderer());
-        List<Path> baked = renderer.renderEntryCard("rainbow", date);
+        List<Path> baked = renderer.renderEntryCard(3, date);
         assertEquals(4, baked.size(), "회차 2개 → 4장(전제)");
 
-        renderer.removeEntryCard("rainbow", date);
+        renderer.removeEntryCard(3, date);
 
         baked.forEach(p -> assertFalse(Files.exists(p), "회차 카드 전부 삭제: " + p));
     }
 
     @Test
-    @DisplayName("removeEntryCard: 대상 카드 파일이 없어도 예외 없이 지나간다(멱등)")
-    void removeEntryCardIsHarmlessWhenAbsent(@TempDir Path dataDir, @TempDir Path artifactDir) {
+    @DisplayName("removeEntryCard: 대상 카드 파일이 없어도, 노트가 이미 사라졌어도 예외 없이 지나간다(멱등)")
+    void removeEntryCardIsHarmlessWhenAbsent(@TempDir Path artifactDir) {
         ThymeleafNoteRenderer renderer = new ThymeleafNoteRenderer(
-                seedRepository(dataDir), engine, artifactDir, Theme.TYPE_B, new FakeCardImageRenderer());
-        // 산출 전(cards/ 자체가 없음)에도, 같은 호출을 반복해도 무해해야 한다.
-        renderer.removeEntryCard("2026-07-10", LocalDate.parse("2026-07-10"));
-        renderer.removeEntryCard("2026-07-10", LocalDate.parse("2026-07-10"));
-        assertFalse(Files.exists(artifactDir.resolve("cards/2026-07-10/2026-07-10-taste-1.jpg")));
+                seedRepository(), engine, artifactDir, Theme.TYPE_B, new FakeCardImageRenderer());
+        // 산출 전(cards/ 자체가 없음)에도, 같은 호출을 반복해도, 미존재 노트여도 무해해야 한다.
+        renderer.removeEntryCard(1, LocalDate.parse("2026-07-10"));
+        renderer.removeEntryCard(1, LocalDate.parse("2026-07-10"));
+        renderer.removeEntryCard(999, LocalDate.parse("2026-07-10"));
+        assertFalse(Files.exists(artifactDir.resolve("cards/" + N1 + "/2026-07-10-taste-1.jpg")));
     }
 
     @Test
     @DisplayName("AC-Δ7: 옛 카드 삭제 실패로 남은 고아 카드는 renderAll이 정리해 산출이 신규 렌더와 동일해진다")
-    void renderAllPrunesOrphanCardsForReproducibility(@TempDir Path dataDir, @TempDir Path artifactDir, @TempDir Path freshDir) {
-        NoteRepository repo = seedRepository(dataDir);
+    void renderAllPrunesOrphanCardsForReproducibility(@TempDir Path artifactDir, @TempDir Path freshDir) {
+        InMemoryNoteRepository repo = seedRepository();
         ThymeleafNoteRenderer renderer =
                 new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_B, new FakeCardImageRenderer());
         renderer.renderAll();
 
         // 날짜 이동 커밋 후 removeEntryCard가 실패했다고 치자 — 옛 카드가 고아로 남는다(plan §7 실패 모드).
-        Note origin = repo.findBySlug("2026-07-10").orElseThrow();
-        repo.applyEdit("2026-07-10", LocalDate.parse("2026-07-10"), moveDateDraft(origin, LocalDate.parse("2026-07-11")));
-        renderer.renderEntryCard("2026-07-10", LocalDate.parse("2026-07-11"));
-        assertTrue(Files.isRegularFile(artifactDir.resolve("cards/2026-07-10/2026-07-10-taste-1.jpg")), "고아 카드가 남아 있다");
+        repo.put(movedDate(repo.findById(1).orElseThrow(), LocalDate.parse("2026-07-11")));
+        renderer.renderEntryCard(1, LocalDate.parse("2026-07-11"));
+        assertTrue(Files.isRegularFile(artifactDir.resolve("cards/" + N1 + "/2026-07-10-taste-1.jpg")), "고아 카드가 남아 있다");
 
         renderer.renderAll(); // --rerender
 
-        assertFalse(Files.exists(artifactDir.resolve("cards/2026-07-10/2026-07-10-taste-1.jpg")), "renderAll이 고아 카드를 정리(plan §7)");
-        // 재현 동일성(AC-Δ7): 같은 JSON을 빈 디렉토리에 새로 렌더한 산출과 카드 집합이 동일하다.
+        assertFalse(Files.exists(artifactDir.resolve("cards/" + N1 + "/2026-07-10-taste-1.jpg")), "renderAll이 고아 카드를 정리(plan §7)");
+        // 재현 동일성(AC-Δ7): 같은 저장소를 빈 디렉토리에 새로 렌더한 산출과 카드 집합이 동일하다.
         new ThymeleafNoteRenderer(repo, engine, freshDir, Theme.TYPE_B, new FakeCardImageRenderer()).renderAll();
         assertEquals(cardFiles(freshDir), cardFiles(artifactDir), "카드 파일 집합 동일");
     }
@@ -714,6 +766,40 @@ class ThymeleafNoteRendererTest {
             });
         } catch (IOException e) {
             throw new UncheckedIOException(e);
+        }
+    }
+
+    /**
+     * 렌더러 입력 전용 저장소 fake — 렌더 검증의 입력은 "조회 결과"이고 저장 정책(ADR-4·59, V-9·V-10)은
+     * 검증 대상이 아니다. 픽스처는 {@link #put}으로 완성된 노트를 직접 심는다.
+     */
+    private static final class InMemoryNoteRepository implements NoteRepository {
+        private final Map<Long, Note> notes = new LinkedHashMap<>();
+
+        InMemoryNoteRepository put(Note note) {
+            notes.put(note.id(), note);
+            return this;
+        }
+
+        @Override
+        public List<Note> findAll() {
+            // 저장소 계약 = id 오름차순(결정적 순서). 삽입 순서로 돌려주면 렌더러 정렬 검증이 무의미해진다.
+            return notes.values().stream().sorted(Comparator.comparing(Note::id)).toList();
+        }
+
+        @Override
+        public Optional<Note> findById(long id) {
+            return Optional.ofNullable(notes.get(id));
+        }
+
+        @Override
+        public Note upsertEntry(Long noteId, NoteMeta meta, Entry entry, Aliases aliases) {
+            throw new UnsupportedOperationException("렌더 검증은 저장 경로를 지나지 않는다 — 픽스처는 put으로 심는다");
+        }
+
+        @Override
+        public Note applyEdit(long noteId, LocalDate targetDate, Note draft) {
+            throw new UnsupportedOperationException("렌더 검증은 저장 경로를 지나지 않는다 — 픽스처는 put으로 심는다");
         }
     }
 }

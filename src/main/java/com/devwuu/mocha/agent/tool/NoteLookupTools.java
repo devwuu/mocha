@@ -167,13 +167,10 @@ class NoteLookupTools {
         // POLICY: 검색 응답은 새 파생물을 최소화한다 — 그 엔트리의 회차 카드 전부가 이미 있으면 재사용,
         //         하나라도 없으면 그 엔트리만 증분 렌더 (ref: specs/coffee-note-agent/data-model.md#3.5,
         //         구 ADR-25 정신 승계, changes/0021 ADR-59 회차화).
-        // 카드 폴더 인자는 TΔ6c가 TΔ7 생성기(<id>-<로스터리>-<커피명>)로 갈아끼운다 — 그때까지는 id만으로
-        // 조립한 임시 값이다. 경로 조립 규칙 자체는 CardFiles가 계속 단일 소유한다.
-        String noteFolder = String.valueOf(note.get().id());
-        List<Path> cards = CardFiles.expectedCards(artifactDir, noteFolder, entry.get());
+        List<Path> cards = CardFiles.expectedCards(artifactDir, note.get(), entry.get());
         boolean reused = !cards.isEmpty() && cards.stream().allMatch(Files::exists);
         if (!reused) {
-            cards = noteRenderer.renderEntryCard(noteFolder, date);
+            cards = noteRenderer.renderEntryCard(note.get().id(), date);
         }
         // 회차 카드 전부를 순서대로 재전송한다(FR-20, changes/0021 TΔ5b). 일부만 실패하면 성공분은 배달하고
         // 실패분을 결과에 명시한다(부분 폴백 — plan §7, tool 결과는 실제 처리 결과를 명시(FR-22)).

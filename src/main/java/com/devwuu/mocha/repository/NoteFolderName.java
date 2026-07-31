@@ -1,5 +1,8 @@
 package com.devwuu.mocha.repository;
 
+import com.devwuu.mocha.domain.Note;
+import com.devwuu.mocha.domain.Sourced;
+
 import java.text.Normalizer;
 import java.util.regex.Pattern;
 
@@ -49,6 +52,23 @@ public final class NoteFolderName {
         appendSegment(name, roastery);
         appendSegment(name, coffeeName);
         return truncate(name.toString());
+    }
+
+    /**
+     * 저장된 노트의 폴더 접미 — 표시값에서 인자를 꺼내는 규칙까지 여기 한곳이 소유한다.
+     *
+     * <p>호출부가 {@code Sourced}를 각자 풀어 쓰면 "무엇을 세그먼트로 쓰는가"가 카드·사진으로 갈린다
+     * (TΔ6c에서 {@code CardFiles}가 이 오버로드로 수렴했다).
+     *
+     * @throws IllegalArgumentException 저장 전 노트({@code id == null}, D-1)일 때 — 접미의 식별 보장이 곧
+     *                                  앞의 id라 대체할 값이 없다.
+     */
+    public static String of(Note note) {
+        if (note.id() == null) {
+            throw new IllegalArgumentException(
+                    "저장 전 노트는 폴더 접미를 가질 수 없다 — id는 INSERT가 발급한다(D-1)");
+        }
+        return of(note.id(), Sourced.valueOrNull(note.roastery()), Sourced.valueOrNull(note.coffeeName()));
     }
 
     private static void appendSegment(StringBuilder name, String raw) {

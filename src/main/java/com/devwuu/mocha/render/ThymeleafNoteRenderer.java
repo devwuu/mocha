@@ -32,13 +32,13 @@ import java.util.stream.Stream;
  * 파이프라인 [6] — Thymeleaf를 오프라인 실행해 JSON 원본을 회차 카드 JPG로 굽는다
  * (ref: plan.md §1 [6], ADR-1, ADR-7, ADR-10, ADR-54·59; changes/0021 TΔ5a).
  * <ul>
- *   <li>{@code artifact/cards/<slug>/<date>-taste-<n>.jpg} — 회차 n의 감상 카드(tasting 있는 회차만, AC-78).
+ *   <li>{@code artifact/cards/<접미>/<date>-taste-<n>.jpg} — 회차 n의 감상 카드(tasting 있는 회차만, AC-78).
  *       {@code templates/<theme>/taste.html}을 회차 파트 1건으로 렌더한 뒤
  *       {@link CardImageRenderer}(헤드리스 Chromium)로 래스터화한다(ADR-10/ADR-11).</li>
- *   <li>{@code artifact/cards/<slug>/<date>-recipe-<n>.jpg} — 회차 n의 레시피 카드(recipe 있는 회차만, AC-78).</li>
+ *   <li>{@code artifact/cards/<접미>/<date>-recipe-<n>.jpg} — 회차 n의 레시피 카드(recipe 있는 회차만, AC-78).</li>
  *   <li>{@code artifact/mascot-face.png}·{@code artifact/fonts/*.ttf} — 카드가 참조하는 로컬 자산(ADR-11).</li>
  * </ul>
- * <p>POLICY: 렌더 산출물은 cards/&lt;slug&gt;/&lt;date&gt;-taste-&lt;n&gt;.jpg·&lt;date&gt;-recipe-&lt;n&gt;.jpg뿐 —
+ * <p>POLICY: 렌더 산출물은 cards/&lt;접미&gt;/&lt;date&gt;-taste-&lt;n&gt;.jpg·&lt;date&gt;-recipe-&lt;n&gt;.jpg뿐 —
  * artifact/ 아래 HTML 산출 금지 (ADR-55·59, AC-67). index.html은 폐기됐다(changes/0021 TΔ6).
  * <p>카드 HTML은 <b>파일로 남기지 않는다</b> — 카드를 굽는 순간의 중간 입력일 뿐이다(ADR-10).
  * <p>디자인은 {@link Theme}(type-a 세리프 / type-b 귀여운)로 고르며 {@code templates/<theme>/} 폴더를 탄다.
@@ -97,14 +97,14 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
     }
 
     @Override
-    public List<Path> renderEntryCard(String slug, LocalDate date) {
-        Note note = noteRepository.findBySlug(slug)
-                .orElseThrow(() -> new IllegalArgumentException("카드 렌더 대상 노트 없음: slug=" + slug));
+    public List<Path> renderEntryCard(long noteId, LocalDate date) {
+        Note note = noteRepository.findById(noteId)
+                .orElseThrow(() -> new IllegalArgumentException("카드 렌더 대상 노트 없음: noteId=" + noteId));
         // entries 배열 존재는 도메인 생성자가 보장한다(V-3 — CR25-10) — null 재검증 없음(ADR-66 POLICY).
         Entry entry = note.entries().stream()
                 .filter(e -> e.date().equals(date)).findFirst().orElse(null);
         if (entry == null) {
-            throw new IllegalArgumentException("카드 렌더 대상 엔트리 없음: slug=" + slug + " date=" + date);
+            throw new IllegalArgumentException("카드 렌더 대상 엔트리 없음: noteId=" + noteId + " date=" + date);
         }
 
         // 증분 렌더라도 base 자산은 최신 상태여야 한다 — 카드가 참조하는 폰트·이미지의 해석 기준(AC-Δ7).
@@ -112,34 +112,34 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
         copyFonts();
         List<Path> cards = bakeEntryCards(new EntryRef(note, entry));
         // 회차 감소·파트 소멸 재저장의 옛 번호 카드가 남지 않게, 방금 산출 집합 외의 그 엔트리 카드를 지운다(TΔ5a).
-        pruneEntryCards(slug, date, Set.copyOf(cards));
-        log.info("엔트리 카드 렌더: slug={} date={} → {}장", slug, date, cards.size());
+        pruneEntryCards(note, date, Set.copyOf(cards));
+        log.info("엔트리 카드 렌더: noteId={} date={} → {}장", noteId, date, cards.size());
         return cards;
     }
 
     @Override
-    public void removeEntryCard(String slug, LocalDate date) {
+    public void removeEntryCard(long noteId, LocalDate date) {
         // 수정 세션 날짜 이동의 옛 date 카드 정리(AC-39) — 그 엔트리의 회차 카드 전부.
-        // 파일 부재는 정상(이미 없거나 렌더된 적 없음) — 멱등.
-        pruneEntryCards(slug, date, Set.of());
+        // 노트 부재도 정상(이미 지워진 노트의 잔존 카드는 renderAll 고아 정리가 맡는다) — 멱등.
+        noteRepository.findById(noteId).ifPresent(note -> pruneEntryCards(note, date, Set.of()));
     }
 
-    // 그 엔트리(slug,date)의 카드 파일 중 keep에 없는 것을 지운다 — removeEntryCard(전부)와
+    // 그 엔트리(노트,date)의 카드 파일 중 keep에 없는 것을 지운다 — removeEntryCard(전부)와
     // 재저장 잔존 정리(방금 산출 외)의 공용 지점.
-    private void pruneEntryCards(String slug, LocalDate date, Set<Path> keep) {
-        Path slugDir = artifactDir.resolve(CardFiles.CARDS_DIR).resolve(slug);
-        if (!Files.isDirectory(slugDir)) {
+    private void pruneEntryCards(Note note, LocalDate date, Set<Path> keep) {
+        Path noteDir = CardFiles.noteCardsDir(artifactDir, note);
+        if (!Files.isDirectory(noteDir)) {
             return;
         }
-        try (DirectoryStream<Path> cards = Files.newDirectoryStream(slugDir, CardFiles.entryCardGlob(date))) {
+        try (DirectoryStream<Path> cards = Files.newDirectoryStream(noteDir, CardFiles.entryCardGlob(date))) {
             for (Path card : cards) {
                 if (!keep.contains(card)) {
                     Files.delete(card);
-                    log.info("엔트리 카드 삭제: slug={} date={} file={}", slug, date, card.getFileName());
+                    log.info("엔트리 카드 삭제: noteId={} date={} file={}", note.id(), date, card.getFileName());
                 }
             }
         } catch (IOException e) {
-            throw new UncheckedIOException("엔트리 카드 삭제 실패: slug=" + slug + " date=" + date, e);
+            throw new UncheckedIOException("엔트리 카드 삭제 실패: noteId=" + note.id() + " date=" + date, e);
         }
     }
 
@@ -152,7 +152,7 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
             return;
         }
         try (Stream<Path> walk = Files.walk(cardsDir)) {
-            // 깊은 경로부터(역순) — 고아 파일을 지운 뒤 비게 된 slug 디렉토리까지 정리한다.
+            // 깊은 경로부터(역순) — 고아 파일을 지운 뒤 비게 된 노트 디렉토리까지 정리한다.
             for (Path path : walk.sorted(Comparator.reverseOrder()).toList()) {
                 if (Files.isRegularFile(path)) {
                     if (!expected.contains(path)) {
@@ -194,7 +194,7 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
         return out;
     }
 
-    // taste.html을 회차 감상 파트 1건으로 렌더해 cards/<slug>/<date>-taste-<n>.jpg로 굽는다.
+    // taste.html을 회차 감상 파트 1건으로 렌더해 cards/<접미>/<date>-taste-<n>.jpg로 굽는다.
     private Path bakeTasteCard(Note note, Entry entry, Tasting tasting, int brewNumber) {
         NoteView.TasteCard card = new NoteView.TasteCard(
                 Sourced.valueOrNull(note.coffeeName()), // 제목은 값만 — 출처 무표기(제목=정체성, NoteView.TasteCard)
@@ -206,16 +206,16 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
                 entry.date(),
                 tasting.myTaste(),
                 tasting.rating());
-        Path out = CardFiles.tasteCard(artifactDir, note.slug(), entry.date(), brewNumber);
+        Path out = CardFiles.tasteCard(artifactDir, note, entry.date(), brewNumber);
         cardImageRenderer.render(render("taste", cardContext(card)), artifactDir, out);
         return out;
     }
 
-    // recipe.html을 회차 레시피 파트 1건으로 렌더해 cards/<slug>/<date>-recipe-<n>.jpg로 굽는다.
+    // recipe.html을 회차 레시피 파트 1건으로 렌더해 cards/<접미>/<date>-recipe-<n>.jpg로 굽는다.
     private Path bakeRecipeCard(Note note, Entry entry, Recipe recipe, int brewNumber) {
         NoteView.RecipeCard card = new NoteView.RecipeCard(
                 Sourced.valueOrNull(note.coffeeName()), Sourced.valueOrNull(note.roastery()), entry.date(), recipe);
-        Path out = CardFiles.recipeCard(artifactDir, note.slug(), entry.date(), brewNumber);
+        Path out = CardFiles.recipeCard(artifactDir, note, entry.date(), brewNumber);
         cardImageRenderer.render(render("recipe", cardContext(card)), artifactDir, out);
         return out;
     }
@@ -238,7 +238,9 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
 
     // --- 공통 ---
 
-    // 모든 (노트,엔트리)를 엔트리 date 내림차순 + slug 오름차순으로 평탄화한다(결정론적 재현성, AC-Δ7).
+    // 모든 (노트,엔트리)를 엔트리 date 내림차순 + 노트 id 오름차순으로 평탄화한다(결정론적 재현성, AC-Δ7).
+    // 2차 키는 저장소 findAll의 정렬 키(id 오름차순)와 같아야 한다 — 두 곳이 갈리면 같은 DB에서
+    // 산출 순서가 달라진다(E-1, changes/0028 TΔ6c. 파일 시절엔 둘 다 slug였다).
     private static List<EntryRef> orderedEntries(List<Note> notes) {
         List<EntryRef> refs = new ArrayList<>();
         // entries 배열 존재는 도메인 생성자가 보장한다(V-3 — CR25-10) — null 재검증 없음(ADR-66 POLICY).
@@ -248,7 +250,7 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
             }
         }
         refs.sort(Comparator.comparing((EntryRef r) -> r.entry().date()).reversed()
-                .thenComparing(r -> r.note().slug()));
+                .thenComparing(r -> r.note().id()));
         return refs;
     }
 

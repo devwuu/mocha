@@ -182,12 +182,12 @@ class BeansExtractionSmokeTest {
         }
 
         @Override
-        public List<Path> renderEntryCard(String noteFolder, LocalDate date) {
+        public List<Path> renderEntryCard(long noteId, LocalDate date) {
             return List.of(Path.of("build/smoke-artifact/unused.jpg"));
         }
 
         @Override
-        public void removeEntryCard(String noteFolder, LocalDate date) {
+        public void removeEntryCard(long noteId, LocalDate date) {
             // no-op
         }
     }
