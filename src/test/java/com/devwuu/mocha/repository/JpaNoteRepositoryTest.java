@@ -12,6 +12,7 @@ import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.domain.Tasting;
+import com.devwuu.mocha.repository.entity.NoteBeanEntity;
 import com.devwuu.mocha.repository.entity.NoteEntity;
 import com.devwuu.mocha.repository.entity.SourcedValue;
 import com.devwuu.mocha.repository.jpa.NoteEntityRepository;
@@ -163,6 +164,54 @@ class JpaNoteRepositoryTest extends PostgresIntegrationTest {
     // TΔ6d가 둔 미구현 표식 2건은 전부 사라졌다 — upsertEntry는 TΔ5b가, applyEdit은 TΔ5c가 구현하며
     // 표식 테스트가 실패해 삭제가 강제됐다(장치가 의도대로 작동했다). 각 계약의 검증은
     // JpaNoteRepositoryUpsertEntryTest·JpaNoteRepositoryApplyEditTest가 소유한다.
+
+    // ───────────── 로드 경계 위생 (ADR-66, 구 JsonFileNoteRepositoryTest 이관 — TΔ10b) ─────────────
+
+    @Test
+    @DisplayName("이관/AC-Δ2①: 공백 description 원두 행은 로드 시 드롭 — 나머지 원두 유지, 행은 무변경")
+    void loadDropsInvalidBeanElements() {
+        long noteId = repo.insert(sampleNote(List.of(firstEntry()))).id();
+        // 저장소를 지나지 않고 V-14 위반 원두를 심는다 — psql 직접 편집 대역. 스키마가 막는 것은 부재까지고
+        // (description NOT NULL) 공백은 통과하므로, 파일 시절의 방어가 그대로 남는 갈래가 정확히 여기다.
+        em.persist(new NoteBeanEntity(noteId, 2, new SourcedValue("   ", Source.PHOTO), null));
+        em.flush();
+        em.clear();
+
+        // 단건·전체 조회 모두 공용 읽기 지점(assemble)을 지난다 — 위반 요소만 드롭, 정상 원두 2종 유지.
+        assertThat(repo.findById(noteId).orElseThrow().beans())
+                .extracting(b -> b.description().value())
+                .containsExactly("에티오피아 예가체프", "콜롬비아 우일라");
+        assertThat(repo.findAll().getFirst().beans()).hasSize(2);
+
+        // DB는 다시 쓰지 않는다 — 읽기 메모리 정규화만이다(구 테스트의 "파일 내용 무변경"이 여기로 온다).
+        em.clear();
+        assertThat(beanRows(noteId))
+                .as("드롭은 조회 결과에만 미친다 — 위반 행은 그대로 남고 그 노트의 다음 저장에서 반영된다")
+                .hasSize(3);
+    }
+
+    @Test
+    @DisplayName("재정의/CR25-10: 엔트리 0건 노트가 findAll 전체를 마비시키지 않는다 — 곁의 정상 노트도 온전하다")
+    void zeroEntryNoteDoesNotBreakFindAll() {
+        // 파일 시절의 "entries 키 없는 JSON"이라는 형태는 소멸했지만 성질은 남는다 — DB에서 엔트리 0행은
+        // 결손이 아니라 정상 상태이고(삭제 직후가 그렇다), 그 노트가 조립을 지나며 넘어지면 결손 1건이
+        // findAll을 통해 조회·매칭·전체 렌더를 통째로 마비시킨다.
+        long empty = repo.insert(sampleNote(List.of())).id();
+        long normal = repo.insert(sampleNote(List.of(firstEntry()))).id();
+        em.clear();
+
+        assertThat(repo.findById(empty).orElseThrow().entries()).isEmpty();
+        assertThat(repo.findAll()).extracting(Note::id).containsExactly(empty, normal);
+        assertThat(repo.findAll().getLast().entries()).hasSize(1);
+    }
+
+    /** 조립 경로는 부모를 통해서만 자식을 읽으므로, 드롭된 행의 생존은 테이블을 직접 봐야 관측된다. */
+    private List<NoteBeanEntity> beanRows(long noteId) {
+        return em.createQuery(
+                        "select b from NoteBeanEntity b where b.noteId = :noteId", NoteBeanEntity.class)
+                .setParameter("noteId", noteId)
+                .getResultList();
+    }
 
     // ────────────────────────────── 표본 ──────────────────────────────
 

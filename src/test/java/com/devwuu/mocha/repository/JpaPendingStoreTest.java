@@ -18,10 +18,12 @@ import com.devwuu.mocha.repository.entity.PendingNoteEntity;
 import com.devwuu.mocha.repository.jpa.PendingNoteEntityRepository;
 import com.devwuu.mocha.support.PostgresIntegrationTest;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.Query;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
@@ -34,7 +36,9 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 
 /**
@@ -46,8 +50,9 @@ import java.util.function.Consumer;
  *
  * <p><b>관문의 분담이 바뀐 자리를 함께 박는다</b>: {@code mode}·{@code created_at}·{@code draft} 컬럼의
  * 부재는 이제 스키마가 막으므로 애플리케이션 검사에서 빠졌다. 그 이관이 실제로 성립하는지를
- * {@link #schemaRejectsMissingMode()}·{@link #schemaRejectsMissingCreatedAt()}이 본다 — 검사만 지우고
- * 아무도 막지 않는 상태를 그린으로 넘기지 않기 위해서다.
+ * {@link #schemaRejectsMissingMode()}·{@link #schemaRejectsMissingCreatedAt()}·
+ * {@link #schemaRejectsMissingDraft()}가 본다 — 검사만 지우고 아무도 막지 않는 상태를 그린으로 넘기지
+ * 않기 위해서다.
  *
  * <p>컨텍스트를 비우는 이유는 앞선 저장소 테스트와 같다({@link #flushAndClear()}) — 비우지 않으면 조회가
  * identity map을 되돌려주고 <b>DB를 지나지 않은 채 그린</b>이 된다. pending은 노트와 달리 쓰기가
@@ -66,6 +71,10 @@ class JpaPendingStoreTest extends PostgresIntegrationTest {
 
     @Autowired
     PendingNoteEntityRepository pendings;
+
+    /** 네이티브 문장이 향할 스키마 — 붙이지 않으면 {@code search_path}(개발 데이터)에 닿는다. */
+    @Value("${spring.jpa.properties.hibernate.default_schema}")
+    String schema;
 
     private final ObjectMapper mapper = MochaObjectMapper.create();
 
@@ -276,27 +285,27 @@ class JpaPendingStoreTest extends PostgresIntegrationTest {
     @Test
     @DisplayName("TΔ8: mode 부재는 애플리케이션이 아니라 스키마가 막는다(NOT NULL)")
     void schemaRejectsMissingMode() {
-        PendingNote pending = sample(OffsetDateTime.now(FIXED));
-        PendingNoteEntity row = new PendingNoteEntity(USER, null, mapper.writeValueAsString(pending.draft()),
-                null, null, false, MatchInfo.MatchType.NEW, null, null, "1720570200.000100",
-                pending.createdAt());
-
-        assertThatThrownBy(() -> pendings.saveAndFlush(row))
+        assertThatThrownBy(() -> insertRowWithout("mode"))
                 .as("mode NOT NULL — 검사를 코드에서 뺀 자리를 실제로 DB가 받는다")
-                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+                .hasStackTraceContaining("null value in column \"mode\"");
     }
 
     @Test
     @DisplayName("TΔ8: created_at 부재도 스키마가 막는다(NOT NULL) — TTL 판정의 필수 입력")
     void schemaRejectsMissingCreatedAt() {
-        PendingNote pending = sample(OffsetDateTime.now(FIXED));
-        PendingNoteEntity row = new PendingNoteEntity(USER, PendingNote.Mode.RECORD,
-                mapper.writeValueAsString(pending.draft()), null, null, false,
-                MatchInfo.MatchType.NEW, null, null, "1720570200.000100", null);
-
-        assertThatThrownBy(() -> pendings.saveAndFlush(row))
+        assertThatThrownBy(() -> insertRowWithout("created_at"))
                 .as("created_at NOT NULL — 결손이면 isExpired가 NPE로 샜을 자리다")
-                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+                .hasStackTraceContaining("null value in column \"created_at\"");
+    }
+
+    @Test
+    @DisplayName("TΔ10b: draft 부재도 스키마가 막는다(jsonb NOT NULL) — 통과하는 것은 JSON null뿐이다")
+    void schemaRejectsMissingDraft() {
+        // 컬럼이 막는 것과 남는 것의 경계를 이 테스트가 긋는다: 부재는 여기서 서고, `'null'::jsonb`는
+        // NOT NULL을 통과해 애플리케이션 관문이 받는다(corruptNullDraftIsDiscarded).
+        assertThatThrownBy(() -> insertRowWithout("draft"))
+                .as("draft NOT NULL — 구 파일 관문의 'draft 누락' 검사가 내려간 자리다")
+                .hasStackTraceContaining("null value in column \"draft\"");
     }
 
     @Test
@@ -381,6 +390,45 @@ class JpaPendingStoreTest extends PostgresIntegrationTest {
                 match == null ? null : match.date(),
                 pending.previewTs(),
                 pending.createdAt().withOffsetSameInstant(ZoneOffset.UTC));
+    }
+
+    /**
+     * 컬럼 하나를 뺀 pending 행을 <b>엔티티를 지나지 않고</b> 직접 넣는다 — psql 직접 편집 대역.
+     *
+     * <p>엔티티 경로로는 이 판정이 서지 않는다(TΔ10b 실측): {@code @Column(nullable = false)} 때문에
+     * Hibernate가 flush 전에 먼저 거절하므로, <b>V1에서 NOT NULL 셋을 지워도 세 테스트가 전부 그린</b>이었다
+     * — 스키마가 아니라 매핑을 보고 있었던 것이다. 막아야 할 상대도 애초에 엔티티를 지나지 않는 쓰기다.
+     *
+     * <p>테이블명에 스키마를 붙이는 이유는 {@code JpaNoteRepositoryUpsertEntryTest}와 같다 — 네이티브
+     * 문장은 {@code hibernate.default_schema}가 아니라 커넥션의 {@code search_path}를 따른다.
+     */
+    private void insertRowWithout(String omittedColumn) {
+        Map<String, String> values = new LinkedHashMap<>();
+        values.put("user_id", ":userId");
+        values.put("mode", ":mode");
+        values.put("draft", "CAST(:draft AS JSONB)");
+        values.put("date_conflict", "FALSE");
+        values.put("created_at", ":createdAt");
+        if (values.remove(omittedColumn) == null) {
+            throw new IllegalArgumentException("표본에 없는 컬럼: " + omittedColumn); // 오타가 그린으로 지나가지 않게.
+        }
+
+        PendingNote pending = sample(OffsetDateTime.now(FIXED));
+        Query query = em.createNativeQuery("INSERT INTO %s.pending_note (%s) VALUES (%s)".formatted(
+                schema, String.join(", ", values.keySet()), String.join(", ", values.values())));
+        if (values.containsKey("user_id")) {
+            query.setParameter("userId", USER);
+        }
+        if (values.containsKey("mode")) {
+            query.setParameter("mode", pending.mode().name());
+        }
+        if (values.containsKey("draft")) {
+            query.setParameter("draft", mapper.writeValueAsString(pending.draft()));
+        }
+        if (values.containsKey("created_at")) {
+            query.setParameter("createdAt", pending.createdAt());
+        }
+        query.executeUpdate();
     }
 
     private long rowCountAfterFlush() {
