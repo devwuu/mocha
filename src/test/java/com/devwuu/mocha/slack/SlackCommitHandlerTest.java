@@ -43,6 +43,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -344,6 +345,56 @@ class SlackCommitHandlerTest {
                 "폴더 접미는 저장이 발급한 id로 시작한다 — 신규 노트는 커밋 전에 알 수 없는 값이다");
         assertTrue(photoStore.staged.isEmpty(), "commit 후 스테이징은 비워진다");
         assertEquals(1, noteRepository.findAll().size(), "엔트리는 저장된다");
+    }
+
+    @Test
+    @DisplayName("TΔ9b/plan §7: 사진 아카이브 이동 실패는 저장을 되돌리지 않는다 — pending clear·카드 배달·버튼 소진이 이어진다")
+    void confirmSaveKeepsCommitWhenPhotoArchiveFails() {
+        photoStore.staged.add("a.jpg");
+        photoStore.commitFailure = new java.io.UncheckedIOException(
+                new java.io.IOException("photos 폴더 생성 실패"));
+        pendingStore.setPending(newNotePending());
+
+        handler(noteRepository).confirmSave(action(AgentConversationRouter.ACTION_SAVE));
+
+        assertEquals(1, noteRepository.findAll().size(), "노트는 이미 커밋됐다 — 사진 실패가 되돌리지 않는다");
+        assertTrue(photoStore.committed.isEmpty(), "아카이브 이동은 일어나지 않았다");
+        // 이 뒤 네 줄이 판정의 핵심 — 예외가 그대로 나가면 pending이 살아남아 '저장된 노트 + 재클릭 가능한
+        // 미리보기'가 되고, 카드도 배달되지 않는다.
+        assertEquals(1, pendingStore.clearCount, "pending은 정상 커밋과 동일하게 폐기된다");
+        assertEquals(1, photoBufferStore.clearCount, "사진 버퍼 정리도 이어진다");
+        assertEquals(List.of("1/2026-07-11"), noteRenderer.entryCards, "카드 증분 렌더는 그대로 진행된다");
+        assertEquals(List.of(MochaMessages.FINALIZE_SAVED), responder.finalizeStatuses, "버튼 소진도 그대로");
+        assertEquals(1, responder.images.size(), "카드 JPG 배달은 유지된다");
+    }
+
+    @Test
+    @DisplayName("TΔ9b/ADR-29: 아카이브 실패 시 스테이징 원본은 지우지 않는다 — 고아 청소(StagingSweeper)가 소유한다")
+    void failedPhotoArchiveLeavesStagingForSweeper() {
+        photoStore.staged.add("a.jpg");
+        photoStore.commitFailure = new IllegalStateException("이동 실패");
+        pendingStore.setPending(newNotePending());
+
+        handler(noteRepository).confirmSave(action(AgentConversationRouter.ACTION_SAVE));
+
+        assertEquals(List.of("a.jpg"), photoStore.staged, "실패한 원본은 스테이징에 남는다(커밋 경로가 버리지 않는다)");
+        assertEquals(0, photoStore.discardCount, "실패를 폐기로 수렴시키지 않는다 — 정리는 시작 시 고아 청소 몫");
+    }
+
+    @Test
+    @DisplayName("TΔ9b: edit 커밋은 사진 이동이 저장 '앞'이라 실패가 커밋 자체를 막는다(record와 비대칭 — 되돌릴 커밋이 없다)")
+    void editPhotoArchiveFailureBlocksCommit() {
+        long noteId = seedEditableNote(LocalDate.of(2026, 7, 8));
+        photoStore.stage("U1", "b.jpg", new byte[]{1});
+        photoStore.commitFailure = new IllegalStateException("이동 실패");
+        pendingStore.setPending(editPending(noteId, LocalDate.of(2026, 7, 8), LocalDate.of(2026, 7, 8), "고친 감상"));
+
+        SlackCommitHandler handler = handler(noteRepository);
+        assertThrows(IllegalStateException.class,
+                () -> handler.confirmSave(action(AgentConversationRouter.ACTION_SAVE)));
+
+        assertTrue(noteRepository.edits.isEmpty(), "저장은 일어나지 않는다 — 어중간한 상태가 남지 않는다");
+        assertEquals(0, pendingStore.clearCount, "pending이 살아 있어 사용자가 [저장]을 다시 누를 수 있다");
     }
 
     @Test
@@ -770,6 +821,7 @@ class SlackCommitHandlerTest {
         final List<String> committed = new ArrayList<>();
         final List<String> moves = new ArrayList<>(); // moveEntryPhotos "<접미>/from→to" 캡처
         RuntimeException moveFailure = null;
+        RuntimeException commitFailure = null; // 아카이브 이동 실패 주입(TΔ9b best-effort 판정)
         int discardCount = 0;
         List<String> order; // 커밋 흐름 순서 회귀 가드용 공용 로그(비면 무시).
 
@@ -791,6 +843,9 @@ class SlackCommitHandlerTest {
 
         @Override
         public List<String> commit(String userId, String noteFolder, String date) {
+            if (commitFailure != null) {
+                throw commitFailure;
+            }
             List<String> paths = staged.stream().map(n -> "photos/" + noteFolder + "/" + date + "/" + n).toList();
             committed.addAll(paths);
             staged.clear();

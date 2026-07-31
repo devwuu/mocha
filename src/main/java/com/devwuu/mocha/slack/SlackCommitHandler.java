@@ -113,8 +113,19 @@ public class SlackCommitHandler {
         // 반환 경로는 노트에 싣지 않는다 — 사진은 아카이브 전용, DB 기록 없음(delta AC-Δ1).
         // 저장 '뒤'인 이유: 폴더 접미의 앞자리가 id인데 신규 노트의 id는 INSERT가 발급한다
         // (ref: changes/0028 §파일 경로 규약 "사진 최종 경로 확정 시점이 뒤로 밀린다", TΔ9b).
-        // 실패 정책(이동 실패를 best-effort로 수렴)은 아직 TΔ9b 몫이다 — 여기서는 순서만 옮겼다.
-        photoIntake.commitStaged(userId, NoteFolderName.of(saved), date);
+        // POLICY: 사진 아카이브 이동은 best-effort — 저장이 이미 커밋된 뒤라 실패해도 되돌리지 않고 로그만
+        //         남긴다. 던져 나가면 아래 pending clear가 건너뛰어져 '저장된 노트 + 살아있는 pending'이
+        //         남는다(재클릭 시 중복 커밋 경로). 스테이징에 남은 원본은 pending이 사라진 뒤 고아가 되어
+        //         다음 시작 시 StagingSweeper가 정리한다 — 옛 카드 삭제·moveEntryPhotos와 같은 계열이다
+        //         (ref: plan.md §7, #ADR-29·ADR-32, changes/0028 TΔ9b).
+        // 수정 세션(commitEdit)은 이 감쌈이 없다 — 거기선 사진 이동이 저장 '앞'이라 실패가 커밋 자체를
+        // 막고(어중간한 상태 없음) 사용자가 [저장]을 다시 누르면 된다. 되돌릴 커밋이 없으니 근거도 없다.
+        try {
+            photoIntake.commitStaged(userId, NoteFolderName.of(saved), date);
+        } catch (RuntimeException e) {
+            log.warn("사진 아카이브 커밋 실패(노트는 저장됨, 스테이징 원본은 시작 시 고아 청소 대상): noteId={} date={}",
+                    saved.id(), date, e);
+        }
 
         pendingStore.clear(userId);
         photoIntake.clearBuffer(userId);
