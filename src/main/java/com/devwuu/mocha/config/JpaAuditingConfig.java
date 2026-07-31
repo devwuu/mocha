@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 
 import java.time.Clock;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Optional;
 
 /**
@@ -38,9 +39,18 @@ public class JpaAuditingConfig {
      * <p>Spring Data 기본 공급자({@code CurrentDateTimeProvider})를 쓰지 않는 이유는 두 가지다:
      * 그쪽은 시스템 기본 시간대를 보므로 이 프로젝트의 Asia/Seoul 고정(ADR-63)과 갈라지고,
      * {@link Clock} 빈을 경유하지 않아 테스트에서 시각을 고정할 수 없다.
+     *
+     * <p>POLICY: 감사 타임스탬프의 표기는 <b>UTC</b>다 (사용자 확정 2026-07-31, TΔ5a 실측 발단).
+     * {@code timestamptz}는 오프셋을 저장하지 않는다 — Postgres가 UTC 인스턴트로 정규화하므로 조회
+     * 표기는 드라이버가 정하고(pgjdbc는 UTC), Hibernate에는 이를 바꿀 설정이 없다
+     * ({@code hibernate.jdbc.time_zone}은 NATIVE 경로에 영향이 없음을 실측했다). 쓰기 표기를 맞추지
+     * 않으면 <b>같은 저장소가 두 표기를 준다</b>: 영속성 컨텍스트에 살아 있는 엔티티는 {@code +09:00},
+     * 다시 읽은 엔티티는 {@code Z}. 컬럼이 실제로 담는 것(인스턴트)에 표기를 맞춰 한 벌로 만든다.
+     * <p>{@link Clock}(Asia/Seoul 고정, ADR-63)은 여전히 "지금"의 단일 소유자이고 인스턴트도 불변이다 —
+     * 바뀌는 것은 표기뿐이다. 시각을 사람에게 보여줄 일이 생기면 그 표시 계층이 Asia/Seoul로 되돌린다.
      */
     @Bean
     public DateTimeProvider auditingDateTimeProvider(Clock clock) {
-        return () -> Optional.of(OffsetDateTime.now(clock));
+        return () -> Optional.of(OffsetDateTime.now(clock).withOffsetSameInstant(ZoneOffset.UTC));
     }
 }

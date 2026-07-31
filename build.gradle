@@ -17,6 +17,13 @@ repositories {
 	mavenCentral()
 }
 
+ext {
+	// 본가 com.querydsl은 5.1.0(2024)에서 멈춰 있고 Jakarta 지원이 :jakarta 분류자를 얹은 5.x가 마지막이라
+	// Boot 4.1 BOM이 물어오는 Hibernate 7.4.1과 맞지 않는다. 유지되는 포크를 쓴다 — apt 분류자가 :jpa이고
+	// (본가의 :jakarta와 다르다) hibernate-core를 provided로만 참조해 버전을 끌고 오지 않는다.
+	querydslVersion = '7.0'
+}
+
 dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter'
 	// JSON = 유일한 원본 저장 포맷. jackson-databind + jsr310(날짜) + parameter-names 포함 (ref: data-model.md#2, ADR-1)
@@ -35,6 +42,13 @@ dependencies {
 	runtimeOnly 'org.flywaydb:flyway-database-postgresql'
 	// 드라이버는 런타임에만 필요 — 애플리케이션 코드가 JDBC 벤더 타입을 참조하지 않게 컴파일 경로에서 뺀다(NFR-4).
 	runtimeOnly 'org.postgresql:postgresql'
+
+	// QueryDSL — 엔티티에 연관 매핑을 두지 않으므로(TΔ3a) 조인·조립·정렬·순서 삭제를 질의가 전담한다.
+	// Spring Data의 custom fragment(NoteEntityRepositoryCustomImpl)에서만 쓰인다.
+	implementation "io.github.openfeign.querydsl:querydsl-jpa:${querydslVersion}"
+	annotationProcessor "io.github.openfeign.querydsl:querydsl-apt:${querydslVersion}:jpa"
+	annotationProcessor 'jakarta.annotation:jakarta.annotation-api'
+	annotationProcessor 'jakarta.persistence:jakarta.persistence-api'
 
 	// Slack Socket Mode 수신 (ref: plan.md#ADR-2). bolt-socket-mode가 bolt·slack-api-client 추이 포함
 	implementation 'com.slack.api:bolt-socket-mode:1.49.0'
