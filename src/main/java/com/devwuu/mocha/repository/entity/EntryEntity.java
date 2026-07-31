@@ -8,7 +8,6 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 import java.time.LocalDate;
-import java.time.OffsetDateTime;
 
 /**
  * {@code entry} 테이블 매핑 — 날짜별 시음 기록 = 버전 (ref: data-model.md#2.2, FR-15).
@@ -24,7 +23,7 @@ import java.time.OffsetDateTime;
  */
 @Entity
 @Table(name = "entry")
-public class EntryEntity {
+public class EntryEntity extends BaseEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -37,19 +36,7 @@ public class EntryEntity {
     @Column(name = "tasted_on", nullable = false)
     private LocalDate tastedOn;
 
-    // Q-5: 감사 컬럼 4종이 도메인 Entry.updatedAt을 겸한다(modifiedAt) — 같은 의미의 타임스탬프를 두 벌 두지
-    // 않는다. 값 주입은 Spring Data Auditing이 맡는다(TΔ4).
-    @Column(name = "created_at", nullable = false)
-    private OffsetDateTime createdAt;
-
-    @Column(name = "created_by", nullable = false, length = 16)
-    private String createdBy;
-
-    @Column(name = "modified_at", nullable = false)
-    private OffsetDateTime modifiedAt;
-
-    @Column(name = "modified_by", nullable = false, length = 16)
-    private String modifiedBy;
+    // 감사 컬럼 4종(Q-5)은 BaseEntity가 소유한다 — modifiedAt이 도메인 Entry.updatedAt을 겸한다.
 
     // 회차 컬렉션은 여기 없다 — brew는 entry_id로 각자 서 있고, 조립과 seq 오름차순 정렬은 질의가 소유한다.
 
@@ -72,21 +59,5 @@ public class EntryEntity {
 
     public LocalDate getTastedOn() {
         return tastedOn;
-    }
-
-    public OffsetDateTime getCreatedAt() {
-        return createdAt;
-    }
-
-    public String getCreatedBy() {
-        return createdBy;
-    }
-
-    public OffsetDateTime getModifiedAt() {
-        return modifiedAt;
-    }
-
-    public String getModifiedBy() {
-        return modifiedBy;
     }
 }

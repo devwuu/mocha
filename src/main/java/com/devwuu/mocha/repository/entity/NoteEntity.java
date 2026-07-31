@@ -12,8 +12,6 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
-import java.time.OffsetDateTime;
-
 /**
  * {@code note} 테이블 매핑 — 커피 1종 (ref: data-model.md#2.1, changes/0028-rdb-storage/delta.md#스키마).
  *
@@ -33,7 +31,7 @@ import java.time.OffsetDateTime;
  */
 @Entity
 @Table(name = "note")
-public class NoteEntity {
+public class NoteEntity extends BaseEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -68,19 +66,7 @@ public class NoteEntity {
     @Column(name = "roastery_normalized")
     private String roasteryNormalized;
 
-    // Q-5: 감사 컬럼 4종이 도메인의 createdAt/updatedAt을 겸한다 — 같은 의미의 타임스탬프를 두 벌 두지 않는다.
-    // _by는 사용자 ID가 아니라 변경 주체(agent/user)다. 값 주입은 Spring Data Auditing이 맡는다(TΔ4).
-    @Column(name = "created_at", nullable = false)
-    private OffsetDateTime createdAt;
-
-    @Column(name = "created_by", nullable = false, length = 16)
-    private String createdBy;
-
-    @Column(name = "modified_at", nullable = false)
-    private OffsetDateTime modifiedAt;
-
-    @Column(name = "modified_by", nullable = false, length = 16)
-    private String modifiedBy;
+    // 감사 컬럼 4종(Q-5)은 BaseEntity가 소유한다 — 값 주입은 Spring Data Auditing이 맡는다(TΔ4).
 
     // 하위 컬렉션은 여기 없다 — 자식(note_bean·note_official_note·note_alias·note_source)은
     // note_id로 각자 서 있고, 조립과 정렬(seq 오름차순 / 별칭은 id 오름차순)은 질의가 소유한다.
@@ -125,22 +111,6 @@ public class NoteEntity {
 
     public String getRoasteryNormalized() {
         return roasteryNormalized;
-    }
-
-    public OffsetDateTime getCreatedAt() {
-        return createdAt;
-    }
-
-    public String getCreatedBy() {
-        return createdBy;
-    }
-
-    public OffsetDateTime getModifiedAt() {
-        return modifiedAt;
-    }
-
-    public String getModifiedBy() {
-        return modifiedBy;
     }
 
     // 수정 가능한 노트 단위 필드(FR-21) — coffee_name은 V-9 불변이라 제외한다.
