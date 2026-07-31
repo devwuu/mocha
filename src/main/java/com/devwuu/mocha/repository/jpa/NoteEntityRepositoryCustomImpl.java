@@ -16,8 +16,10 @@ import com.devwuu.mocha.repository.entity.TastingEntity;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import jakarta.persistence.EntityManager;
 
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * {@link NoteEntityRepositoryCustom} 구현 — Spring Data가 <b>이름 규약</b>({@code <계약>Impl})으로 찾아
@@ -93,5 +95,26 @@ class NoteEntityRepositoryCustomImpl implements NoteEntityRepositoryCustom {
     @Override
     public void insertAll(Collection<?> rows) {
         rows.forEach(em::persist);
+    }
+
+    @Override
+    public Optional<Long> findEntryId(long noteId, LocalDate tastedOn) {
+        return Optional.ofNullable(query.select(entryEntity.id).from(entryEntity)
+                .where(entryEntity.noteId.eq(noteId), entryEntity.tastedOn.eq(tastedOn))
+                .fetchOne());
+    }
+
+    @Override
+    public void deleteEntry(long entryId) {
+        // 회차 id를 먼저 집는다 — recipe·tasting은 brew_id로만 걸려 있어(1:1 PK 공유) 부모가 사라진 뒤에는
+        // 지울 근거가 없어진다. FK가 없으므로 이 순서를 잃으면 고아 행이 조용히 남는다(ADR-74).
+        List<Long> brewIds = query.select(brewEntity.id).from(brewEntity)
+                .where(brewEntity.entryId.eq(entryId)).fetch();
+        if (!brewIds.isEmpty()) {
+            query.delete(tastingEntity).where(tastingEntity.brewId.in(brewIds)).execute();
+            query.delete(recipeEntity).where(recipeEntity.brewId.in(brewIds)).execute();
+            query.delete(brewEntity).where(brewEntity.id.in(brewIds)).execute();
+        }
+        query.delete(entryEntity).where(entryEntity.id.eq(entryId)).execute();
     }
 }

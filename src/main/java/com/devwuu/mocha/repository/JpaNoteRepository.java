@@ -5,6 +5,7 @@ import com.devwuu.mocha.domain.Brew;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
+import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.repository.entity.BrewEntity;
 import com.devwuu.mocha.repository.entity.EntryEntity;
 import com.devwuu.mocha.repository.entity.NoteAliasEntity;
@@ -27,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -115,9 +117,74 @@ public class JpaNoteRepository implements NoteRepository {
         }
     }
 
+    /**
+     * 날짜 엔트리 병합 저장 — 계약은 {@link NoteRepository#upsertEntry}가 소유하고, 여기서는 그 정책이
+     * 행으로 어떻게 떨어지는지만 다룬다.
+     *
+     * <p><b>신규/기존 분기는 {@code noteId == null} 하나</b>다(D-1). id를 발급하는 것은 {@code BIGSERIAL}
+     * 이므로 저장 전 draft에는 식별자가 없고, 그 부재가 그대로 "아직 저장되지 않음"을 뜻한다 — 구
+     * {@code nextAvailableSlug}가 하던 "신규 대체키 발급"이라는 개념 자체가 사라졌다(ADR-74).
+     *
+     * <p><b>노트 단위 메타는 갱신하지 않는다.</b> 기존 노트면 {@code meta}에서 쓰는 것은 관측 표기(커피명·
+     * 로스터리)뿐이고 원두 구성·로스팅·공식 노트는 보존한다 — 재기록은 그날의 엔트리를 쌓는 일이지 커피의
+     * 사실을 다시 쓰는 일이 아니다(ADR-4, V-13).
+     */
     @Override
+    @Transactional
     public Note upsertEntry(Long noteId, NoteMeta meta, Entry entry, Aliases aliases) {
-        throw new UnsupportedOperationException("TΔ5b에서 구현");
+        if (noteId == null) {
+            return insert(newNote(meta, entry, aliases));
+        }
+        // 소실은 조용히 신규 생성으로 흡수하지 않는다 — 그러면 매칭이 지목한 노트와 별개의 중복 노트가
+        // 생기고 사진·카드가 두 id로 갈린다. FK가 없어 DB가 막아주지 않는 자리다(ADR-74).
+        Note existing = findById(noteId)
+                .orElseThrow(() -> new IllegalStateException("병합 대상 노트 소실: " + noteId));
+        replaceEntry(noteId, entry);
+        accumulateAliases(noteId, existing, meta);
+        return findById(noteId).orElseThrow(() -> new IllegalStateException("방금 저장한 노트 조회 실패: " + noteId));
+    }
+
+    /** 신규 노트 — 식별자·타임스탬프는 저장이 발급하므로 비워 둔다({@link #insert} 계약). */
+    private static Note newNote(NoteMeta meta, Entry entry, Aliases aliases) {
+        return new Note(
+                null, meta.coffeeName(), meta.roastery(), meta.beans(), meta.roastLevel(),
+                meta.officialNotes(), aliases == null ? Aliases.empty() : aliases, meta.sources(),
+                List.of(entry), null, null);
+    }
+
+    // POLICY: 같은 date 엔트리는 갱신만 — 하루 2엔트리 금지, 다회 시도는 brews 회차로. 갱신은 엔트리 통째
+    //         교체이며 서버는 회차 단위 병합을 하지 않는다 — 에이전트가 구성한 배열(V-15 검증 통과분)을
+    //         그대로 신뢰한다 (ref: data-model.md#2.2, AC-14, plan.md#ADR-4·59).
+    // 행 재사용이 아니라 삭제 후 재삽입인 것은 "통째 교체"의 직역이다 — 엔트리에는 필드 단위 갱신 개념이
+    // 없어 수정 메서드도 두지 않았다(TΔ3b). 날짜 오름차순 정렬은 조회 질의가 소유한다(재정렬하지 않는다).
+    private void replaceEntry(long noteId, Entry entry) {
+        notes.findEntryId(noteId, entry.date()).ifPresent(notes::deleteEntry);
+        insertEntry(noteId, entry);
+    }
+
+    /**
+     * 관측 표기 무콜 축적 (ref: plan.md#ADR-37 축적 ②, V-13, changes/0016).
+     *
+     * <p>이번 기록의 커피명·로스터리 표기가 노트 표시값과 다르면 별칭으로 더한다 — LLM 콜 없이 서버가
+     * 쌓는 갈래다. 판정({@code Aliases.accumulate})은 도메인이 소유하고 이 메서드는 <b>늘어난 표기만</b>
+     * 행으로 옮긴다: 기존 행을 지우고 다시 넣으면 id가 밀려 첫 등장 순서가 무너진다(별칭에는 seq가 없고
+     * 순서를 id가 진다, TΔ3a).
+     */
+    private void accumulateAliases(long noteId, Note existing, NoteMeta meta) {
+        Aliases before = existing.aliases();
+        Aliases accumulated = before.accumulate(
+                Sourced.valueOrNull(meta.coffeeName()), Sourced.valueOrNull(existing.coffeeName()),
+                Sourced.valueOrNull(meta.roastery()), Sourced.valueOrNull(existing.roastery()));
+        Aliases added = new Aliases(
+                newcomers(before.coffeeName(), accumulated.coffeeName()),
+                newcomers(before.roastery(), accumulated.roastery()));
+        notes.insertAll(NoteEntityMapper.toAliasEntities(noteId, added));
+    }
+
+    /** 축적 결과에서 기존에 없던 표기만 — 대조 기준은 정규화 키다(표시 형태가 아니라, V-13). */
+    private static List<String> newcomers(List<String> before, List<String> after) {
+        Set<String> known = before.stream().map(Aliases::normalize).collect(Collectors.toSet());
+        return after.stream().filter(alias -> !known.contains(Aliases.normalize(alias))).toList();
     }
 
     @Override
@@ -193,8 +260,13 @@ public class JpaNoteRepository implements NoteRepository {
      * 있어 파일 시절과 같은 방어가 남는다. DB는 다시 쓰지 않는다 — 읽기 메모리 정규화만이며, 드롭분은
      * 그 노트의 다음 저장에서 반영되므로 경고 로그로 관측을 남긴다.
      *
-     * <p>어디까지가 스키마 소관이고 어디부터 {@code Note.normalized()}에 남는지의 <b>범위 결론</b>은
-     * TΔ5b가 소유한다(OQ-1) — 이 task는 적용 지점만 확정한다.
+     * <p><b>범위 결론(OQ-1, TΔ5b 실측)</b>: 정규화는 <b>축소하지 않는다</b>. 스키마와 겹치는 것은 V-8 수치
+     * 5종뿐이고 그마저 판정 방향이 반대다 — CHECK는 저장 <b>전체를 거부</b>하고 정규화는 <b>그 항목만
+     * 드롭</b>한다. 나머지(공백 문자열 접기, 빈 구조체 드롭, 자식 없는 회차 드롭)는 {@code TEXT NOT NULL}이
+     * {@code ''}를 통과시키는 한 CHECK로 표현되지 않는다. 근거 표는 delta.md 열린 질문 OQ-1이 소유한다.
+     *
+     * <p>그래서 <b>쓰기 경로에는 걸지 않는다</b> — 저장소가 정규화를 걸면 V-8 위반이 조용히 드롭돼
+     * AC-Δ3("위반 삽입 실패")이 관측 불가가 된다. 정규화 진입점은 종전대로 검증기다.
      */
     private Note sanitized(Note note, long id) {
         Note sanitized = note.normalized();

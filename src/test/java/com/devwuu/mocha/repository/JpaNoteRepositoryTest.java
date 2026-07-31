@@ -161,7 +161,7 @@ class JpaNoteRepositoryTest extends PostgresIntegrationTest {
         assertThat(repo.findAll()).isEmpty();
     }
 
-    // ─────────────────────── 미구현 표식 (TΔ6d — TΔ5b·TΔ5c가 지운다) ───────────────────────
+    // ─────────────────────── 미구현 표식 (TΔ6d — TΔ5c가 마지막 하나를 지운다) ───────────────────────
 
     /**
      * TΔ6d 관측: 컴파일이 닫히며 <b>전량 그린</b>이 됐다. tasks.md는 이 시점에 {@code upsertEntry}·
@@ -170,15 +170,10 @@ class JpaNoteRepositoryTest extends PostgresIntegrationTest {
      * 그래서 <b>미구현이 어떤 테스트에도 관측되지 않는 상태</b>가 됐다.
      *
      * <p>빨강 대신 <b>명시적 표식</b>을 둔다 — TΔ5a가 {@code nextAvailableSlug}에 같은 처리를 한 선례가 있다.
-     * TΔ5b·TΔ5c가 구현하면 이 두 테스트가 실패하므로 <b>삭제가 강제된다</b>: 미구현 구간의 끝이 코드로 표시된다.
+     * 구현하면 이 테스트가 실패하므로 <b>삭제가 강제된다</b>: 미구현 구간의 끝이 코드로 표시된다.
+     * {@code upsertEntry} 몫은 TΔ5b가 지웠고(→ {@code JpaNoteRepositoryUpsertEntryTest}), 남은 하나는
+     * TΔ5c가 가져간다.
      */
-    @Test
-    @DisplayName("TΔ6d 표식: upsertEntry는 아직 미구현이다 — TΔ5b가 구현하며 이 테스트를 지운다")
-    void upsertEntryIsNotImplementedYet() {
-        assertThatThrownBy(() -> repo.upsertEntry(null, null, null, Aliases.empty()))
-                .isInstanceOf(UnsupportedOperationException.class);
-    }
-
     @Test
     @DisplayName("TΔ6d 표식: applyEdit은 아직 미구현이다 — TΔ5c가 구현하며 이 테스트를 지운다")
     void applyEditIsNotImplementedYet() {
