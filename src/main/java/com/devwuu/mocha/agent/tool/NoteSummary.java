@@ -9,7 +9,7 @@ import java.util.List;
  * <p>구 매칭·검색 후보 페이로드의 승계 — {@code aliases} 포함으로 표기 비일관(한/영 교차·부분 표기)을
  * 흡수한다(plan ADR-37, AC-53). 에이전트의 동일성 판단(FR-14)·검색(FR-20) 공용 재료.
  *
- * @param id            노트 식별자 — DB 대체키(changes/0028 ADR-74). 에이전트가 {@code get_note}·
+ * @param id            노트 식별자 — DB 대체키(changes/0028 ADR-75). 에이전트가 {@code get_note}·
  *                      {@code propose_edit}에 {@code note_id}로 되넘기는 값이다.
  * @param coffeeName    커피 이름 표시값.
  * @param roastery      로스터리 표시값 — 없으면 null.

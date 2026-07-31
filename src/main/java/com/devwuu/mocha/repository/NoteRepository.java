@@ -13,7 +13,7 @@ import java.util.Optional;
  * 노트(커피 1종) 저장소 — 저장 매체 접근을 파이프라인에서 격리 (ref: plan.md#ADR-8).
  * <p>구현: {@link JpaNoteRepository}. 미래 호스팅형 전환 시 구현체 교체로 대응(NFR-4).
  * <p><b>식별자는 {@code note.id}</b>다 — 파일명이자 식별자였던 slug는 파일 폐기와 함께 소멸했고
- * 유일화(V-2)도 함께 사라졌다(changes/0028 ADR-74).
+ * 유일화(V-2)도 함께 사라졌다(changes/0028 ADR-75).
  */
 public interface NoteRepository {
 
@@ -75,7 +75,7 @@ public interface NoteRepository {
      * 관측된 적이 없고, soft delete는 <b>모든 조회에 조건을 얹는다</b>(ref: delta.md#삭제-정책, Q-3·Q-12).
      *
      * <p><b>A1에는 호출부가 없다</b> — 삭제 UI(수정 화면의 삭제 버튼)는 A2 범위이고, 여기서 필요한 것은
-     * 명시적 순서 삭제 코드가 <b>존재하고 테스트로 검증되는 것</b>이다. FK가 없으므로(ADR-74) 그 테스트가
+     * 명시적 순서 삭제 코드가 <b>존재하고 테스트로 검증되는 것</b>이다. FK가 없으므로(ADR-75) 그 테스트가
      * 고아 행을 막는 유일한 안전망이고, A1 기간에 급하면 그 삭제 순서를 psql에 그대로 옮겨 쓸 수 있다.
      *
      * <p>없는 {@code id}는 무해하게 지나간다(멱등) — 지울 것이 없다는 것과 지웠다는 것을 A1이 가릴 이유가

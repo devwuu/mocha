@@ -16,7 +16,7 @@ import jakarta.persistence.Table;
  * 정규화는 저장값이 아니라 <i>기준</i>이므로 둘을 함께 갖는다. 중복 제거 자체는 스키마의
  * {@code UNIQUE(note_id, kind, normalized)}가 강제한다.
  *
- * <p>{@code noteId}는 연관 매핑이 아니라 평범한 컬럼이다 — 스키마에 FK가 없고(ADR-74) 엔티티에도
+ * <p>{@code noteId}는 연관 매핑이 아니라 평범한 컬럼이다 — 스키마에 FK가 없고(ADR-75) 엔티티에도
  * 연관을 두지 않는다({@link NoteEntity} POLICY). 부모 조회·조립은 QueryDSL 질의가 소유한다.
  */
 @Entity

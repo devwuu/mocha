@@ -10,7 +10,7 @@ import java.util.List;
  * n = 회차)를 재생성한다. 산출물은 파생물이며 삭제해도 데이터 손실이 없어야 한다(NFR-3, AC-6).
  * 카드 HTML은 굽는 순간의 중간 입력이라 파일로 남기지 않는다(ADR-10). 갤러리 페이지는 폐기됐다(ADR-9).
  * <p>POLICY: 렌더러는 저장소 외 어떤 상태도 읽지 않는다 — 전체 리렌더 가능성 보장 (ref: plan.md#ADR-1, AC-6).
- * <p><b>대상 지정은 노트 id다</b>(changes/0028 ADR-74, TΔ6c). 카드 폴더 접미는 호출부가 아니라 렌더러가
+ * <p><b>대상 지정은 노트 id다</b>(changes/0028 ADR-75, TΔ6c). 카드 폴더 접미는 호출부가 아니라 렌더러가
  * 노트에서 만든다 — 렌더러는 어차피 노트를 조회하므로, 접미를 인자로 받으면 조립 규칙이 호출부마다 갈린다.
  * <p>구현: {@link ThymeleafNoteRenderer}. CLI {@code --rerender}로 전체 재생성({@code RerenderRunner}),
  * 저장 커밋 직후엔 {@link #renderEntryCard}로 방금 엔트리의 카드만 증분 렌더한다(AC-Δ7, changes/0002 TΔ4/TΔ5).

@@ -63,7 +63,7 @@ class SchemaMigrationTest extends PostgresIntegrationTest {
     @DisplayName("AC-Δ2·Δ3: 제약이 실제로 올라왔다 — 스키마 소유자가 Hibernate가 아니라 Flyway다")
     void schemaCarriesConstraints() {
         // 엔티티에는 제약 선언이 0건이라 ddl-auto가 만든 스키마였다면 CHECK·UNIQUE가 통째로 비어 있다.
-        // 개수는 TΔ2 판정이 psql로 확인한 값과 같아야 한다(FK 0 = ADR-74).
+        // 개수는 TΔ2 판정이 psql로 확인한 값과 같아야 한다(FK 0 = ADR-75).
         Map<String, Object> byType = jdbc.queryForMap(
                 "SELECT count(*) FILTER (WHERE contype = 'p') AS pk,"
                         + " count(*) FILTER (WHERE contype = 'u') AS uq,"

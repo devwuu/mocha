@@ -27,7 +27,7 @@ public interface NoteEntityRepositoryCustom {
 
     /**
      * 생성 id가 <b>즉시 필요한</b> 행 하나를 넣는다 — {@code entry}·{@code brew}처럼 자식이 그 id를 컬럼으로
-     * 받아야 하는 경우다(FK가 없으므로 애플리케이션이 값을 옮긴다, ADR-74). flush가 곧 id 확정이다.
+     * 받아야 하는 경우다(FK가 없으므로 애플리케이션이 값을 옮긴다, ADR-75). flush가 곧 id 확정이다.
      */
     <T> T insertAndFlush(T row);
 
@@ -76,7 +76,7 @@ public interface NoteEntityRepositoryCustom {
 
     /**
      * 엔트리 한 건을 하위부터 지운다 — {@link #deleteBrews} 뒤에 {@code entry} 행까지.
-     * FK가 없으므로 순서를 코드가 소유한다(ADR-74).
+     * FK가 없으므로 순서를 코드가 소유한다(ADR-75).
      *
      * <p><b>벌크 DML이라 즉시 DB에 나간다</b> — 같은 {@code (note_id, tasted_on)}을 다시 쓰기 전에 UNIQUE가
      * 풀려 있어야 하는데, {@code em.remove()}로는 그 순서를 만들 수 없다. Hibernate의 flush 순서는
@@ -89,7 +89,7 @@ public interface NoteEntityRepositoryCustom {
      * 노트 한 건을 <b>하위부터</b> 통째로 지운다 — tasting·recipe → brew → entry → 배열 4종 → note
      * (ref: changes/0028-rdb-storage/tasks.md TΔ5d, AC-Δ8).
      *
-     * <p>{@code cascade}·{@code orphanRemoval}을 쓰지 않으므로(ADR-74) 이 순서를 <b>코드가 소유한다</b> —
+     * <p>{@code cascade}·{@code orphanRemoval}을 쓰지 않으므로(ADR-75) 이 순서를 <b>코드가 소유한다</b> —
      * {@link #deleteEntry}가 엔트리 하나에 대해 지는 책임을 애그리거트 전체로 넓힌 자리다. 부모를 먼저
      * 지우면 자식은 걸릴 곳을 잃고 DB는 아무 말도 하지 않는다(FK가 없다).
      *

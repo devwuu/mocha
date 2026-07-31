@@ -66,7 +66,7 @@ public final class NoteEntityMapper {
 
     /**
      * 노트 본문 행. 하위 배열(beans·official_notes·aliases·sources)과 엔트리는 각자의 메서드가 만든다 —
-     * 자식이 부모 id를 컬럼으로 들기 때문에 노트 INSERT로 id를 받은 뒤에야 만들 수 있다(ADR-74).
+     * 자식이 부모 id를 컬럼으로 들기 때문에 노트 INSERT로 id를 받은 뒤에야 만들 수 있다(ADR-75).
      */
     public static NoteEntity toNoteEntity(Note note) {
         String coffeeName = Sourced.valueOrNull(note.coffeeName());

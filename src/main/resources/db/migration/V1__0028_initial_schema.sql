@@ -1,10 +1,10 @@
--- 모카 초기 스키마 (ref: specs/coffee-note-agent/changes/0028-rdb-storage/delta.md#스키마, ADR-73·74)
+-- 모카 초기 스키마 (ref: specs/coffee-note-agent/changes/0028-rdb-storage/delta.md#스키마, ADR-74·75)
 --
 -- POLICY: 테이블명은 단수를 쓴다 (사용자 확정 2026-07-31, ref: delta.md#스키마). 단수/복수 어느 쪽도 SQL
 --         표준이 정하지 않으며 테이블 = 엔티티 타입 선언으로 읽는 쪽을 택한 것이다. 규칙의 실효는 한쪽을
 --         고르는 것이 아니라 스키마 안에서 섞지 않는 데 있다 — 이후 추가되는 테이블도 단수로 만든다.
 --         컬럼명은 대상이 아니다(official_notes_source처럼 값이 배열인 컬럼은 복수형 유지).
--- POLICY: FK 제약을 걸지 않는다 (ADR-74, Q-4·Q-12 — 3회 재확인). 참조 무결성과 삭제 전파는
+-- POLICY: FK 제약을 걸지 않는다 (ADR-75, Q-4·Q-12 — 3회 재확인). 참조 무결성과 삭제 전파는
 --         애플리케이션(JpaNoteRepository.delete)이 전담한다. FK만 제외이고 UNIQUE·CHECK·NOT NULL은
 --         그대로 쓴다(Q-7 확정과 정합). psql로 부모만 지우면 고아 행이 조용히 남는 것을 감수한 결정이다.
 -- POLICY: 자식 테이블의 부모 id 인덱스는 각 UNIQUE 제약이 겸한다 — UNIQUE(note_id, seq) 류가 부모 id를
@@ -17,7 +17,7 @@
 -- ── 노트 계열 ────────────────────────────────────────────────────────────────
 
 -- 노트 = 커피 1종 (ref: data-model.md#2.1, ADR-4)
--- 출처 표시 필드(Sourced<T>)는 (value, source) 두 컬럼으로 떨어진다(ADR-72).
+-- 출처 표시 필드(Sourced<T>)는 (value, source) 두 컬럼으로 떨어진다(ADR-73).
 -- 감사 컬럼 4종은 도메인의 created_at/updated_at을 겸한다 — delta §감사 컬럼이 note·entry에 4종만
 -- 규정하므로 같은 의미의 타임스탬프를 두 벌 두지 않는다(Q-5).
 CREATE TABLE note (
@@ -119,7 +119,7 @@ CREATE TABLE brew (
 --      `> 0`만으로는 부족하다: Postgres numeric은 PG14부터 Infinity/NaN을 값으로 받고, 비교 규칙상
 --      둘 다 0보다 크다고 판정된다(NaN은 모든 수보다 크게 정렬된다). `< 'Infinity'`가 둘을 함께 거른다
 --      — 비유한값이 들어오면 렌더 표기·비율 계산이 깨진다(V-8이 유한을 요구하는 이유, changes/0025).
--- brew_id를 PK로 쓰는 것은 1:1 표현이지 FK 제약이 아니다(ADR-74).
+-- brew_id를 PK로 쓰는 것은 1:1 표현이지 FK 제약이 아니다(ADR-75).
 CREATE TABLE recipe (
     brew_id  BIGINT PRIMARY KEY,
     method   TEXT,
@@ -147,9 +147,9 @@ CREATE TABLE tasting (
 
 -- ── 확인 대기 ────────────────────────────────────────────────────────────────
 
--- 확인 대기 노트 (ref: data-model.md#2.3, ADR-3·ADR-73)
+-- 확인 대기 노트 (ref: data-model.md#2.3, ADR-3·ADR-74)
 -- 사용자당 최대 1건이라 user_id가 PK다(NFR-6 단일 사용자 전제 — 값은 A1에서 단일, 멀티테넌시는 A3).
--- ADR-73 예외: draft는 정규화하지 않고 JSONB로 둔다 — TTL로 소멸하는 임시 상태이고 쿼리 대상이 아니며
+-- ADR-74 예외: draft는 정규화하지 않고 JSONB로 둔다 — TTL로 소멸하는 임시 상태이고 쿼리 대상이 아니며
 -- A2에서 pending 개념 자체가 축소된다. 직렬화는 기존 Jackson 매퍼를 재사용한다.
 -- 스키마가 강제하는 무결성은 여기까지고(ADR-66의 mode·created_at·draft 부재 판정), JSONB 내부 결손
 -- (draft.coffee_name 공백 등)은 애플리케이션이 계속 판정한다.

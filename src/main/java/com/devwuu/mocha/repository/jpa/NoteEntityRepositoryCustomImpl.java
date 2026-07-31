@@ -122,7 +122,7 @@ class NoteEntityRepositoryCustomImpl implements NoteEntityRepositoryCustom {
     @Override
     public void deleteBrews(long entryId) {
         // 회차 id를 먼저 집는다 — recipe·tasting은 brew_id로만 걸려 있어(1:1 PK 공유) 부모가 사라진 뒤에는
-        // 지울 근거가 없어진다. FK가 없으므로 이 순서를 잃으면 고아 행이 조용히 남는다(ADR-74).
+        // 지울 근거가 없어진다. FK가 없으므로 이 순서를 잃으면 고아 행이 조용히 남는다(ADR-75).
         List<Long> brewIds = query.select(brewEntity.id).from(brewEntity)
                 .where(brewEntity.entryId.eq(entryId)).fetch();
         if (brewIds.isEmpty()) {

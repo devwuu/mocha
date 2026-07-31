@@ -1,4 +1,4 @@
-# 로컬 개발용 Postgres 단일 서비스 (ref: specs/coffee-note-agent/changes/0028-rdb-storage/delta.md#ADR-72).
+# 로컬 개발용 Postgres 단일 서비스 (ref: specs/coffee-note-agent/changes/0028-rdb-storage/delta.md#ADR-73).
 # SQLite가 아니라 Postgres인 이유: 로드맵(클라우드 이전·멀티테넌시)이 전부 Postgres를 향해 중간 기착지 비용을 만들지 않는다.
 # 스키마 소유권은 Flyway에 있다 — 이 파일은 빈 DB만 준비하고 DDL은 넣지 않는다.
 #

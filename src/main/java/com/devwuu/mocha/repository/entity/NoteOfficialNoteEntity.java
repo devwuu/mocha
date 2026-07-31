@@ -13,7 +13,7 @@ import jakarta.persistence.Table;
  * <p>값만 갖는다 — source는 배열 전체에 하나이므로 {@link NoteEntity#getOfficialNotesSource()}가 소유한다(Q-8).
  * 그래서 여기에는 {@link SourcedValue}가 없다.
  *
- * <p>{@code noteId}는 연관 매핑이 아니라 평범한 컬럼이다 — 스키마에 FK가 없고(ADR-74) 엔티티에도
+ * <p>{@code noteId}는 연관 매핑이 아니라 평범한 컬럼이다 — 스키마에 FK가 없고(ADR-75) 엔티티에도
  * 연관을 두지 않는다({@link NoteEntity} POLICY). 부모 조회·조립은 QueryDSL 질의가 소유한다.
  */
 @Entity

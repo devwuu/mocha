@@ -12,7 +12,7 @@ import jakarta.persistence.Table;
  * {@code tasting} 테이블 매핑 — 회차 맛 감상 (ref: data-model.md#2.2, V-1·V-11·V-15).
  *
  * <p>PK가 {@code brew_id}인 것이 {@link BrewEntity}와의 1:1을 표현한다 — <b>FK 제약도 {@code @OneToOne}
- * 매핑도 없다</b>(ADR-74 + {@link NoteEntity} POLICY).
+ * 매핑도 없다</b>(ADR-75 + {@link NoteEntity} POLICY).
  *
  * <p>두 감상 컬럼이 NOT NULL인 것은 정규화가 이미 걸러 주기 때문이다: V-15가 빈 감상 tasting을 드롭하므로
  * 행이 존재하면 {@code myTaste}가 있고, V-11이 {@code myTasteOriginal}을 함께 존재하게 만든다(누락 시

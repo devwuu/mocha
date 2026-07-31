@@ -4,11 +4,11 @@ import java.time.OffsetDateTime;
 import java.util.List;
 
 /**
- * 노트 = 커피 1종 — {@code note} 테이블 1행 + 자식 행들 (ref: data-model.md#2.1, ADR-4, changes/0028 ADR-72).
+ * 노트 = 커피 1종 — {@code note} 테이블 1행 + 자식 행들 (ref: data-model.md#2.1, ADR-4, changes/0028 ADR-73).
  * <p>파생 값(엔트리 수 등)은 저장하지 않고 렌더 시 계산(POLICY, ADR-1).
  *
  * @param id            DB가 발급한 대체키({@code BIGSERIAL}). 구 slug를 대체한다 — 파일명이자 식별자라는
- *                      slug의 존재 이유가 파일 폐기와 함께 사라졌다(ADR-74, V-2 폐기).
+ *                      slug의 존재 이유가 파일 폐기와 함께 사라졌다(ADR-75, V-2 폐기).
  *                      <b>{@code null}은 "아직 저장되지 않음"</b>이다(D-1): id는 INSERT가 발급하므로 propose
  *                      단계의 draft는 식별자를 갖지 않고, 이 null 판정이 그대로 신규/기존 분기가 된다.
  * @param coffeeName    표시용 커피 이름 — 출처 표시 필드(source ∈ {user, photo}, 검색 미채움, V-5).

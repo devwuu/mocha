@@ -8,7 +8,7 @@ import java.time.OffsetDateTime;
 import java.util.Arrays;
 
 /**
- * 확인 대기 노트 — {@code pending_note} 한 행 (ref: data-model.md#2.3, ADR-3, changes/0028 ADR-73).
+ * 확인 대기 노트 — {@code pending_note} 한 행 (ref: data-model.md#2.3, ADR-3, changes/0028 ADR-74).
  * <p>단일 사용자 전제(NFR-6)로 사용자당 최대 1건 — 신규 기록·수정 세션이 이 슬롯을 공유한다(FR-17).
  *
  * @param mode         신규 기록 확인 대기({@code record}) vs 저장된 노트 수정 세션({@code edit}) — FR-21, changes/0012.

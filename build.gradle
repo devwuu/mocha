@@ -31,7 +31,7 @@ dependencies {
 	// Thymeleaf: 정적 HTML 생성기 용법(오프라인 실행). starter-web 미포함 (ref: plan.md#ADR-7)
 	implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
 
-	// DB = source of truth (ref: changes/0028-rdb-storage/delta.md#ADR-72). 로컬 Postgres는 docker-compose.yml.
+	// DB = source of truth (ref: changes/0028-rdb-storage/delta.md#ADR-73). 로컬 Postgres는 docker-compose.yml.
 	// JPA: Note → entries → brews → recipe/tasting 3단 중첩을 매핑으로 다룬다.
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	// 스키마 소유권은 Flyway 단독 — JPA는 ddl-auto: validate로 대조만 한다(엔티티↔DDL 드리프트 검출).

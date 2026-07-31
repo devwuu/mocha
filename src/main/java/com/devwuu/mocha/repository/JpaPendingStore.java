@@ -21,12 +21,12 @@ import java.util.Optional;
 
 /**
  * Postgres 기반 PendingStore — {@code pending_note} 한 행
- * (ref: changes/0028-rdb-storage/delta.md#ADR-73, tasks.md TΔ8).
+ * (ref: changes/0028-rdb-storage/delta.md#ADR-74, tasks.md TΔ8).
  *
  * <p>구 {@code JsonFilePendingStore}를 대체한다. 파일 시절의 원자적 쓰기(임시파일 → move)는 근거가
  * 소멸했다 — 한 행의 갱신은 그 자체로 원자적이라 "쓰기 도중 죽으면 원본이 깨진다"는 실패 모드가 없다.
  *
- * <p><b>{@code draft}만 정규화하지 않는다</b>(ADR-73 예외). TTL로 소멸하는 임시 상태이고 쿼리 대상이
+ * <p><b>{@code draft}만 정규화하지 않는다</b>(ADR-74 예외). TTL로 소멸하는 임시 상태이고 쿼리 대상이
  * 아니며, 정규화하면 draft 전용 테이블 셋을 또 만들어야 한다. 그래서 이 클래스가 소유하는 것은 둘이다 —
  * <b>Jackson 왕복</b>(엔티티는 직렬화된 문자열까지만 안다, TΔ3b)과 <b>로드 경계 위생</b>(ADR-66).
  *
@@ -129,7 +129,7 @@ public class JpaPendingStore implements PendingStore {
     }
 
     /**
-     * 도메인 → 행. {@code draft}만 JSON 문자열로 접히고 나머지는 컬럼으로 펴진다(ADR-73).
+     * 도메인 → 행. {@code draft}만 JSON 문자열로 접히고 나머지는 컬럼으로 펴진다(ADR-74).
      *
      * <p>POLICY: {@code created_at}은 <b>UTC 표기</b>로 눕힌다 (TΔ4 감사 타임스탬프 POLICY 승계 —
      * plan 대응은 {@code JpaAuditingConfig}가 소유한다). {@code timestamptz}는 오프셋을 저장하지 않아

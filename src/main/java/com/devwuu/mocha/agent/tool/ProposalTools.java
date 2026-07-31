@@ -205,7 +205,7 @@ class ProposalTools {
         Entry entry = new Entry(proposal.targetDate(), proposal.brews(), now);
         // POLICY: draft의 식별자는 기존 노트면 그 id, 신규면 null이다 — id는 INSERT가 발급하므로 저장 전
         //         draft가 식별자를 가질 방법이 없고, 이 null이 그대로 커밋의 신규/기존 분기가 된다
-        //         (ref: changes/0028 D-1, ADR-74 — 구 recordSlug 대체키 발급은 근거와 함께 소멸했다).
+        //         (ref: changes/0028 D-1, ADR-75 — 구 recordSlug 대체키 발급은 근거와 함께 소멸했다).
         Note draft = new Note(
                 existing ? proposal.match().noteId() : null,
                 proposal.meta().coffeeName(), proposal.meta().roastery(), proposal.meta().beans(),

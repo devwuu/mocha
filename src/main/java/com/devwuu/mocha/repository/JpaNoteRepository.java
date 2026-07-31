@@ -34,18 +34,18 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
- * Postgres 기반 NoteRepository (ref: changes/0028-rdb-storage/delta.md#ADR-72, tasks.md TΔ5a).
+ * Postgres 기반 NoteRepository (ref: changes/0028-rdb-storage/delta.md#ADR-73, tasks.md TΔ5a).
  *
  * <p>구 {@code JsonFileNoteRepository}를 대체한다(TΔ6a에서 폐기) — DB가 source of truth이고 카드·HTML은
  * 여전히 파생물이다(ADR-1의 "파생물은 언제든 전체 재생성 가능" 규칙은 불변).
  *
- * <p><b>저장소 3분할의 가운데</b>다(delta §ADR-72). 위로는 {@link NoteRepository} 포트를 구현해 상위
+ * <p><b>저장소 3분할의 가운데</b>다(delta §ADR-73). 위로는 {@link NoteRepository} 포트를 구현해 상위
  * 계층에 도메인 record만 보이고(NFR-4, AC-Δ1), 아래로는 {@link NoteEntityRepository} <b>하나만</b>
  * 의존해 행을 넣고 뺀다. 이 클래스가 양쪽 타입을 아는 유일한 자리이며 소유하는 것은 셋이다 —
  * <b>정책</b>(ADR-4·59, V-9·V-13) · <b>도메인↔엔티티 변환</b>({@link NoteEntityMapper} 경유) ·
  * <b>3단 중첩 조립</b>.
  *
- * <p><b>관계는 여기서만 안다.</b> 엔티티에 연관 매핑이 없고(TΔ3a) DB에 FK도 없으므로(ADR-74) 아래 층은
+ * <p><b>관계는 여기서만 안다.</b> 엔티티에 연관 매핑이 없고(TΔ3a) DB에 FK도 없으므로(ADR-75) 아래 층은
  * 정렬된 평면 행 목록({@link NoteChildRows})까지만 준다. 부모별 그룹핑과
  * {@code note → entry → brew → recipe/tasting} 재구성이 이 클래스의 몫이고, 순서는 <b>재정렬하지 않고
  * 질의가 준 대로 보존</b>한다.
@@ -88,7 +88,7 @@ public class JpaNoteRepository implements NoteRepository {
      */
     @Transactional
     public Note insert(Note note) {
-        // 자식이 부모 id를 평범한 컬럼으로 들기 때문에(ADR-74) id가 먼저 확정돼야 한다.
+        // 자식이 부모 id를 평범한 컬럼으로 들기 때문에(ADR-75) id가 먼저 확정돼야 한다.
         long noteId = notes.saveAndFlush(NoteEntityMapper.toNoteEntity(note)).getId();
 
         notes.insertAll(NoteEntityMapper.toBeanEntities(noteId, note.beans()));
@@ -126,7 +126,7 @@ public class JpaNoteRepository implements NoteRepository {
      *
      * <p><b>신규/기존 분기는 {@code noteId == null} 하나</b>다(D-1). id를 발급하는 것은 {@code BIGSERIAL}
      * 이므로 저장 전 draft에는 식별자가 없고, 그 부재가 그대로 "아직 저장되지 않음"을 뜻한다 — 구
-     * {@code nextAvailableSlug}가 하던 "신규 대체키 발급"이라는 개념 자체가 사라졌다(ADR-74).
+     * {@code nextAvailableSlug}가 하던 "신규 대체키 발급"이라는 개념 자체가 사라졌다(ADR-75).
      *
      * <p><b>노트 단위 메타는 갱신하지 않는다.</b> 기존 노트면 {@code meta}에서 쓰는 것은 관측 표기(커피명·
      * 로스터리)뿐이고 원두 구성·로스팅·공식 노트는 보존한다 — 재기록은 그날의 엔트리를 쌓는 일이지 커피의
@@ -139,7 +139,7 @@ public class JpaNoteRepository implements NoteRepository {
             return insert(newNote(meta, entry, aliases));
         }
         // 소실은 조용히 신규 생성으로 흡수하지 않는다 — 그러면 매칭이 지목한 노트와 별개의 중복 노트가
-        // 생기고 사진·카드가 두 id로 갈린다. FK가 없어 DB가 막아주지 않는 자리다(ADR-74).
+        // 생기고 사진·카드가 두 id로 갈린다. FK가 없어 DB가 막아주지 않는 자리다(ADR-75).
         Note existing = findById(noteId)
                 .orElseThrow(() -> new IllegalStateException("병합 대상 노트 소실: " + noteId));
         replaceEntry(noteId, entry);

@@ -125,7 +125,7 @@ class JpaNoteRepositoryApplyEditTest extends PostgresIntegrationTest {
         assertThat(updated.roastLevel().value()).isEqualTo("미디엄");
 
         // 교체이므로 옛 행이 남아선 안 된다 — 조립 경로는 부모를 통해서만 읽어 고아를 지나치므로
-        // 테이블을 직접 센다(ADR-74: FK가 없어 DB는 이 자리를 막지 않는다).
+        // 테이블을 직접 센다(ADR-75: FK가 없어 DB는 이 자리를 막지 않는다).
         flushAndClear();
         assertThat(rowCount("note_bean")).isOne();
         assertThat(rowCount("note_official_note")).isOne();
@@ -200,7 +200,7 @@ class JpaNoteRepositoryApplyEditTest extends PostgresIntegrationTest {
     }
 
     @Test
-    @DisplayName("ADR-74: 날짜 이동이 하위 행을 남기지 않는다 — 원본·덮어쓴 엔트리의 회차까지")
+    @DisplayName("ADR-75: 날짜 이동이 하위 행을 남기지 않는다 — 원본·덮어쓴 엔트리의 회차까지")
     void dateMoveLeavesNoOrphanRows() {
         // 이동은 삭제 둘(원본 date + 이동처 date) + 삽입 하나다. 어느 한 단이라도 하위를 빠뜨리면
         // DB는 아무 말도 하지 않고 고아가 쌓인다 — FK가 없어 이 단언이 유일한 안전망이다.

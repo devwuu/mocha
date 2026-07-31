@@ -13,7 +13,7 @@ import java.math.BigDecimal;
  * 없어 {@link SourcedValue}가 하나도 없다(ADR-22·59 승계).
  *
  * <p>PK가 {@code brew_id}인 것이 {@link BrewEntity}와의 1:1을 표현한다 — <b>FK 제약도 {@code @OneToOne}
- * 매핑도 없다</b>(ADR-74 + {@link NoteEntity} POLICY). 값은 애플리케이션이 회차 INSERT 후 받은 id로 채운다.
+ * 매핑도 없다</b>(ADR-75 + {@link NoteEntity} POLICY). 값은 애플리케이션이 회차 INSERT 후 받은 id로 채운다.
  *
  * <p>수치가 {@link BigDecimal}인 것은 스키마가 {@code numeric}이기 때문이다 — 도메인
  * {@link com.devwuu.mocha.domain.Recipe}는 {@code Double}이고 변환은 변환기(TΔ3c)가 소유한다.

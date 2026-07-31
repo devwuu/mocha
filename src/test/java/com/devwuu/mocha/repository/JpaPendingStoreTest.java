@@ -88,7 +88,7 @@ class JpaPendingStoreTest extends PostgresIntegrationTest {
     }
 
     @Test
-    @DisplayName("AC-7/NFR-2: 저장 후 DB 왕복으로 동일 pending 복원 — draft는 JSONB, 나머지는 컬럼(ADR-73)")
+    @DisplayName("AC-7/NFR-2: 저장 후 DB 왕복으로 동일 pending 복원 — draft는 JSONB, 나머지는 컬럼(ADR-74)")
     void persistsAndReloadsThroughDatabase() {
         PendingNote pending = sample(OffsetDateTime.now(FIXED));
 
@@ -100,7 +100,7 @@ class JpaPendingStoreTest extends PostgresIntegrationTest {
         PendingNote restored = store.get(USER).orElseThrow();
         assertThat(restored.createdAt().toInstant()).isEqualTo(pending.createdAt().toInstant());
         assertThat(restored.createdAt().getOffset()).isEqualTo(ZoneOffset.UTC);
-        // 3단 중첩은 정규화되지 않고 draft 안에 접혀 그대로 돌아온다(ADR-73 예외).
+        // 3단 중첩은 정규화되지 않고 draft 안에 접혀 그대로 돌아온다(ADR-74 예외).
         assertThat(restored.draft()).isEqualTo(pending.draft());
         assertThat(restored.match()).isEqualTo(MatchInfo.newNote());
     }
@@ -178,7 +178,7 @@ class JpaPendingStoreTest extends PostgresIntegrationTest {
     @DisplayName("D-1/TΔ0b E-5: 저장 전 draft는 id가 없는 것이 정상 — 신규 record pending이 훼손 판정되지 않는다")
     void newRecordDraftWithoutIdIsNotCorrupt() {
         // 구 "draft.slug 공백" 검사를 그대로 옮겼다면 여기서 전부 훼손으로 떨어졌다 — id는 INSERT가
-        // 발급하므로 propose 시점의 draft에는 식별자가 없다(ADR-74).
+        // 발급하므로 propose 시점의 draft에는 식별자가 없다(ADR-75).
         PendingNote pending = sample(OffsetDateTime.now(FIXED));
         assertThat(pending.draft().id()).isNull();
 

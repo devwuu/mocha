@@ -21,7 +21,7 @@ import java.time.Duration;
 
 /**
  * 저장소 빈 배선. 노트·pending은 DB에서, 사진·photo buffer는 아직 {@code mocha.data.dir} 아래 파일에서 온다
- * (plan.md §5, CLAUDE.md §3, changes/0028 ADR-72·73).
+ * (plan.md §5, CLAUDE.md §3, changes/0028 ADR-73·74).
  * <p>도메인 JSON 규칙은 공통 {@code ObjectMapper} 빈({@link CommonConfig} — {@code MochaObjectMapper}
  * 규칙, ADR-63)을 주입받아 통일한다.
  */

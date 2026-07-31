@@ -14,7 +14,7 @@ import java.time.LocalDate;
  * <p>{@code tasted_on}은 {@code date} 타입이라 형식 위반(V-3)을 DB가 거르고, {@code UNIQUE(note_id, tasted_on)}이
  * "노트 안에서 날짜가 유일 키"(V-10)를 제약으로 강제한다 — 구현체가 매번 검사하던 규칙이 스키마로 내려간 자리다.
  *
- * <p>{@code noteId}는 연관 매핑이 아니라 평범한 컬럼이다 — 스키마에 FK가 없고(ADR-74) 엔티티에도
+ * <p>{@code noteId}는 연관 매핑이 아니라 평범한 컬럼이다 — 스키마에 FK가 없고(ADR-75) 엔티티에도
  * 연관을 두지 않는다({@link NoteEntity} POLICY). 부모 조회·조립은 QueryDSL 질의가 소유한다.
  *
  * <p>수정 메서드는 <b>{@code tasted_on} 하나</b>다. 같은 날 재저장은 여전히 <b>통째 교체</b>가 정책이지만

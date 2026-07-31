@@ -6,7 +6,7 @@ spring:
   config:
     import: "optional:file:.env.local[.properties]"
 
-  # 저장소 = Postgres (ref: changes/0028-rdb-storage/delta.md#ADR-72). 로컬 인스턴스는 docker-compose.yml.
+  # 저장소 = Postgres (ref: changes/0028-rdb-storage/delta.md#ADR-73). 로컬 인스턴스는 docker-compose.yml.
   # 접속 정보는 환경변수로 덮을 수 있게 두되 default를 로컬 컨테이너에 맞춘다 — 클라우드 이전(델타 B)에서
   # 코드·설정 변경 없이 주입만으로 대상을 바꾸기 위함. 로컬 자격증명은 비밀이 아니다(docker-compose.yml POLICY).
   datasource:

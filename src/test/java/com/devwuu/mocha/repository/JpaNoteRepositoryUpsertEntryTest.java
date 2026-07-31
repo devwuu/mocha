@@ -40,7 +40,7 @@ import java.util.List;
  * <p>제약 4종(V-1·V-3·V-8·V-10) 중 <b>둘은 도메인 타입이 이미 막는다</b> — {@code Rating}은 enum이고
  * {@code Entry.date}는 {@code LocalDate}라 저장소 인자로는 위반을 만들 수 없다. 그래서 그 둘은 네이티브
  * SQL로 우회해 넣는다. 우회가 곧 검증 대상이다: FK를 버린 이 스키마에서 psql 직접 편집을 막는 것은
- * CHECK와 타입뿐이고(ADR-74), 애플리케이션을 지나지 않는 삽입이 실제로 거부되는지는 그렇게만 관측된다.
+ * CHECK와 타입뿐이고(ADR-75), 애플리케이션을 지나지 않는 삽입이 실제로 거부되는지는 그렇게만 관측된다.
  *
  * <p>{@code em.clear()}로 컨텍스트를 비우는 것은 TΔ5a와 같은 이유다 — 비우지 않으면 조회가 identity map을
  * 되돌려주고 DB를 지나지 않은 채 그린이 된다.
@@ -165,7 +165,7 @@ class JpaNoteRepositoryUpsertEntryTest extends PostgresIntegrationTest {
     }
 
     @Test
-    @DisplayName("ADR-74: 엔트리 교체가 하위 행을 남기지 않는다 — FK가 없어 고아는 조용히 쌓인다")
+    @DisplayName("ADR-75: 엔트리 교체가 하위 행을 남기지 않는다 — FK가 없어 고아는 조용히 쌓인다")
     void entryReplacementLeavesNoOrphanRows() {
         // 교체는 삭제 후 재삽입이고, 그 삭제는 코드가 순서를 지고 있다(tasting·recipe → brew → entry).
         // 한 단이라도 빠지면 DB는 아무 말도 하지 않고 재저장마다 고아가 늘어난다 — 여기가 유일한 안전망이다.
@@ -299,7 +299,7 @@ class JpaNoteRepositoryUpsertEntryTest extends PostgresIntegrationTest {
         long noteId = seed(entry(day(10), "10일"));
 
         // 저장소를 지나면 같은 날은 병합되므로(AC-14) 위반은 애플리케이션 밖에서만 만들어진다 — psql 직접
-        // 편집이 그 자리다. FK 없는 스키마에서 하루 유일성을 지키는 것은 이 UNIQUE뿐이다(ADR-74).
+        // 편집이 그 자리다. FK 없는 스키마에서 하루 유일성을 지키는 것은 이 UNIQUE뿐이다(ADR-75).
         assertThatThrownBy(() -> insertEntryRow(noteId, "2026-07-10"))
                 .hasStackTraceContaining("entry_note_id_tasted_on_key");
     }

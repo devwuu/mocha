@@ -13,7 +13,7 @@ import jakarta.persistence.Table;
  *
  * <p>테이블명이 {@code note_source}지 도메인 {@link com.devwuu.mocha.domain.Source}(출처 종류 enum)와는
  * 무관하다 — 이쪽은 참조 URL이다.
- * <p>{@code noteId}는 연관 매핑이 아니라 평범한 컬럼이다 — 스키마에 FK가 없고(ADR-74) 엔티티에도
+ * <p>{@code noteId}는 연관 매핑이 아니라 평범한 컬럼이다 — 스키마에 FK가 없고(ADR-75) 엔티티에도
  * 연관을 두지 않는다({@link NoteEntity} POLICY). 부모 조회·조립은 QueryDSL 질의가 소유한다.
  */
 @Entity

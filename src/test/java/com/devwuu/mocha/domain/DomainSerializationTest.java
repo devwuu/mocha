@@ -81,7 +81,7 @@ class DomainSerializationTest {
     void jsonShape() throws Exception {
         String noteJson = mapper.writeValueAsString(sampleNote());
         assertThat(noteJson)
-                .contains("\"id\":1")               // 식별자는 DB 발급 id(ADR-74) — 구 slug 문자열이 아니다
+                .contains("\"id\":1")               // 식별자는 DB 발급 id(ADR-75) — 구 slug 문자열이 아니다
                 .contains("\"coffee_name\"")
                 .contains("\"roast_level\"")
                 .contains("\"official_notes\"")

@@ -20,8 +20,8 @@ import jakarta.persistence.Table;
  * 변환기가 소유한다(TΔ3c).
  * <p>POLICY: <b>엔티티에 연관 매핑을 두지 않는다</b> — {@code @OneToMany}·{@code @ManyToOne}·{@code cascade}·
  * {@code orphanRemoval} 전부 미사용이고, 자식은 {@code note_id}를 평범한 {@code Long} 컬럼으로 들고 있다.
- * 관계 조회(조인·조립)는 QueryDSL이 질의 수준에서 푼다(사용자 확정 2026-07-30 — ADR-72 개정 대상, TΔ12).
- * DB에 FK가 없고 삭제 전파도 애플리케이션이 명시적 순서로 전담하므로(ref: delta.md#ADR-74, TΔ5d),
+ * 관계 조회(조인·조립)는 QueryDSL이 질의 수준에서 푼다(사용자 확정 2026-07-30 — ADR-73 개정 대상, TΔ12).
+ * DB에 FK가 없고 삭제 전파도 애플리케이션이 명시적 순서로 전담하므로(ref: delta.md#ADR-75, TΔ5d),
  * 엔티티 그래프를 만들면 <b>DB·저장소·매핑 세 곳이 각자의 관계 개념을 갖게 된다</b> — 관계를 아는 곳을
  * 질의 한 곳으로 모은다.
  *

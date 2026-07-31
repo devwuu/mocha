@@ -15,10 +15,10 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 
 /**
- * {@code pending_note} 테이블 매핑 — 확인 대기 노트 (ref: data-model.md#2.3, ADR-3·73).
+ * {@code pending_note} 테이블 매핑 — 확인 대기 노트 (ref: data-model.md#2.3, ADR-3·74).
  * <p>사용자당 최대 1건이라 {@code user_id}가 PK다(NFR-6 — A1에서 값은 단일, 멀티테넌시는 A3).
  *
- * <p>ADR-73 예외: <b>{@code draft}만 정규화하지 않고 JSONB로 둔다</b> — TTL로 소멸하는 임시 상태이고 쿼리
+ * <p>ADR-74 예외: <b>{@code draft}만 정규화하지 않고 JSONB로 둔다</b> — TTL로 소멸하는 임시 상태이고 쿼리
  * 대상이 아니며, 정규화하면 draft 전용 테이블 셋을 또 만들어야 한다. 여기서는 직렬화된 문자열을 들고 있고
  * Jackson 왕복은 저장소 구현체가 소유한다(TΔ8) — 도메인 {@link PendingNote#draft()}는 {@code Note}다.
  * 그래서 스키마가 강제하는 무결성은 컬럼 수준(mode·created_at·draft 부재)까지고, JSONB 내부 결손
