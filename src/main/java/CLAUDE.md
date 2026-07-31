@@ -19,12 +19,15 @@
 
 ## 2. 아키텍처 원칙
 
-- **Controller / Service / Repository 3계층 기준.** 헥사고날·포트-어댑터·클린 아키텍처 같은 복잡한 구조는 도입하지 않는다. 이 프로젝트 규모(1인용 단일 프로세스)에서는 관리 비용이 이득을 넘는다.
-  - 이 프로젝트에서 controller 역할 = `SlackGateway`(Socket Mode 수신·응답). HTTP 컨트롤러와 마찬가지로 얇게 — 파싱·위임·응답 변환만 하고 로직은 service로.
-  - service = 파이프라인 오케스트레이션(추출→매칭→보강→확인→저장→렌더).
-  - repository = 저장 경계의 인터페이스와 구현체(목록은 `REVIEW.md` §2 표가 소유). 매체는 DB(노트·pending)와 파일(사진·buffer)로 갈린다.
-    - 노트 저장소만 **3분할**이다(ADR-73): 포트 `NoteRepository` → 정책·변환·조립을 지는 `JpaNoteRepository` → 행 입출력 `NoteEntityRepository`(Spring Data + QueryDSL custom fragment). 엔티티에 연관 매핑을 두지 않으므로(`@OneToMany`·`cascade`·`orphanRemoval` 미사용) **관계를 아는 곳은 질의 하나**다.
-    - ⚠️ **A1 한정 형태다**: `service` 패키지가 아직 없어 병합 정책(ADR-4·59)·V-9·V-13이 `JpaNoteRepository`에 얹혀 있다. A2(`0029-app-interface`)가 service를 세우면 정책을 옮기고 `NoteRepository`를 저장소 계약으로 좁힌다 — 이 배치를 3계층의 정답으로 읽지 않는다.
+- **Controller / Service / TxService / Repository.** 헥사고날·포트-어댑터·클린 아키텍처 같은 복잡한 구조는 도입하지 않는다. 이 프로젝트 규모(1인용 단일 프로세스)에서는 관리 비용이 이득을 넘는다. 아래 4층은 그 부류가 **아니다** — 패키지를 뒤집거나 포트/어댑터 명명을 만드는 것이 아니라, **이미 존재하던 트랜잭션 경계에 이름을 붙인 것**이다(changes/0029 ADR-77).
+  - controller = 파싱·위임·응답 변환만. 얇게. (이 프로젝트의 현 controller 역할 = `SlackGateway` — REST 컨트롤러가 TΔ5에서 대체한다.)
+  - **service = 외부 IO가 필요한 경우의 오케스트레이션.** LLM·검색·파일 호출을 **쓰기 진입 전에** 끝내고 결과값만 아래로 넘긴다(`NoteService`). 여기에 `@Transactional`을 걸지 않는다.
+  - **tx-service = 한 트랜잭션 단위 비즈니스 로직.** 원자적이어야 하는 규칙이 전부 여기 산다 — V-9·V-10·V-13, 병합 정책(ADR-4·59), 대상 소실 검사, 행 순서 조율(`NoteTxService`). `@Transactional` 경계를 소유한다.
+  - repository = 행 입출력. 매체는 DB(노트)와 파일(사진·buffer)로 갈린다. 사진 쪽은 인터페이스 뒤에 있고(목록은 `REVIEW.md` §2 표가 소유) **노트 쪽에는 인터페이스가 없다**(ADR-76).
+  - **분할 기준은 "이 로직이 한 트랜잭션 안에 있어야 하는가"이고, 예/아니오로 답이 나와야 한다.** 답이 안 나오면 층이 잘못 그어진 것이다 — 구 배치가 그것을 "판단이냐 행 조율이냐"로 물어 V-9는 위에, V-10은 아래에 놓였다(changes/0029 D-9 실측).
+  - 노트 경로 구체형: **`NoteService` → `NoteTxService` → `NoteEntityRepository`**(Spring Data + QueryDSL custom fragment). 엔티티에 연관 매핑을 두지 않으므로(`@OneToMany`·`cascade`·`orphanRemoval` 미사용) **관계를 아는 곳은 질의 하나**다. 도메인↔엔티티 변환·3단 조립·로드 경계 위생은 순수 함수라 어느 층도 아닌 `NoteEntityMapper`가 소유한다.
+  - **구 `NoteRepository` 포트는 제거됐다**(changes/0029 TΔ4b, ADR-76) — 두 번째 구현체가 없고 매체 교체는 이미 일어났으며(changes/0028) 상위 계층 테스트 격리는 `NoteService` seam이 가져갔다. 상위 계층이 `NoteTxService`를 직접 잡지 않는 것이 대신 지켜야 할 규칙이다.
+  - 그래서 `NoteTxService`와 그 공개 메서드는 `final`이 아니다 — 트랜잭션 프록시가 CGLIB 서브클래싱이고, 단위 테스트의 손 fake도 상속으로 만든다(`org.mockito` 미도입 방침 유지).
 - **외부 의존은 인터페이스로 경계화한다.** 허용 경계·인터페이스 목록은 루트 `REVIEW.md` §2 표가 **단일 소유**한다 — 여기서는 이름을 중복 나열하지 않는다(문서 간 드리프트 방지). 외부 의존(LLM·저장·Slack·렌더링)은 그 표의 인터페이스 뒤에 두고 구현체를 주입한다. 이것은 헥사고날 도입이 아니라 교체 가능성(spec NFR-4)을 위한 최소 규칙이다 — 패키지 구조를 뒤집거나 포트/어댑터 명명을 강제하지 않는다.
   - 호출부(service)가 OpenAI SDK 타입을 직접 참조하지 않는다 (ref: specs/coffee-note-agent/plan.md#ADR-5).
 - **단발성 우선**: 요청 처리는 선형 단발 흐름으로 구현한다. 에이전트 루프·장기 실행은 spec이 요구할 때만.
@@ -35,10 +38,11 @@ DB가 유일한 원본이고 프로세스는 하나다. 매체가 파일에서 D
 
 - **DB = source of truth, 카드 JPG = 파생물.** 렌더러는 DB 외 어떤 상태도 읽지 않는다. 파생물은 언제든 전체 재생성 가능해야 한다 (ref: plan.md#ADR-1 개정본·#ADR-73).
 - **트랜잭션 안에서 외부 호출(LLM·검색·Slack API)을 하지 않는다.** 결과값만 들고 쓰기 구간에 들어간다. 파일 시절보다 강한 요구다 — 외부 지연이 **커넥션을 점유**하고, 롤백은 이미 나간 Slack 메시지·LLM 과금을 되돌리지 못한다 (Q-11, plan.md §7).
-- **트랜잭션 경계는 저장소 구현체가 소유한다.** `JpaNoteRepository`의 공개 메서드 하나가 한 트랜잭션이고, 노트 행·배열 4종·엔트리·회차·레시피·감상이 **전부 심기거나 전부 안 심긴다**. 상위 계층(tool·service·Slack 핸들러)에 `@Transactional`을 걸어 경계를 늘리지 않는다 — 늘리는 순간 위 규칙(외부 호출 금지)이 지켜질 수 없는 구간이 생긴다.
+- **트랜잭션 경계는 tx-service가 소유한다** (changes/0029 ADR-77 — 구 소유자는 저장소 구현체였고, 이름만 바뀐 같은 자리다). `NoteTxService`의 공개 메서드 하나가 한 트랜잭션이고, 노트 행·배열 4종·엔트리·회차·레시피·감상이 **전부 심기거나 전부 안 심긴다**. 상위 계층(controller·service·tool)에 `@Transactional`을 걸어 경계를 늘리지 않는다 — 늘리는 순간 위 규칙(외부 호출 금지)이 지켜질 수 없는 구간이 생긴다.
+  - **이 규칙이 계층으로 강제된다**: 외부 콜은 service에만 있고 트랜잭션은 그 아래에서만 열린다. 규칙을 어기려면 층을 건너뛰어야 하므로 리뷰에서 눈에 띈다.
 - **DB 쓰기와 파일 쓰기는 같은 원자 단위가 아니다.** 사진은 파일에 남으므로 노트 커밋은 섰는데 사진 이동이 실패하는 조합이 실재한다 — 그때 노트를 되돌리지 않고 사진은 스테이징에 남아 시작 시 고아 청소가 걷는다(ADR-29, plan.md §7). 새로 이런 조합을 만들면 **어느 쪽을 정본으로 삼을지 먼저 정한다.**
 - **파일 쓰기는 여전히 원자적으로.** 사진·photo buffer는 임시 파일에 쓴 뒤 move(replace)로 반영한다. 프로세스가 쓰기 도중 죽어도 원본이 깨지지 않아야 한다.
-- **저장은 확인 이후에만.** 사용자 [저장] 액션 없이 `NoteRepository` 쓰기를 호출하지 않는다 (ref: plan.md#ADR-3 POLICY).
+- **저장은 확인 이후에만.** 사용자 [저장] 확정 없이 `NoteService.commit`(및 그 아래 저장소 쓰기)을 호출하지 않는다 (ref: plan.md#ADR-3 POLICY).
 - **경로는 설정에서.** `mocha.data.dir`(사진·buffer)·`mocha.artifact.dir` 밖의 경로를 하드코딩하지 않는다. 노트 폴더 접미(`<id>-<로스터리>-<커피명>`)는 `NoteFolderName`이 단일 소유한다 — 다른 곳에서 조립하지 않는다 (ref: plan.md#ADR-75).
 
 ## 4. 코딩 컨벤션
@@ -64,7 +68,7 @@ DB가 유일한 원본이고 프로세스는 하나다. 매체가 파일에서 D
 ### 5.2 계층별 전략
 - **도메인/응용 로직 (단위 테스트)**: 외부 의존(LLM·검색·Slack·파일)은 인터페이스를 stub/fake로 대체해 결정론적으로 검증한다. 매칭·병합·출처 우선순위 같은 정책 로직은 여기서 외부 호출 없이 빠르게 검증한다.
 - **저장소 (통합 테스트)**: **실제 매체로 검증한다 — 인메모리 대체 금지**가 원칙이고, 매체별로 갈린다.
-  - DB 구현체(`JpaNoteRepository`·`JpaPendingStore`)는 **로컬 Postgres(`docker-compose.yml`)의 `test` 스키마**에 붙는다. `PostgresIntegrationTest`를 상속하면 `test` 프로파일과 매 컨텍스트 기동 clean→migrate가 함께 붙고, 개발 데이터가 사는 `public`과 스키마로 갈린다. 접속 키는 `MOCHA_TEST_DB_*`로 분리돼 있다.
+  - DB에 붙는 계층(`NoteTxService` — 트랜잭션 단위 규칙이 행에 어떻게 떨어지는지가 검증 대상이다)은 **로컬 Postgres(`docker-compose.yml`)의 `test` 스키마**에 붙는다. `PostgresIntegrationTest`를 상속하면 `test` 프로파일과 매 컨텍스트 기동 clean→migrate가 함께 붙고, 개발 데이터가 사는 `public`과 스키마로 갈린다. 접속 키는 `MOCHA_TEST_DB_*`로 분리돼 있다.
     - **H2로 대체하지 않는다**: 검증 대상이 CHECK/UNIQUE 제약, `numeric`·`jsonb`·`date` 왕복이라 방언이 다른 엔진에서는 그린이 아무것도 보증하지 않는다. 같은 이유로 스키마는 Hibernate가 아니라 Flyway가 만든다(`create-drop`으로 만든 스키마에는 V1의 제약이 하나도 없다).
     - **Testcontainers를 쓰지 않는다**(TΔ10a, 사용자 확정). 1차 구현이 싱글턴 컨테이너였으나 실행이 갈수록 느려져 로컬 인스턴스 재사용으로 되돌렸다. 대가는 **`./gradlew test` 전에 `docker compose up -d`가 선행**이라는 것이다 — "환경 없이도 돈다"는 성질을 포기한 자리다.
   - 파일 구현체(`LocalPhotoStore`·`JsonFilePhotoBufferStore`)는 임시 디렉토리(`@TempDir`)에 **실제 파일 I/O**로 검증한다 — 원자적 쓰기·경로 규칙(NFC 포함)·직렬화 왕복이 검증 대상이다.
@@ -96,6 +100,6 @@ LLM 생성 결과는 **어느 분류에서도 문장 일치로 검증하지 않�
 - 외부 호출(LLM·검색·Slack)이 트랜잭션 경계 밖에 있는가. 상위 계층에 `@Transactional`을 걸어 경계를 늘리지 않았는가(§3).
 - 스키마를 바꿨다면 **Flyway 마이그레이션이 먼저**인가. 엔티티만 고쳐 `validate`를 깨뜨리지 않았는가(§1).
 - 외부 의존을 인터페이스 뒤로 분리했는가. service가 SDK 타입을 직접 참조하지 않는가(§2).
-- 3계층을 넘는 구조(포트/어댑터 패키지, 이벤트 버스 등)를 임의로 도입하지 않았는가(§2).
+- §2의 계층 배치를 넘는 구조(포트/어댑터 패키지, 이벤트 버스 등)를 임의로 도입하지 않았는가. 새로 만든 로직을 어느 층에 둘지 **"한 트랜잭션 안이어야 하는가"로 답할 수 있는가**(§2).
 - 새 동작이 어떤 AC/POLICY에 대응하는가. 대응 테스트가 있는가(§5). 저장소를 건드렸다면 실 Postgres 통합 테스트인가(§5.2).
 - 새 인프라/의존성(캐시·큐 등)을 spec 결정 없이 추가하지 않았는가(§1).

@@ -21,10 +21,17 @@ import com.devwuu.mocha.repository.entity.NoteSourceEntity;
 import com.devwuu.mocha.repository.entity.RecipeEntity;
 import com.devwuu.mocha.repository.entity.SourcedValue;
 import com.devwuu.mocha.repository.entity.TastingEntity;
+import com.devwuu.mocha.repository.jpa.NoteChildRows;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * 도메인 record ↔ JPA 엔티티 양방향 변환 (ref: changes/0028-rdb-storage/tasks.md TΔ3c).
@@ -34,10 +41,15 @@ import java.util.List;
  * ({@code Note → entries → brews → recipe/tasting})과 배열 6종의 분해·재조립은 전부 여기서 일어난다.
  *
  * <p><b>조립은 아래에서 위로</b> 한다 — 엔티티에 연관 매핑이 없으므로({@link NoteEntity} POLICY) 부모가
- * 자식 행을 알지 못한다. 호출부(저장소 구현체)가 질의 결과를 그룹핑해
- * {@link #toBrew} → {@link #toEntry} → {@link #toNote} 순으로 올린다. <b>정렬은 질의가 소유한다</b>:
- * seq 있는 3종은 {@code seq} 오름차순, 별칭은 {@code id} 오름차순(= 첫 등장 순서, V-13). 이 클래스는
- * 받은 목록의 순서를 그대로 보존할 뿐 재정렬하지 않는다.
+ * 자식 행을 알지 못한다. 평면 행 목록({@link NoteChildRows})을 부모별로 그룹핑해
+ * {@link #toBrew} → {@link #toEntry} → {@link #toNote} 순으로 올리는 것이 {@link #assemble}이다.
+ * <b>정렬은 질의가 소유한다</b>: seq 있는 3종은 {@code seq} 오름차순, 별칭은 {@code id} 오름차순
+ * (= 첫 등장 순서, V-13). 이 클래스는 받은 목록의 순서를 그대로 보존할 뿐 재정렬하지 않는다.
+ *
+ * <p><b>조립이 여기 있는 이유</b>(0029 TΔ4c): 변환도 조립도 <b>순수 함수</b>라 트랜잭션과 무관하다. 구
+ * {@code JpaNoteRepository}가 이것과 비즈니스 로직을 함께 지고 있었고, 그 클래스가
+ * {@link com.devwuu.mocha.service.NoteTxService}("한 트랜잭션 단위")로 재정의되면서 축에 맞지 않는 절반이
+ * 이리로 내려왔다. 남겨 뒀다면 "트랜잭션 단위인가"라는 기준이 다시 흐려졌을 자리다(delta D-9).
  *
  * <p><b>도메인↔스키마 간극 4건</b>을 여기서 흡수한다:
  * <ul>
@@ -59,6 +71,8 @@ import java.util.List;
  * {@code updatedAt}) — 같은 의미의 타임스탬프를 두 벌 두지 않는다.
  */
 public final class NoteEntityMapper {
+
+    private static final Logger log = LoggerFactory.getLogger(NoteEntityMapper.class);
 
     private NoteEntityMapper() {
     }
@@ -190,7 +204,93 @@ public final class NoteEntityMapper {
         return sourced == null ? null : new SourcedValue(sourced.value(), sourced.source());
     }
 
-    // ────────────────────────────── 엔티티 → 도메인 ──────────────────────────────
+    // ────────────────────────────── 엔티티 → 도메인 (조립) ──────────────────────────────
+
+    /**
+     * 노트 행 목록 + 그에 걸린 자식 행 전부 → 도메인 노트 목록 (0029 TΔ4c에서 구 저장소 구현체로부터 이관).
+     *
+     * <p>자식은 부모 id 목록으로 <b>한 번에</b> 받아 메모리에서 그룹핑한다 — 노트가 몇 건이든 질의 수가
+     * 고정된다({@link NoteChildRows} 계약). 질의는 호출부가 이미 끝냈고 여기서는 <b>행 → 도메인 재구성만</b>
+     * 한다: 순수 함수라 트랜잭션이 필요 없다.
+     *
+     * @param rows     노트 본문 행 — <b>결과 순서를 이 목록이 소유한다</b>(재정렬하지 않는다)
+     * @param children 위 노트들에 걸린 자식 행 전부, 질의가 정렬해 준 순서 그대로
+     */
+    public static List<Note> assemble(List<NoteEntity> rows, NoteChildRows children) {
+        if (rows.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, List<NoteBeanEntity>> beansByNote = groupBy(children.beans(), NoteBeanEntity::getNoteId);
+        Map<Long, List<NoteOfficialNoteEntity>> officialNotesByNote =
+                groupBy(children.officialNotes(), NoteOfficialNoteEntity::getNoteId);
+        Map<Long, List<NoteAliasEntity>> aliasesByNote = groupBy(children.aliases(), NoteAliasEntity::getNoteId);
+        Map<Long, List<NoteSourceEntity>> sourcesByNote = groupBy(children.sources(), NoteSourceEntity::getNoteId);
+        Map<Long, List<Entry>> entriesByNote = assembleEntries(children);
+
+        List<Note> assembled = new ArrayList<>(rows.size());
+        for (NoteEntity row : rows) {
+            long id = row.getId();
+            Note domain = toNote(
+                    row,
+                    beansByNote.getOrDefault(id, List.of()),
+                    officialNotesByNote.getOrDefault(id, List.of()),
+                    aliasesByNote.getOrDefault(id, List.of()),
+                    sourcesByNote.getOrDefault(id, List.of()),
+                    entriesByNote.getOrDefault(id, List.of()));
+            assembled.add(sanitized(domain, id));
+        }
+        return List.copyOf(assembled);
+    }
+
+    /** 엔트리 → 회차 → 레시피/감상 세 단을 노트별로 되묶는다. 짝짓기는 전부 부모 id 조회다(연관 없음). */
+    private static Map<Long, List<Entry>> assembleEntries(NoteChildRows children) {
+        Map<Long, List<BrewEntity>> brewsByEntry = groupBy(children.brews(), BrewEntity::getEntryId);
+        Map<Long, RecipeEntity> recipeByBrew = children.recipes().stream()
+                .collect(Collectors.toMap(RecipeEntity::getBrewId, Function.identity()));
+        Map<Long, TastingEntity> tastingByBrew = children.tastings().stream()
+                .collect(Collectors.toMap(TastingEntity::getBrewId, Function.identity()));
+
+        Map<Long, List<Entry>> byNote = new LinkedHashMap<>();
+        for (EntryEntity entry : children.entries()) {
+            List<Brew> brews = brewsByEntry.getOrDefault(entry.getId(), List.<BrewEntity>of()).stream()
+                    .map(brew -> toBrew(recipeByBrew.get(brew.getId()), tastingByBrew.get(brew.getId())))
+                    .toList();
+            byNote.computeIfAbsent(entry.getNoteId(), key -> new ArrayList<>())
+                    .add(toEntry(entry, brews));
+        }
+        return byNote;
+    }
+
+    /** 자식 행을 부모별로 묶는다 — 그룹 안의 순서는 질의가 준 순서 그대로다(재정렬하지 않는다). */
+    private static <T> Map<Long, List<T>> groupBy(List<T> rows, Function<T, Long> parentOf) {
+        return rows.stream().collect(Collectors.groupingBy(parentOf, LinkedHashMap::new, Collectors.toList()));
+    }
+
+    /**
+     * 로드 경계 위생 (ref: plan.md#ADR-66, changes/0025).
+     *
+     * <p>POLICY: 저장소 <b>읽기 경계가 유일한 관문</b>이고, 그 관문은 이 한 곳이다 — 모든 조회가
+     * {@link #assemble}을 지나므로 조회 경로마다 정책이 갈라지지 않는다. 스키마가 강제하지 못하는 규칙
+     * (V-14 빈 원두·V-15 빈 회차)은 psql 직접 편집으로 들어올 수 있어 파일 시절과 같은 방어가 남는다.
+     * DB는 다시 쓰지 않는다 — 읽기 메모리 정규화만이며, 드롭분은 그 노트의 다음 저장에서 반영되므로
+     * 경고 로그로 관측을 남긴다.
+     *
+     * <p><b>범위 결론(OQ-1, 0028 TΔ5b 실측)</b>: 정규화는 <b>축소하지 않는다</b>. 스키마와 겹치는 것은 V-8
+     * 수치 5종뿐이고 그마저 판정 방향이 반대다 — CHECK는 저장 <b>전체를 거부</b>하고 정규화는 <b>그 항목만
+     * 드롭</b>한다. 나머지(공백 문자열 접기, 빈 구조체 드롭, 자식 없는 회차 드롭)는 {@code TEXT NOT NULL}이
+     * {@code ''}를 통과시키는 한 CHECK로 표현되지 않는다.
+     *
+     * <p>그래서 <b>쓰기 경로에는 걸지 않는다</b> — 저장 경로가 정규화를 걸면 V-8 위반이 조용히 드롭돼
+     * AC-Δ3("위반 삽입 실패")이 관측 불가가 된다. 정규화 진입점은 종전대로 검증기다.
+     */
+    private static Note sanitized(Note note, long id) {
+        Note sanitized = note.normalized();
+        if (sanitized != note) {
+            log.warn("노트 로드 위생(ADR-66): 무효 요소 드롭 — note id={} (DB 직접 편집 위반 추정, DB는 다시 쓰지 않음. 드롭분은 다음 저장 시 반영됨)",
+                    id);
+        }
+        return sanitized;
+    }
 
     /** 노트 조립 — 자식 행 목록과 <b>이미 조립된</b> 엔트리를 받는다({@link #toEntry}). */
     public static Note toNote(NoteEntity note, List<NoteBeanEntity> beans,

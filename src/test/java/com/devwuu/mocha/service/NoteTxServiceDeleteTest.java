@@ -1,4 +1,4 @@
-package com.devwuu.mocha.repository;
+package com.devwuu.mocha.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -31,7 +31,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 
 /**
- * TΔ5d (changes/0028-rdb-storage) — {@link JpaNoteRepository#delete} (AC-Δ8).
+ * TΔ5d (changes/0028-rdb-storage) — {@link NoteTxService#delete} (AC-Δ8).
  *
  * <p>이 테스트가 <b>유일한 안전망</b>이다. FK를 걸지 않기로 했으므로(ADR-75) 하위 단을 하나라도 빠뜨리면
  * DB는 아무 말 없이 고아를 남기고, 조립 경로는 부모를 통해서만 읽어 끊긴 행을 <b>지나쳐 버린다</b> —
@@ -45,7 +45,7 @@ import java.util.List;
  * identity map을 되돌려주고 DB를 지나지 않은 채 그린이 된다.
  */
 @Transactional
-class JpaNoteRepositoryDeleteTest extends PostgresIntegrationTest {
+class NoteTxServiceDeleteTest extends PostgresIntegrationTest {
 
     /** 노트 아래에 행이 생기는 테이블 전부 — 하나라도 빠지면 그 단이 검증에서 새는 자리다. */
     private static final List<String> CHILD_TABLES =
@@ -61,11 +61,11 @@ class JpaNoteRepositoryDeleteTest extends PostgresIntegrationTest {
     @Value("${spring.jpa.properties.hibernate.default_schema}")
     String schema;
 
-    JpaNoteRepository repo;
+    NoteTxService repo;
 
     @BeforeEach
     void setUp() {
-        repo = new JpaNoteRepository(notes);
+        repo = new NoteTxService(notes);
     }
 
     @Test
@@ -139,9 +139,9 @@ class JpaNoteRepositoryDeleteTest extends PostgresIntegrationTest {
      * <p>회차를 둘 두는 것은 {@code brew} 삭제가 한 건만 지우고 나머지를 남기는 갈래를 가르기 위해서다.
      */
     private Note seedFullyPopulated() {
-        Note saved = repo.upsertEntry(null, fullMeta(), entry(day(9)),
+        Note saved = repo.commit(null, fullMeta(), entry(day(9)),
                 new Aliases(List.of("예가체프 G1"), List.of("커피베라 성수")));
-        return repo.upsertEntry(saved.id(), fullMeta(), entry(day(10)), Aliases.empty());
+        return repo.commit(saved.id(), fullMeta(), entry(day(10)), Aliases.empty());
     }
 
     private static NoteMeta fullMeta() {

@@ -10,7 +10,7 @@ import java.util.List;
  *
  * <p>Spring Data의 <b>custom fragment</b> 패턴이다 — 파생·기본 CRUD는 {@link JpaRepository}가, 자식 9종은
  * {@link NoteEntityRepositoryCustom}(QueryDSL)이 맡고 {@code extends}로 이어져 <b>바깥에는 인터페이스
- * 하나로 보인다</b>. {@code JpaNoteRepository}는 이것 하나만 의존한다.
+ * 하나로 보인다</b>. {@code NoteTxService}는 이것 하나만 의존한다.
  *
  * <p>둘의 경계는 자의적이지 않다: {@code JpaRepository<NoteEntity, Long>}의 파생 메서드는 {@code NoteEntity}
  * 에만 걸리므로 자식 접근은 <b>애초에 파생으로 표현되지 않는다</b>. 그래서 이 인터페이스가 직접 갖는 것은

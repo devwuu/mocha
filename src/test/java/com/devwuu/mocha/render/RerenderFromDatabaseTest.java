@@ -14,7 +14,7 @@ import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.domain.Tasting;
-import com.devwuu.mocha.repository.JpaNoteRepository;
+import com.devwuu.mocha.service.NoteTxService;
 import com.devwuu.mocha.service.NoteService;
 import com.devwuu.mocha.repository.NoteFolderName;
 import com.devwuu.mocha.repository.jpa.NoteEntityRepository;
@@ -80,7 +80,7 @@ class RerenderFromDatabaseTest extends PostgresIntegrationTest {
     @DisplayName("TΔ15/AC-Δ5·AC-6: artifact/ 전체 삭제 후 재렌더하면 DB만을 입력으로 전체 카드가 동일하게 복원된다")
     void rerenderAfterWipingArtifactRestoresIdenticalOutput(@TempDir Path tempDir) {
         Path artifactDir = tempDir.resolve("artifact");
-        JpaNoteRepository repo = new JpaNoteRepository(notes);
+        NoteTxService repo = new NoteTxService(notes);
         seedTwoNotes(repo);
         em.clear();
 
@@ -100,7 +100,7 @@ class RerenderFromDatabaseTest extends PostgresIntegrationTest {
         // 비우지 않으면 identity map이 첫 렌더가 올린 객체를 되돌려줘 DB를 지나지 않은 채 그린이 된다.
         em.clear();
         FakeCardImageRenderer secondCards = new FakeCardImageRenderer();
-        new ThymeleafNoteRenderer(serviceOver(new JpaNoteRepository(notes)), engine, artifactDir, Theme.TYPE_B, secondCards)
+        new ThymeleafNoteRenderer(serviceOver(new NoteTxService(notes)), engine, artifactDir, Theme.TYPE_B, secondCards)
                 .renderAll();
 
         // 파일 집합에는 카드뿐 아니라 마스코트·폰트도 들어간다 — artifact/ 전체가 복원돼야 한다.
@@ -115,7 +115,7 @@ class RerenderFromDatabaseTest extends PostgresIntegrationTest {
     @DisplayName("TΔ15/AC-Δ5: 재렌더의 입력은 DB 현재 상태다 — 삭제 뒤 DB가 바뀌면 산출이 그대로 따라간다")
     void rerenderReflectsCurrentDatabaseState(@TempDir Path tempDir) {
         Path artifactDir = tempDir.resolve("artifact");
-        JpaNoteRepository repo = new JpaNoteRepository(notes);
+        NoteTxService repo = new NoteTxService(notes);
         List<Note> seeded = seedTwoNotes(repo);
         Note kept = seeded.getFirst();
         Note removed = seeded.getLast();
@@ -129,12 +129,12 @@ class RerenderFromDatabaseTest extends PostgresIntegrationTest {
         deleteRecursively(artifactDir);
 
         // DB만 바꾼다 — 파일에는 아무것도 남아 있지 않다. 한쪽은 늘리고 한쪽은 지워 방향을 둘 다 본다.
-        repo.upsertEntry(kept.id(), metaOf(kept), tasteEntry(LocalDate.of(2026, 7, 20), "다음 날은 더 달았다."),
+        repo.commit(kept.id(), metaOf(kept), tasteEntry(LocalDate.of(2026, 7, 20), "다음 날은 더 달았다."),
                 Aliases.empty());
         repo.delete(removed.id());
         em.clear();
 
-        new ThymeleafNoteRenderer(serviceOver(new JpaNoteRepository(notes)), engine, artifactDir, Theme.TYPE_B,
+        new ThymeleafNoteRenderer(serviceOver(new NoteTxService(notes)), engine, artifactDir, Theme.TYPE_B,
                 new FakeCardImageRenderer()).renderAll();
 
         assertThat(cardFiles(artifactDir))
@@ -155,11 +155,11 @@ class RerenderFromDatabaseTest extends PostgresIntegrationTest {
      * 렌더러가 잡는 타입은 0029 TΔ4a부터 {@link NoteService}다 — 실 저장소를 그 뒤에 그대로 세운다.
      * 별칭 생성기는 null이다: 렌더 경로는 커밋을 지나지 않아 닿을 일이 없고, 닿으면 NPE로 드러나야 한다.
      */
-    private static NoteService serviceOver(JpaNoteRepository repo) {
+    private static NoteService serviceOver(NoteTxService repo) {
         return new NoteService(repo, null);
     }
 
-    private List<Note> seedTwoNotes(JpaNoteRepository repo) {
+    private List<Note> seedTwoNotes(NoteTxService repo) {
         NoteMeta yirgacheffe = new NoteMeta(
                 new Sourced<>("예가체프 G1 워시드", Source.USER),
                 new Sourced<>("커피베라", Source.USER),
@@ -182,8 +182,8 @@ class RerenderFromDatabaseTest extends PostgresIntegrationTest {
                 IGNORED);
 
         return List.of(
-                repo.upsertEntry(null, yirgacheffe, withRecipe, Aliases.empty()),
-                repo.upsertEntry(null, geisha, tasteEntry(LocalDate.of(2026, 7, 4), "화사하다."), Aliases.empty()));
+                repo.commit(null, yirgacheffe, withRecipe, Aliases.empty()),
+                repo.commit(null, geisha, tasteEntry(LocalDate.of(2026, 7, 4), "화사하다."), Aliases.empty()));
     }
 
     private static Entry tasteEntry(LocalDate date, String taste) {

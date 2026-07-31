@@ -8,7 +8,7 @@ import com.devwuu.mocha.agent.turn.TurnDraft;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.llm.OpenAiUtteranceSegmenter;
-import com.devwuu.mocha.repository.JpaNoteRepository;
+import com.devwuu.mocha.service.NoteTxService;
 import com.devwuu.mocha.service.NoteService;
 import com.devwuu.mocha.slack.AgentConversationRouter;
 import com.devwuu.mocha.slack.inbound.IncomingMessage;
@@ -41,7 +41,7 @@ import static com.devwuu.mocha.agent.tool.ToolCallbackProviderFixture.toolkit;
  * 게이트 전처리가 0021의 실측 실패 지점이라 루프 레벨 진입으로는 그 구간이 통째로 빠진다(ADR-68).
  *
  * <p>조립 원칙은 "판정 대상은 실물, 부수효과만 대체"다. 저장소는 인메모리 Map이 아니라 실 구현체를 쓴다 —
- * 직렬화·영속 왕복 자체가 검증에 포함되기 때문이다(백엔드 CLAUDE.md §5.2). 노트({@link JpaNoteRepository})는
+ * 직렬화·영속 왕복 자체가 검증에 포함되기 때문이다(백엔드 CLAUDE.md §5.2). 노트({@link NoteTxService})는
  * 로컬 Postgres의 {@code test} 스키마에 산다(changes/0028 TΔ10a).
  * 나머지 대체물은 {@link EvalFakes} 참조.
  *
@@ -127,7 +127,7 @@ final class EvalHarness {
      * @param settings       실행 파라미터.
      * @param noteRepository 빈 {@code test} 스키마에 붙은 실 저장소 — 호출부가 회차마다 스키마를 새로 깔아 준다.
      */
-    static Run run(EvalCase evalCase, Path workDir, Settings settings, JpaNoteRepository noteRepository)
+    static Run run(EvalCase evalCase, Path workDir, Settings settings, NoteTxService noteRepository)
             throws IOException {
         // 이 회차가 파일로 남기는 것은 카드뿐이다 — data/는 더 이상 만들지 않는다.
         Path artifactDir = workDir.resolve("artifact");
@@ -190,7 +190,7 @@ final class EvalHarness {
 
     // 케이스 동봉 노트 픽스처를 실 저장소로 깐다. 파일명 오름차순으로 심으므로 BIGSERIAL이 발급하는
     // id가 회차마다 같다(재현성). 픽스처 JSON의 id 필드는 insert가 무시한다 — 발급자는 DB다(TΔ5a 계약).
-    private static void loadFixtures(EvalCase evalCase, JpaNoteRepository noteRepository,
+    private static void loadFixtures(EvalCase evalCase, NoteTxService noteRepository,
                                      JsonMapper mapper) throws IOException {
         EvalCase.Initial initial = evalCase.initial();
         if (initial == null) {
@@ -209,8 +209,8 @@ final class EvalHarness {
     }
 
     // 노트 저장소 스냅샷 — 파일 시절의 "파일명 → 내용"을 "id → 직렬화 본문"이 승계한다. 저장소가 id
-    // 오름차순을 보장하므로(NoteRepository 계약) 순서는 결정적이고, 직렬화를 거치므로 값 변화도 잡힌다.
-    private static Map<String, String> snapshotNotes(JpaNoteRepository noteRepository, JsonMapper mapper) {
+    // 오름차순을 보장하므로(NoteTxService 계약) 순서는 결정적이고, 직렬화를 거치므로 값 변화도 잡힌다.
+    private static Map<String, String> snapshotNotes(NoteTxService noteRepository, JsonMapper mapper) {
         Map<String, String> snapshot = new LinkedHashMap<>();
         for (Note note : noteRepository.findAll()) {
             snapshot.put(String.valueOf(note.id()), mapper.writeValueAsString(note));

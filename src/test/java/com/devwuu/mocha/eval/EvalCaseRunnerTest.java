@@ -1,7 +1,7 @@
 package com.devwuu.mocha.eval;
 
 import com.devwuu.mocha.json.MochaObjectMapper;
-import com.devwuu.mocha.repository.JpaNoteRepository;
+import com.devwuu.mocha.service.NoteTxService;
 import com.devwuu.mocha.support.PostgresIntegrationTest;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.DynamicTest;
@@ -55,7 +55,7 @@ import static org.assertj.core.api.Assertions.fail;
 class EvalCaseRunnerTest extends PostgresIntegrationTest {
 
     @Autowired
-    private JpaNoteRepository noteRepository;
+    private NoteTxService noteRepository;
 
     @Autowired
     private Flyway flyway;

@@ -65,7 +65,7 @@ public class EntryEntity extends BaseEntity {
 
     /**
      * 날짜 이동 (V-10, FR-21) — 이동처가 비어 있어야 {@code UNIQUE(note_id, tasted_on)}를 지난다.
-     * 비우는 책임은 호출부({@code JpaNoteRepository})가 진다.
+     * 비우는 책임은 호출부({@code NoteTxService})가 진다.
      */
     public void updateTastedOn(LocalDate tastedOn) {
         this.tastedOn = tastedOn;

@@ -15,7 +15,6 @@ import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.domain.Tasting;
 import com.devwuu.mocha.llm.AliasGenerator;
-import com.devwuu.mocha.repository.NoteRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -29,28 +28,32 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * TΔ4a (changes/0029-app-interface) — {@link NoteService}가 지는 <b>판단</b>의 검증.
+ * TΔ4a·TΔ4c (changes/0029-app-interface) — {@link NoteService}가 지는 <b>외부 IO 오케스트레이션</b>의 검증.
  *
- * <p>여기서 보는 것은 셋이다: 신규/기존 분기(별칭 <b>생성</b> 콜이 언제 나가는가) · V-13 관측 표기 축적
- * (무엇이 <b>더해져</b> 저장소로 내려가는가) · V-9 커피명 불변. 행이 어떻게 움직이는지는 대상이 아니다 —
- * 그것은 {@code JpaNoteRepositoryEditTest}·{@code JpaNoteRepositoryUpsertEntryTest}가 실 Postgres로
- * 소유한다(백엔드 CLAUDE.md §5.2).
+ * <p>여기서 보는 것은 <b>순서와 발동</b>뿐이다: 별칭 생성 콜이 <b>언제</b> 나가는가, 그 결과가 어떤 값으로
+ * 아래에 내려가는가, 트랜잭션을 열기 전에 걸러지는 입력은 무엇인가. <b>비즈니스 규칙은 대상이 아니다</b> —
+ * V-9(커피명 불변)·V-13(별칭 축적)·V-10(날짜 이동)·ADR-4(병합)는 전부 {@link NoteTxService}에 있고
+ * {@code NoteTxServiceCommitTest}·{@code NoteTxServiceEditTest}가 <b>실 Postgres로</b> 소유한다
+ * (백엔드 CLAUDE.md §5.2, delta D-9).
  *
- * <p>저장소·별칭 생성기는 손 fake다 — 이 저장소에 {@code org.mockito} 참조가 0건인 관행을 유지한다
- * (0029 tasks TΔ4b, 사용자 확정 2026-08-01).
+ * <p>TΔ4c에서 이 클래스의 검증 범위가 좁아진 것이 축 재정의의 관측 지점이다 — 구 축("판단 vs 행 조율")에서
+ * 여기 있던 V-9·V-13이 트랜잭션 계층으로 내려갔다.
+ *
+ * <p>협력자는 손 fake다 — 이 저장소에 {@code org.mockito} 참조가 0건인 관행을 유지한다(사용자 확정
+ * 2026-08-01). 포트가 걷힌 뒤(ADR-76) 아래층 fake는 <b>구상 타입을 상속</b>한다.
  */
 class NoteServiceTest {
 
-    private final RecordingNoteRepository repository = new RecordingNoteRepository();
+    private final RecordingTxService tx = new RecordingTxService();
     private final RecordingAliasGenerator aliasGenerator = new RecordingAliasGenerator();
-    private final NoteService service = new NoteService(repository, aliasGenerator);
+    private final NoteService service = new NoteService(tx, aliasGenerator);
 
     @Nested
-    @DisplayName("커밋 — 신규/기존 분기")
+    @DisplayName("커밋 — 외부 콜의 발동과 순서")
     class Commit {
 
         @Test
-        @DisplayName("ADR-37: 신규 노트 커밋은 별칭을 LLM 1콜로 생성해 심는다 — 노트당 평생 1회")
+        @DisplayName("ADR-37: 신규 노트 커밋은 별칭을 LLM 1콜로 생성해 내려보낸다 — 노트당 평생 1회")
         void newNoteGeneratesAliases() {
             aliasGenerator.returns(new Aliases(List.of("Yirgacheffe G1"), List.of("Coffee Vera")));
 
@@ -59,120 +62,108 @@ class NoteServiceTest {
             assertThat(aliasGenerator.calls).hasSize(1);
             assertThat(aliasGenerator.calls.getFirst())
                     .containsExactly("커피베라 예가체프 G1", "커피베라");
-            assertThat(repository.lastNoteId).isNull();
-            assertThat(repository.lastAliases.coffeeName()).containsExactly("Yirgacheffe G1");
-            assertThat(repository.lastAliases.roastery()).containsExactly("Coffee Vera");
+            assertThat(tx.lastNoteId).isNull();
+            assertThat(tx.lastGenerated.coffeeName()).containsExactly("Yirgacheffe G1");
+            assertThat(tx.lastGenerated.roastery()).containsExactly("Coffee Vera");
         }
 
         @Test
         @DisplayName("TΔ4a 선행 확인: AliasGenerator 배선이 살아난다 — 커밋이 유일한 호출부다")
         void aliasGeneratorIsWiredAgain() {
             // TΔ4에서 SlackCommitHandler가 사라지며 이 협력자는 빈만 등록되고 아무도 부르지 않는
-            // 상태가 됐다. 이 task가 되살리는 배선이라 판정에 포함한다(tasks TΔ4a ⚠️ 선행 확인).
+            // 상태가 됐다. TΔ4a가 되살린 배선이라 판정에 남긴다(tasks TΔ4a ⚠️ 선행 확인).
             service.commit(draft(null, "커피", "로스터리"), MatchInfo.newNote());
 
             assertThat(aliasGenerator.calls).as("신규 커밋이 별칭 생성기를 부른다").isNotEmpty();
         }
 
         @Test
-        @DisplayName("ADR-37: 기존 노트 커밋은 별칭 생성 콜을 하지 않는다 — 무콜 축적만")
+        @DisplayName("ADR-37: 기존 노트 커밋은 생성 콜을 하지 않고 null을 내려보낸다 — 축적은 트랜잭션 안의 일")
         void existingNoteDoesNotCallGenerator() {
-            repository.put(saved(7, "커피베라 예가체프 G1", "커피베라", Aliases.empty()));
-
+            // TΔ4c: null이 곧 "생성하지 않았다"는 신호이고, 그 경우 무엇을 더할지(V-13)는 저장된 별칭을
+            // 읽어야 알 수 있어 NoteTxService가 같은 트랜잭션 안에서 계산한다.
             service.commit(draft(7L, "커피베라 예가체프 G1", "커피베라"), MatchInfo.existing(7L, day(10)));
 
             assertThat(aliasGenerator.calls).isEmpty();
+            assertThat(tx.lastGenerated).as("생성하지 않았음을 null로 알린다").isNull();
+            assertThat(tx.lastNoteId).isEqualTo(7L);
         }
 
         @Test
-        @DisplayName("V-13: 기존 노트의 다른 관측 표기는 축적되고, 저장소에는 늘어난 것만 내려간다")
-        void accumulatesOnlyNewObservedAliases() {
-            // 이미 별칭에 있는 표기를 다시 내려보내면 행이 중복되거나(유일성 위반) 다시 심으며 id가 밀려
-            // 첫 등장 순서가 무너진다 — "늘어난 것만"이 저장소가 아니라 여기서 계산되는 이유다.
-            repository.put(saved(7, "예가체프 G1", "커피베라",
-                    new Aliases(List.of("Yirgacheffe G1"), List.of())));
-
-            service.commit(draft(7L, "yirgacheffe  g1", "커피베라 성수"), MatchInfo.existing(7L, day(10)));
-
-            assertThat(repository.lastAliases.coffeeName())
-                    .as("정규화 일치분(Yirgacheffe G1)은 다시 내려가지 않는다").isEmpty();
-            assertThat(repository.lastAliases.roastery()).containsExactly("커피베라 성수");
-        }
-
-        @Test
-        @DisplayName("V-13: 노트 표시값과 정규화 일치하는 관측 표기는 별칭에 넣지 않는다")
-        void observedValueSameAsCanonicalIsNotAccumulated() {
-            repository.put(saved(7, "예가체프 G1", "커피베라", Aliases.empty()));
-
-            service.commit(draft(7L, "예가체프  G1", "커피베라"), MatchInfo.existing(7L, day(10)));
-
-            assertThat(repository.lastAliases.coffeeName()).isEmpty();
-            assertThat(repository.lastAliases.roastery()).isEmpty();
-        }
-
-        @Test
-        @DisplayName("커밋은 draft의 마지막 엔트리를 저장소로 넘긴다 — 노트 메타는 id/엔트리를 뺀 나머지")
+        @DisplayName("커밋은 draft의 마지막 엔트리를 아래로 넘긴다 — 노트 메타는 id/엔트리를 뺀 나머지")
         void commitPassesLatestEntryAndMeta() {
             service.commit(draft(null, "커피", "로스터리"), MatchInfo.newNote());
 
-            assertThat(repository.lastEntry.date()).isEqualTo(day(10));
-            assertThat(Sourced.valueOrNull(repository.lastMeta.coffeeName())).isEqualTo("커피");
-            assertThat(Sourced.valueOrNull(repository.lastMeta.roastery())).isEqualTo("로스터리");
+            assertThat(tx.lastEntry.date()).isEqualTo(day(10));
+            assertThat(Sourced.valueOrNull(tx.lastMeta.coffeeName())).isEqualTo("커피");
+            assertThat(Sourced.valueOrNull(tx.lastMeta.roastery())).isEqualTo("로스터리");
         }
 
         @Test
-        @DisplayName("저장할 시음 엔트리가 없으면 거부 — 빈 커밋이 노트만 만들지 않는다")
+        @DisplayName("저장할 시음 엔트리가 없으면 트랜잭션을 열기 전에 거부 — 외부 콜도 나가지 않는다")
         void commitRejectsDraftWithoutEntry() {
             Note empty = new Note(null, new Sourced<>("커피", Source.USER), null, List.of(), null, null,
                     Aliases.empty(), List.of(), List.of(), null, null);
 
             assertThatThrownBy(() -> service.commit(empty, MatchInfo.newNote()))
                     .isInstanceOf(IllegalArgumentException.class);
-            assertThat(repository.lastEntry).isNull();
+            // TΔ4c: 입력 검증이 외부 콜보다 앞이라는 것이 이 계층의 순서 계약이다 — 저장할 것이 없는
+            // 요청으로 LLM 과금이 나가거나 쓰기 구간에 들어가지 않는다.
+            assertThat(aliasGenerator.calls).isEmpty();
+            assertThat(tx.commits).isZero();
         }
 
         @Test
         @DisplayName("plan §7: 별칭 생성 실패는 저장을 되돌리지 않는다 — 빈 별칭으로 수렴")
         void aliasGenerationFailureDoesNotBlockSave() {
-            // 실패 수렴은 AliasGenerator 구현체 계약이라(빈 Aliases 반환) service는 그 값을 그대로 심는다.
+            // 실패 수렴은 AliasGenerator 구현체 계약이라(빈 Aliases 반환) service는 그 값을 그대로 내린다.
             aliasGenerator.returns(Aliases.empty());
 
             service.commit(draft(null, "커피", "로스터리"), MatchInfo.newNote());
 
-            assertThat(repository.lastAliases).isEqualTo(Aliases.empty());
-            assertThat(repository.saves).isOne();
+            assertThat(tx.lastGenerated).isEqualTo(Aliases.empty());
+            assertThat(tx.commits).isOne();
         }
     }
 
     @Nested
-    @DisplayName("메타 수정 — V-9")
-    class UpdateMeta {
+    @DisplayName("외부 IO 없는 유스케이스 — 트랜잭션 계층으로 통과")
+    class Delegation {
+
+        // delta D-9: 외부 IO가 없어도 상위 계층이 잡는 타입을 하나로 유지한다(사용자 확정 2026-08-01).
+        // 여기서 보는 것은 "인자가 변형 없이 통과하는가"뿐이고, 규칙 자체는 NoteTxService 테스트가 진다.
 
         @Test
-        @DisplayName("V-9: coffee_name 변경 시도는 거부 — 저장소 쓰기에 닿지 않는다")
-        void rejectsCoffeeNameChange() {
-            repository.put(saved(7, "커피베라 예가체프 G1", "커피베라", Aliases.empty()));
+        @DisplayName("수정·삭제·조회는 트랜잭션 계층에 그대로 위임된다 — 이 계층이 값을 건드리지 않는다")
+        void passesThroughWithoutTouchingValues() {
+            tx.put(saved(7, "커피베라 예가체프 G1", "커피베라", Aliases.empty()));
+            NoteMeta meta = meta("커피베라 예가체프 G1", "커피베라 성수점");
 
-            assertThatThrownBy(() -> service.updateMeta(7, meta("커피베라 예가체프 G2", "커피베라")))
-                    .isInstanceOf(IllegalArgumentException.class);
-            assertThat(repository.metaUpdates).isZero();
+            service.updateMeta(7, meta);
+            assertThat(tx.lastMeta).isSameAs(meta);
+
+            Entry entry = entry();
+            service.replaceEntry(7, day(9), entry);
+            assertThat(tx.lastEntry).isSameAs(entry);
+            assertThat(tx.lastTargetDate).isEqualTo(day(9));
+
+            assertThat(service.findById(7)).isPresent();
+            assertThat(service.findAll()).hasSize(1);
+
+            service.delete(7);
+            assertThat(service.findAll()).isEmpty();
         }
 
         @Test
-        @DisplayName("V-9: 같은 커피명이면 통과 — 로스터리 등 나머지는 수정 범위다")
-        void allowsSameCoffeeName() {
-            repository.put(saved(7, "커피베라 예가체프 G1", "커피베라", Aliases.empty()));
+        @DisplayName("백엔드 CLAUDE.md §3: 위임 경로에서 외부 콜이 나가지 않는다")
+        void delegationDoesNotCallExternalIo() {
+            tx.put(saved(7, "커피", "로스터리", Aliases.empty()));
 
-            service.updateMeta(7, meta("커피베라 예가체프 G1", "커피베라 성수점"));
+            service.updateMeta(7, meta("커피", "로스터리 2호점"));
+            service.replaceEntry(7, day(9), entry());
+            service.delete(7);
 
-            assertThat(repository.metaUpdates).isOne();
-        }
-
-        @Test
-        @DisplayName("plan §7: 대상 노트 소실은 IllegalStateException")
-        void rejectsMissingNote() {
-            assertThatThrownBy(() -> service.updateMeta(99, meta("커피", "로스터리")))
-                    .isInstanceOf(IllegalStateException.class);
+            assertThat(aliasGenerator.calls).isEmpty();
         }
     }
 
@@ -201,7 +192,7 @@ class NoteServiceTest {
                 meta.officialNotes(), Aliases.empty(), meta.sources(), List.of(entry()), null, null);
     }
 
-    /** 이미 저장된 노트 — 축적·V-9 대조의 원본이 된다. */
+    /** 이미 저장된 노트 — 위임 경로의 조회 대상이 된다. */
     private static Note saved(long id, String coffeeName, String roastery, Aliases aliases) {
         NoteMeta meta = meta(coffeeName, roastery);
         return new Note(id, meta.coffeeName(), meta.roastery(), meta.beans(), meta.roastLevel(),
@@ -210,15 +201,23 @@ class NoteServiceTest {
 
     // ────────────────────────────── fake ──────────────────────────────
 
-    /** 저장소 fake — 무엇이 내려갔는지만 기록한다. 행 조율은 이 테스트의 대상이 아니다. */
-    private static final class RecordingNoteRepository implements NoteRepository {
+    /**
+     * 트랜잭션 계층 fake — <b>무엇이 어떤 값으로 내려갔는지만</b> 기록한다. 규칙이 행에 어떻게 떨어지는지는
+     * 이 테스트의 대상이 아니다(실 Postgres 통합 테스트가 소유).
+     * <p>공개 메서드를 전부 덮으므로 상위 생성자에 넘긴 {@code null} 행 저장소는 도달하지 않는다.
+     */
+    private static final class RecordingTxService extends NoteTxService {
         private final Map<Long, Note> notes = new LinkedHashMap<>();
         private Long lastNoteId;
         private NoteMeta lastMeta;
         private Entry lastEntry;
-        private Aliases lastAliases;
-        private int saves;
-        private int metaUpdates;
+        private LocalDate lastTargetDate;
+        private Aliases lastGenerated;
+        private int commits;
+
+        RecordingTxService() {
+            super(null);
+        }
 
         void put(Note note) {
             notes.put(note.id(), note);
@@ -235,25 +234,26 @@ class NoteServiceTest {
         }
 
         @Override
-        public Note upsertEntry(Long noteId, NoteMeta meta, Entry entry, Aliases aliases) {
+        public Note commit(Long noteId, NoteMeta meta, Entry entry, Aliases generated) {
             lastNoteId = noteId;
             lastMeta = meta;
             lastEntry = entry;
-            lastAliases = aliases;
-            saves++;
+            lastGenerated = generated;
+            commits++;
             return notes.getOrDefault(noteId, saved(noteId == null ? 1 : noteId,
-                    Sourced.valueOrNull(meta.coffeeName()), Sourced.valueOrNull(meta.roastery()), aliases));
+                    Sourced.valueOrNull(meta.coffeeName()), Sourced.valueOrNull(meta.roastery()),
+                    generated == null ? Aliases.empty() : generated));
         }
 
         @Override
         public Note updateMeta(long noteId, NoteMeta meta) {
             lastMeta = meta;
-            metaUpdates++;
             return notes.get(noteId);
         }
 
         @Override
         public Note replaceEntry(long noteId, LocalDate targetDate, Entry entry) {
+            lastTargetDate = targetDate;
             lastEntry = entry;
             return notes.get(noteId);
         }

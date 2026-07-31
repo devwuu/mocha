@@ -1,4 +1,4 @@
-package com.devwuu.mocha.repository;
+package com.devwuu.mocha.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -30,7 +30,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 
 /**
- * TΔ5a (changes/0028-rdb-storage) — {@link JpaNoteRepository}의 조회 + 신규 생성 (AC-Δ1).
+ * TΔ5a (changes/0028-rdb-storage) — {@link NoteTxService}의 조회 + 신규 생성 (AC-Δ1).
  *
  * <p>판정은 둘이다: <b>저장 → 조회 왕복이 도메인 동치</b>이고, <b>정렬이 삽입 순서에 의존하지 않는다</b>.
  *
@@ -44,7 +44,7 @@ import java.util.List;
  * 컨텍스트 기동(-{@code MochaApplicationTests})이 진다.
  */
 @Transactional
-class JpaNoteRepositoryTest extends PostgresIntegrationTest {
+class NoteTxServiceTest extends PostgresIntegrationTest {
 
     private static final OffsetDateTime IGNORED = OffsetDateTime.of(2000, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC);
     // insert가 인자의 식별자를 무시한다는 계약을 실제로 대조하기 위한 값 — null이면 "무시했다"와
@@ -57,13 +57,13 @@ class JpaNoteRepositoryTest extends PostgresIntegrationTest {
     @Autowired
     NoteEntityRepository notes;
 
-    JpaNoteRepository repo;
+    NoteTxService repo;
 
     @BeforeEach
     void setUp() {
         // 협력자 하나만 주입받아 직접 조립한다 — 롤백으로 격리하려면 트랜잭션을 테스트가 열어야 하고,
         // 빈 프록시를 쓰면 저장소가 자기 트랜잭션을 열어 그 경계가 겹친다.
-        repo = new JpaNoteRepository(notes);
+        repo = new NoteTxService(notes);
     }
 
     @Test
@@ -161,9 +161,9 @@ class JpaNoteRepositoryTest extends PostgresIntegrationTest {
         assertThat(repo.findAll()).isEmpty();
     }
 
-    // TΔ6d가 둔 미구현 표식 2건은 전부 사라졌다 — upsertEntry는 TΔ5b가, applyEdit은 TΔ5c가 구현하며
+    // TΔ6d가 둔 미구현 표식 2건은 전부 사라졌다 — commit는 TΔ5b가, applyEdit은 TΔ5c가 구현하며
     // 표식 테스트가 실패해 삭제가 강제됐다(장치가 의도대로 작동했다). 각 계약의 검증은
-    // JpaNoteRepositoryUpsertEntryTest·JpaNoteRepositoryApplyEditTest가 소유한다.
+    // NoteTxServiceUpsertEntryTest·NoteTxServiceApplyEditTest가 소유한다.
 
     // ───────────── 로드 경계 위생 (ADR-66, 구 JsonFileNoteRepositoryTest 이관 — TΔ10b) ─────────────
 

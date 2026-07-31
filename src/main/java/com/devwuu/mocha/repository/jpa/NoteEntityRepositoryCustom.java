@@ -12,7 +12,7 @@ import java.util.Optional;
  * <p>구현은 {@link NoteEntityRepositoryCustomImpl}(Spring Data가 이름 규약으로 찾아 붙인다).
  *
  * <p>이 계약이 아는 것은 <b>행과 순서까지</b>다. 행을 도메인으로 조립하는 일(3단 중첩 재구성, 배열 분해·
- * 재조립)은 {@code JpaNoteRepository}가 소유한다 — 관계를 아는 곳을 하나로 모으기 위해서다.
+ * 재조립)은 {@code NoteEntityMapper}가 소유한다 — 관계를 아는 곳을 하나로 모으기 위해서다.
  */
 public interface NoteEntityRepositoryCustom {
 

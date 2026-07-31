@@ -6,7 +6,8 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * 도메인 JSON 직렬화 설정의 단일 출처.
- * <p>NoteRepository/PendingStore(파일 I/O)와 테스트가 같은 매퍼 규칙을 쓰도록 여기서만 구성한다.
+ * <p>파일 I/O 저장소(photo buffer)와 tool 인자 파싱·테스트가 같은 매퍼 규칙을 쓰도록 여기서만 구성한다
+ * — 노트·pending은 매체가 DB로 옮겨져(changes/0028·0029) 이 매퍼를 지나지 않는다.
  * <ul>
  *   <li>snake_case — data-model의 JSON 필드명(coffee_name, roast_level, my_taste ...)과 일치</li>
  *   <li>날짜/시각은 ISO-8601 문자열 — Jackson 3 기본값</li>

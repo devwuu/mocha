@@ -30,7 +30,7 @@ import java.util.Optional;
  * 때문이다 — 여기 조회 8종은 아직 단순하지만 날짜 이동(TΔ5c)·순서 삭제(TΔ5d)가 같은 자리에 들어온다.
  *
  * <p>주입받는 {@link EntityManager}는 Spring이 스레드 바인딩 영속성 컨텍스트로 위임하는 프록시다 —
- * 이 구현이 트랜잭션을 열지 않는다. 경계는 호출부({@code JpaNoteRepository})가 소유한다(Q-11).
+ * 이 구현이 트랜잭션을 열지 않는다. 경계는 호출부({@code NoteTxService})가 소유한다(Q-11, ADR-77).
  */
 class NoteEntityRepositoryCustomImpl implements NoteEntityRepositoryCustom {
 

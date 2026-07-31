@@ -1,4 +1,4 @@
-package com.devwuu.mocha.repository;
+package com.devwuu.mocha.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -32,7 +32,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 
 /**
- * 수정 경로 — {@link JpaNoteRepository#updateMeta}·{@link JpaNoteRepository#replaceEntry} (AC-Δ1).
+ * 수정 경로 — {@link NoteTxService#updateMeta}·{@link NoteTxService#replaceEntry} (AC-Δ1).
  *
  * <p>구 {@code JsonFileNoteRepositoryTest}의 수정 세션 검증분 4건 이관에서 출발했고(0028 TΔ5c), 0029
  * TΔ4a에서 <b>구 {@code applyEdit}이 둘로 갈리며</b> 이 파일도 두 축으로 재편됐다 — 노트 메타 갱신과
@@ -52,7 +52,7 @@ import java.util.List;
  * {@code clear()}만 부르면 그 갱신이 버려진다(그 자리의 상세는 헬퍼 javadoc이 소유한다).
  */
 @Transactional
-class JpaNoteRepositoryEditTest extends PostgresIntegrationTest {
+class NoteTxServiceEditTest extends PostgresIntegrationTest {
 
     @Autowired
     EntityManager em;
@@ -64,11 +64,11 @@ class JpaNoteRepositoryEditTest extends PostgresIntegrationTest {
     @Value("${spring.jpa.properties.hibernate.default_schema}")
     String schema;
 
-    JpaNoteRepository repo;
+    NoteTxService repo;
 
     @BeforeEach
     void setUp() {
-        repo = new JpaNoteRepository(notes);
+        repo = new NoteTxService(notes);
     }
 
     // ─────────────────────── 노트 메타 갱신 (FR-21, 이관) ───────────────────────
@@ -151,7 +151,7 @@ class JpaNoteRepositoryEditTest extends PostgresIntegrationTest {
     @Test
     @DisplayName("V-13: 메타 수정은 별칭을 건드리지 않는다 — 원본 존치")
     void updateMetaPreservesAliases() {
-        Note saved = repo.upsertEntry(null, fullMeta(), entry(day(10), "원본"),
+        Note saved = repo.commit(null, fullMeta(), entry(day(10), "원본"),
                 new Aliases(List.of("예가체프 G1"), List.of("커피베라 성수")));
 
         Note updated = repo.updateMeta(saved.id(), metaWithRoastery("커피베라 성수점"));
@@ -169,6 +169,39 @@ class JpaNoteRepositoryEditTest extends PostgresIntegrationTest {
     void updateMetaRejectsMissingNote() {
         assertThatThrownBy(() -> repo.updateMeta(99_999_999L, fullMeta()))
                 .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    @DisplayName("V-9(TΔ4c): coffee_name 변경 시도는 거부 — 어떤 행도 바뀌지 않는다")
+    void updateMetaRejectsCoffeeNameChange() {
+        // TΔ4c: V-9 검사가 NoteService에서 이 계층으로 내려왔다 — 저장된 값을 읽어 대조하고 그에 따라
+        // 쓰는 read-then-act가 같은 트랜잭션 안에 든다(delta D-9). 그래서 검증도 실 Postgres다.
+        Note saved = seed(entry(day(10), "원본"));
+        NoteMeta renamed = new NoteMeta(
+                new Sourced<>("커피베라 예가체프 G2", Source.USER), fullMeta().roastery(),
+                List.of(), null, null, List.of());
+
+        assertThatThrownBy(() -> repo.updateMeta(saved.id(), renamed))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        flushAndClear();
+        Note reloaded = repo.findById(saved.id()).orElseThrow();
+        assertThat(reloaded.coffeeName().value()).isEqualTo("커피베라 예가체프 G1");
+        // 거부가 쓰기 <b>전에</b> 일어나는지까지 본다 — 배열 자식은 통째 교체 대상이라 부분 반영이
+        // 일어났다면 여기서 드러난다(renamed는 beans/sources가 비어 있다).
+        assertThat(reloaded.beans()).hasSize(1);
+        assertThat(reloaded.sources()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("V-9: 같은 커피명이면 통과 — 로스터리 등 나머지는 수정 범위다")
+    void updateMetaAllowsSameCoffeeName() {
+        Note saved = seed(entry(day(10), "원본"));
+
+        Note updated = repo.updateMeta(saved.id(), metaWithRoastery("커피베라 성수점"));
+
+        assertThat(updated.roastery().value()).isEqualTo("커피베라 성수점");
+        assertThat(updated.coffeeName().value()).isEqualTo("커피베라 예가체프 G1");
     }
 
     // ─────────────────────── 엔트리 교체 (ADR-59, 이관) ───────────────────────
@@ -194,7 +227,7 @@ class JpaNoteRepositoryEditTest extends PostgresIntegrationTest {
     @DisplayName("이관: 무충돌 날짜 이동 — 옛 date 제거·새 date 추가, 총수 불변·오름차순 유지")
     void replaceEntryMovesDateWithoutConflict() {
         Note seeded = seed(entry(day(9), "9일"));
-        Note saved = repo.upsertEntry(seeded.id(), fullMeta(), entry(day(10), "10일"), Aliases.empty());
+        Note saved = repo.commit(seeded.id(), fullMeta(), entry(day(10), "10일"), Aliases.empty());
 
         Note updated = repo.replaceEntry(saved.id(), day(10), entry(day(11), "사실 11일에 마심"));
 
@@ -210,7 +243,7 @@ class JpaNoteRepositoryEditTest extends PostgresIntegrationTest {
     @DisplayName("V-10 이관: 날짜 이동 충돌 시 대상 덮어쓰기 + 원본 date 제거 — 엔트리 총수 1 감소")
     void replaceEntryOverwritesOnDateConflict() {
         Note saved = seed(entry(day(9), "9일 원본"));
-        saved = repo.upsertEntry(saved.id(), fullMeta(), entry(day(10), "10일 원본"), Aliases.empty());
+        saved = repo.commit(saved.id(), fullMeta(), entry(day(10), "10일 원본"), Aliases.empty());
         assertThat(saved.entries()).hasSize(2);
 
         // 7/9 엔트리를 7/10으로 이동 — 기존 7/10과 충돌한다. UNIQUE(note_id, tasted_on)를 지나야 하는
@@ -244,7 +277,7 @@ class JpaNoteRepositoryEditTest extends PostgresIntegrationTest {
     @DisplayName("판정: 날짜 이동이 UNIQUE 위반을 내지 않는다 — DB는 중간 상태에서 제약을 검사한다")
     void dateMoveDoesNotViolateUniqueMidway() {
         Note saved = seed(entry(day(9), "9일"));
-        saved = repo.upsertEntry(saved.id(), fullMeta(), entry(day(10), "10일"), Aliases.empty());
+        saved = repo.commit(saved.id(), fullMeta(), entry(day(10), "10일"), Aliases.empty());
         long noteId = saved.id();
 
         // 예외가 나지 않는 것 자체가 판정이다 — 파일 구현에는 없던 실패 모드라 별도로 세운다.
@@ -260,7 +293,7 @@ class JpaNoteRepositoryEditTest extends PostgresIntegrationTest {
         Note saved = seed(entry(day(9), List.of(
                 new Brew(recipe(15.0), new Tasting("9일 첫 잔", "9일 첫 잔", Rating.GOOD)),
                 new Brew(recipe(16.0), new Tasting("9일 둘째 잔", "9일 둘째 잔", Rating.PERFECT)))));
-        saved = repo.upsertEntry(saved.id(), fullMeta(),
+        saved = repo.commit(saved.id(), fullMeta(),
                 entry(day(10), List.of(new Brew(recipe(17.0), new Tasting("10일", "10일", Rating.GOOD)))),
                 Aliases.empty());
 
@@ -298,7 +331,7 @@ class JpaNoteRepositoryEditTest extends PostgresIntegrationTest {
 
     /** 노트 하나를 심는다 — 수정 테스트의 출발점. */
     private Note seed(Entry entry) {
-        return repo.upsertEntry(null, fullMeta(), entry, Aliases.empty());
+        return repo.commit(null, fullMeta(), entry, Aliases.empty());
     }
 
     /** 표준 메타에서 로스터리만 갈아끼운 사본 — 메타 수정의 최소 단위다. */

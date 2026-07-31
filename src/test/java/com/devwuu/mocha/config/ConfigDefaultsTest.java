@@ -16,11 +16,10 @@ import com.devwuu.mocha.llm.VisionClient;
 import com.devwuu.mocha.render.CardImageRenderer;
 import com.devwuu.mocha.render.NoteRenderer;
 import com.devwuu.mocha.render.Theme;
-import com.devwuu.mocha.repository.JpaNoteRepository;
 import com.devwuu.mocha.repository.JsonFilePhotoBufferStore;
 import com.devwuu.mocha.repository.LocalPhotoStore;
-import com.devwuu.mocha.repository.NoteRepository;
 import com.devwuu.mocha.service.NoteService;
+import com.devwuu.mocha.service.NoteTxService;
 import com.devwuu.mocha.repository.PhotoBufferStore;
 import com.devwuu.mocha.repository.PhotoStore;
 import com.devwuu.mocha.repository.jpa.NoteEntityRepository;
@@ -187,7 +186,6 @@ class ConfigDefaultsTest {
         repositoryRunner()
                 .withPropertyValues("mocha.data.dir=build/test-data")
                 .run(context -> {
-                    assertThat(context.getBean(NoteRepository.class)).isInstanceOf(JpaNoteRepository.class);
                     assertThat(context.getBean(PhotoStore.class)).isInstanceOf(LocalPhotoStore.class);
                     assertThat(context.getBean(PhotoBufferStore.class)).isInstanceOf(JsonFilePhotoBufferStore.class);
                     // 사진 경로는 여전히 설정 키에서만 파생된다(CLAUDE.md §3) — 하드코딩 회귀를 여기서 잡는다.
@@ -217,12 +215,16 @@ class ConfigDefaultsTest {
         // 이 배선이 그 협력자를 다시 유스케이스에 붙이는 자리라, 주입 누락을 기동 시점에 잡는다.
         isolatedRunner()
                 .withUserConfiguration(ServiceConfig.class)
-                .withBean(NoteRepository.class, () -> stub(NoteRepository.class))
+                .withBean(NoteEntityRepository.class, () -> stub(NoteEntityRepository.class))
                 .withBean(AliasGenerator.class, () -> stub(AliasGenerator.class))
                 .run(context -> {
                     NoteService service = context.getBean(NoteService.class);
                     assertThat(ReflectionTestUtils.getField(service, "aliasGenerator")).isNotNull();
-                    assertThat(ReflectionTestUtils.getField(service, "noteRepository")).isNotNull();
+                    assertThat(ReflectionTestUtils.getField(service, "noteTxService")).isNotNull();
+                    // 0029 TΔ4c: 외부 콜(별칭 생성기)이 트랜잭션 계층에 닿지 않는 것이 계층 축이다
+                    // (delta D-9) — 생성자 시그니처로 드러나는 성질이라 배선에서 함께 박는다.
+                    NoteTxService tx = context.getBean(NoteTxService.class);
+                    assertThat(ReflectionTestUtils.getField(tx, "notes")).isNotNull();
                 });
     }
 

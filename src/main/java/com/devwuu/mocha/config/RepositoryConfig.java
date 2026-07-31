@@ -1,12 +1,9 @@
 package com.devwuu.mocha.config;
 
-import com.devwuu.mocha.repository.JpaNoteRepository;
 import com.devwuu.mocha.repository.JsonFilePhotoBufferStore;
 import com.devwuu.mocha.repository.LocalPhotoStore;
-import com.devwuu.mocha.repository.NoteRepository;
 import com.devwuu.mocha.repository.PhotoBufferStore;
 import com.devwuu.mocha.repository.PhotoStore;
-import com.devwuu.mocha.repository.jpa.NoteEntityRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -15,8 +12,9 @@ import tools.jackson.databind.ObjectMapper;
 import java.nio.file.Path;
 
 /**
- * 저장소 빈 배선. 노트는 DB에서, 사진·photo buffer는 아직 {@code mocha.data.dir} 아래 파일에서 온다
- * (plan.md §5, CLAUDE.md §3, changes/0028 ADR-73·74).
+ * <b>파일 매체</b> 저장소 빈 배선 — 사진과 photo buffer가 {@code mocha.data.dir} 아래에서 온다
+ * (plan.md §5, CLAUDE.md §3, changes/0028 ADR-73·74). 노트는 DB에 있고 배선은 {@link ServiceConfig}가
+ * 소유한다(0029 TΔ4c).
  * <p>도메인 JSON 규칙은 공통 {@code ObjectMapper} 빈({@link CommonConfig} — {@code MochaObjectMapper}
  * 규칙, ADR-63)을 주입받아 통일한다.
  */
@@ -32,11 +30,9 @@ public class RepositoryConfig {
     // 그래서 mocha.data.dir는 소멸하지 않고 아래 둘의 뿌리로 잔존한다(TΔ8).
     // 0029 TΔ4: pending 저장소 빈이 사라졌다 — 작성 중 데이터는 클라이언트 폼이 소유하고 서버는 기억하지
     // 않는다(delta 0029 D-2). TTL 설정 키(mocha.pending.ttl)도 함께 소멸했다.
-    @Bean
-    public NoteRepository noteRepository(NoteEntityRepository notes) {
-        return new JpaNoteRepository(notes);
-    }
-
+    // 0029 TΔ4c: 노트 빈도 여기서 사라졌다 — 구 JpaNoteRepository가 이미 트랜잭션 경계였음이 드러나
+    // service/NoteTxService로 재정의됐고(delta D-9), 배선은 ServiceConfig가 가져갔다. 이 config에 남은
+    // 것은 파일 매체 저장소뿐이고, 그래서 이름과 내용이 다시 일치한다.
     @Bean
     public PhotoStore photoStore(@Value(DEFAULT_DATA_DIR) String dataDir) {
         return new LocalPhotoStore(Path.of(dataDir));

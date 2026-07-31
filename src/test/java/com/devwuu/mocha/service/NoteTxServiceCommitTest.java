@@ -1,4 +1,4 @@
-package com.devwuu.mocha.repository;
+package com.devwuu.mocha.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -31,7 +31,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 
 /**
- * TΔ5b (changes/0028-rdb-storage) — {@link JpaNoteRepository#upsertEntry} (AC-Δ1·Δ3·Δ4).
+ * TΔ5b (changes/0028-rdb-storage) — {@link NoteTxService#commit} (AC-Δ1·Δ3·Δ4).
  *
  * <p>둘을 함께 본다. 하나는 <b>병합 정책</b>(ADR-4·59, V-13)이고, 이것은 구
  * {@code JsonFileNoteRepositoryTest}가 지고 있던 계약 검증분의 이관이다 — 저장 매체가 바뀌어도 답이 같아야
@@ -46,7 +46,7 @@ import java.util.List;
  * 되돌려주고 DB를 지나지 않은 채 그린이 된다.
  */
 @Transactional
-class JpaNoteRepositoryUpsertEntryTest extends PostgresIntegrationTest {
+class NoteTxServiceCommitTest extends PostgresIntegrationTest {
 
     @Autowired
     EntityManager em;
@@ -63,11 +63,11 @@ class JpaNoteRepositoryUpsertEntryTest extends PostgresIntegrationTest {
     @Value("${spring.jpa.properties.hibernate.default_schema}")
     String schema;
 
-    JpaNoteRepository repo;
+    NoteTxService repo;
 
     @BeforeEach
     void setUp() {
-        repo = new JpaNoteRepository(notes);
+        repo = new NoteTxService(notes);
     }
 
     // ─────────────────────── 신규/기존 분기 (D-1) ───────────────────────
@@ -75,7 +75,7 @@ class JpaNoteRepositoryUpsertEntryTest extends PostgresIntegrationTest {
     @Test
     @DisplayName("D-1: noteId가 null이면 신규 노트 — id는 저장이 발급하고 meta·aliases가 그대로 심긴다")
     void nullNoteIdCreatesNewNote() {
-        Note saved = repo.upsertEntry(null, fullMeta(), entry(day(10), "새콤하고 좋았다"),
+        Note saved = repo.commit(null, fullMeta(), entry(day(10), "새콤하고 좋았다"),
                 new Aliases(List.of("예가체프 G1"), List.of("커피베라 성수")));
         em.clear();
 
@@ -94,7 +94,7 @@ class JpaNoteRepositoryUpsertEntryTest extends PostgresIntegrationTest {
     @Test
     @DisplayName("D-1: 소실된 noteId는 신규 생성으로 흡수하지 않고 거부 — 중복 노트가 생기면 사진·카드가 두 id로 갈린다")
     void missingNoteIdIsRejected() {
-        assertThatThrownBy(() -> repo.upsertEntry(99_999_999L, fullMeta(), entry(day(10), "감상"), Aliases.empty()))
+        assertThatThrownBy(() -> repo.commit(99_999_999L, fullMeta(), entry(day(10), "감상"), Aliases.empty()))
                 .isInstanceOf(IllegalStateException.class);
 
         // 던졌다는 것만으로는 부족하다 — 신규 생성으로 흡수한 뒤 조회에서 넘어져도 같은 예외가 난다.
@@ -109,7 +109,7 @@ class JpaNoteRepositoryUpsertEntryTest extends PostgresIntegrationTest {
     void sameDayUpsertKeepsSingleEntry() {
         long noteId = seed(entry(day(10), "새콤하고 좋았다"));
 
-        Note note = repo.upsertEntry(noteId, fullMeta(), entry(day(10), "오늘은 좀 밍밍"), Aliases.empty());
+        Note note = repo.commit(noteId, fullMeta(), entry(day(10), "오늘은 좀 밍밍"), Aliases.empty());
         assertThat(note.entries()).hasSize(1);
         assertThat(tasteOf(note.entries().getFirst())).isEqualTo("오늘은 좀 밍밍");
 
@@ -131,7 +131,7 @@ class JpaNoteRepositoryUpsertEntryTest extends PostgresIntegrationTest {
         Brew second = new Brew(
                 new Recipe("핸드드립", 15.0, 240.0, null, 150.0, 92.0, "220클릭 (매버릭 2.0)", null, null, null),
                 new Tasting("떫은맛 사라지고 단맛 올라옴", "떫은맛이 사라지고 단맛이 올라온다", Rating.PERFECT));
-        Note note = repo.upsertEntry(noteId, fullMeta(), entry(day(18), List.of(first, second)), Aliases.empty());
+        Note note = repo.commit(noteId, fullMeta(), entry(day(18), List.of(first, second)), Aliases.empty());
 
         assertThat(note.entries()).hasSize(1);
         assertThat(note.entries().getFirst().brews()).hasSize(2);
@@ -151,7 +151,7 @@ class JpaNoteRepositoryUpsertEntryTest extends PostgresIntegrationTest {
                 List.of(new Brew(recipe, new Tasting("새콤하고 좋았음", "새콤하고 좋았다", Rating.GOOD)))));
 
         // "아까 내린 거 식으니까 더 맛있네" — 병합은 에이전트가 하고 서버는 append 없이 그대로 교체한다.
-        Note note = repo.upsertEntry(noteId, fullMeta(), entry(day(18),
+        Note note = repo.commit(noteId, fullMeta(), entry(day(18),
                 List.of(new Brew(recipe, new Tasting(
                         "새콤하고 좋았음. 식으니까 더 맛있음",
                         "새콤하고 좋았다 / 식으니까 더 맛있네", Rating.GOOD)))), Aliases.empty());
@@ -176,7 +176,7 @@ class JpaNoteRepositoryUpsertEntryTest extends PostgresIntegrationTest {
                         new Tasting("둘째 잔", "둘째 잔", Rating.PERFECT)))));
 
         // 같은 날, 회차 1개짜리로 교체 — 옛 회차 2개와 그 recipe·tasting이 전부 사라져야 한다.
-        repo.upsertEntry(noteId, fullMeta(), entry(day(10), List.of(
+        repo.commit(noteId, fullMeta(), entry(day(10), List.of(
                 new Brew(new Recipe("에스프레소", 18.0, null, null, null, null, null, null, null, null),
                         new Tasting("다시 내림", "다시 내림", Rating.GOOD)))), Aliases.empty());
         em.clear();
@@ -192,7 +192,7 @@ class JpaNoteRepositoryUpsertEntryTest extends PostgresIntegrationTest {
     void differentDayAppendsSortedByDate() {
         long noteId = seed(entry(day(10), "10일"));
 
-        Note note = repo.upsertEntry(noteId, fullMeta(), entry(day(9), "9일"), Aliases.empty());
+        Note note = repo.commit(noteId, fullMeta(), entry(day(9), "9일"), Aliases.empty());
 
         assertThat(note.entries()).extracting(Entry::date).containsExactly(day(9), day(10));
         assertThat(tasteOf(note.entries().getFirst())).isEqualTo("9일");
@@ -204,7 +204,7 @@ class JpaNoteRepositoryUpsertEntryTest extends PostgresIntegrationTest {
         long noteId = seed(entry(day(10), "1일차"));
 
         // 이번 기록의 meta에는 원두·로스팅·공식 노트가 없다 — 보존이 아니라 갱신이면 여기서 비워진다.
-        repo.upsertEntry(noteId, metaWithNames("커피베라 예가체프 G1", "커피베라"),
+        repo.commit(noteId, metaWithNames("커피베라 예가체프 G1", "커피베라"),
                 entry(day(11), "2일차"), Aliases.empty());
         em.clear();
 
@@ -217,23 +217,22 @@ class JpaNoteRepositoryUpsertEntryTest extends PostgresIntegrationTest {
     // ─────────────────────── 별칭 축적 (V-13, AC-Δ4 of 0016) ───────────────────────
 
     @Test
-    @DisplayName("V-13/TΔ3a: 기존 노트에 더해진 별칭은 뒤에 붙고 첫 등장 순서가 보존된다")
+    @DisplayName("V-13/TΔ3a: 명시 인자로 심은 별칭은 뒤에 붙고 첫 등장 순서가 보존된다")
     void addedAliasesKeepFirstSeenOrder() {
-        // 0029 TΔ4a: 무엇을 더할지의 판정(정규화 중복 제거·표시값 미추가)은 NoteService가 지고,
-        // 여기서 남은 계약은 "받은 표기를 기존 뒤에 심고 순서를 지킨다"다 — 별칭에는 seq가 없고
-        // id가 첫 등장 순서를 지므로, 기존 행을 지우고 다시 넣으면 이 단언이 깨진다.
-        Note seeded = repo.upsertEntry(null,
+        // generated가 non-null인 경로 — 받은 표기를 그대로 심는다. 별칭에는 seq가 없고 id가 첫 등장
+        // 순서를 지므로, 기존 행을 지우고 다시 넣으면 이 단언이 깨진다.
+        Note seeded = repo.commit(null,
                 metaWithNames("Ethiopia Chelbesa", "FroB"), entry(day(9), "1일차"),
                 new Aliases(List.of("에티오피아 첼베사"), List.of("프롭")));
         long noteId = seeded.id();
 
-        Note r1 = repo.upsertEntry(noteId, metaWithNames("이디오피아 첼베사", "프로브"), entry(day(10), "2일차"),
+        Note r1 = repo.commit(noteId, metaWithNames("이디오피아 첼베사", "프로브"), entry(day(10), "2일차"),
                 new Aliases(List.of("이디오피아 첼베사"), List.of("프로브")));
         assertThat(r1.aliases().coffeeName()).containsExactly("에티오피아 첼베사", "이디오피아 첼베사");
         assertThat(r1.aliases().roastery()).containsExactly("프롭", "프로브");
 
         // 더할 것이 없는 재기록은 별칭을 그대로 둔다 — 빈 인자가 곧 "축적할 신규 표기 없음"이다.
-        Note r2 = repo.upsertEntry(noteId, metaWithNames("이디오피아  첼베사", "FROB"), entry(day(11), "3일차"),
+        Note r2 = repo.commit(noteId, metaWithNames("이디오피아  첼베사", "FROB"), entry(day(11), "3일차"),
                 Aliases.empty());
         assertThat(r2.aliases().coffeeName()).containsExactly("에티오피아 첼베사", "이디오피아 첼베사");
         assertThat(r2.aliases().roastery()).containsExactly("프롭", "프로브");
@@ -245,18 +244,49 @@ class JpaNoteRepositoryUpsertEntryTest extends PostgresIntegrationTest {
     }
 
     @Test
-    @DisplayName("TΔ4a: 기존 노트 재기록에서도 인자 aliases는 심긴다 — 무엇을 심을지는 호출부가 정한다")
+    @DisplayName("TΔ4a: 기존 노트 재기록에서도 인자 aliases는 심긴다 — generated가 있으면 그것을 쓴다")
     void aliasArgumentIsPlantedForExistingNote() {
-        // 구 계약은 "기존 노트면 인자를 무시하고 저장소가 meta에서 축적한다"였다. 판정이 service로
-        // 올라가며 뒤집혔다 — 저장소는 받은 것을 심을 뿐이고, 중복 방지 책임도 호출부로 옮겨갔다.
-        Note seeded = repo.upsertEntry(null, fullMeta(), entry(day(10), "1일차"),
+        Note seeded = repo.commit(null, fullMeta(), entry(day(10), "1일차"),
                 new Aliases(List.of("예가체프 G1"), List.of()));
 
-        Note re = repo.upsertEntry(seeded.id(), fullMeta(), entry(day(11), "2일차"),
+        Note re = repo.commit(seeded.id(), fullMeta(), entry(day(11), "2일차"),
                 new Aliases(List.of("두 번째로 들어온 별칭"), List.of("두 번째 로스터리")));
 
         assertThat(re.aliases().coffeeName()).containsExactly("예가체프 G1", "두 번째로 들어온 별칭");
         assertThat(re.aliases().roastery()).containsExactly("두 번째 로스터리");
+    }
+
+    @Test
+    @DisplayName("V-13(TΔ4c): generated가 null이면 저장된 별칭을 읽어 늘어난 표기만 심는다")
+    void accumulatesOnlyNewObservedAliasesWhenNotGenerated() {
+        // TΔ4c: 이 계산이 여기 있는 것이 축 재정의의 실체다 — "무엇이 이미 별칭에 있는가"를 읽고
+        // 그에 따라 쓰는 read-then-act가 같은 트랜잭션 안에 든다(TΔ4a는 이것을 트랜잭션 밖에 두는
+        // 대가를 명시적으로 지고 있었다, delta D-9).
+        long noteId = repo.commit(null, metaWithNames("예가체프 G1", "커피베라"), entry(day(9), "1일차"),
+                new Aliases(List.of("Yirgacheffe G1"), List.of())).id();
+        em.clear();
+
+        // 커피명은 정규화하면 기존 별칭과 같고(Yirgacheffe G1), 로스터리는 처음 보는 표기다.
+        Note re = repo.commit(noteId, metaWithNames("yirgacheffe  g1", "커피베라 성수"),
+                entry(day(10), "2일차"), null);
+
+        assertThat(re.aliases().coffeeName())
+                .as("정규화 일치분은 다시 심지 않는다 — 행 중복·순서 붕괴를 막는 자리")
+                .containsExactly("Yirgacheffe G1");
+        assertThat(re.aliases().roastery()).containsExactly("커피베라 성수");
+    }
+
+    @Test
+    @DisplayName("V-13(TΔ4c): 노트 표시값과 정규화 일치하는 관측 표기는 별칭에 넣지 않는다")
+    void observedValueSameAsCanonicalIsNotAccumulated() {
+        long noteId = repo.commit(null, metaWithNames("예가체프 G1", "커피베라"), entry(day(9), "1일차"),
+                Aliases.empty()).id();
+        em.clear();
+
+        Note re = repo.commit(noteId, metaWithNames("예가체프  G1", "커피베라"), entry(day(10), "2일차"), null);
+
+        assertThat(re.aliases().coffeeName()).isEmpty();
+        assertThat(re.aliases().roastery()).isEmpty();
     }
 
     // ─────────────────────── 회차 순서는 seq가 소유 (AC-Δ4) ───────────────────────
@@ -291,7 +321,7 @@ class JpaNoteRepositoryUpsertEntryTest extends PostgresIntegrationTest {
         // 여기 도달하면 삼키지 않고 거부한다(TΔ3c toRecipeEntity 계약).
         Recipe zeroDose = new Recipe("핸드드립", 0.0, 240.0, null, null, null, null, null, null, null);
 
-        assertThatThrownBy(() -> repo.upsertEntry(null, fullMeta(),
+        assertThatThrownBy(() -> repo.commit(null, fullMeta(),
                 entry(day(10), List.of(new Brew(zeroDose, null))), Aliases.empty()))
                 .hasStackTraceContaining("recipe_dose_g_check");
     }
@@ -340,7 +370,7 @@ class JpaNoteRepositoryUpsertEntryTest extends PostgresIntegrationTest {
 
     /** 노트 하나를 심고 id를 준다 — 병합 테스트의 출발점(신규 갈래는 그 자체가 검증 대상이라 따로 본다). */
     private long seed(Entry entry) {
-        return repo.upsertEntry(null, fullMeta(), entry, Aliases.empty()).id();
+        return repo.commit(null, fullMeta(), entry, Aliases.empty()).id();
     }
 
     /** 감사 컬럼을 거치지 않고 엔트리 행을 직접 넣는다 — psql 직접 편집 대역(AC-Δ3). */
