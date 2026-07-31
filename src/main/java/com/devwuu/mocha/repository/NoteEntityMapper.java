@@ -48,10 +48,9 @@ import java.util.List;
  *       <b>유한</b>"을 CHECK로 강제하려면 {@code double precision}으로 부족했다(TΔ2 실측)</li>
  * </ul>
  *
- * <p><b>식별자</b>: {@link #toNote}가 {@code slug}를 인자로 받는 것은 스키마에 slug 컬럼이 없기 때문이다 —
- * 도메인 {@link Note#slug()}는 이 시점에 아직 {@code String}이고 식별자 전환은 TΔ6a가 소유한다. 변환기는
- * 식별자를 <b>발급하지도 유추하지도 않는다</b>(호출부가 준다). TΔ6a에서 이 파라미터는 사라지고
- * {@code NoteEntity.getId()}가 직접 쓰인다.
+ * <p><b>식별자</b>: 도메인 {@link Note#id()}와 {@code note.id}가 같은 값이므로 변환기는 행이 든 id를 그대로
+ * 나른다. 도메인 → 엔티티 방향에서는 인자의 id를 <b>버린다</b> — 발급자는 {@code BIGSERIAL}이지 호출부가
+ * 아니다(TΔ5a {@code insert} 계약). 변환기가 식별자를 발급하거나 유추하는 일은 어느 방향으로도 없다.
  *
  * <p><b>감사 컬럼</b>은 이 클래스가 채우지 않는다 — 도메인 → 엔티티 방향에서 {@code createdAt}/
  * {@code updatedAt}은 버려지고 값 주입은 Spring Data Auditing이 맡는다(Q-5, TΔ4). 역방향에서는 감사
@@ -177,16 +176,12 @@ public final class NoteEntityMapper {
 
     // ────────────────────────────── 엔티티 → 도메인 ──────────────────────────────
 
-    /**
-     * 노트 조립 — 자식 행 목록과 <b>이미 조립된</b> 엔트리를 받는다({@link #toEntry}).
-     *
-     * @param slug 식별자. 스키마에 slug 컬럼이 없어 호출부가 준다 — TΔ6a에서 사라질 파라미터다.
-     */
-    public static Note toNote(String slug, NoteEntity note, List<NoteBeanEntity> beans,
+    /** 노트 조립 — 자식 행 목록과 <b>이미 조립된</b> 엔트리를 받는다({@link #toEntry}). */
+    public static Note toNote(NoteEntity note, List<NoteBeanEntity> beans,
                               List<NoteOfficialNoteEntity> officialNotes, List<NoteAliasEntity> aliases,
                               List<NoteSourceEntity> sources, List<Entry> entries) {
         return new Note(
-                slug,
+                note.getId(),
                 toSourced(note.getCoffeeName()),
                 toSourced(note.getRoastery()),
                 beans.stream().map(NoteEntityMapper::toBean).toList(),

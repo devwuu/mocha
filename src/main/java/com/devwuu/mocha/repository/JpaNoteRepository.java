@@ -34,8 +34,8 @@ import java.util.stream.Stream;
 /**
  * Postgres 기반 NoteRepository (ref: changes/0028-rdb-storage/delta.md#ADR-72, tasks.md TΔ5a).
  *
- * <p>{@link JsonFileNoteRepository}를 대체한다 — DB가 source of truth이고 카드·HTML은 여전히 파생물이다
- * (ADR-1의 "파생물은 언제든 전체 재생성 가능" 규칙은 불변).
+ * <p>구 {@code JsonFileNoteRepository}를 대체한다(TΔ6a에서 폐기) — DB가 source of truth이고 카드·HTML은
+ * 여전히 파생물이다(ADR-1의 "파생물은 언제든 전체 재생성 가능" 규칙은 불변).
  *
  * <p><b>저장소 3분할의 가운데</b>다(delta §ADR-72). 위로는 {@link NoteRepository} 포트를 구현해 상위
  * 계층에 도메인 record만 보이고(NFR-4, AC-Δ1), 아래로는 {@link NoteEntityRepository} <b>하나만</b>
@@ -49,9 +49,8 @@ import java.util.stream.Stream;
  * 질의가 준 대로 보존</b>한다.
  *
  * <p><b>트랜잭션 경계는 이 클래스가 소유한다</b>(백엔드 CLAUDE.md §3의 파일 I/O 경계를 승계 — Q-11).
- * 외부 호출(LLM·검색·Slack)은 쓰기 진입 전에 끝나 있어야 한다. TΔ5a 시점에는 아직 빈으로 배선되지
- * 않아({@code RepositoryConfig}가 여전히 JSON 구현체를 준다 — 교체는 TΔ6a) {@code @Transactional}이
- * 실제로 프록시되지 않는다. 선언을 미리 두는 것은 경계 소유자를 코드에 박아 두기 위함이다.
+ * 외부 호출(LLM·검색·Slack)은 쓰기 진입 전에 끝나 있어야 한다. TΔ6a에서 {@code RepositoryConfig}가
+ * 이 구현체를 {@link NoteRepository} 빈으로 올리면서 {@code @Transactional} 선언이 실제 프록시가 됐다.
  */
 public class JpaNoteRepository implements NoteRepository {
 
@@ -69,21 +68,7 @@ public class JpaNoteRepository implements NoteRepository {
         return assemble(notes.findAllByOrderByIdAsc());
     }
 
-    /**
-     * {@inheritDoc}
-     *
-     * <p>POLICY: slug는 폐기됐고(ADR-74) 식별자는 {@code note.id}다. 도메인·인터페이스의 식별자 전환은
-     * TΔ6a가 소유하므로, 그때까지 이 메서드는 slug 문자열을 id의 십진 표기로 읽는 <b>임시 다리</b>다 —
-     * 숫자가 아닌 문자열(구 kebab-case slug)은 존재하지 않는 노트로 수렴한다. 다리는 TΔ6a에서 걷힌다.
-     */
     @Override
-    @Transactional(readOnly = true)
-    public Optional<Note> findBySlug(String slug) {
-        Long id = parseId(slug);
-        return id == null ? Optional.empty() : findById(id);
-    }
-
-    /** id로 노트 조회 — 식별자 전환(TΔ6a) 이후 {@code findBySlug}를 대체할 형태다. */
     @Transactional(readOnly = true)
     public Optional<Note> findById(long id) {
         return notes.findById(id).map(row -> assemble(List.of(row)).getFirst());
@@ -130,28 +115,13 @@ public class JpaNoteRepository implements NoteRepository {
         }
     }
 
-    /**
-     * {@inheritDoc}
-     *
-     * @deprecated slug 폐기로 근거가 소멸했다(ADR-74) — 파일명이자 식별자였던 slug가 사라지면 유일화
-     * (V-2)도 함께 사라진다. 발급 주체가 저장소가 아니라 tool({@code ProposalTools})이라 인터페이스에서
-     * 걷어내려면 호출부 전환이 선행이고, 그것은 TΔ6a·TΔ6b가 소유한다. 이 구현체는 대체할 동작이 없으므로
-     * 조용히 무언가를 만들어 내지 않고 거부한다.
-     */
-    @Deprecated
     @Override
-    public String nextAvailableSlug(String base) {
-        throw new UnsupportedOperationException(
-                "slug 유일화(V-2)는 slug 폐기와 함께 소멸했다 — 식별자는 note.id다 (ADR-74)");
-    }
-
-    @Override
-    public Note upsertEntry(String slug, NoteMeta meta, Entry entry, Aliases aliases) {
+    public Note upsertEntry(Long noteId, NoteMeta meta, Entry entry, Aliases aliases) {
         throw new UnsupportedOperationException("TΔ5b에서 구현");
     }
 
     @Override
-    public Note applyEdit(String slug, LocalDate targetDate, Note draft) {
+    public Note applyEdit(long noteId, LocalDate targetDate, Note draft) {
         throw new UnsupportedOperationException("TΔ5c에서 구현");
     }
 
@@ -179,9 +149,6 @@ public class JpaNoteRepository implements NoteRepository {
         for (NoteEntity row : rows) {
             long id = row.getId();
             Note domain = NoteEntityMapper.toNote(
-                    // TΔ6a까지의 임시 다리 — 스키마에 slug 컬럼이 없어 식별자는 id의 십진 표기다.
-                    // String.valueOf를 변환기 안에 숨기지 않는 것은 TΔ3c의 결정이다(발급·유추는 호출부 몫).
-                    String.valueOf(id),
                     row,
                     beansByNote.getOrDefault(id, List.of()),
                     officialNotesByNote.getOrDefault(id, List.of()),
@@ -236,18 +203,5 @@ public class JpaNoteRepository implements NoteRepository {
                     id);
         }
         return sanitized;
-    }
-
-    // 구 kebab-case slug는 숫자로 읽히지 않는다 — 없는 노트로 수렴시킨다(예외로 올리지 않는 것은
-    // findBySlug의 계약이 "없으면 빈 Optional"이기 때문이다).
-    private static Long parseId(String slug) {
-        if (slug == null || slug.isBlank()) {
-            return null;
-        }
-        try {
-            return Long.valueOf(slug.trim());
-        } catch (NumberFormatException notAnId) {
-            return null;
-        }
     }
 }

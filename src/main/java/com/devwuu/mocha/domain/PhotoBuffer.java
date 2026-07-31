@@ -11,7 +11,8 @@ import java.util.List;
  * 새 흐름으로 갈린다(AC-8).
  *
  * @param lastMediaAt  마지막 미디어 수신 시각 — 그룹핑 윈도우 판정 기준(Asia/Seoul).
- * @param stagedNames  {@link com.devwuu.mocha.repository.PhotoStore}에 스테이징된 파일명(수신 순). 저장 확정 시 slug/date로 이동된다.
+ * @param stagedNames  {@link com.devwuu.mocha.repository.PhotoStore}에 스테이징된 파일명(수신 순).
+ *                     저장 확정 시 경로 접미/date로 이동된다.
  */
 public record PhotoBuffer(
         OffsetDateTime lastMediaAt,

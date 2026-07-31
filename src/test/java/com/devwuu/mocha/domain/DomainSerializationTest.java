@@ -33,7 +33,7 @@ class DomainSerializationTest {
                 ts
         );
         return new Note(
-                "coffeevera-yirgacheffe-g1",
+                1L,
                 new Sourced<>("커피베라 예가체프 G1", Source.USER),
                 new Sourced<>("커피베라", Source.USER),
                 List.of(new Bean(new Sourced<>("에티오피아 예가체프", Source.USER), new Sourced<>("워시드", Source.SEARCH))),
@@ -64,7 +64,7 @@ class DomainSerializationTest {
         PendingNote pendingNew = new PendingNote(sampleNote(), MatchInfo.newNote(), "1720000000.000100", ts);
         PendingNote pendingExisting = new PendingNote(
                 sampleNote(),
-                MatchInfo.existing("coffeevera-yirgacheffe-g1", LocalDate.of(2026, 7, 9)),
+                MatchInfo.existing(1L, LocalDate.of(2026, 7, 9)),
                 "1720000000.000200",
                 ts
         );
@@ -77,10 +77,11 @@ class DomainSerializationTest {
     }
 
     @Test
-    @DisplayName("T1-1: JSON 필드명은 snake_case + match=new는 slug/date 생략")
+    @DisplayName("T1-1: JSON 필드명은 snake_case + match=new는 note_id/date 생략")
     void jsonShape() throws Exception {
         String noteJson = mapper.writeValueAsString(sampleNote());
         assertThat(noteJson)
+                .contains("\"id\":1")               // 식별자는 DB 발급 id(ADR-74) — 구 slug 문자열이 아니다
                 .contains("\"coffee_name\"")
                 .contains("\"roast_level\"")
                 .contains("\"official_notes\"")
@@ -94,6 +95,9 @@ class DomainSerializationTest {
 
         String matchJson = mapper.writeValueAsString(MatchInfo.newNote());
         assertThat(matchJson).isEqualTo("{\"type\":\"new\"}");
+        // EXISTING만 식별자를 싣는다 — NEW는 아직 저장되지 않아 id가 없다(D-1).
+        assertThat(mapper.writeValueAsString(MatchInfo.existing(12L, LocalDate.of(2026, 7, 9))))
+                .isEqualTo("{\"type\":\"existing\",\"note_id\":12,\"date\":\"2026-07-09\"}");
     }
 
     @Test
@@ -271,7 +275,7 @@ class DomainSerializationTest {
         PendingNote editPending = new PendingNote(
                 PendingNote.Mode.EDIT,
                 sampleNote(),
-                new PendingNote.EditTarget("coffeevera-yirgacheffe-g1", LocalDate.of(2026, 7, 9)),
+                new PendingNote.EditTarget(1L, LocalDate.of(2026, 7, 9)),
                 true,   // 날짜 이동 충돌 경고 — 재시작 후에도 [저장]/[취소]까지 유지돼야 한다(V-10, TΔ5)
                 null,   // match는 record 모드 한정(data-model §2.3)
                 "1720000000.000300",
@@ -285,7 +289,7 @@ class DomainSerializationTest {
         assertThat(restored).isEqualTo(editPending);
         assertThat(restored.dateConflict()).isTrue();
         assertThat(restored.target()).isEqualTo(
-                new PendingNote.EditTarget("coffeevera-yirgacheffe-g1", LocalDate.of(2026, 7, 9)));
+                new PendingNote.EditTarget(1L, LocalDate.of(2026, 7, 9)));
     }
 
     // (0012 이전 pending.json 하위 호환 테스트는 제거 — 기존 데이터는 배포 전 수동 삭제로 결정, delta 비범위.)
@@ -323,7 +327,7 @@ class DomainSerializationTest {
     @DisplayName("0016-TΔ1: aliases를 담은 Note는 snake_case로 직렬화·왕복된다")
     void noteWithAliasesRoundTrip() throws Exception {
         Note original = new Note(
-                "ethiopia-chelbesa",
+                2L,
                 new Sourced<>("Ethiopia Chelbesa", Source.USER),
                 new Sourced<>("FroB", Source.USER),
                 List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), null)),
@@ -375,7 +379,7 @@ class DomainSerializationTest {
     void beansRoundTrip() throws Exception {
         // 블렌드: 원두별 가공방식이 각 요소에 붙는다(ADR-53 동기) — process 없는 원두는 null.
         Note original = new Note(
-                "blend-note",
+                3L,
                 new Sourced<>("시그니처 블렌드", Source.USER),
                 new Sourced<>("커피베라", Source.USER),
                 List.of(
@@ -404,7 +408,7 @@ class DomainSerializationTest {
     @Test
     @DisplayName("0021-TΔ1a/V-14: beans 키 부재·null JSON도 빈 배열로 로드된다(null 불가 기본값)")
     void beansDefaultsToEmptyList() throws Exception {
-        String withoutBeans = "{\"slug\":\"s\",\"coffee_name\":{\"value\":\"커피\",\"source\":\"user\"},"
+        String withoutBeans = "{\"id\":1,\"coffee_name\":{\"value\":\"커피\",\"source\":\"user\"},"
                 + "\"roastery\":null,\"roast_level\":null,\"official_notes\":null,"
                 + "\"aliases\":{\"coffee_name\":[],\"roastery\":[]},"
                 + "\"sources\":[],\"entries\":[],\"created_at\":null,\"updated_at\":null}";
@@ -433,6 +437,24 @@ class DomainSerializationTest {
     @DisplayName("0021-TΔ1a/V-14: normalize — null 배열은 빈 배열로 정규화된다")
     void beansNormalizeNullToEmpty() {
         assertThat(Bean.normalize(null)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("0028-TΔ6a: Note.normalized()가 사본을 만들 때도 식별자를 보존한다")
+    void normalizedPreservesIdentifier() {
+        // 드롭할 요소가 있어야 normalized()가 this가 아닌 새 사본을 만든다 — 전 컴포넌트 복사가 일어나는
+        // 유일한 자리이고, 여기서 id를 떨구면 저장소 로드 경계(ADR-66)를 지난 노트가 식별자를 잃는다.
+        Note withInvalidBean = new Note(
+                7L,
+                new Sourced<>("커피", Source.USER), null,
+                List.of(new Bean(null, new Sourced<>("워시드", Source.USER))),   // description 부재 → 드롭
+                null, null, List.of(), List.of(), null, null);
+
+        Note normalized = withInvalidBean.normalized();
+
+        assertThat(normalized).isNotSameAs(withInvalidBean);   // 사본 경로를 실제로 밟았다
+        assertThat(normalized.beans()).isEmpty();
+        assertThat(normalized.id()).isEqualTo(7L);
     }
 
     @Test

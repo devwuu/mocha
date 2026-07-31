@@ -4,10 +4,13 @@ import java.time.OffsetDateTime;
 import java.util.List;
 
 /**
- * 노트 = 커피 1종 — {@code data/notes/<slug>.json} (ref: data-model.md#2.1, ADR-4).
+ * 노트 = 커피 1종 — {@code note} 테이블 1행 + 자식 행들 (ref: data-model.md#2.1, ADR-4, changes/0028 ADR-72).
  * <p>파생 값(엔트리 수 등)은 저장하지 않고 렌더 시 계산(POLICY, ADR-1).
  *
- * @param slug          kebab-case 식별자이자 파일명. 유일성 보장 (V-2).
+ * @param id            DB가 발급한 대체키({@code BIGSERIAL}). 구 slug를 대체한다 — 파일명이자 식별자라는
+ *                      slug의 존재 이유가 파일 폐기와 함께 사라졌다(ADR-74, V-2 폐기).
+ *                      <b>{@code null}은 "아직 저장되지 않음"</b>이다(D-1): id는 INSERT가 발급하므로 propose
+ *                      단계의 draft는 식별자를 갖지 않고, 이 null 판정이 그대로 신규/기존 분기가 된다.
  * @param coffeeName    표시용 커피 이름 — 출처 표시 필드(source ∈ {user, photo}, 검색 미채움, V-5).
  * @param roastery      로스터리 — 출처 표시 필드.
  * @param beans         원두 구성 배열(원두별 설명·가공방식, 구 origin/process 대체 — changes/0021 ADR-53, V-14).
@@ -21,7 +24,7 @@ import java.util.List;
  * @param updatedAt     ISO-8601.
  */
 public record Note(
-        String slug,
+        Long id,
         Sourced<String> coffeeName,
         Sourced<String> roastery,
         List<Bean> beans,
@@ -50,7 +53,7 @@ public record Note(
      * (기존 노트 JSON은 삭제·재생성하므로 aliases 부재 허용은 두지 않는다 — ADR-28 관례.)
      */
     public Note(
-            String slug,
+            Long id,
             Sourced<String> coffeeName,
             Sourced<String> roastery,
             List<Bean> beans,
@@ -61,7 +64,7 @@ public record Note(
             OffsetDateTime createdAt,
             OffsetDateTime updatedAt
     ) {
-        this(slug, coffeeName, roastery, beans, roastLevel, officialNotes,
+        this(id, coffeeName, roastery, beans, roastLevel, officialNotes,
                 Aliases.empty(), sources, entries, createdAt, updatedAt);
     }
 
@@ -81,7 +84,7 @@ public record Note(
         if (normalizedBeans.equals(beans) && normalizedEntries.equals(entries)) {
             return this;
         }
-        return new Note(slug, coffeeName, roastery, normalizedBeans, roastLevel, officialNotes,
+        return new Note(id, coffeeName, roastery, normalizedBeans, roastLevel, officialNotes,
                 aliases, sources, normalizedEntries, createdAt, updatedAt);
     }
 }

@@ -18,15 +18,19 @@ import java.util.stream.Stream;
  * 로컬 파일시스템 기반 {@link PhotoStore} (ref: data-model.md#2.4, tasks T4-1).
  * <p>레이아웃:
  * <pre>
- *   data/photos/.staging/&lt;userId&gt;/*   확인 대기 중 원본 (slug 미확정)
- *   data/photos/&lt;slug&gt;/&lt;date&gt;/*     저장 확정된 원본
+ *   data/photos/.staging/&lt;userId&gt;/*        확인 대기 중 원본 (노트 폴더 미확정)
+ *   data/photos/&lt;noteFolder&gt;/&lt;date&gt;/*  저장 확정된 원본
  * </pre>
- * 스테이징 디렉토리는 {@code .staging} — slug은 {@code [a-z0-9-]+}(점 없음)이라 실제 노트 디렉토리와
- * 절대 충돌하지 않는다. commit은 상대 경로만 반환하고(V-4), 절대/URL 경로는 애초에 만들지 않는다.
+ * 스테이징 디렉토리는 {@code .staging} — 노트 폴더 접미는 항상 {@code <id>-}로 시작하므로(숫자 선두)
+ * 실제 노트 디렉토리와 절대 충돌하지 않는다. commit은 상대 경로만 반환하고(V-4), 절대/URL 경로는 애초에
+ * 만들지 않는다.
  */
 public class LocalPhotoStore implements PhotoStore {
 
-    // slug 세그먼트와 절대 겹치지 않는 예약 디렉토리(slug 문법상 '.' 불가).
+    // 노트 폴더와 절대 겹치지 않는 예약 디렉토리.
+    // POLICY: 근거는 "접미가 항상 <id>-로 시작한다"이다 — slug 시절의 근거였던 "[a-z0-9-]+라 '.' 불가"는
+    //         승계되지 않는다. NoteFolderName의 금지문자 목록에 '.'이 없어 커피명의 점은 접미에 남는다
+    //         (ref: changes/0028-rdb-storage/inventory.md §4 E-4, delta.md §파일 경로 규약).
     private static final String STAGING = ".staging";
     // 매직바이트 판정에 필요한 선두 길이 — WEBP/HEIC의 브랜드가 8~11바이트라 12면 충분(여유 16).
     private static final int MAGIC_PREFIX = 16;
@@ -70,12 +74,12 @@ public class LocalPhotoStore implements PhotoStore {
     }
 
     @Override
-    public List<String> commit(String userId, String slug, String date) {
+    public List<String> commit(String userId, String noteFolder, String date) {
         Path staging = stagingDir(userId);
         if (!Files.isDirectory(staging)) {
             return List.of();
         }
-        Path target = photosDir.resolve(slug).resolve(date);
+        Path target = photosDir.resolve(noteFolder).resolve(date);
         List<String> relPaths = new ArrayList<>();
         try {
             Files.createDirectories(target);
@@ -84,7 +88,7 @@ public class LocalPhotoStore implements PhotoStore {
                 String name = uniqueName(target, src.getFileName().toString());
                 move(src, target.resolve(name));
                 // V-4: JSON에는 photos/ 로 시작하는 상대 경로만. 구분자는 '/'로 고정(플랫폼 무관·file:// 링크용).
-                relPaths.add("photos/" + slug + "/" + date + "/" + name);
+                relPaths.add("photos/" + noteFolder + "/" + date + "/" + name);
             }
             // 걸러진 비사진 잔재(.DS_Store 등)까지 지우고 폴더를 접는다 — 스테이징은 커밋 후 소멸이 불변식.
             deleteStaging(staging);
@@ -108,13 +112,13 @@ public class LocalPhotoStore implements PhotoStore {
     }
 
     @Override
-    public void moveEntryPhotos(String slug, String fromDate, String toDate) {
-        Path source = photosDir.resolve(slug).resolve(fromDate);
+    public void moveEntryPhotos(String noteFolder, String fromDate, String toDate) {
+        Path source = photosDir.resolve(noteFolder).resolve(fromDate);
         // 원본 폴더 부재 = 옮길 사진 없음 → no-op(사진 없이 날짜만 이동한 엔트리도 정상 경로).
         if (!Files.isDirectory(source)) {
             return;
         }
-        Path target = photosDir.resolve(slug).resolve(toDate);
+        Path target = photosDir.resolve(noteFolder).resolve(toDate);
         try {
             Files.createDirectories(target);
             for (Path src : listSorted(source)) {

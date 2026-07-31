@@ -10,34 +10,28 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * 노트(커피 1종) 저장소 — 파일시스템 접근을 파이프라인에서 격리 (ref: plan.md#ADR-8).
- * <p>구현: {@link JsonFileNoteRepository}. 미래 호스팅형 전환 시 구현체 교체로 대응(NFR-4).
+ * 노트(커피 1종) 저장소 — 저장 매체 접근을 파이프라인에서 격리 (ref: plan.md#ADR-8).
+ * <p>구현: {@link JpaNoteRepository}. 미래 호스팅형 전환 시 구현체 교체로 대응(NFR-4).
+ * <p><b>식별자는 {@code note.id}</b>다 — 파일명이자 식별자였던 slug는 파일 폐기와 함께 소멸했고
+ * 유일화(V-2)도 함께 사라졌다(changes/0028 ADR-74).
  */
 public interface NoteRepository {
 
-    /** 저장된 모든 노트. slug 오름차순(결정적 순서). */
+    /** 저장된 모든 노트. id 오름차순(결정적 순서). */
     List<Note> findAll();
 
-    /** slug로 노트 조회. 없으면 빈 Optional. */
-    Optional<Note> findBySlug(String slug);
-
-    /**
-     * 신규 노트 생성 시 충돌하지 않는 slug 반환 (ref: data-model.md#V-2).
-     * <p>{@code base}가 비어 있으면 그대로, 이미 존재하면 {@code base-2}, {@code base-3} … 로 증가.
-     * 신규 노트에만 쓴다 — 기존 노트 매칭은 {@link #upsertEntry}에 정확한 slug를 넘긴다.
-     *
-     * @throws IllegalArgumentException base가 slug 형식({@code [a-z0-9-]+})이 아니면.
-     */
-    String nextAvailableSlug(String base);
+    /** id로 노트 조회. 없으면 빈 Optional. */
+    Optional<Note> findById(long id);
 
     /**
      * 날짜 엔트리 병합 저장 (ref: plan.md#ADR-4·37·59, [6], changes/0016).
      * <ul>
-     *   <li>slug 노트가 없으면 {@code meta}로 새 노트를 만들고 {@code entry}를 첫 엔트리로 둔다.</li>
+     *   <li>{@code noteId}가 {@code null}이면 {@code meta}로 새 노트를 만들고 {@code entry}를 첫 엔트리로 둔다
+     *       — id는 INSERT가 발급하므로 저장 전 draft는 식별자를 갖지 않는다(D-1, changes/0028).</li>
      *   <li>있으면 같은 date 엔트리는 갱신(엔트리 통째 교체), 다른 date는 추가 후 날짜 오름차순 정렬한다.</li>
      *   <li>같은 date 갱신에서 회차 append·기존 회차 지칭 병합은 에이전트가 구성한 {@code entry.brews}
      *       배열(V-15 검증 통과분)을 신뢰한다 — 서버는 회차 단위 병합을 하지 않는다(changes/0021 ADR-59).</li>
-     *   <li>신규 노트(slug 부재)면 {@code aliases}를 그 노트의 초기 별칭으로 심는다
+     *   <li>신규 노트면 {@code aliases}를 그 노트의 초기 별칭으로 심는다
      *       — 신규 노트 첫 [저장] 시 {@link com.devwuu.mocha.llm.AliasGenerator}가 생성한 음차·이표기(TΔ2).</li>
      *   <li>기존 노트면 {@code aliases} 인자는 무시하고, {@code meta}의 커피명·로스터리 관측 표기를
      *       기존 별칭에 정규화 중복 제거로 무콜 축적한다(표시값과 같은 표기는 미추가, TΔ3, V-13).</li>
@@ -45,10 +39,11 @@ public interface NoteRepository {
      * POLICY: 같은 날짜 엔트리는 갱신만 — 하루 2엔트리 금지, 다회 시도는 brews 회차로
      * (ref: data-model.md#2.2, AC-14, ADR-4·59).
      *
+     * @param noteId  기존 노트 id. {@code null}이면 신규 생성(D-1).
      * @param aliases 신규 노트에 심을 별칭(내부 전용, V-13). 부재 수렴은 {@link Aliases#empty()}.
      * @return 저장된 최종 노트.
      */
-    Note upsertEntry(String slug, NoteMeta meta, Entry entry, Aliases aliases);
+    Note upsertEntry(Long noteId, NoteMeta meta, Entry entry, Aliases aliases);
 
     /**
      * 수정 세션([저장]) 커밋 — 대상 엔트리를 draft 내용으로 갱신하고, 필요 시 날짜를 이동한다
@@ -62,7 +57,7 @@ public interface NoteRepository {
      *       날짜 오름차순 정렬은 유지된다.</li>
      * </ul>
      *
-     * @param slug       수정 대상 노트 slug ({@code PendingNote.target.slug})
+     * @param noteId     수정 대상 노트 id ({@code PendingNote.target.noteId})
      * @param targetDate 수정 대상 원본 엔트리 date ({@code PendingNote.target.date})
      * @param draft      수정 반영이 끝난 draft — 대상 엔트리 1건 포함
      * @return 저장된 최종 노트.
@@ -70,5 +65,5 @@ public interface NoteRepository {
      * @throws IllegalStateException    대상 노트 또는 {@code targetDate} 엔트리 소실 시
      *                                  (호출부가 만료 안내로 수렴, plan §7).
      */
-    Note applyEdit(String slug, LocalDate targetDate, Note draft);
+    Note applyEdit(long noteId, LocalDate targetDate, Note draft);
 }

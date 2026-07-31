@@ -14,8 +14,9 @@ import java.util.List;
  *                  (사용자 삭제·재등록, ADR-28 관례).
  * @param updatedAt 같은 날 갱신 추적용 최종 시각(이력 아님).
  *
- * <p>사진은 아카이브 전용이라 노트 JSON에 기록하지 않는다 — 폴더 경로 규약({@code photos/<slug>/<date>/})이
- * 유일한 연결이다(changes/0014 ADR-32, data-model §2.2). 기존 JSON의 {@code photos} 키는 역직렬화에서 무시된다.
+ * <p>사진은 아카이브 전용이라 노트와 함께 저장하지 않는다 — 폴더 경로 규약
+ * ({@code photos/<id>-<로스터리>-<커피명>/<date>/})이 유일한 연결이다(changes/0014 ADR-32,
+ * changes/0028 §파일 경로 규약, data-model §2.2). 기존 JSON의 {@code photos} 키는 역직렬화에서 무시된다.
  */
 public record Entry(
         LocalDate date,

@@ -81,7 +81,11 @@ public record PendingNote(
         }
     }
 
-    /** edit 모드의 수정 대상 — 원본 노트 slug + 엔트리 date. 날짜 이동 시 옛 카드 삭제 근거(AC-39). */
-    public record EditTarget(String slug, LocalDate date) {
+    /**
+     * edit 모드의 수정 대상 — 원본 노트 id + 엔트리 date. 날짜 이동 시 옛 카드 삭제 근거(AC-39).
+     * <p>edit 세션은 <b>저장된</b> 노트를 대상으로만 열리므로 {@code noteId}는 항상 채워진다 —
+     * {@link Note#id()}가 null일 수 있는 것과 대칭이 아니다(D-1, changes/0028).
+     */
+    public record EditTarget(Long noteId, LocalDate date) {
     }
 }

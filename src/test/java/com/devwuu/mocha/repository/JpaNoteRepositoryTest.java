@@ -1,7 +1,6 @@
 package com.devwuu.mocha.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Bean;
@@ -39,13 +38,17 @@ import java.util.List;
  * 포함되므로 쓰기 뒤 {@code em.clear()}로 영속성 컨텍스트를 비운다 — 비우지 않으면 조회가 identity map을
  * 되돌려주고 DB를 지나지 않은 채 그린이 된다.
  *
- * <p>저장소는 아직 빈이 아니다({@code RepositoryConfig}가 여전히 JSON 구현체를 준다 — 교체는 TΔ9a).
- * 직접 조립해 쓰고, 트랜잭션은 테스트가 연다(격리는 롤백이 소유).
+ * <p>트랜잭션은 테스트가 연다(격리는 롤백이 소유) — 그래서 빈(프록시)이 아니라 협력자로 직접 조립한
+ * 인스턴스를 쓴다. 저장소 자신의 {@code @Transactional} 경계는 TΔ6a의 빈 배선으로 살아났고 그 관측은
+ * 컨텍스트 기동(-{@code MochaApplicationTests})이 진다.
  */
 @Transactional
 class JpaNoteRepositoryTest extends PostgresIntegrationTest {
 
     private static final OffsetDateTime IGNORED = OffsetDateTime.of(2000, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC);
+    // insert가 인자의 식별자를 무시한다는 계약을 실제로 대조하기 위한 값 — null이면 "무시했다"와
+    // "애초에 없었다"가 구별되지 않는다.
+    private static final long IGNORED_ID = 999L;
 
     @Autowired
     EntityManager em;
@@ -57,9 +60,8 @@ class JpaNoteRepositoryTest extends PostgresIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        // 저장소를 빈으로 올리지 않는다 — RepositoryConfig가 NoteRepository로 아직 JSON 구현체를 주고
-        // 있어(교체는 TΔ6a) 여기서 빈을 하나 더 만들면 타입 후보가 둘이 된다. 협력자 하나만 주입받아
-        // 직접 조립한다. TΔ6a 이후에는 이 조립이 RepositoryConfig로 옮겨간다.
+        // 협력자 하나만 주입받아 직접 조립한다 — 롤백으로 격리하려면 트랜잭션을 테스트가 열어야 하고,
+        // 빈 프록시를 쓰면 저장소가 자기 트랜잭션을 열어 그 경계가 겹친다.
         repo = new JpaNoteRepository(notes);
     }
 
@@ -70,7 +72,7 @@ class JpaNoteRepositoryTest extends PostgresIntegrationTest {
 
         Note saved = repo.insert(input);
         em.clear();
-        Note restored = repo.findBySlug(saved.slug()).orElseThrow();
+        Note restored = repo.findById(saved.id()).orElseThrow();
 
         // 식별자·타임스탬프는 DB가 발급하므로 입력과 같을 수 없다 — 그 둘을 뺀 내용 전부가 동치여야 한다.
         assertThat(content(restored)).isEqualTo(content(input));
@@ -79,14 +81,16 @@ class JpaNoteRepositoryTest extends PostgresIntegrationTest {
     }
 
     @Test
-    @DisplayName("TΔ5a: 식별자는 DB가 발급한다 — slug는 note.id의 십진 표기이고 조회 키로 실제로 동작한다")
+    @DisplayName("TΔ5a: 식별자는 DB가 발급한다 — 인자의 id는 무시되고 발급된 id가 조회 키로 동작한다")
     void identifierComesFromDatabase() {
         Note first = repo.insert(sampleNote(List.of(firstEntry())));
         Note second = repo.insert(sampleNote(List.of(firstEntry())));
         em.clear();
 
-        assertThat(Long.parseLong(second.slug())).isEqualTo(Long.parseLong(first.slug()) + 1);
-        assertThat(repo.findById(Long.parseLong(first.slug())).orElseThrow().slug()).isEqualTo(first.slug());
+        // 표본이 실어 보낸 IGNORED_ID가 아니라 BIGSERIAL이 발급한 값이다(insert 계약).
+        assertThat(first.id()).isNotNull().isNotEqualTo(IGNORED_ID);
+        assertThat(second.id()).isEqualTo(first.id() + 1);
+        assertThat(repo.findById(first.id()).orElseThrow().id()).isEqualTo(first.id());
     }
 
     @Test
@@ -97,7 +101,7 @@ class JpaNoteRepositoryTest extends PostgresIntegrationTest {
 
         Note saved = repo.insert(input);
         em.clear();
-        Note restored = repo.findBySlug(saved.slug()).orElseThrow();
+        Note restored = repo.findById(saved.id()).orElseThrow();
 
         assertThat(restored.entries()).extracting(Entry::date)
                 .containsExactly(LocalDate.of(2026, 7, 10), LocalDate.of(2026, 7, 12));
@@ -109,18 +113,18 @@ class JpaNoteRepositoryTest extends PostgresIntegrationTest {
     @Test
     @DisplayName("TΔ5a: findAll은 id 오름차순으로 결정적이다 — 행의 물리 순서가 바뀌어도 흔들리지 않는다")
     void findAllIsDeterministicById() {
-        List<String> inserted = List.of(
-                repo.insert(sampleNote(List.of(firstEntry()))).slug(),
-                repo.insert(sampleNote(List.of(firstEntry()))).slug(),
-                repo.insert(sampleNote(List.of(firstEntry()))).slug());
+        List<Long> inserted = List.of(
+                repo.insert(sampleNote(List.of(firstEntry()))).id(),
+                repo.insert(sampleNote(List.of(firstEntry()))).id(),
+                repo.insert(sampleNote(List.of(firstEntry()))).id());
 
         // 첫 노트를 수정하면 Postgres는 새 튜플을 힙 끝에 append한다 — ORDER BY가 없으면 순서가 밀린다.
-        NoteEntity first = em.find(NoteEntity.class, Long.parseLong(inserted.getFirst()));
+        NoteEntity first = em.find(NoteEntity.class, inserted.getFirst());
         first.updateRoastLevel(new SourcedValue("중배전", Source.USER));
         em.flush();
         em.clear();
 
-        assertThat(repo.findAll()).extracting(Note::slug).containsExactlyElementsOf(inserted);
+        assertThat(repo.findAll()).extracting(Note::id).containsExactlyElementsOf(inserted);
     }
 
     @Test
@@ -129,7 +133,7 @@ class JpaNoteRepositoryTest extends PostgresIntegrationTest {
         Note saved = repo.insert(sampleNote(List.of(firstEntry())));
         em.clear();
 
-        Note restored = repo.findBySlug(saved.slug()).orElseThrow();
+        Note restored = repo.findById(saved.id()).orElseThrow();
 
         // 입력이 실어 보낸 IGNORED가 아니라 Auditing이 채운 값이어야 한다 — 변환기는 이 필드를 쓰지 않는다(TΔ3c).
         assertThat(restored.createdAt()).isNotNull().isNotEqualTo(IGNORED);
@@ -143,19 +147,11 @@ class JpaNoteRepositoryTest extends PostgresIntegrationTest {
     }
 
     @Test
-    @DisplayName("TΔ5a: 없는 식별자와 구 slug 표기는 빈 Optional로 수렴한다")
+    @DisplayName("TΔ5a: 없는 식별자는 빈 Optional로 수렴한다")
     void missingIdentifierYieldsEmpty() {
-        assertThat(repo.findBySlug("99999999")).isEmpty();
-        // 구 kebab-case slug는 숫자로 읽히지 않는다 — 예외가 아니라 부재로 수렴한다(TΔ6a까지의 임시 다리).
-        assertThat(repo.findBySlug("coffeevera-yirgacheffe-g1")).isEmpty();
-        assertThat(repo.findBySlug(null)).isEmpty();
-    }
-
-    @Test
-    @DisplayName("TΔ5a: nextAvailableSlug는 근거가 소멸했다 — slug 유일화(V-2)를 흉내내지 않고 거부한다")
-    void slugAllocationIsGone() {
-        assertThatThrownBy(() -> repo.nextAvailableSlug("coffeevera"))
-                .isInstanceOf(UnsupportedOperationException.class);
+        // 구 slug 문자열이 들어오는 경로는 여기서 사라졌다 — 인자가 long이라 타입이 막는다.
+        // 모델이 비숫자 문자열을 넘기는 경우(E-6)는 tool 계층의 파싱 실패이며 TΔ6b가 소유한다.
+        assertThat(repo.findById(99_999_999L)).isEmpty();
     }
 
     @Test
@@ -169,7 +165,7 @@ class JpaNoteRepositoryTest extends PostgresIntegrationTest {
     /** 3단 중첩 + 배열 6종을 전부 채운 노트 — 왕복이 무엇 하나 떨구지 않는지 보는 기준 표본(TΔ3c 표본 승계). */
     private static Note sampleNote(List<Entry> entries) {
         return new Note(
-                "무시된다",                                                     // id는 BIGSERIAL이 발급한다
+                IGNORED_ID,                                                     // id는 BIGSERIAL이 발급한다
                 new Sourced<>("커피베라 예가체프 G1", Source.USER),
                 new Sourced<>("커피베라", Source.USER),
                 List.of(new Bean(new Sourced<>("에티오피아 예가체프", Source.USER), new Sourced<>("워시드", Source.SEARCH)),
@@ -207,7 +203,7 @@ class JpaNoteRepositoryTest extends PostgresIntegrationTest {
      */
     private static Note content(Note note) {
         return new Note(
-                "", note.coffeeName(), note.roastery(), note.beans(), note.roastLevel(), note.officialNotes(),
+                (Long) null, note.coffeeName(), note.roastery(), note.beans(), note.roastLevel(), note.officialNotes(),
                 note.aliases(), note.sources(),
                 note.entries().stream().map(e -> new Entry(e.date(), e.brews(), null)).toList(),
                 null, null);
