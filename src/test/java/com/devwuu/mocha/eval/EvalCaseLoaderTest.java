@@ -1,6 +1,5 @@
 package com.devwuu.mocha.eval;
 
-import com.devwuu.mocha.domain.PendingNote;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -43,16 +42,14 @@ class EvalCaseLoaderTest {
         assertThat(c.utterances()).hasSize(1);
         assertThat(c.utterances().getFirst()).contains("코스믹베리");
         assertThat(c.initial().notes()).isEqualTo("notes");
-        assertThat(c.initial().pending()).isNull();
 
         EvalCase.Expect expect = c.expect();
-        assertThat(expect.pending().state()).isEqualTo(EvalCase.Pending.State.CREATED);
-        assertThat(expect.pending().mode()).isEqualTo(PendingNote.Mode.RECORD);
-        assertThat(expect.pending().draft()).hasSize(4);
-        assertThat(expect.pending().draft().getFirst().path()).isEqualTo("entries[0].date");
-        assertThat(expect.pending().draft().getFirst().value()).isEqualTo("2026-03-14");
-        assertThat(expect.pending().draft().get(1).size()).isEqualTo(1);
-        assertThat(expect.pending().draft().getLast().present()).isTrue();
+        assertThat(expect.proposal().state()).isEqualTo(EvalCase.Proposal.State.CREATED);
+        assertThat(expect.proposal().draft()).hasSize(4);
+        assertThat(expect.proposal().draft().getFirst().path()).isEqualTo("entries[0].date");
+        assertThat(expect.proposal().draft().getFirst().value()).isEqualTo("2026-03-14");
+        assertThat(expect.proposal().draft().get(1).size()).isEqualTo(1);
+        assertThat(expect.proposal().draft().getLast().present()).isTrue();
         assertThat(expect.tools().sequenceContains()).containsExactly("propose_record");
         assertThat(expect.tools().calls()).hasSize(1);
         assertThat(expect.tools().calls().getFirst().name()).isEqualTo("propose_record");
@@ -66,9 +63,9 @@ class EvalCaseLoaderTest {
     void sampleCaseDraftPathsParse() {
         EvalCase c = EvalCaseLoader.load(sampleCaseDir());
 
-        assertThat(c.expect().pending().draft())
+        assertThat(c.expect().proposal().draft())
                 .allSatisfy(a -> assertThat(a.parsedPath().segments()).isNotEmpty());
-        assertThat(c.expect().pending().draft().get(2).parsedPath().segments())
+        assertThat(c.expect().proposal().draft().get(2).parsedPath().segments())
                 .containsExactly(
                         new EvalPath.Segment.Field("entries"),
                         new EvalPath.Segment.Index(0),
@@ -234,15 +231,15 @@ class EvalCaseLoaderTest {
                 today: "2026-03-14T09:30:00+09:00"
                 utterances: ["안녕"]
                 initial:
-                  pending: pending.json
+                  notes: notes
                 expect:
                   unchanged_notes: true
                 """;
 
         assertThatThrownBy(() -> loadYaml(tmp, "no-fixture", yaml))
                 .isInstanceOf(EvalCaseFormatException.class)
-                .hasMessageContaining("initial.pending")
-                .hasMessageContaining("파일가 없다: pending.json");
+                .hasMessageContaining("initial.notes")
+                .hasMessageContaining("디렉터리가 없다: notes");
     }
 
     @Test
@@ -263,13 +260,13 @@ class EvalCaseLoaderTest {
 
     @Test
     @DisplayName("AC-Δ1: state=absent인데 draft를 단언하면 실패한다 — 모순된 기대")
-    void rejectsAbsentPendingWithDraftAssertions(@TempDir Path tmp) {
+    void rejectsAbsentProposalWithDraftAssertions(@TempDir Path tmp) {
         String yaml = """
                 origin: "모순"
                 today: "2026-03-14T09:30:00+09:00"
                 utterances: ["안녕"]
                 expect:
-                  pending:
+                  proposal:
                     state: absent
                     draft:
                       - path: entries[0].date
@@ -290,7 +287,7 @@ class EvalCaseLoaderTest {
                 today: "2026-03-14T09:30:00+09:00"
                 utterances: ["안녕"]
                 expect:
-                  pending:
+                  proposal:
                     state: created
                     draft:
                       - path: entries[0].brews
@@ -300,7 +297,7 @@ class EvalCaseLoaderTest {
 
         assertThatThrownBy(() -> loadYaml(tmp, "ambiguous", yaml))
                 .isInstanceOf(EvalCaseFormatException.class)
-                .hasMessageContaining("expect.pending.draft[0]")
+                .hasMessageContaining("expect.proposal.draft[0]")
                 .hasMessageContaining("정확히 1개")
                 .hasMessageContaining("size·present");
     }
@@ -313,7 +310,7 @@ class EvalCaseLoaderTest {
                 today: "2026-03-14T09:30:00+09:00"
                 utterances: ["안녕"]
                 expect:
-                  pending:
+                  proposal:
                     state: created
                     draft:
                       - path: entries[0].date
@@ -333,7 +330,7 @@ class EvalCaseLoaderTest {
                 today: "2026-03-14T09:30:00+09:00"
                 utterances: ["안녕"]
                 expect:
-                  pending:
+                  proposal:
                     state: created
                     draft:
                       - path: "entries[0]..grind"
@@ -342,7 +339,7 @@ class EvalCaseLoaderTest {
 
         assertThatThrownBy(() -> loadYaml(tmp, "bad-path", yaml))
                 .isInstanceOf(EvalCaseFormatException.class)
-                .hasMessageContaining("bad-path/case.yaml: expect.pending.draft[0].path")
+                .hasMessageContaining("bad-path/case.yaml: expect.proposal.draft[0].path")
                 .hasMessageContaining("경로 문법 오류");
     }
 
@@ -406,32 +403,6 @@ class EvalCaseLoaderTest {
                 .isInstanceOf(EvalCaseFormatException.class)
                 .hasMessageContaining("expect.rejections.max")
                 .hasMessageContaining("음수");
-    }
-
-    @Test
-    @DisplayName("AC-Δ1: 초기 pending을 동봉한 케이스가 로드된다 — 단일 대기 게이트 유형의 초기 상태")
-    void loadsCaseWithInitialPending(@TempDir Path tmp) throws IOException {
-        Path caseDir = Files.createDirectories(tmp.resolve("with-pending"));
-        Files.writeString(caseDir.resolve("pending.json"), "{}", StandardCharsets.UTF_8);
-        String yaml = """
-                origin: "단일 대기 게이트 유형"
-                today: "2026-03-14T09:30:00+09:00"
-                utterances: ["다른 커피 기록해줘"]
-                initial:
-                  pending: pending.json
-                expect:
-                  pending:
-                    state: unchanged
-                  rejections:
-                    min: 1
-                """;
-        Files.writeString(caseDir.resolve("case.yaml"), yaml, StandardCharsets.UTF_8);
-
-        EvalCase c = EvalCaseLoader.load(caseDir);
-
-        assertThat(c.initial().pending()).isEqualTo("pending.json");
-        assertThat(c.expect().pending().state()).isEqualTo(EvalCase.Pending.State.UNCHANGED);
-        assertThat(c.expect().rejections().min()).isEqualTo(1);
     }
 
     // --- 헬퍼 ---

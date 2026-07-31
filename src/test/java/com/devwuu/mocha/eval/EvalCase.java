@@ -1,7 +1,5 @@
 package com.devwuu.mocha.eval;
 
-import com.devwuu.mocha.domain.PendingNote;
-
 import java.nio.file.Path;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -9,7 +7,7 @@ import java.util.List;
 /**
  * eval 케이스 1건 — {@code eval/cases/<id>/case.yaml}의 인메모리 표현 (ref: plan.md#ADR-68, changes/0026 TΔ1).
  * <p>케이스는 <b>실발화 리플레이 + 결정론 계약 판정</b>의 단위다: 고정 {@code today}에 발화 시퀀스를
- * {@code AgentConversationRouter.onMessage}로 주입하고, 턴이 끝난 뒤의 <b>사후 상태</b>(pending diff·기록된 tool
+ * {@code AgentConversationRouter.onMessage}로 주입하고, 턴이 끝난 뒤의 <b>사후 상태</b>(제안 결과·기록된 tool
  * 시퀀스·검증 거부·노트 무변화)로만 통과를 판정한다. 응답 문구는 단언하지 않는다 — 비결정 출력의 계약만 본다
  * (백엔드 CLAUDE.md §5.3, ADR-68 POLICY).
  *
@@ -22,7 +20,7 @@ import java.util.List;
  * @param today      고정 시각 — {@code Clock.fixed}의 instant. 날짜만이 아니라 <b>시각까지</b> 고정하는 이유는
  *                   턴 타임스탬프·TTL 판정이 시각에서 파생돼 재현이 흔들리기 때문이다(findings-TΔ0 §1.1).
  *                   노트 id의 재현성은 시계가 아니라 회차별 스키마 재생성이 진다(changes/0028 TΔ6b).
- * @param utterances 발화 시퀀스. 2개 이상이면 멀티턴 — 같은 라우터 인스턴스에 순차 주입한다(트랜스크립트·pending 승계).
+ * @param utterances 발화 시퀀스. 2개 이상이면 멀티턴 — 같은 라우터 인스턴스에 순차 주입한다(트랜스크립트 승계).
  * @param initial    턴 진입 전 저장소 상태(동봉 픽스처 참조).
  * @param expect     기대 계약.
  */
@@ -46,40 +44,43 @@ public record EvalCase(
      * <p>인라인 필드가 아니라 파일 참조인 이유: 러너가 도메인 JSON 그대로 실 저장소에 심으면 되고
      * (직렬화 왕복이 판정 대상 — findings-TΔ0 §1.2), 실사용에서 노트를 그대로 떠 오는 박제도 그만큼 싸진다(ADR-69 ①).
      *
-     * @param notes   노트 픽스처 디렉터리(도메인 {@code Note} JSON 모음). null이면 노트 0건에서 시작.
-     *                <b>파일명 오름차순으로 INSERT되고 id는 DB가 발급한다</b> — 픽스처의 {@code id} 필드는
-     *                무시되므로, 케이스가 특정 id를 전제하면 파일명 순서로 고정한다(changes/0028 TΔ6b).
-     * @param pending 초기 pending 파일({@code pending.json} 포맷). null이면 대기 없음에서 시작.
+     * <p>0029 TΔ4에서 {@code pending} 픽스처가 사라졌다 — 서버가 작성 중 상태를 갖지 않으므로 심을 곳이
+     * 없다. "폼이 떠 있는 상태에서 추가 발화"를 표현하는 자리는 draft 동봉 케이스가 다시 세운다(TΔ21).
+     *
+     * @param notes 노트 픽스처 디렉터리(도메인 {@code Note} JSON 모음). null이면 노트 0건에서 시작.
+     *              <b>파일명 오름차순으로 INSERT되고 id는 DB가 발급한다</b> — 픽스처의 {@code id} 필드는
+     *              무시되므로, 케이스가 특정 id를 전제하면 파일명 순서로 고정한다(changes/0028 TΔ6b).
      */
-    public record Initial(String notes, String pending) {
+    public record Initial(String notes) {
     }
 
     /**
      * 기대 계약 — 지정한 항목만 판정한다(미지정 = 무관심). 최소 1종은 있어야 한다.
      *
-     * @param unchangedNotes 노트 저장소 무변화 기대. 커밋은 [저장] 버튼에서만 일어나므로(ADR-3) v1 텍스트 턴은
+     * @param unchangedNotes 노트 저장소 무변화 기대. 커밋은 사용자 확정에서만 일어나므로(ADR-3) 텍스트 턴은
      *                       사실상 항상 true지만, 그 불변을 케이스가 명시적으로 지키게 둔다(회귀 가드).
      */
-    public record Expect(Pending pending, Tools tools, Count rejections, Boolean unchangedNotes) {
+    public record Expect(Proposal proposal, Tools tools, Count rejections, Boolean unchangedNotes) {
     }
 
     /**
-     * pending 기대 — 상태 + draft 부분 일치.
+     * 제안 결과 기대 — 상태 + draft 부분 일치.
+     * <p>0029 TΔ4에서 관측 창이 pending 행에서 제안 수거함으로 옮겨졌다. 함께 사라진 것: {@code mode}
+     * (수정 세션이 TΔ1에서 폐기돼 {@code record} 하나만 남았다)와 {@code unchanged}(초기 pending 바이트와의
+     * 비교였는데 비교 대상이 없다).
      *
-     * @param state 턴 종료 후 pending 상태.
-     * @param mode  {@code record} | {@code edit}. null이면 무관심.
-     * @param draft draft(Note 구조, snake_case) 경로 단언. 전체 일치가 아니라 <b>부분 일치</b>다 —
+     * @param state 턴 종료 후 제안 유무.
+     * @param draft 제안 내용(Note 구조, snake_case) 경로 단언. 전체 일치가 아니라 <b>부분 일치</b>다 —
      *              LLM이 채우는 필드 대부분은 비결정이고, 케이스가 실제로 보려는 필드만 못박는다.
      */
-    public record Pending(State state, PendingNote.Mode mode, List<PathAssertion> draft) {
+    public record Proposal(State state, List<PathAssertion> draft) {
 
         /**
-         * {@code created} — 턴 종료 시 pending이 존재한다(초기 pending이 있었다면 그것과 달라야 한다).<br>
-         * {@code absent} — pending이 없다(제안 자체가 일어나지 않음).<br>
-         * {@code unchanged} — 초기 pending이 바이트 단위로 그대로다(게이트 거부 — 제안이 막혔음의 증거).
+         * {@code created} — 턴 종료 시 제안 결과가 있다.<br>
+         * {@code absent} — 제안이 없다(제안 tool 미호출 또는 전부 거부).
          */
         public enum State {
-            CREATED, ABSENT, UNCHANGED
+            CREATED, ABSENT
         }
     }
 
@@ -101,7 +102,7 @@ public record EvalCase(
      * @param min  호출 수 하한. "첫 회 거부 후 자가 정정"은 같은 tool 2회 이상으로 드러난다(FR-25).
      * @param max  호출 수 상한.
      * @param args 인자 JSON 경로 단언 — <b>그 이름의 호출 중 최소 하나</b>가 전부 만족하면 통과.
-     *             거부된 호출의 인자는 pending에 남지 않아 pending 단언으로 볼 수 없는 자리를 메운다.
+     *             거부된 호출의 인자는 제안 결과에 남지 않아 draft 단언으로 볼 수 없는 자리를 메운다.
      */
     public record Call(String name, Integer min, Integer max, List<PathAssertion> args) {
     }

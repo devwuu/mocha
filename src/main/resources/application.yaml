@@ -86,14 +86,11 @@ mocha:
   alias:
     # 별칭 생성(ADR-37) 전용 모델 — 텍스트 전용 최경량 (ADR-50).
     model: gpt-5.4-nano
-  pending:
-    # 확인 대기 노트 TTL. 초과 시 자동 폐기 + 안내 (ADR-3).
-    ttl: 24h
   photo:
     # 텍스트/사진 분리 수신 그룹핑 윈도우 (FR-10).
     buffer-window: 10m
   data:
-    # 노트 JSON·사진·pending 원본 루트 (커밋 금지).
+    # 사진 원본·photo buffer 루트 (커밋 금지). 노트는 DB로 옮겨졌다(0028 ADR-73).
     dir: ./data
   artifact:
     # 산출물(파생물) 루트 — 회차 카드 JPG (커밋 금지, 전체 재생성 가능).

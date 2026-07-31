@@ -1,12 +1,10 @@
 package com.devwuu.mocha.slack.inbound;
 
-import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.domain.PhotoBuffer;
 import com.devwuu.mocha.image.ImageFormat;
 import com.devwuu.mocha.llm.PhotoInfoExtractor;
 import com.devwuu.mocha.llm.VisionExtraction;
 import com.devwuu.mocha.llm.VisionHint;
-import com.devwuu.mocha.repository.PendingStore;
 import com.devwuu.mocha.repository.PhotoBufferStore;
 import com.devwuu.mocha.repository.PhotoStore;
 import com.devwuu.mocha.repository.StagedImage;
@@ -36,7 +34,6 @@ public class SlackPhotoIntake {
 
     private static final Logger log = LoggerFactory.getLogger(SlackPhotoIntake.class);
 
-    private final PendingStore pendingStore;
     private final SlackResponder responder;
     private final PhotoDownloader photoDownloader;
     private final PhotoStore photoStore;
@@ -46,7 +43,6 @@ public class SlackPhotoIntake {
     private final Clock clock;
 
     public SlackPhotoIntake(
-            PendingStore pendingStore,
             SlackResponder responder,
             PhotoDownloader photoDownloader,
             PhotoStore photoStore,
@@ -54,7 +50,6 @@ public class SlackPhotoIntake {
             PhotoInfoExtractor photoInfoExtractor,
             Duration bufferWindow,
             Clock clock) {
-        this.pendingStore = pendingStore;
         this.responder = responder;
         this.photoDownloader = photoDownloader;
         this.photoStore = photoStore;
@@ -66,22 +61,17 @@ public class SlackPhotoIntake {
 
     /**
      * 사진 수신 → 버퍼 그룹핑(FR-10, AC-8) — 라우터 {@code onMedia} 위임의 실제 구현.
-     * pending이 있으면 진행 중 노트에 첨부해 미리보기를 갱신하고, 없으면 버퍼에 담아 뒤이을 텍스트를 기다린다.
+     * 사진은 버퍼에 쌓여 뒤이을 텍스트 턴을 기다린다.
+     * <p>0029 TΔ4에서 <b>"진행 중 노트가 있으면 스테이징만"</b> 분기가 사라졌다 — 그 판정 입력이 서버의
+     * pending이었는데, 작성 중 데이터가 클라이언트 폼으로 옮겨가며 서버가 "진행 중인지"를 알 수 없게 됐다
+     * (delta 0029 D-2). 결과적으로 모든 수신 사진이 버퍼 경로로 수렴한다 — 앱에서는 사진이 대화 도중
+     * 흘러드는 것이 아니라 폼에서 업로드되므로(TΔ8 {@code POST /api/photos}) 이 분기 자체가 소멸한다.
      */
     public void receive(IncomingMedia media) {
         String userId = media.userId();
         String channelId = media.channelId();
         try {
-            Optional<PendingNote> pending = pendingStore.get(userId);
-            if (pending.isPresent()) {
-                // 진행 중 노트가 있으면 사진은 스테이징에만 둔다 — 아카이브 전용이라 draft·미리보기를 건드리지
-                // 않고(렌더 없음), [저장] 시 commitStaged가 photos/<접미>/<date>/로 옮긴다(changes/0014 ADR-32).
-                List<String> staged = stageAll(userId, media);
-                log.info("pending 중 사진 스테이징: user={} photos={}", userId, staged.size());
-            } else {
-                // 담을 노트가 아직 없다 → 버퍼에 쌓아 뒤이을 텍스트를 기다린다(FR-10).
-                bufferMedia(userId, media);
-            }
+            bufferMedia(userId, media);
         } catch (Exception e) {
             // 다운로드/스테이징/전송 실패는 삼키지 않고 안내로 수렴한다(plan §7).
             log.warn("사진 수신 실패: user={}", userId, e);
@@ -91,7 +81,7 @@ public class SlackPhotoIntake {
 
     /**
      * 텍스트보다 먼저 도착해 버퍼링된 사진의 흡수 판정(FR-10, AC-8) — 윈도우 안이면 스테이징 파일명을 돌려주고
-     * (소비는 호출부가 pending 전송 성공 뒤 {@link #clearBuffer}로), 윈도우 밖이면 버려진 스테이징을 정리하고
+     * (소비는 호출부가 제안 성공 뒤 {@link #clearBuffer}로), 윈도우 밖이면 버려진 스테이징을 정리하고
      * 빈 Optional(새 흐름)로 수렴한다.
      */
     public Optional<List<String>> absorbFreshBuffer(String userId, OffsetDateTime now) {
@@ -140,13 +130,13 @@ public class SlackPhotoIntake {
         photoStore.moveEntryPhotos(noteFolder, fromDate, toDate);
     }
 
-    /** 대기 중이던 스테이징 사진·버퍼를 함께 폐기한다 — 취소·pending 만료 경로(FR-10). */
+    /** 대기 중이던 스테이징 사진·버퍼를 함께 폐기한다 — 작성 취소 경로(FR-10). */
     public void discard(String userId) {
         photoStore.discard(userId);
         photoBufferStore.clear(userId);
     }
 
-    /** 버퍼만 비운다 — 사진이 pending·노트로 이관된 뒤(스테이징 원본은 commit이 옮긴다). */
+    /** 버퍼만 비운다 — 사진이 제안·노트로 이관된 뒤(스테이징 원본은 commit이 옮긴다). */
     public void clearBuffer(String userId) {
         photoBufferStore.clear(userId);
     }
@@ -241,7 +231,7 @@ public class SlackPhotoIntake {
     private record StageableImage(String filename, byte[] bytes) {
     }
 
-    // pending 없음: 윈도우 밖 이전 버퍼는 버리고 새로 시작, 안이면 이어붙여 버퍼링한다(AC-8).
+    // 윈도우 밖 이전 버퍼는 버리고 새로 시작, 안이면 이어붙여 버퍼링한다(AC-8).
     private void bufferMedia(String userId, IncomingMedia media) {
         OffsetDateTime now = OffsetDateTime.now(clock);
         List<String> priorNames = List.of();

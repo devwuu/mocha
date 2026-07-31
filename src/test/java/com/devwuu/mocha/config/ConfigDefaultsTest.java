@@ -7,7 +7,6 @@ import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
 import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
 import com.devwuu.mocha.json.MochaObjectMapper;
-import com.devwuu.mocha.llm.AliasGenerator;
 import com.devwuu.mocha.llm.OpenAiAliasGenerator;
 import com.devwuu.mocha.llm.OpenAiUtteranceSegmenter;
 import com.devwuu.mocha.llm.PhotoInfoExtractor;
@@ -17,22 +16,15 @@ import com.devwuu.mocha.render.CardImageRenderer;
 import com.devwuu.mocha.render.NoteRenderer;
 import com.devwuu.mocha.render.Theme;
 import com.devwuu.mocha.repository.JpaNoteRepository;
-import com.devwuu.mocha.repository.JpaPendingStore;
 import com.devwuu.mocha.repository.JsonFilePhotoBufferStore;
 import com.devwuu.mocha.repository.LocalPhotoStore;
 import com.devwuu.mocha.repository.NoteRepository;
-import com.devwuu.mocha.repository.PendingStore;
 import com.devwuu.mocha.repository.PhotoBufferStore;
 import com.devwuu.mocha.repository.PhotoStore;
 import com.devwuu.mocha.repository.jpa.NoteEntityRepository;
-import com.devwuu.mocha.repository.jpa.PendingNoteEntityRepository;
-import com.devwuu.mocha.slack.SlackCommitHandler;
 import com.devwuu.mocha.slack.inbound.PhotoDownloader;
 import com.devwuu.mocha.slack.inbound.SlackPhotoIntake;
-import com.devwuu.mocha.slack.outbound.PreviewBlocks;
-import com.devwuu.mocha.slack.outbound.PreviewMessenger;
 import com.devwuu.mocha.slack.outbound.SlackResponder;
-import com.slack.api.methods.MethodsClient;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -185,54 +177,47 @@ class ConfigDefaultsTest {
     }
 
     @Test
-    @DisplayName("AC-Δ4(changes/0025 TΔ4a): RepositoryConfig가 mocha.data.dir·mocha.pending.ttl로 저장소 4종을 띄운다")
-    void repositoryBeansWireFromDataDirAndTtl() {
-        // R-1: 저장소 배선은 `mocha.data.dir` 하나에서 경로가 파생되고(plan §5·CLAUDE.md §3) TTL은 문자열
-        // 변환을 거친다 — 어느 쪽이 어긋나도 앱 기동 시점에야 드러났다. 생성자는 파일 I/O를 하지 않아
-        // 실제 디렉터리는 생기지 않는다.
+    @DisplayName("AC-Δ4(changes/0025 TΔ4a): RepositoryConfig가 mocha.data.dir로 저장소 3종을 띄운다")
+    void repositoryBeansWireFromDataDir() {
+        // R-1: 저장소 배선은 `mocha.data.dir` 하나에서 경로가 파생된다(plan §5·CLAUDE.md §3) — 어긋나면
+        // 앱 기동 시점에야 드러났다. 생성자는 파일 I/O를 하지 않아 실제 디렉터리는 생기지 않는다.
+        // 0029 TΔ4: pending 저장소 빈과 mocha.pending.ttl 변환 단언이 함께 사라졌다(대상 폐기).
         repositoryRunner()
-                .withPropertyValues("mocha.data.dir=build/test-data", "mocha.pending.ttl=30m")
+                .withPropertyValues("mocha.data.dir=build/test-data")
                 .run(context -> {
                     assertThat(context.getBean(NoteRepository.class)).isInstanceOf(JpaNoteRepository.class);
                     assertThat(context.getBean(PhotoStore.class)).isInstanceOf(LocalPhotoStore.class);
                     assertThat(context.getBean(PhotoBufferStore.class)).isInstanceOf(JsonFilePhotoBufferStore.class);
                     // 사진 경로는 여전히 설정 키에서만 파생된다(CLAUDE.md §3) — 하드코딩 회귀를 여기서 잡는다.
-                    // pending은 DB로 옮겨져 data.dir 파생이 사라졌으므로(TΔ8) 경로 단언 대상이 이쪽만 남았다.
                     assertThat(ReflectionTestUtils.getField(context.getBean(PhotoStore.class), "photosDir"))
                             .isEqualTo(Path.of("build/test-data/photos"));
-
-                    PendingStore pendingStore = context.getBean(PendingStore.class);
-                    assertThat(pendingStore).isInstanceOf(JpaPendingStore.class);
-                    assertThat(ReflectionTestUtils.getField(pendingStore, "ttl")).isEqualTo(Duration.ofMinutes(30));
                 });
     }
 
     @Test
-    @DisplayName("ADR-50(changes/0025 CR25-8): mocha.data.dir·mocha.pending.ttl 미설정 시 저장소가 코드 default로 뜬다")
+    @DisplayName("ADR-50(changes/0025 CR25-8): mocha.data.dir 미설정 시 저장소가 코드 default로 뜬다")
     void repositoryBeansStartWithDefaults() {
-        // CR25-8: RB-B6이 mocha.artifact.dir만 고쳐 이 두 키는 무기본값으로 남아 있었다 — application.yaml을
+        // CR25-8: RB-B6이 mocha.artifact.dir만 고쳐 이 키는 무기본값으로 남아 있었다 — application.yaml을
         // 싣지 않는 컨텍스트에서 placeholder 미해결로 기동이 막힌다(TΔ3d가 자매 키에서 없앤 바로 그 실패).
-        // 값은 plan §5 문서값(./data · 24시간)과 일치해야 한다.
+        // 값은 plan §5 문서값(./data)과 일치해야 한다.
         repositoryRunner().run(context -> {
             // 노트는 DB로 옮겨져 data.dir 파생이 아니다(TΔ6a) — 같은 default를 지금도 파생시키는 사진 저장소로
             // 단언 대상을 옮겼다. 키·default(`./data`)는 그대로이므로 이 테스트가 지키는 것은 변하지 않았다.
             assertThat(ReflectionTestUtils.getField(context.getBean(PhotoStore.class), "photosDir"))
                     .isEqualTo(Path.of("./data/photos"));
-            assertThat(ReflectionTestUtils.getField(context.getBean(PendingStore.class), "ttl"))
-                    .isEqualTo(Duration.ofHours(24));
         });
     }
 
     @Test
-    @DisplayName("AC-Δ4(changes/0025 TΔ4a): RouterConfig가 협력자 스텁만으로 턴 배선 5종을 조립한다")
+    @DisplayName("AC-Δ4(changes/0025 TΔ4a): RouterConfig가 협력자 스텁만으로 턴 배선 4종을 조립한다")
     void routerBeansAssembleFromCollaborators() {
         // R-1: 0024 TΔ1b가 라우터 생성자 안 조립을 이 config로 이관했다(ADR-63) — 주입 지점이 늘어난 만큼
         // 배선 누락이 기동 실패로만 드러난다. 협력자는 전부 스텁이라 이 테스트는 "조립되는가"만 본다.
+        // 0029 TΔ4: 커밋 핸들러 빈이 pending과 함께 사라져 5종 → 4종이다(저장 확정은 TΔ6 REST가 가져간다).
         routerRunner().run(context -> {
             assertThat(context.getBean(RecordProposalValidator.class)).isNotNull();
             assertThat(context.getBean(TurnPromptAssembler.class)).isNotNull();
             assertThat(context.getBean(ToolCallbackProvider.class)).isNotNull();
-            assertThat(context.getBean(SlackCommitHandler.class)).isNotNull();
 
             SlackPhotoIntake photoIntake = context.getBean(SlackPhotoIntake.class);
             // 버퍼 창(FR-10·ADR-31)은 이 config만 default를 선언한다 — 미설정 기동을 함께 박는다.
@@ -253,26 +238,20 @@ class ConfigDefaultsTest {
     private static ApplicationContextRunner repositoryRunner() {
         return isolatedRunner()
                 .withUserConfiguration(CommonConfig.class, RepositoryConfig.class)
-                // 노트·pending 저장소가 DB로 옮겨지며 생긴 협력자(TΔ6a·TΔ8) — 이 러너는 JPA 컨텍스트를
+                // 노트 저장소가 DB로 옮겨지며 생긴 협력자(TΔ6a) — 이 러너는 JPA 컨텍스트를
                 // 띄우지 않으므로 스텁으로 채운다. 배선 단언은 어떤 메서드도 부르지 않는다.
-                .withBean(NoteEntityRepository.class, () -> stub(NoteEntityRepository.class))
-                .withBean(PendingNoteEntityRepository.class, () -> stub(PendingNoteEntityRepository.class));
+                .withBean(NoteEntityRepository.class, () -> stub(NoteEntityRepository.class));
     }
 
-    // 턴 협력자 배선 러너 — 의존 빈 13종을 스텁으로 채운다(인터페이스는 Proxy, 구체 클래스는 무해한 실인스턴스).
+    // 턴 협력자 배선 러너 — 의존 빈을 스텁으로 채운다(인터페이스는 Proxy, 구체 클래스는 무해한 실인스턴스).
     private static ApplicationContextRunner routerRunner() {
         return isolatedRunner()
                 .withUserConfiguration(RouterConfig.class)
                 .withBean(NoteRepository.class, () -> stub(NoteRepository.class))
-                .withBean(NoteRenderer.class, () -> stub(NoteRenderer.class))
                 .withBean(SlackResponder.class, () -> stub(SlackResponder.class))
-                .withBean(PendingStore.class, () -> stub(PendingStore.class))
                 .withBean(PhotoDownloader.class, () -> stub(PhotoDownloader.class))
                 .withBean(PhotoStore.class, () -> stub(PhotoStore.class))
                 .withBean(PhotoBufferStore.class, () -> stub(PhotoBufferStore.class))
-                .withBean(AliasGenerator.class, () -> stub(AliasGenerator.class))
-                .withBean(PreviewMessenger.class, () -> new PreviewMessenger(new PreviewBlocks(),
-                        stub(MethodsClient.class)))
                 .withBean(PhotoInfoExtractor.class, () -> new PhotoInfoExtractor(null, 4))
                 .withBean(FoldingChatMemory.class, () -> new FoldingChatMemory(20, Duration.ofHours(1),
                         Clock.systemUTC()))

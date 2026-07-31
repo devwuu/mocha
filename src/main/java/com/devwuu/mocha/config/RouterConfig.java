@@ -3,17 +3,12 @@ package com.devwuu.mocha.config;
 import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
 import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
-import com.devwuu.mocha.llm.AliasGenerator;
 import com.devwuu.mocha.llm.PhotoInfoExtractor;
-import com.devwuu.mocha.render.NoteRenderer;
 import com.devwuu.mocha.repository.NoteRepository;
-import com.devwuu.mocha.repository.PendingStore;
 import com.devwuu.mocha.repository.PhotoBufferStore;
 import com.devwuu.mocha.repository.PhotoStore;
-import com.devwuu.mocha.slack.SlackCommitHandler;
 import com.devwuu.mocha.slack.inbound.PhotoDownloader;
 import com.devwuu.mocha.slack.inbound.SlackPhotoIntake;
-import com.devwuu.mocha.slack.outbound.PreviewMessenger;
 import com.devwuu.mocha.slack.outbound.SlackResponder;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -41,7 +36,7 @@ public class RouterConfig {
         return new RecordProposalValidator(clock);
     }
 
-    // 턴 컨텍스트 조립기(ADR-44·TΔ7a) — 트랜스크립트·pending·OCR·세그먼트를 모델 입력으로 직렬화.
+    // 턴 컨텍스트 조립기(ADR-44·TΔ7a) — 트랜스크립트·draft·OCR·세그먼트를 모델 입력으로 직렬화.
     @Bean
     public TurnPromptAssembler turnPromptAssembler(ObjectMapper mapper, Clock clock) {
         return new TurnPromptAssembler(mapper, clock);
@@ -49,23 +44,21 @@ public class RouterConfig {
 
     // function tool 3종 façade(ADR-44·45) — 도메인 협력자를 받아 역할별 구현(조회·제안 축)을 내부 조립한다.
     // 0029 TΔ1에서 조회 tool의 렌더·송신 의존(send_entry_card)이 끊겨 산출 디렉터리 주입도 함께 빠졌고,
-    // TΔ3에서 제안 성공 접힘 폐기로 트랜스크립트 주입도 빠졌다 — tool 계층은 대화 문맥을 모른다.
+    // TΔ3에서 제안 성공 접힘 폐기로 트랜스크립트 주입이, TΔ4에서 pending 저장소·미리보기 송신 주입이
+    // 빠졌다 — tool 계층은 대화 문맥도, 서버 대기 상태도, 전송 계층도 모른다.
     @Bean
     public ToolCallbackProvider toolCallbackProvider(
             NoteRepository noteRepository,
             ObjectMapper mapper,
-            PendingStore pendingStore,
-            PreviewMessenger previewMessenger,
             RecordProposalValidator recordProposalValidator,
             Clock clock) {
-        return new ToolCallbackProvider(noteRepository, mapper, pendingStore, previewMessenger,
-                recordProposalValidator, clock);
+        return new ToolCallbackProvider(noteRepository, mapper, recordProposalValidator, clock);
     }
 
-    // 사진 수신 배관(FR-10·ADR-29·31) — 라우터(버퍼 그룹핑·OCR)와 커밋 핸들러(스테이징 이관·정리)가 공유한다.
+    // 사진 수신 배관(FR-10·ADR-29·31) — 라우터(버퍼 그룹핑·OCR)가 쓴다. TΔ4에서 pending 주입이 빠졌다:
+    // "진행 중 노트가 있으면 스테이징, 없으면 버퍼" 분기의 판정 입력이 서버에서 사라졌다(아래 intake 주석).
     @Bean
     public SlackPhotoIntake slackPhotoIntake(
-            PendingStore pendingStore,
             SlackResponder responder,
             PhotoDownloader photoDownloader,
             PhotoStore photoStore,
@@ -73,20 +66,7 @@ public class RouterConfig {
             PhotoInfoExtractor photoInfoExtractor,
             @Value("${mocha.photo.buffer-window:10m}") Duration bufferWindow,
             Clock clock) {
-        return new SlackPhotoIntake(pendingStore, responder, photoDownloader, photoStore, photoBufferStore,
+        return new SlackPhotoIntake(responder, photoDownloader, photoStore, photoBufferStore,
                 photoInfoExtractor, bufferWindow, clock);
-    }
-
-    // [저장]/[취소] 버튼 커밋 핸들러(ADR-3·20·45) — 커밋·렌더·배달·버튼 소진 체인의 독립된 홈.
-    @Bean
-    public SlackCommitHandler slackCommitHandler(
-            PendingStore pendingStore,
-            NoteRepository noteRepository,
-            NoteRenderer noteRenderer,
-            SlackResponder responder,
-            AliasGenerator aliasGenerator,
-            SlackPhotoIntake photoIntake) {
-        return new SlackCommitHandler(pendingStore, noteRepository, noteRenderer, responder,
-                aliasGenerator, photoIntake);
     }
 }

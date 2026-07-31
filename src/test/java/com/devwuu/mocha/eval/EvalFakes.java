@@ -1,6 +1,5 @@
 package com.devwuu.mocha.eval;
 
-import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.domain.PhotoBuffer;
 import com.devwuu.mocha.llm.PhotoInfoExtractor;
 import com.devwuu.mocha.llm.VisionExtraction;
@@ -9,8 +8,6 @@ import com.devwuu.mocha.render.NoteRenderer;
 import com.devwuu.mocha.repository.PhotoBufferStore;
 import com.devwuu.mocha.repository.PhotoStore;
 import com.devwuu.mocha.repository.StagedImage;
-import com.devwuu.mocha.slack.outbound.PreviewBlocks;
-import com.devwuu.mocha.slack.outbound.PreviewMessenger;
 import com.devwuu.mocha.slack.outbound.SlackResponder;
 
 import java.nio.file.Path;
@@ -52,24 +49,6 @@ final class EvalFakes {
         @Override
         public void postImage(String channelId, Path imagePath, String caption) {
             posted.add("[image] " + imagePath);
-        }
-
-        @Override
-        public void finalizePreview(String channelId, PendingNote pending, String statusText) {
-            // 버튼 소진은 커밋 경로의 몫 — v1 텍스트 턴은 지나지 않는다.
-        }
-    }
-
-    /** 미리보기 전송을 고정 ts로 대체한다 — Slack 미접촉(스모크 관례 승계). */
-    static final class StubPreviewMessenger extends PreviewMessenger {
-
-        StubPreviewMessenger() {
-            super(new PreviewBlocks(), null); // MethodsClient 미사용 — publish를 통째로 대체한다.
-        }
-
-        @Override
-        public String publish(String channelId, PendingNote pending) {
-            return "1720000000.000123";
         }
     }
 

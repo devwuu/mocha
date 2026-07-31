@@ -4,6 +4,8 @@ import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
 import com.devwuu.mocha.agent.conversation.TranscriptTurn;
 import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
+import com.devwuu.mocha.agent.turn.TurnDraft;
+import com.devwuu.mocha.agent.turn.TurnProposalSink;
 import com.devwuu.mocha.agent.turn.TurnUserMessage;
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Bean;
@@ -12,15 +14,11 @@ import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
-import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.domain.Tasting;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.repository.NoteRepository;
-import com.devwuu.mocha.repository.PendingStore;
-import com.devwuu.mocha.slack.outbound.PreviewBlocks;
-import com.devwuu.mocha.slack.outbound.PreviewMessenger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -45,16 +43,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * TΔ5·TΔ6(changes/0018): function tool 3종 — 읽기 2종(list_notes 페이로드, get_note 미존재 오류)과
- * 제안 1종(propose_record — pending 생성·갱신(FR-5)·미리보기 전송·트랜스크립트 접힘)을 결정론으로
- * 단언한다 (data-model §3, plan ADR-45·46, AC-Δ4·Δ5·Δ6).
+ * 제안 1종(propose_record — 제안 결과 반환·거부 경로)을 결정론으로 단언한다
+ * (data-model §3, plan ADR-45·46, AC-Δ4·Δ5·Δ6).
  * 외부 호출 없음 — 협력자는 전부 fake(모듈 CLAUDE.md §5.2).
  * <p>changes/0029 TΔ1에서 {@code propose_edit}·{@code send_entry_card} 케이스군과 단일 대기 거부
  * 케이스가 대상 구조와 함께 사라졌다 — 수정·조회는 UI로 옮겨진다(delta 0029 D-1·D-2·D-5).
+ * <p>TΔ4에서 <b>제안의 효과를 보는 창</b>이 바뀌었다: pending 저장소·미리보기 전송 단언이 사라지고
+ * {@link TurnProposalSink}에 무엇이 실렸는지를 본다. 서버 상태가 없으니 "무엇이 저장됐나"가 아니라
+ * "무엇을 돌려줬나"가 검증 대상이다(delta 0029 D-2).
  */
 class ToolCallbackProviderTest {
 
     private static final String USER = "U-dev";
-    private static final String CHANNEL = "C-mocha";
     // TΔ2b 배선: 원문은 아직 판정에 쓰이지 않는다 — 기존 단언 전부 원문 실린 조립으로 검증(동작 불변).
     private static final TurnUserMessage UTTERANCE = new TurnUserMessage("7월 16일 새콤하고 좋았음", null);
 
@@ -63,27 +63,26 @@ class ToolCallbackProviderTest {
 
     private final ObjectMapper mapper = MochaObjectMapper.create();
     private final StubNoteRepository noteRepository = new StubNoteRepository();
-    private final FakePendingStore pendingStore = new FakePendingStore();
     private final MutableClock clock = new MutableClock();
-    private CapturingPreviewMessenger previewMessenger;
+    private TurnProposalSink proposals;
     private FoldingChatMemory transcript;
     private ToolCallbackProvider toolCallbackProvider;
 
     @BeforeEach
     void setUp() {
-        previewMessenger = new CapturingPreviewMessenger();
+        proposals = new TurnProposalSink();
         transcript = new FoldingChatMemory(20, Duration.ofHours(1), clock);
         // R-7 명시 예외: 실 협력자 조립 자체가 검증 대상이라 픽스처(ToolCallbackProviderFixture)를 경유하지
         // 않는다 — 위치 인자 배선이 어긋나면 픽스처 경유 테스트는 함께 눈이 멀기 때문에 원 생성자를 그대로
         // 통과시키는 지점을 하나 남긴다(TΔ4b, changes/0025).
-        toolCallbackProvider = new ToolCallbackProvider(noteRepository, mapper, pendingStore,
-                previewMessenger, new RecordProposalValidator(clock), clock);
+        toolCallbackProvider = new ToolCallbackProvider(noteRepository, mapper,
+                new RecordProposalValidator(clock), clock);
     }
 
     @Test
     @DisplayName("plan §3/ADR-44: forTurn은 function tool 3종을 strict 스키마(additionalProperties=false)로 장착한다")
     void forTurnExposesThreeStrictTools() {
-        List<ToolCallback> tools = toolCallbackProvider.forTurn(USER, CHANNEL, UTTERANCE, null);
+        List<ToolCallback> tools = toolCallbackProvider.forTurn(USER, UTTERANCE, null, proposals);
 
         // 0029 TΔ1: propose_edit(수정은 UI 전용)·send_entry_card(갤러리 대체)가 폐기돼 5종 → 3종이다.
         assertThat(tools).extracting(ToolCallback::name)
@@ -100,56 +99,51 @@ class ToolCallbackProviderTest {
     // ---- propose_record (TΔ6) ----
 
     @Test
-    @DisplayName("AC-Δ4/AC-2: propose_record 검증 통과 — pending(mode=record) 생성 + 미리보기 전송 + preview_ts 영속")
-    void proposeRecordCreatesPendingAndPublishesPreview() {
+    @DisplayName("0029 TΔ4/AC-Δ4: propose_record 검증 통과 — 제안 결과를 수거함에 싣는다(서버 상태 미변경)")
+    void proposeRecordDeliversProposalToSink() {
         transcript.append(USER, new TranscriptTurn("어제 마신 예가체프 새콤했어", "기록할게요 멍"));
 
         JsonNode result = mapper.readTree(execute("propose_record",
                 recordArgs("커피베라 예가체프 G1", "커피베라", "\"맛있다\"", "2026-07-16", "{\"type\":\"new\",\"note_id\":null,\"date\":null}")));
 
-        // pending: draft·매칭·preview_ts가 모두 영속됐다 — 커밋은 여기서 일어나지 않는다(ADR-45, AC-Δ4).
-        PendingNote pending = pendingStore.get(USER).orElseThrow();
-        assertThat(pending.mode()).isEqualTo(PendingNote.Mode.RECORD);
-        assertThat(pending.draft().coffeeName().value()).isEqualTo("커피베라 예가체프 G1");
-        assertThat(pending.draft().id()).isNull(); // 신규는 아직 저장 전 — id는 INSERT가 발급한다(D-1)
-        assertThat(pending.draft().entries()).hasSize(1);
-        assertThat(pending.draft().entries().get(0).date()).isEqualTo(LocalDate.of(2026, 7, 16));
-        assertThat(pending.draft().entries().get(0).brews().getFirst().tasting().rating()).isEqualTo(Rating.GOOD);
-        assertThat(pending.match().type()).isEqualTo(MatchInfo.MatchType.NEW);
-        assertThat(pending.previewTs()).isEqualTo(previewMessenger.ts);
-        // 미리보기 1회 전송 + 성공 결과. 0029 TΔ3: 제안 성공 접힘이 폐기돼 tool은 트랜스크립트를 건드리지 않는다.
-        assertThat(previewMessenger.published).hasSize(1);
-        assertThat(previewMessenger.channels).containsExactly(CHANNEL);
+        // 제안 내용·매칭이 수거함에 실렸다 — 커밋은 여기서 일어나지 않고(ADR-45), 저장소에도 쓰지 않는다.
+        TurnDraft proposed = proposals.proposal().orElseThrow();
+        assertThat(proposed.note().coffeeName().value()).isEqualTo("커피베라 예가체프 G1");
+        assertThat(proposed.note().id()).isNull(); // 신규는 아직 저장 전 — id는 INSERT가 발급한다(D-1)
+        assertThat(proposed.note().entries()).hasSize(1);
+        assertThat(proposed.note().entries().get(0).date()).isEqualTo(LocalDate.of(2026, 7, 16));
+        assertThat(proposed.note().entries().get(0).brews().getFirst().tasting().rating()).isEqualTo(Rating.GOOD);
+        assertThat(proposed.match().type()).isEqualTo(MatchInfo.MatchType.NEW);
         assertThat(result.get("proposed").asBoolean()).isTrue();
         // 신규 제안 결과에는 식별자가 실리지 않는다 — 없는 값을 null로 실어 보내지 않는다(D-1).
         assertThat(result.has("note_id")).isFalse();
+        // draft 없이 시작한 턴이므로 "폼을 고친 것"이 아니다 — 모델의 안내 문구가 갈리는 지점(TΔ4).
+        assertThat(result.get("updated_draft").asBoolean()).isFalse();
+        // 0029 TΔ3: 제안 성공 접힘이 폐기돼 tool은 트랜스크립트를 건드리지 않는다.
         assertThat(transcript.view(USER)).hasSize(1);   // 제안 전 문맥이 그대로 살아 있다(구 규칙 ① 폐기)
     }
 
     @Test
-    @DisplayName("FR-5/AC-5: 확인 대기 중 같은 커피 재호출 = 갱신 경로 — preview_ts·created_at 보존, 같은 미리보기를 edit")
-    void proposeRecordRecallUpdatesExistingPending() {
+    @DisplayName("0029 TΔ2·TΔ4: draft 위 재제안 — updated_draft=true, 수거함은 마지막 제안으로 대체된다")
+    void proposeRecordOnDraftReportsUpdateAndReplacesSink() {
         execute("propose_record",
                 recordArgs("커피베라 예가체프 G1", "커피베라", "null", "2026-07-16", "{\"type\":\"new\",\"note_id\":null,\"date\":null}"));
-        OffsetDateTime firstCreatedAt = pendingStore.get(USER).orElseThrow().createdAt();
+        // 앞 턴의 제안 결과가 곧 다음 턴의 draft다 — 클라이언트가 폼으로 받아 되돌려 보내는 값과 같은 형태.
+        TurnDraft draft = proposals.proposal().orElseThrow();
         clock.advanceMinutes(10);
 
-        JsonNode result = mapper.readTree(execute("propose_record",
+        JsonNode result = mapper.readTree(execute("propose_record", draft,
                 recordArgs("커피베라 예가체프 G1", "커피베라", "\"완전 내스타일\"", "2026-07-16", "{\"type\":\"new\",\"note_id\":null,\"date\":null}")));
 
-        PendingNote updated = pendingStore.get(USER).orElseThrow();
-        assertThat(updated.draft().entries().get(0).brews().getFirst().tasting().rating()).isEqualTo(Rating.PERFECT); // 수정 반영
-        assertThat(updated.draft().id()).isNull();                                       // 저장 전 — 여전히 식별자 없음
-        assertThat(updated.createdAt()).isEqualTo(firstCreatedAt);                       // TTL 기준 보존
-        // 두 번째 발행은 preview_ts를 문 채로 — 재전송이 아니라 기존 미리보기 메시지 edit(data-model §2.3).
-        assertThat(previewMessenger.published).hasSize(2);
-        assertThat(previewMessenger.published.get(1).previewTs()).isEqualTo(previewMessenger.ts);
-        assertThat(result.get("updated_existing_pending").asBoolean()).isTrue();
+        TurnDraft updated = proposals.proposal().orElseThrow();
+        assertThat(updated.note().entries().get(0).brews().getFirst().tasting().rating()).isEqualTo(Rating.PERFECT); // 수정 반영
+        assertThat(updated.note().id()).isNull();                     // 저장 전 — 여전히 식별자 없음
+        assertThat(result.get("updated_draft").asBoolean()).isTrue();
     }
 
     @Test
-    @DisplayName("0029 D-2: 단일 대기 게이트 폐기 — 대기 중 다른 커피의 제안도 거부되지 않고 대기 내용을 대체한다")
-    void proposeRecordReplacesPendingWithDifferentCoffee() {
+    @DisplayName("0029 D-2: 단일 대기 게이트 폐기 — 작성 중 다른 커피의 제안도 거부되지 않고 수거함을 대체한다")
+    void proposeRecordReplacesProposalWithDifferentCoffee() {
         // 구 AC-30(다른 커피 거부)의 자리다. 게이트의 동일성 키에 수정 대상 필드(roastery)가 섞여 있어
         // 로스터리 정정이 논리적으로 불가능했고(delta 0029 §1.2), 그 구조를 통째로 걷어낸 결과가 이것이다.
         execute("propose_record",
@@ -159,21 +153,18 @@ class ToolCallbackProviderTest {
                 recordArgs("Ethiopia Chelbesa", "FroB", "null", "2026-07-16", "{\"type\":\"new\",\"note_id\":null,\"date\":null}")));
 
         assertThat(result.has("error")).isFalse();
-        assertThat(pendingStore.get(USER).orElseThrow().draft().coffeeName().value())
-                .isEqualTo("Ethiopia Chelbesa");           // 새 제안이 대기를 대체
-        assertThat(previewMessenger.published).hasSize(2); // 같은 미리보기를 edit로 갱신
-        assertThat(previewMessenger.published.get(1).previewTs()).isEqualTo(previewMessenger.ts);
+        assertThat(proposals.proposal().orElseThrow().note().coffeeName().value())
+                .isEqualTo("Ethiopia Chelbesa");           // 새 제안이 앞의 것을 대체
     }
 
     @Test
-    @DisplayName("V-1/AC-9: rating 4범주 위반은 사유와 함께 거부 — pending 미생성")
+    @DisplayName("V-1/AC-9: rating 4범주 위반은 사유와 함께 거부 — 제안 결과 미생성")
     void proposeRecordRejectsInvalidRating() {
         JsonNode result = mapper.readTree(execute("propose_record",
                 recordArgs("커피베라 예가체프 G1", "커피베라", "\"다섯 개 만점\"", "2026-07-16", "{\"type\":\"new\",\"note_id\":null,\"date\":null}")));
 
         assertThat(result.get("error").asString()).contains("4범주");
-        assertThat(pendingStore.get(USER)).isEmpty();
-        assertThat(previewMessenger.published).isEmpty();
+        assertThat(proposals.proposal()).isEmpty();
     }
 
     @Test
@@ -184,22 +175,7 @@ class ToolCallbackProviderTest {
                         "{\"type\":\"existing\",\"note_id\":999,\"date\":\"2026-07-16\"}")));
 
         assertThat(result.get("error").asString()).contains("999", "list_notes");
-        assertThat(pendingStore.get(USER)).isEmpty();
-        assertThat(previewMessenger.published).isEmpty();
-    }
-
-    @Test
-    @DisplayName("ADR-48 정신: 미리보기 전송 실패 시 신규 pending을 남기지 않고 오류 사유 반환 — 문맥 무변화")
-    void proposeRecordClearsPendingWhenPreviewPublishFails() {
-        transcript.append(USER, new TranscriptTurn("어제 마신 예가체프", "기록할게요 멍"));
-        previewMessenger.fail = true;
-
-        JsonNode result = mapper.readTree(execute("propose_record",
-                recordArgs("커피베라 예가체프 G1", "커피베라", "null", "2026-07-16", "{\"type\":\"new\",\"note_id\":null,\"date\":null}")));
-
-        assertThat(result.get("error").asString()).contains("미리보기");
-        assertThat(pendingStore.get(USER)).isEmpty(); // "미리보기 없으면 pending 없음" 불변
-        assertThat(transcript.view(USER)).hasSize(1);
+        assertThat(proposals.proposal()).isEmpty();
     }
 
     // ---- 읽기·카드 tool (TΔ5) ----
@@ -256,11 +232,16 @@ class ToolCallbackProviderTest {
     // ---- 헬퍼 ----
 
     private String execute(String toolName, String argumentsJson) {
-        return tool(toolName).executor().execute(argumentsJson);
+        return execute(toolName, null, argumentsJson);
     }
 
-    private ToolCallback tool(String toolName) {
-        return toolCallbackProvider.forTurn(USER, CHANNEL, UTTERANCE, null).stream()
+    /** draft를 실은 턴 — 추가 발화(폼이 떠 있는 상태)의 재제안 경로다(0029 TΔ2). */
+    private String execute(String toolName, TurnDraft draft, String argumentsJson) {
+        return tool(toolName, draft).executor().execute(argumentsJson);
+    }
+
+    private ToolCallback tool(String toolName, TurnDraft draft) {
+        return toolCallbackProvider.forTurn(USER, UTTERANCE, draft, proposals).stream()
                 .filter(tool -> tool.name().equals(toolName))
                 .findFirst().orElseThrow();
     }
@@ -330,12 +311,12 @@ class ToolCallbackProviderTest {
 
         @Override
         public Note upsertEntry(Long noteId, NoteMeta meta, Entry entry, Aliases aliases) {
-            throw new UnsupportedOperationException("제안 tool은 노트를 쓰지 않는다 — 커밋은 [저장] 버튼만(AC-Δ4)");
+            throw new UnsupportedOperationException("제안 tool은 노트를 쓰지 않는다 — 커밋은 사용자 확정만(AC-Δ4)");
         }
 
         @Override
         public Note applyEdit(long noteId, LocalDate targetDate, Note draft) {
-            throw new UnsupportedOperationException("제안 tool은 노트를 쓰지 않는다 — 커밋은 [저장] 버튼만(AC-Δ4)");
+            throw new UnsupportedOperationException("제안 tool은 노트를 쓰지 않는다 — 커밋은 사용자 확정만(AC-Δ4)");
         }
 
         @Override
@@ -344,48 +325,7 @@ class ToolCallbackProviderTest {
         }
     }
 
-    private static final class FakePendingStore implements PendingStore {
-        private final Map<String, PendingNote> pendings = new LinkedHashMap<>();
-
-        @Override
-        public void put(String userId, PendingNote pending) {
-            pendings.put(userId, pending);
-        }
-
-        @Override
-        public Optional<PendingNote> get(String userId) {
-            return Optional.ofNullable(pendings.get(userId));
-        }
-
-        @Override
-        public void clear(String userId) {
-            pendings.remove(userId);
-        }
-    }
-
-    /** 발행된 pending을 캡처하고 preview_ts를 돌려주는 미리보기 어댑터 스텁(Slack 미접촉). */
-    private static final class CapturingPreviewMessenger extends PreviewMessenger {
-        final List<PendingNote> published = new ArrayList<>();
-        final List<String> channels = new ArrayList<>();
-        final String ts = "1720000000.000123";
-        boolean fail = false;
-
-        CapturingPreviewMessenger() {
-            super(new PreviewBlocks(), null);
-        }
-
-        @Override
-        public String publish(String channelId, PendingNote pending) {
-            if (fail) {
-                throw new IllegalStateException("전송 실패");
-            }
-            published.add(pending);
-            channels.add(channelId);
-            return ts;
-        }
-    }
-
-    /** 진행을 제어할 수 있는 Asia/Seoul 시계 — created_at 보존(FR-5) 단언에 쓴다. */
+    /** 진행을 제어할 수 있는 Asia/Seoul 시계 — 턴 사이 시간 경과가 제안 내용을 흔들지 않음을 본다. */
     private static final class MutableClock extends Clock {
         private Instant instant = Instant.parse("2026-07-17T01:20:30Z"); // Seoul 10:20:30
 

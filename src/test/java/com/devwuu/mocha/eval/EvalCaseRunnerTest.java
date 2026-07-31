@@ -2,7 +2,6 @@ package com.devwuu.mocha.eval;
 
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.repository.JpaNoteRepository;
-import com.devwuu.mocha.repository.jpa.PendingNoteEntityRepository;
 import com.devwuu.mocha.support.PostgresIntegrationTest;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.DynamicTest;
@@ -58,10 +57,6 @@ class EvalCaseRunnerTest extends PostgresIntegrationTest {
     @Autowired
     private JpaNoteRepository noteRepository;
 
-    // pending도 같은 스키마의 행이 됐다(changes/0028 TΔ8) — 회차 간 격리를 아래 clean이 함께 진다.
-    @Autowired
-    private PendingNoteEntityRepository pendings;
-
     @Autowired
     private Flyway flyway;
 
@@ -112,7 +107,7 @@ class EvalCaseRunnerTest extends PostgresIntegrationTest {
             // 회차 간 격리 — 앞 회차가 심은 노트도, 발급된 id도 남기지 않는다.
             flyway.clean();
             flyway.migrate();
-            EvalHarness.Run run = EvalHarness.run(evalCase, workDir, settings, noteRepository, pendings);
+            EvalHarness.Run run = EvalHarness.run(evalCase, workDir, settings, noteRepository);
             List<String> failures = EvalJudge.judge(evalCase, run, mapper);
             if (!failures.isEmpty()) {
                 failedRepetitions++;
@@ -134,7 +129,7 @@ class EvalCaseRunnerTest extends PostgresIntegrationTest {
         }
     }
 
-    // AC-Δ4: 로그 재수집 없이 원인을 볼 수 있게, 회차별 tool 시퀀스·거부 사유·pending diff를 한 덩어리로 남긴다.
+    // AC-Δ4: 로그 재수집 없이 원인을 볼 수 있게, 회차별 tool 시퀀스·거부 사유·제안 결과를 한 덩어리로 남긴다.
     private static String renderRepetition(int repetition, int total, EvalHarness.Run run,
                                            List<String> failures) {
         StringBuilder out = new StringBuilder();
@@ -163,8 +158,8 @@ class EvalCaseRunnerTest extends PostgresIntegrationTest {
         }
         out.append("  위반:\n");
         failures.forEach(failure -> out.append("    - ").append(failure).append('\n'));
-        out.append("  pending before = ").append(run.pendingBefore().orElse("없음")).append('\n');
-        out.append("  pending after  = ").append(run.pendingAfter().orElse("없음")).append('\n');
+        out.append("  제안 결과 = ")
+                .append(run.proposal().map(Object::toString).orElse("없음")).append('\n');
         out.append("  tool 인자:\n");
         for (RecordingToolCallbacks.Invocation invocation : run.tools()) {
             out.append("    · ").append(invocation.name()).append(" <- ")

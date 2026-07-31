@@ -1,6 +1,6 @@
 package com.devwuu.mocha.eval;
 
-import com.devwuu.mocha.domain.PendingNote;
+import com.devwuu.mocha.agent.turn.TurnDraft;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -8,19 +8,17 @@ import tools.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
 
 /**
  * 케이스 기대 계약 판정 — {@link EvalHarness.Run}(사후 상태) 하나만 보고 위반 사유 목록을 만든다
  * (ref: plan.md#ADR-68, changes/0026 TΔ2, AC-Δ3·Δ4).
  *
- * <p>판정 대상은 <b>구조·계약뿐</b>이다: pending diff·tool 호출 시퀀스·검증 거부·노트 무변화. 응답 문구는
+ * <p>판정 대상은 <b>구조·계약뿐</b>이다: 제안 결과·tool 호출 시퀀스·검증 거부·노트 무변화. 응답 문구는
  * 보지 않는다 — 같은 계약을 지키면서 문장은 매번 달라지는 것이 정상이고, 문구를 걸면 케이스가 모델 교체마다
  * 무의미하게 빨개진다(백엔드 CLAUDE.md §5.3).
  *
  * <p>단언 실패는 예외가 아니라 <b>사유 문자열 목록</b>이다. 한 회차에서 여러 기대가 동시에 깨지는 일이
- * 흔한데(예: pending 미생성 + tool 미호출), 첫 실패에서 멈추면 실패 회차를 다시 돌려야 원인을 본다 —
+ * 흔한데(예: 제안 미생성 + tool 미호출), 첫 실패에서 멈추면 실패 회차를 다시 돌려야 원인을 본다 —
  * 실 API 비용이 드는 하네스에서 그 재실행이 제일 비싸다(AC-Δ4).
  */
 final class EvalJudge {
@@ -32,52 +30,39 @@ final class EvalJudge {
     static List<String> judge(EvalCase evalCase, EvalHarness.Run run, ObjectMapper mapper) {
         List<String> failures = new ArrayList<>();
         EvalCase.Expect expect = evalCase.expect();
-        judgePending(expect.pending(), run, mapper, failures);
+        judgeProposal(expect.proposal(), run, mapper, failures);
         judgeTools(expect.tools(), run, mapper, failures);
         judgeCount("검증 거부 수", expect.rejections(), run.rejectionCount(), failures);
         judgeNotes(expect.unchangedNotes(), run, failures);
         return failures;
     }
 
-    private static void judgePending(EvalCase.Pending expect, EvalHarness.Run run,
-                                     ObjectMapper mapper, List<String> failures) {
+    private static void judgeProposal(EvalCase.Proposal expect, EvalHarness.Run run,
+                                      ObjectMapper mapper, List<String> failures) {
         if (expect == null) {
             return;
         }
-        PendingNote pending = run.pendingNote();
-        // "무변화"는 바이트 동일성으로 본다 — 같은 커피로 다시 제안해 내용이 겹치는 경우까지 통과시키지 않는다.
-        boolean sameBytes = Objects.equals(run.pendingBefore(), run.pendingAfter());
+        TurnDraft proposal = run.proposal().orElse(null);
         switch (expect.state()) {
             case CREATED -> {
-                if (pending == null) {
-                    failures.add("pending 기대=created — 턴 종료 후 pending이 없다(제안 미수용)");
-                } else if (sameBytes) {
-                    failures.add("pending 기대=created — pending 파일이 초기 상태와 바이트 동일하다(새 제안 없음)");
+                if (proposal == null) {
+                    failures.add("제안 기대=created — 턴 종료 후 제안 결과가 없다(제안 미수용)");
                 }
             }
             case ABSENT -> {
-                if (pending != null) {
-                    failures.add("pending 기대=absent — pending이 생성됐다: " + summarize(run.pendingAfter()));
-                }
-            }
-            case UNCHANGED -> {
-                if (!sameBytes) {
-                    failures.add("pending 기대=unchanged — pending 파일이 바뀌었다"
-                            + "\n      before = " + summarize(run.pendingBefore())
-                            + "\n      after  = " + summarize(run.pendingAfter()));
+                if (proposal != null) {
+                    failures.add("제안 기대=absent — 제안이 생성됐다: "
+                            + summarize(mapper.writeValueAsString(proposal.note())));
                 }
             }
         }
-        if (pending == null) {
-            return; // mode·draft는 pending이 있어야 판정 가능 — 위에서 이미 사유를 남겼다.
-        }
-        if (expect.mode() != null && expect.mode() != pending.mode()) {
-            failures.add("pending.mode 기대=" + expect.mode().json() + " 실제=" + pending.mode().json());
+        if (proposal == null) {
+            return; // draft는 제안이 있어야 판정 가능 — 위에서 이미 사유를 남겼다.
         }
         if (expect.draft() != null) {
-            JsonNode draft = mapper.valueToTree(pending.draft());
+            JsonNode draft = mapper.valueToTree(proposal.note());
             for (EvalCase.PathAssertion assertion : expect.draft()) {
-                check("pending.draft", assertion, draft, failures);
+                check("제안 draft", assertion, draft, failures);
             }
         }
     }
@@ -242,8 +227,8 @@ final class EvalJudge {
         return node == null || node.isNull() ? "없음" : node.toString();
     }
 
-    private static String summarize(Optional<String> json) {
-        return json.map(s -> s.length() <= 400 ? s : s.substring(0, 400) + "…(생략)").orElse("없음");
+    private static String summarize(String json) {
+        return json == null ? "없음" : json.length() <= 400 ? json : json.substring(0, 400) + "…(생략)";
     }
 
     // 순서만 유지하면 사이에 다른 호출이 끼어도 통과 — 모델이 정보를 더 조회하는 것 자체는 실패가 아니다.

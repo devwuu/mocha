@@ -6,7 +6,6 @@ import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
 import com.devwuu.mocha.agent.prompt.TurnPrompt;
 import com.devwuu.mocha.agent.tool.ToolCallback;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
-import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.llm.PhotoInfoExtractor;
 import com.devwuu.mocha.llm.UtteranceSegmenter;
@@ -14,7 +13,6 @@ import com.devwuu.mocha.llm.VisionExtraction;
 import com.devwuu.mocha.llm.VisionHint;
 import com.devwuu.mocha.repository.JsonFilePhotoBufferStore;
 import com.devwuu.mocha.repository.LocalPhotoStore;
-import com.devwuu.mocha.repository.PendingStore;
 import com.devwuu.mocha.repository.StagedImage;
 import com.devwuu.mocha.slack.inbound.IncomingMessage;
 import com.devwuu.mocha.slack.inbound.SlackPhotoIntake;
@@ -32,10 +30,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 import java.util.stream.Stream;
 
 import static com.devwuu.mocha.agent.tool.ToolCallbackProviderFixture.toolkit;
@@ -51,15 +46,15 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li>~~① 단일 대기 거부(FR-22/AC-30)~~ — 원칙 자체가 changes/0029 TΔ1에서 폐기됐다(delta 0029 D-2).
  *       그 자리는 {@link com.devwuu.mocha.agent.tool.ToolCallbackProviderTest}의 "게이트 폐기 — 대기 내용을
  *       대체한다"가 대신 가드한다.</li>
- *   <li>① [저장] 커밋 경로(ADR-3·45) — {@link SlackCommitHandlerTest}
- *       ("[저장] 커밋 → pending clear → 카드 배달 → 버튼 소진 순서가 종전과 동일" 회귀 가드 포함)</li>
+ *   <li>~~① [저장] 커밋 경로(ADR-3·45)~~ — 버튼 커밋 체인이 changes/0029 TΔ4에서 확인 미리보기와
+ *       함께 폐기됐다. 저장 확정은 앱의 폼이 가져가고(TΔ6), 그때 그 경로의 가드가 다시 선다.</li>
  *   <li>~~② propose_edit 날짜 2개 통과(AC-Δ4)~~ — tool이 changes/0029 TΔ1에서 폐기됐다. V-16이 기록
  *       경로 전용이라는 성질은 {@link com.devwuu.mocha.agent.tool.validation.ProposalValidatorsTest}의
  *       게이트 케이스군이 계속 가드한다.</li>
  *   <li>④ 트랜스크립트 접힘 이벤트(AC-61) —
  *       {@link com.devwuu.mocha.agent.conversation.FoldingChatMemoryTest}
- *       ("접힘 이벤트(제안 성공·[저장]·[취소]) 각각에서 문맥이 비워진다"),
- *       {@link AgentConversationRouterTest}(커밋 접힘·제안 성공 접힘 유지)</li>
+ *       (접힘 트리거별로 문맥이 비워진다). 라우터의 배선 지점은 TΔ4에서 버튼과 함께 사라져
+ *       TΔ6의 확정 API가 다시 세운다.</li>
  * </ul>
  *
  * <p>slack 패키지에 두는 이유: ③은 실제 턴 처리(라우터 경유)가 대상이라
@@ -79,29 +74,26 @@ class Change0023RegressionGuardTest {
     void multiDateTurnLeavesDataDirUntouched() throws IOException {
         // 남은 파일 store 2종을 @TempDir data dir에 배선 — fake가 아니라 실 파일 I/O 경계로 단언한다
         // (delta UNCHANGED "저장/메모리 상태 구조: 새 파일·저장소 없음", NFR-2 예외 목록 불변).
-        // pending은 DB로 옮겨져(changes/0028 TΔ8) 더 이상 data/ 아래 파일 후보가 아니다 — 이 단언의
-        // 대상에서 빠졌으므로 여기서는 인메모리 fake로 채운다(DB를 띄우는 것은 이 가드의 관심이 아니다).
+        // pending은 0029 TΔ4에서 소멸했다 — 서버가 작성 중 상태를 갖지 않으므로 이 가드가 살펴야 할
+        // 파일 후보에서도 근거째 빠졌다.
         Clock clock = Clock.fixed(Instant.parse("2026-07-17T01:20:30Z"), SEOUL);
         var mapper = MochaObjectMapper.create();
-        var pendingStore = new InMemoryPendingStore();
         var photoBufferStore = new JsonFilePhotoBufferStore(dataDir, mapper);
         var photoStore = new LocalPhotoStore(dataDir);
         var transcript = new FoldingChatMemory(20, Duration.ofHours(1), clock);
         var responder = new RecordingResponder();
         var chatClient = new FakeChatClient();
         var segmenter = new FakeSegmenter();
-        SlackPhotoIntake photoIntake = new SlackPhotoIntake(pendingStore, responder,
+        SlackPhotoIntake photoIntake = new SlackPhotoIntake(responder,
                 url -> new byte[0], photoStore, photoBufferStore, new StubPhotoInfoExtractor(),
                 Duration.ofMinutes(3), clock);
         ToolCallbackProvider toolCallbackProvider = toolkit()
                 .mapper(mapper)
-                .pendingStore(pendingStore)
                 .clock(clock)
                 .build();
-        // 버튼 미수신 경로만 돌리므로 커밋 핸들러는 접촉되지 않는다 — 접촉되면 null 협력자로 즉시 실패한다.
-        AgentConversationRouter router = new AgentConversationRouter(pendingStore, transcript, chatClient,
+        AgentConversationRouter router = new AgentConversationRouter(transcript, chatClient,
                 toolCallbackProvider, new TurnPromptAssembler(mapper, clock), segmenter, photoIntake,
-                responder, new SlackCommitHandler(null, null, null, null, null, null), clock);
+                responder, clock);
 
         // 턴 1: 다중 날짜 → 세그먼터 주입 성공(제안 없는 턴).
         segmenter.canned = List.of(
@@ -127,26 +119,6 @@ class Change0023RegressionGuardTest {
     }
 
     // ---- fakes (모듈 CLAUDE.md §5.2 — 외부 의존은 인터페이스 stub/fake, 파일 store만 실 파일) ----
-
-    /** pending은 DB로 갔다(TΔ8) — 이 가드가 보는 것은 data/ 아래 파일이라 여기서는 메모리로 충분하다. */
-    private static final class InMemoryPendingStore implements PendingStore {
-        private final Map<String, PendingNote> byUser = new HashMap<>();
-
-        @Override
-        public void put(String userId, PendingNote pending) {
-            byUser.put(userId, pending);
-        }
-
-        @Override
-        public Optional<PendingNote> get(String userId) {
-            return Optional.ofNullable(byUser.get(userId));
-        }
-
-        @Override
-        public void clear(String userId) {
-            byUser.remove(userId);
-        }
-    }
 
     /** 제안 없는 응답만 돌려주는 fake 루프 드라이버 — LLM 미접촉. */
     private static final class FakeChatClient implements ChatClient {
@@ -183,11 +155,6 @@ class Change0023RegressionGuardTest {
         @Override
         public void postImage(String channelId, Path imagePath, String caption) {
             throw new UnsupportedOperationException("이 가드는 이미지 배달을 다루지 않는다");
-        }
-
-        @Override
-        public void finalizePreview(String channelId, PendingNote pending, String statusText) {
-            throw new UnsupportedOperationException("버튼 소진은 이 가드의 비대상");
         }
     }
 

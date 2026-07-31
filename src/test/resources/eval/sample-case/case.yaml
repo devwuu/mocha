@@ -18,14 +18,12 @@ utterances:
 # 턴 진입 전 저장소 상태 — 케이스 폴더에 동봉한 픽스처를 폴더 상대 경로로 가리킨다.
 initial:
   notes: notes          # 도메인 Note JSON 모음 디렉터리 — 파일명 순으로 INSERT, id는 DB가 발급
-  # pending: pending.json   # 초기 확인 대기(단일 대기 게이트 케이스에서 쓴다)
 
 # 기대 계약 — 구조·계약만 단언한다. 응답 문구는 단언하지 않는다(ADR-68 POLICY).
 expect:
-  pending:
-    state: created      # created | absent | unchanged
-    mode: record        # record | edit
-    draft:              # Note 구조(snake_case) 경로 부분 일치 — 케이스가 실제로 보려는 필드만
+  proposal:
+    state: created      # created | absent
+    draft:              # 제안 내용(Note 구조, snake_case) 경로 부분 일치 — 케이스가 실제로 보려는 필드만
       - path: entries[0].date
         value: "2026-03-14"
       - path: entries[0].brews

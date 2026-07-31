@@ -25,7 +25,7 @@ import java.util.stream.Stream;
  * <ul>
  *   <li>모르는 필드는 실패 — 오타 난 기대는 "지정 안 함"으로 흘러 <b>초록 거짓말</b>이 된다</li>
  *   <li>빈 기대는 실패 — 아무것도 단언하지 않는 케이스는 비용만 쓰고 통과한다</li>
- *   <li>모순된 기대는 실패 — 없을 pending의 내용을 단언하는 등</li>
+ *   <li>모순된 기대는 실패 — 없을 제안의 내용을 단언하는 등</li>
  *   <li>참조한 픽스처가 실재하지 않으면 실패 — 초기 상태가 조용히 비는 것을 막는다</li>
  * </ul>
  * 실패 메시지는 항상 케이스 id + 필드 경로 + 사유다(bare rejection 금지, REVIEW.md §6.3 준용).
@@ -135,7 +135,6 @@ public final class EvalCaseLoader {
             return;
         }
         requireFixture(at + "initial.notes", initial.notes(), caseDir, true);
-        requireFixture(at + "initial.pending", initial.pending(), caseDir, false);
     }
 
     /** 동봉 픽스처 참조 검증 — 케이스 폴더 안이어야 하고, 실재해야 한다. */
@@ -164,34 +163,29 @@ public final class EvalCaseLoader {
             throw new EvalCaseFormatException(at + "expect — 필수 블록이 없다"
                     + " (아무것도 단언하지 않는 케이스는 비용만 쓰고 통과한다)");
         }
-        if (expect.pending() == null && expect.tools() == null
+        if (expect.proposal() == null && expect.tools() == null
                 && expect.rejections() == null && expect.unchangedNotes() == null) {
             throw new EvalCaseFormatException(at + "expect — 기대가 하나도 없다"
-                    + " (pending·tools·rejections·unchanged_notes 중 최소 1종)");
+                    + " (proposal·tools·rejections·unchanged_notes 중 최소 1종)");
         }
-        validatePending(at + "expect.pending", expect.pending());
+        validateProposal(at + "expect.proposal", expect.proposal());
         validateTools(at + "expect.tools", expect.tools());
         validateCount(at + "expect.rejections", expect.rejections());
     }
 
-    private static void validatePending(String at, EvalCase.Pending pending) {
-        if (pending == null) {
+    private static void validateProposal(String at, EvalCase.Proposal proposal) {
+        if (proposal == null) {
             return;
         }
-        if (pending.state() == null) {
-            throw new EvalCaseFormatException(at + ".state — 필수 필드가 비었다 (created|absent|unchanged)");
+        if (proposal.state() == null) {
+            throw new EvalCaseFormatException(at + ".state — 필수 필드가 비었다 (created|absent)");
         }
-        if (pending.state() == EvalCase.Pending.State.ABSENT) {
-            if (pending.mode() != null) {
-                throw new EvalCaseFormatException(at + " — state=absent인데 mode가 지정됐다"
-                        + " (없을 pending의 모드는 단언할 수 없다)");
-            }
-            if (pending.draft() != null && !pending.draft().isEmpty()) {
-                throw new EvalCaseFormatException(at + " — state=absent인데 draft 단언이 있다"
-                        + " (없을 pending의 내용은 단언할 수 없다)");
-            }
+        if (proposal.state() == EvalCase.Proposal.State.ABSENT
+                && proposal.draft() != null && !proposal.draft().isEmpty()) {
+            throw new EvalCaseFormatException(at + " — state=absent인데 draft 단언이 있다"
+                    + " (없을 제안의 내용은 단언할 수 없다)");
         }
-        validateAssertions(at + ".draft", pending.draft());
+        validateAssertions(at + ".draft", proposal.draft());
     }
 
     private static void validateTools(String at, EvalCase.Tools tools) {

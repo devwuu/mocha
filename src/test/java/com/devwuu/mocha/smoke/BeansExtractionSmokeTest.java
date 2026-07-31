@@ -4,17 +4,15 @@ import com.devwuu.mocha.agent.OpenAiChatClient;
 import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
 import com.devwuu.mocha.agent.prompt.TurnPrompt;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
+import com.devwuu.mocha.agent.turn.TurnDraft;
+import com.devwuu.mocha.agent.turn.TurnProposalSink;
 import com.devwuu.mocha.agent.turn.TurnUserMessage;
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
-import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.repository.NoteRepository;
-import com.devwuu.mocha.repository.PendingStore;
-import com.devwuu.mocha.slack.outbound.PreviewBlocks;
-import com.devwuu.mocha.slack.outbound.PreviewMessenger;
 import com.openai.client.OpenAIClient;
 import com.openai.client.okhttp.OpenAIOkHttpClient;
 import org.junit.jupiter.api.Tag;
@@ -29,9 +27,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 
@@ -43,14 +39,13 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * 규칙(ADR-53 — 블렌드 원두별 요소·원두별 process·쉼표 나열 금지)대로 `beans` 원두별 요소로 제안되는지
  * 실 에이전트 루프(propose_record strict schema + 서버 검증)로 관측한다 (ref: spec FR-2/FR-3/AC-64).
  * <p>단언하지 않는다 — 모델 출력이라 판정은 로그로 한다(CLAUDE.md §5.3 관측). 협력자는 인메모리 fake라
- * 파일·Slack 접촉이 없고, pending draft의 beans 배열이 관측 대상이다.
+ * 파일·Slack 접촉이 없고, 제안 결과 draft의 beans 배열이 관측 대상이다.
  * 기본 test 제외(@Tag("openai")), 실행은 온디맨드 Test 태스크로만.
  */
 @Tag("openai")
 class BeansExtractionSmokeTest {
 
     private static final String USER = "U-smoke";
-    private static final String CHANNEL = "C-smoke";
 
     @Test
     void printsProposedBeansForBlendUtterance() throws Exception {
@@ -62,12 +57,10 @@ class BeansExtractionSmokeTest {
         ObjectMapper mapper = MochaObjectMapper.create();
         Clock clock = Clock.fixed(Instant.parse("2026-07-21T01:00:00Z"), ZoneId.of("Asia/Seoul"));
 
-        InMemoryPendingStore pendingStore = new InMemoryPendingStore();
+        TurnProposalSink proposals = new TurnProposalSink();
         ToolCallbackProvider toolkit = toolkit()
                 .noteRepository(new EmptyNoteRepository())
                 .mapper(mapper)
-                .pendingStore(pendingStore)
-                .previewMessenger(new StubPreviewMessenger())
                 .clock(clock)
                 .build();
 
@@ -82,16 +75,16 @@ class BeansExtractionSmokeTest {
                 // 케이스 날짜 고정(clock)과 관심사가 다르다. millis만 쓰므로 존은 무관하다.
                 new OpenAiChatClient(client, model, 10, 100_000, Duration.ofSeconds(60), 4_000,
                         mapper, Clock.systemUTC())
-                .runTurn(input, toolkit.forTurn(USER, CHANNEL, new TurnUserMessage(message, null), null));
+                .runTurn(input, toolkit.forTurn(USER, new TurnUserMessage(message, null), null, proposals));
 
         System.out.println("=== BEANS EXTRACTION SMOKE (TΔ3a, AC-64) model=" + model + " ===");
         System.out.println("입력      = " + message);
         System.out.println("최종 응답 = " + reply);
-        Optional<PendingNote> pending = pendingStore.get(USER);
-        if (pending.isEmpty()) {
-            System.out.println("pending 없음 — 제안 tool 미호출(관측 실패, 프롬프트 재점검 필요)");
+        Optional<TurnDraft> proposed = proposals.proposal();
+        if (proposed.isEmpty()) {
+            System.out.println("제안 없음 — 제안 tool 미호출(관측 실패, 프롬프트 재점검 필요)");
         } else {
-            System.out.println("draft.beans = " + mapper.writeValueAsString(pending.get().draft().beans())
+            System.out.println("draft.beans = " + mapper.writeValueAsString(proposed.get().note().beans())
                     + "   (기대: 원두별 요소 2개·원두별 process, ❌ \"에티오피아, 콜롬비아\" 쉼표 나열)");
         }
         System.out.println("=== END ===");
@@ -122,37 +115,6 @@ class BeansExtractionSmokeTest {
         @Override
         public void delete(long id) {
             throw new UnsupportedOperationException("스모크는 커밋하지 않는다");
-        }
-    }
-
-    private static final class InMemoryPendingStore implements PendingStore {
-        private final Map<String, PendingNote> store = new HashMap<>();
-
-        @Override
-        public void put(String userId, PendingNote pending) {
-            store.put(userId, pending);
-        }
-
-        @Override
-        public Optional<PendingNote> get(String userId) {
-            return Optional.ofNullable(store.get(userId));
-        }
-
-        @Override
-        public void clear(String userId) {
-            store.remove(userId);
-        }
-    }
-
-    /** Slack 미접촉 — 미리보기 전송을 고정 ts로 대체한다. */
-    private static final class StubPreviewMessenger extends PreviewMessenger {
-        StubPreviewMessenger() {
-            super(new PreviewBlocks(), null);
-        }
-
-        @Override
-        public String publish(String channelId, PendingNote pending) {
-            return "1720000000.000123";
         }
     }
 

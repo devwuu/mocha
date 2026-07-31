@@ -3,10 +3,9 @@ package com.devwuu.mocha.agent.tool;
 import com.devwuu.mocha.agent.OpenAiChatClient;
 import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
 import com.devwuu.mocha.agent.turn.TurnDraft;
+import com.devwuu.mocha.agent.turn.TurnProposalSink;
 import com.devwuu.mocha.agent.turn.TurnUserMessage;
 import com.devwuu.mocha.repository.NoteRepository;
-import com.devwuu.mocha.repository.PendingStore;
-import com.devwuu.mocha.slack.outbound.PreviewMessenger;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.Clock;
@@ -32,24 +31,26 @@ public class ToolCallbackProvider {
 
     // 0029 TΔ3: 트랜스크립트 주입이 빠졌다 — 제안 성공 접힘이 폐기되며 tool 계층이 대화 문맥을
     // 건드릴 이유가 사라졌다(접힘은 커밋·TTL만, 축적은 라우터 소유).
-    public ToolCallbackProvider(NoteRepository noteRepository, ObjectMapper mapper, PendingStore pendingStore,
-                                PreviewMessenger previewMessenger, RecordProposalValidator recordValidator,
-                                Clock clock) {
+    // 0029 TΔ4: pending 저장소·미리보기 송신 주입이 빠졌다 — 제안이 서버 상태를 쓰지 않고 결과를 돌려주는
+    // 값이 되면서, tool 계층에 남아 있던 마지막 Slack 결합(PreviewMessenger)도 함께 끊겼다(baseline §2.2).
+    public ToolCallbackProvider(NoteRepository noteRepository, ObjectMapper mapper,
+                                RecordProposalValidator recordValidator, Clock clock) {
         this.lookupTools = new NoteLookupTools(noteRepository, mapper);
-        this.proposalTools = new ProposalTools(noteRepository, pendingStore, previewMessenger, recordValidator,
-                mapper, clock);
+        this.proposalTools = new ProposalTools(noteRepository, recordValidator, mapper, clock);
     }
 
     /**
-     * 에이전트 턴 1회에 장착할 tool 목록 — 제안 tool이 pending을 소유할 사용자와, 미리보기를 배달할
-     * 채널, 이번 턴의 사용자 원문({@code utterance} — 다중 날짜 게이트 V-16의 판정 입력), 그리고 작성 중인
-     * 폼 상태({@code draft} — 출처 우선순위 대조 V-6의 판정 입력, 0029 TΔ2)를 턴마다 바인딩한다.
-     * 툴킷은 애플리케이션 수명 객체라 턴별 값은 이 인자로만 유입된다(TΔ2b, findings-TΔ0 §C-2).
+     * 에이전트 턴 1회에 장착할 tool 목록 — 관측 주체({@code userId}), 이번 턴의 사용자 원문
+     * ({@code utterance} — 다중 날짜 게이트 V-16의 판정 입력), 작성 중인 폼 상태({@code draft} — 출처
+     * 우선순위 대조 V-6의 판정 입력, 0029 TΔ2), 그리고 제안 결과를 받아 갈 수거함({@code sink} — TΔ4)을
+     * 턴마다 바인딩한다. 툴킷은 애플리케이션 수명 객체라 턴별 값은 이 인자로만 유입된다
+     * (TΔ2b, findings-TΔ0 §C-2).
      */
-    public List<ToolCallback> forTurn(String userId, String channelId, TurnUserMessage utterance, TurnDraft draft) {
+    public List<ToolCallback> forTurn(String userId, TurnUserMessage utterance, TurnDraft draft,
+                                      TurnProposalSink sink) {
         return List.of(
                 lookupTools.listNotes(),
                 lookupTools.getNote(),
-                proposalTools.proposeRecord(userId, channelId, utterance, draft));
+                proposalTools.proposeRecord(userId, utterance, draft, sink));
     }
 }

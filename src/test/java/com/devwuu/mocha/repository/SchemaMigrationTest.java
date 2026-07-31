@@ -26,9 +26,10 @@ import org.springframework.transaction.annotation.Transactional;
 class SchemaMigrationTest extends PostgresIntegrationTest {
 
     /** TΔ2 §스키마의 10개 테이블. 복수형 → 단수형 개정(사용자 확정 2026-07-31)이 반영된 이름이다. */
+    // 0029 TΔ4: V2가 pending_note를 드롭했다 — 작성 중 데이터는 클라이언트 폼이 소유한다(delta 0029 D-2).
     private static final List<String> TABLES = List.of(
             "note", "note_bean", "note_official_note", "note_alias", "note_source",
-            "entry", "brew", "recipe", "tasting", "pending_note");
+            "entry", "brew", "recipe", "tasting");
 
     @Autowired
     JdbcTemplate jdbc;
@@ -45,11 +46,11 @@ class SchemaMigrationTest extends PostgresIntegrationTest {
                         + " WHERE success = true AND version IS NOT NULL ORDER BY installed_rank",
                 String.class);
 
-        assertThat(versions).containsExactly("1");
+        assertThat(versions).containsExactly("1", "2");
     }
 
     @Test
-    @DisplayName("AC-Δ2: 마이그레이션 산출이 TΔ2 스키마 그대로다 — 테이블 10개")
+    @DisplayName("AC-Δ2: 마이그레이션 산출이 스키마 정의 그대로다 — 테이블 9개(0029 TΔ4에서 pending_note 드롭)")
     void schemaHasAllTables() {
         List<String> tables = jdbc.queryForList(
                 "SELECT table_name FROM information_schema.tables"
@@ -64,6 +65,7 @@ class SchemaMigrationTest extends PostgresIntegrationTest {
     void schemaCarriesConstraints() {
         // 엔티티에는 제약 선언이 0건이라 ddl-auto가 만든 스키마였다면 CHECK·UNIQUE가 통째로 비어 있다.
         // 개수는 TΔ2 판정이 psql로 확인한 값과 같아야 한다(FK 0 = ADR-75).
+        // 0029 TΔ4: pending_note 드롭으로 pk 10 → 9, ck 15 → 13(mode·match_type CHECK 2종이 함께 사라졌다).
         Map<String, Object> byType = jdbc.queryForMap(
                 "SELECT count(*) FILTER (WHERE contype = 'p') AS pk,"
                         + " count(*) FILTER (WHERE contype = 'u') AS uq,"
@@ -73,8 +75,8 @@ class SchemaMigrationTest extends PostgresIntegrationTest {
                         + " JOIN pg_class t ON t.oid = c.conrelid"
                         + " WHERE n.nspname = 'test' AND t.relname <> 'flyway_schema_history'");
 
-        assertThat(byType).containsEntry("pk", 10L).containsEntry("uq", 6L)
-                .containsEntry("ck", 15L).containsEntry("fk", 0L);
+        assertThat(byType).containsEntry("pk", 9L).containsEntry("uq", 6L)
+                .containsEntry("ck", 13L).containsEntry("fk", 0L);
     }
 
     @Test

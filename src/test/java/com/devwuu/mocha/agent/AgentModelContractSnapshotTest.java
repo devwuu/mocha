@@ -3,6 +3,7 @@ package com.devwuu.mocha.agent;
 import com.devwuu.mocha.agent.prompt.AgentSystemPrompt;
 import com.devwuu.mocha.agent.tool.ToolCallback;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
+import com.devwuu.mocha.agent.turn.TurnProposalSink;
 import com.devwuu.mocha.agent.turn.TurnUserMessage;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -44,14 +45,14 @@ class AgentModelContractSnapshotTest {
 
     /**
      * 현행 계약의 결정론 직렬화 — {@code forTurn}이 장착하는 순서 그대로 tool 정의를 늘어놓고
-     * 시스템 프롬프트로 닫는다. 턴별 인자(userId·channelId·utterance)는 executor 클로저에만 쓰이고
+     * 시스템 프롬프트로 닫는다. 턴별 인자(userId·utterance·draft·수거함)는 executor 클로저에만 쓰이고
      * 정의(name·description·schema)에는 영향이 없다 — 더미로 충분하다.
      */
     private static String serializeCurrentContract() {
         // 협력자는 전부 null — executor는 호출하지 않고 정의만 캡처한다(정의는 협력자 무관 상수).
         ToolCallbackProvider toolkit = toolkit().build();
-        List<ToolCallback> tools = toolkit.forTurn("U-snapshot", "C-snapshot",
-                new TurnUserMessage("스냅샷", null), null);
+        List<ToolCallback> tools = toolkit.forTurn("U-snapshot",
+                new TurnUserMessage("스냅샷", null), null, new TurnProposalSink());
 
         StringBuilder contract = new StringBuilder();
         for (ToolCallback tool : tools) {

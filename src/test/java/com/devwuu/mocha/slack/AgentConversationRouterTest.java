@@ -11,22 +11,12 @@ import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
 import com.devwuu.mocha.agent.prompt.TurnPrompt;
 import com.devwuu.mocha.agent.tool.ToolCallback;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
-import com.devwuu.mocha.domain.Brew;
-import com.devwuu.mocha.domain.Entry;
-import com.devwuu.mocha.domain.MatchInfo;
-import com.devwuu.mocha.domain.Note;
-import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.domain.PhotoBuffer;
-import com.devwuu.mocha.domain.Rating;
-import com.devwuu.mocha.domain.Source;
-import com.devwuu.mocha.domain.Sourced;
-import com.devwuu.mocha.domain.Tasting;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.llm.PhotoInfoExtractor;
 import com.devwuu.mocha.llm.UtteranceSegmenter;
 import com.devwuu.mocha.llm.VisionExtraction;
 import com.devwuu.mocha.llm.VisionHint;
-import com.devwuu.mocha.repository.PendingStore;
 import com.devwuu.mocha.repository.PhotoBufferStore;
 import com.devwuu.mocha.repository.PhotoStore;
 import com.devwuu.mocha.repository.StagedImage;
@@ -56,15 +46,18 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 import static com.devwuu.mocha.agent.tool.ToolCallbackProviderFixture.toolkit;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * TΔ7b(changes/0018): 라우터 배선 + 결정론 폴백 — 버튼 외 수신 = OCR 전처리 → 에이전트 턴(ADR-44·47),
- * 버튼 = 에이전트 미경유 결정론 분기(AC-Δ7), 턴 실패 = pending 무변화 + 재요청 안내(ADR-48, AC-63).
- * 커밋 경로는 {@link SlackCommitHandler} 직접 배선(TΔ8a — flow 3종 미경유, AC-Δ3).
- * 외부 의존(모델·store·커밋 핸들러)은 전부 fake — LLM 판단 자체는 비대상(모듈 CLAUDE.md §5.2·5.3).
+ * TΔ7b(changes/0018): 라우터 배선 + 결정론 폴백 — 텍스트 수신 = OCR 전처리 → 에이전트 턴(ADR-44·47),
+ * 턴 실패 = 상태 무변화 + 재요청 안내(ADR-48, AC-63).
+ * 외부 의존(모델·store)은 전부 fake — LLM 판단 자체는 비대상(모듈 CLAUDE.md §5.2·5.3).
+ * <p>0029 TΔ4에서 버튼 커밋 분기가 사라졌다 — 확인 미리보기가 pending과 함께 폐기돼 도달할 action_id가
+ * 없다(delta 0029 D-2). "제안 성공"의 관측 창도 pending 저장소에서 {@code TurnProposalSink}로 옮겨졌고,
+ * 그 결과 이 테스트의 제안 시뮬레이션은 <b>실제 propose_record tool을 실행</b>하는 형태가 됐다.
  */
 class AgentConversationRouterTest {
 
@@ -74,10 +67,8 @@ class AgentConversationRouterTest {
 
     private final Clock clock = Clock.fixed(Instant.parse("2026-07-17T01:20:30Z"), SEOUL); // Seoul 10:20:30
     private final FakeChatClient chatClient = new FakeChatClient();
-    private final FakePendingStore pendingStore = new FakePendingStore();
     private final FoldingChatMemory transcript = new FoldingChatMemory(20, Duration.ofHours(1), clock);
     private final RecordingResponder responder = new RecordingResponder();
-    private final CapturingCommitHandler commitHandler = new CapturingCommitHandler();
     private final FakePhotoStore photoStore = new FakePhotoStore();
     private final FakePhotoBufferStore photoBufferStore = new FakePhotoBufferStore();
     private final StubPhotoInfoExtractor photoInfoExtractor = new StubPhotoInfoExtractor();
@@ -90,18 +81,18 @@ class AgentConversationRouterTest {
         logs = new ListAppender<>();
         logs.start();
         ((Logger) LoggerFactory.getLogger(AgentConversationRouter.class)).addAppender(logs);
-        SlackPhotoIntake photoIntake = new SlackPhotoIntake(pendingStore, responder,
+        SlackPhotoIntake photoIntake = new SlackPhotoIntake(responder,
                 url -> jpegBytes(), photoStore, photoBufferStore, photoInfoExtractor,
                 Duration.ofMinutes(3), clock);
-        // fake ChatClient는 tool 실행기를 부르지 않으므로 lookup·제안 협력자는 미접촉 — 장착 목록 계약만 쓴다.
+        // 매퍼·시계만 실물이다 — 제안 시뮬레이션이 propose_record를 실제로 실행하므로 검증기가 필요하고
+        // (시계에서 파생), match=new 경로는 노트 저장소를 접지 않아 null로 남겨 미접촉 신호를 유지한다.
         ToolCallbackProvider toolCallbackProvider = toolkit()
                 .mapper(MochaObjectMapper.create())
-                .pendingStore(pendingStore)
                 .clock(clock)
                 .build();
-        router = new AgentConversationRouter(pendingStore, transcript, chatClient, toolCallbackProvider,
+        router = new AgentConversationRouter(transcript, chatClient, toolCallbackProvider,
                 new TurnPromptAssembler(MochaObjectMapper.create(), clock), segmenter, photoIntake,
-                responder, commitHandler, clock);
+                responder, clock);
     }
 
     @AfterEach
@@ -142,46 +133,31 @@ class AgentConversationRouterTest {
     }
 
     @Test
-    @DisplayName("AC-Δ7/AC-63/ADR-48: 턴 실패 폴백 — pending·트랜스크립트 무변화 + 재요청 안내 전송")
+    @DisplayName("AC-63/ADR-48: 턴 실패 폴백 — 트랜스크립트 무변화 + 재요청 안내 전송")
     void agentFailureFallsBackWithoutStateChange() {
-        PendingNote pending = pendingNote();
-        pendingStore.put(USER, pending);
         transcript.append(USER, new TranscriptTurn("이 커피 뭐더라", "찾아볼게요 멍"));
         chatClient.failure = new AgentException("tool 호출 상한(8) 도달 — 턴 중단");
 
         router.onMessage(message("어제 마신 예가체프 새콤했어"));
 
-        assertThat(pendingStore.get(USER)).contains(pending); // pending 무변화
         assertThat(responder.posted).containsExactly(MochaMessages.AGENT_TURN_FAILED);
         assertThat(transcript.view(USER)).hasSize(1);         // 실패 턴은 문맥에 쌓지 않는다
     }
 
     @Test
-    @DisplayName("AC-Δ7/AC-Δ3/ADR-3: [저장]/[취소] 버튼은 에이전트 미경유 — 커밋 핸들러 직접 분기(TΔ8a) + 커밋 접힘(ADR-46 규칙 ②)")
-    void buttonActionsBypassAgent() {
+    @DisplayName("0029 TΔ4: 버튼 액션은 도달하지 않는 경로 — 어떤 action_id도 상태를 바꾸지 않는다")
+    void buttonActionsAreInert() {
+        // 구 [저장]/[취소] 분기의 자리다. 버튼을 실은 확인 미리보기가 pending과 함께 폐기돼 이 경로로
+        // 들어올 것이 없고, 저장 확정은 앱의 폼이 가져간다(TΔ6). 커밋 접힘도 그때 거기서 다시 선다.
         transcript.append(USER, new TranscriptTurn("잡담", "네 멍"));
-        router.onAction(action(AgentConversationRouter.ACTION_SAVE));
 
-        assertThat(commitHandler.saves).hasSize(1);
-        assertThat(chatClient.calls).isZero();
-        assertThat(transcript.view(USER)).isEmpty(); // SAVE_COMMIT 접힘
-
-        transcript.append(USER, new TranscriptTurn("잡담 둘", "네 멍"));
-        router.onAction(action(AgentConversationRouter.ACTION_CANCEL));
-
-        assertThat(commitHandler.cancels).hasSize(1);
-        assertThat(chatClient.calls).isZero();
-        assertThat(transcript.view(USER)).isEmpty(); // CANCEL_COMMIT 접힘
-    }
-
-    @Test
-    @DisplayName("계약 밖 action_id는 무시 — 커밋 핸들러·에이전트 미호출(구 라우터 규칙 승계)")
-    void unknownActionIsIgnored() {
+        router.onAction(action("mocha_save"));
+        router.onAction(action("mocha_cancel"));
         router.onAction(action("mocha_unknown"));
 
-        assertThat(commitHandler.saves).isEmpty();
-        assertThat(commitHandler.cancels).isEmpty();
         assertThat(chatClient.calls).isZero();
+        assertThat(transcript.view(USER)).hasSize(1); // 접힘 미발동 — 문맥은 TTL까지 남는다
+        assertThat(responder.posted).isEmpty();
     }
 
     @Test
@@ -191,7 +167,7 @@ class AgentConversationRouterTest {
         router.onMedia(new IncomingMedia(USER, CHANNEL, List.of(photo)));
 
         assertThat(photoStore.staged.get(USER)).extracting(StagedImage::name).containsExactly("bag.jpg");
-        assertThat(photoBufferStore.get(USER)).isPresent(); // pending 없음 → 버퍼에 담아 텍스트를 기다린다
+        assertThat(photoBufferStore.get(USER)).isPresent(); // 버퍼에 담아 뒤이을 텍스트를 기다린다(TΔ4 이후 단일 경로)
         assertThat(chatClient.calls).isZero();
     }
 
@@ -205,7 +181,7 @@ class AgentConversationRouterTest {
 
         assertThat(photoInfoExtractor.calls).isEqualTo(1);
         assertThat(chatClient.lastContext.instructions()).contains("Kenya AA"); // OCR 결과 주입(TΔ7a)
-        // 제안 없는 턴 — 버퍼는 남아 윈도우 안 후속 텍스트가 다시 흡수한다(소비는 pending 이관 시점).
+        // 제안 없는 턴 — 버퍼는 남아 윈도우 안 후속 텍스트가 다시 흡수한다(소비는 제안 성공 시점).
         assertThat(photoBufferStore.get(USER)).isPresent();
     }
 
@@ -214,8 +190,11 @@ class AgentConversationRouterTest {
     void proposalTurnAccumulatesTranscriptAndConsumesBuffer() {
         bufferPhoto("bag.jpg");
         transcript.append(USER, new TranscriptTurn("이 커피 뭐더라", "찾아볼게요 멍"));
-        // 제안 tool 성공 효과 시뮬레이션(TΔ6 계약) — pending만 생긴다. tool은 더 이상 접지 않는다(TΔ3).
-        chatClient.onRun = () -> pendingStore.put(USER, pendingNote());
+        // 제안 tool을 실제로 실행해 수거함을 채운다 — 라우터가 만든 sink는 tool 콜백 안에만 있으므로,
+        // "제안이 성공했다"를 밖에서 흉내 낼 자리가 TΔ4 이후 없다(그 자체가 서버 상태 소멸의 결과다).
+        chatClient.onRun = tools -> tools.stream()
+                .filter(tool -> tool.name().equals("propose_record")).findFirst().orElseThrow()
+                .executor().execute(PROPOSE_RECORD_ARGS);
 
         router.onMessage(message("어제 마신 걸로 기록해줘"));
 
@@ -224,7 +203,7 @@ class AgentConversationRouterTest {
         assertThat(transcript.view(USER)).containsExactly(
                 new TranscriptTurn("이 커피 뭐더라", "찾아볼게요 멍"),
                 new TranscriptTurn("어제 마신 걸로 기록해줘", chatClient.reply));
-        assertThat(photoBufferStore.get(USER)).isEmpty(); // 사진은 pending으로 이관 — 버퍼 소비
+        assertThat(photoBufferStore.get(USER)).isEmpty(); // 사진이 제안에 실렸다 — 버퍼 소비
     }
 
     @Test
@@ -286,6 +265,20 @@ class AgentConversationRouterTest {
 
     // ---- 헬퍼 ----
 
+    /** 제안 성공 턴 시뮬레이션용 propose_record 인자 — 검증(V-1·5·8·11·14·15·16)을 통과하는 최소 형태. */
+    private static final String PROPOSE_RECORD_ARGS = """
+            {
+              "coffee_name": {"value": "커피베라 예가체프 G1", "source": "user"},
+              "roastery": {"value": "커피베라", "source": "user"},
+              "beans": [], "roast_level": null, "official_notes": null,
+              "brews": [{"recipe": null, "tasting": {
+                "my_taste": "새콤하고 좋았음", "my_taste_original": "새콤하고 좋았다", "rating": "맛있다"}}],
+              "target_date": "2026-07-16",
+              "match": {"type": "new", "note_id": null, "date": null},
+              "sources": []
+            }
+            """;
+
     private static IncomingMessage message(String text) {
         return new IncomingMessage(USER, CHANNEL, text);
     }
@@ -304,23 +297,13 @@ class AgentConversationRouterTest {
         photoStore.staged.put(USER, List.of(new StagedImage(stagedName, new byte[]{1})));
     }
 
-    private static PendingNote pendingNote() {
-        OffsetDateTime at = OffsetDateTime.parse("2026-07-16T10:00:00+09:00");
-        Entry entry = new Entry(LocalDate.of(2026, 7, 16),
-                List.of(new Brew(null, new Tasting("새콤하고 좋았음", null, Rating.GOOD))), at);
-        Note draft = new Note(1L, new Sourced<>("커피베라 예가체프 G1", Source.USER),
-                new Sourced<>("커피베라", Source.USER),
-                List.of(), null, null, List.of(), List.of(entry), at, at);
-        return new PendingNote(draft, MatchInfo.newNote(), "1720000000.000789", at);
-    }
-
     // ---- fakes (모듈 CLAUDE.md §5.2 — 외부 의존은 인터페이스 stub/fake) ----
 
     /** 턴 입력을 캡처하고 지정된 응답·실패를 돌려주는 fake 루프 드라이버 — LLM 미접촉. */
     private static final class FakeChatClient implements ChatClient {
         String reply = "네 멍!";
         RuntimeException failure;
-        Runnable onRun;
+        Consumer<List<ToolCallback>> onRun;
         int calls;
         TurnPrompt lastContext;
         List<ToolCallback> lastTools;
@@ -331,31 +314,12 @@ class AgentConversationRouterTest {
             lastContext = context;
             lastTools = tools;
             if (onRun != null) {
-                onRun.run();
+                onRun.accept(tools);
             }
             if (failure != null) {
                 throw failure;
             }
             return reply;
-        }
-    }
-
-    private static final class FakePendingStore implements PendingStore {
-        private final Map<String, PendingNote> pendings = new LinkedHashMap<>();
-
-        @Override
-        public void put(String userId, PendingNote pending) {
-            pendings.put(userId, pending);
-        }
-
-        @Override
-        public Optional<PendingNote> get(String userId) {
-            return Optional.ofNullable(pendings.get(userId));
-        }
-
-        @Override
-        public void clear(String userId) {
-            pendings.remove(userId);
         }
     }
 
@@ -372,33 +336,9 @@ class AgentConversationRouterTest {
         public void postImage(String channelId, Path imagePath, String caption) {
             throw new UnsupportedOperationException("에이전트 라우터는 이미지 배달을 직접 하지 않는다");
         }
-
-        @Override
-        public void finalizePreview(String channelId, PendingNote pending, String statusText) {
-            throw new UnsupportedOperationException("버튼 소진은 SlackCommitHandler의 몫(TΔ8a)");
-        }
     }
 
     /** 버튼 분기만 캡처하는 커밋 핸들러 스텁 — 커밋 체인 자체는 SlackCommitHandlerTest가 본다(TΔ8a). */
-    private static final class CapturingCommitHandler extends SlackCommitHandler {
-        final List<IncomingAction> saves = new ArrayList<>();
-        final List<IncomingAction> cancels = new ArrayList<>();
-
-        CapturingCommitHandler() {
-            super(null, null, null, null, null, null); // 캡처 전용 — 실 협력자 미접촉
-        }
-
-        @Override
-        void confirmSave(IncomingAction action) {
-            saves.add(action);
-        }
-
-        @Override
-        void cancel(IncomingAction action) {
-            cancels.add(action);
-        }
-    }
-
     private static final class FakePhotoBufferStore implements PhotoBufferStore {
         private final Map<String, PhotoBuffer> buffers = new LinkedHashMap<>();
 

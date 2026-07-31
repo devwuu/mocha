@@ -2,8 +2,6 @@ package com.devwuu.mocha.agent.tool;
 
 import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
 import com.devwuu.mocha.repository.NoteRepository;
-import com.devwuu.mocha.repository.PendingStore;
-import com.devwuu.mocha.slack.outbound.PreviewMessenger;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.Clock;
@@ -18,7 +16,8 @@ import java.time.Clock;
  * <p>예외는 기록 검증기다 — 제안 tool을 쓰는 테스트가 전부 같은 줄을 반복하던 자리라 프로덕션
  * 배선(RouterConfig)과 같은 조합을 기본값으로 만든다: {@link #clock(Clock)} 지정 시 파생된다. 다른
  * 검증기가 필요하면 {@link #recordValidator(RecordProposalValidator)}로 덮는다. 수정 검증기는
- * {@code propose_edit}과 함께 폐기됐다(0029 TΔ1).
+ * {@code propose_edit}과 함께 폐기됐고(0029 TΔ1), pending 저장소·미리보기 송신은 제안이 서버 상태를
+ * 쓰지 않게 되며 협력자 목록에서 빠졌다(0029 TΔ4).
  * <p>{@link ToolCallbackProviderTest}는 실 협력자 조립 자체가 검증 대상이라 생성자 직접 호출을 유지한다 —
  * 위치 인자 배선이 어긋나면 픽스처 경유 테스트는 함께 눈이 멀기 때문에, 원 생성자를 그대로 통과시키는
  * 지점을 하나 남긴다(R-7 명시 예외).
@@ -27,8 +26,6 @@ public final class ToolCallbackProviderFixture {
 
     private NoteRepository noteRepository;
     private ObjectMapper mapper;
-    private PendingStore pendingStore;
-    private PreviewMessenger previewMessenger;
     private RecordProposalValidator recordValidator;
     private Clock clock;
 
@@ -50,16 +47,6 @@ public final class ToolCallbackProviderFixture {
         return this;
     }
 
-    public ToolCallbackProviderFixture pendingStore(PendingStore pendingStore) {
-        this.pendingStore = pendingStore;
-        return this;
-    }
-
-    public ToolCallbackProviderFixture previewMessenger(PreviewMessenger previewMessenger) {
-        this.previewMessenger = previewMessenger;
-        return this;
-    }
-
     public ToolCallbackProviderFixture recordValidator(RecordProposalValidator recordValidator) {
         this.recordValidator = recordValidator;
         return this;
@@ -75,7 +62,6 @@ public final class ToolCallbackProviderFixture {
         // 기록 검증기는 시계 파생 — 시계 미지정이면 null로 남겨 "지정 안 한 협력자" 신호를 유지한다.
         RecordProposalValidator record = recordValidator != null ? recordValidator
                 : clock != null ? new RecordProposalValidator(clock) : null;
-        return new ToolCallbackProvider(noteRepository, mapper, pendingStore, previewMessenger,
-                record, clock);
+        return new ToolCallbackProvider(noteRepository, mapper, record, clock);
     }
 }

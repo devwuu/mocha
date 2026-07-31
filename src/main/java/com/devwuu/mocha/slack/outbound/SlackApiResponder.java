@@ -1,20 +1,16 @@
 package com.devwuu.mocha.slack.outbound;
 
-import com.devwuu.mocha.domain.PendingNote;
 import com.slack.api.methods.MethodsClient;
 import com.slack.api.methods.SlackApiException;
 import com.slack.api.methods.SlackFilesUploadV2Exception;
 import com.slack.api.methods.response.chat.ChatPostMessageResponse;
-import com.slack.api.methods.response.chat.ChatUpdateResponse;
 import com.slack.api.methods.response.files.FilesUploadV2Response;
-import com.slack.api.model.block.LayoutBlock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.List;
 
 /**
  * {@link SlackResponder} 구현 — bot token 기반 {@link MethodsClient}로 안내 메시지·카드 이미지를 전송한다
@@ -29,11 +25,9 @@ public class SlackApiResponder implements SlackResponder {
     private static final Logger log = LoggerFactory.getLogger(SlackApiResponder.class);
 
     private final MethodsClient methods;
-    private final PreviewBlocks previewBlocks;
 
-    public SlackApiResponder(MethodsClient methods, PreviewBlocks previewBlocks) {
+    public SlackApiResponder(MethodsClient methods) {
         this.methods = methods;
-        this.previewBlocks = previewBlocks;
     }
 
     @Override
@@ -63,32 +57,6 @@ public class SlackApiResponder implements SlackResponder {
             }
         } catch (IOException | SlackApiException | SlackFilesUploadV2Exception e) {
             throw new IllegalStateException("카드 이미지 업로드 중 오류: channel=" + channelId, e);
-        }
-    }
-
-    @Override
-    public void finalizePreview(String channelId, PendingNote pending, String statusText) {
-        // POLICY: 저장/취소 처리 완료 시 미리보기 버튼 제거(1회 소진) — 필드 내용 유지 + 상태 문구 교체.
-        //         갱신 실패는 커밋을 되돌리지 않는다 (ref: plan.md#ADR-20, AC-22).
-        String previewTs = pending.previewTs();
-        if (previewTs == null) {
-            // publish 성공 후 재저장 전에 죽은 극단 케이스 — 갱신할 대상 메시지가 없다. 조용히 건너뛴다.
-            log.debug("버튼 소진 건너뜀 — preview_ts 없음: channel={}", channelId);
-            return;
-        }
-        try {
-            List<LayoutBlock> blocks = previewBlocks.buildFinalized(pending, statusText);
-            ChatUpdateResponse res = methods.chatUpdate(r -> r
-                    .channel(channelId)
-                    .ts(previewTs)
-                    .text(PreviewBlocks.FALLBACK_TEXT)
-                    .blocks(blocks));
-            if (!res.isOk()) {
-                log.warn("미리보기 버튼 소진 실패: channel={} ts={} error={}", channelId, previewTs, res.getError());
-            }
-        } catch (Exception e) {
-            // 커밋·배달은 이미 끝났다 — 버튼 소진 실패는 로그로만 남기고 흐름을 끊지 않는다(ADR-20, plan.md §7).
-            log.warn("미리보기 버튼 소진 중 오류: channel={} ts={}", channelId, previewTs, e);
         }
     }
 }

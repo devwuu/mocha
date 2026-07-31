@@ -3,6 +3,7 @@ package com.devwuu.mocha.eval;
 import com.devwuu.mocha.agent.tool.ToolCallback;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
 import com.devwuu.mocha.agent.turn.TurnDraft;
+import com.devwuu.mocha.agent.turn.TurnProposalSink;
 import com.devwuu.mocha.agent.turn.TurnUserMessage;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -10,6 +11,7 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * tool 호출 기록 데코레이터 — 실 {@link ToolCallbackProvider}가 장착한 tool 목록을 그대로 감싸,
@@ -22,24 +24,32 @@ import java.util.List;
  * <p>기록이 판정의 절반이다: {@code onMessage}가 예외를 삼키는 구조라(findings-TΔ0 §1.1) "무엇이 왜
  * 거부됐나"는 tool 결과에만 남는다. 거부는 프로덕션이 한 형태로만 내보내므로({@code {"error": 사유}} —
  * ADR-67 단일 지점) 여기서 사유를 그대로 회수할 수 있다.
+ *
+ * <p>0029 TΔ4부터 <b>제안 결과 수거함도 여기서 잡는다</b>. 라우터가 턴마다 {@link TurnProposalSink}를
+ * 새로 만들어 {@code forTurn} 인자로 넘기므로, 그 인자를 붙들어 두는 것이 하네스가 "무엇이 제안됐나"를
+ * 볼 수 있는 유일한 자리다 — pending이 사라진 뒤로는 사후 상태를 뜰 저장소가 없기 때문이다.
  */
 final class RecordingToolCallbacks extends ToolCallbackProvider {
 
     private final ToolCallbackProvider delegate;
     private final ObjectMapper mapper;
     private final List<Invocation> invocations = new ArrayList<>();
+    // 턴마다 새로 오는 수거함 — 마지막 것만 붙든다(멀티턴의 판정 대상은 최종 상태다).
+    private TurnProposalSink lastSink;
 
     RecordingToolCallbacks(ToolCallbackProvider delegate, ObjectMapper mapper) {
         // 상위 조립물은 쓰지 않는다 — 전 호출을 delegate로 넘긴다. 미접촉을 null로 정직하게 남기는
         // 픽스처 관례와 같은 정신(협력자를 조용히 끼워 넣어 경로를 가리지 않는다).
-        super(null, null, null, null, null, null);
+        super(null, null, null, null);
         this.delegate = delegate;
         this.mapper = mapper;
     }
 
     @Override
-    public List<ToolCallback> forTurn(String userId, String channelId, TurnUserMessage utterance, TurnDraft draft) {
-        return delegate.forTurn(userId, channelId, utterance, draft).stream()
+    public List<ToolCallback> forTurn(String userId, TurnUserMessage utterance, TurnDraft draft,
+                                      TurnProposalSink sink) {
+        this.lastSink = sink;
+        return delegate.forTurn(userId, utterance, draft, sink).stream()
                 .map(this::recording)
                 .toList();
     }
@@ -47,6 +57,14 @@ final class RecordingToolCallbacks extends ToolCallbackProvider {
     /** 지금까지 이 케이스 실행에서 기록된 호출 — 발화 시퀀스 전체에 걸쳐 누적된다(멀티턴 판정 단위). */
     List<Invocation> invocations() {
         return List.copyOf(invocations);
+    }
+
+    /**
+     * 마지막 턴의 제안 결과 — 멀티턴 케이스에서는 최종 턴의 것이다(이전 턴 제안은 후속 턴이 대체한다).
+     * 턴이 한 번도 돌지 않았거나 제안이 없었으면 빈 값.
+     */
+    Optional<TurnDraft> proposal() {
+        return lastSink == null ? Optional.empty() : lastSink.proposal();
     }
 
     private ToolCallback recording(ToolCallback original) {
@@ -81,7 +99,7 @@ final class RecordingToolCallbacks extends ToolCallbackProvider {
      * tool 호출 1회 기록.
      *
      * @param name            tool 이름.
-     * @param argumentsJson   모델이 보낸 인자 JSON — 거부된 호출은 pending에 흔적이 없어 여기서만 볼 수 있다.
+     * @param argumentsJson   모델이 보낸 인자 JSON — 거부된 호출은 제안 결과에 흔적이 없어 여기서만 볼 수 있다.
      * @param resultJson      tool이 돌려준 결과 JSON.
      * @param rejectionReason 검증 거부 사유. 거부가 아니면 null.
      */

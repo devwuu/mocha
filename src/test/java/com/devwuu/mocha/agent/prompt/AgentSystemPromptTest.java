@@ -23,24 +23,24 @@ class AgentSystemPromptTest {
         assertThat(PROMPT).contains("모카");
         assertThat(PROMPT).contains("~멍");
         assertThat(PROMPT).contains("커피 관련 잡담은 모카 톤으로 받아주되 tool을 호출하지 않는다");
-        assertThat(PROMPT).contains("잡담 턴은 확인 대기(pending)·노트를 만들지 않는다");
+        assertThat(PROMPT).contains("잡담 턴은 제안·노트를 만들지 않는다");
         assertThat(PROMPT).contains("커피와 무관한 주제는 짧게 선을 긋는다");
         assertThat(PROMPT).contains("즉시 tool 흐름으로 전환한다");
     }
 
     @Test
-    @DisplayName("ADR-45/ADR-3: 커밋 경계 — 제안은 pending까지, 저장은 [저장] 버튼만")
+    @DisplayName("ADR-45/ADR-3: 커밋 경계 — 제안은 폼을 채우는 데까지, 저장은 사용자 확정만(0029 TΔ4)")
     void encodesCommitBoundary() {
-        assertThat(PROMPT).contains("제안의 효과는 확인 대기(pending)+미리보기까지다");
-        assertThat(PROMPT).contains("저장(커밋)은 사용자의 [저장] 버튼만 한다");
+        assertThat(PROMPT).contains("제안의 효과는 사용자의 작성 폼을 채우는 데까지다");
+        assertThat(PROMPT).contains("저장(커밋)은 사용자의 [저장] 확정만 한다");
         assertThat(PROMPT).contains("저장이 완료됐다고 스스로 선언하지 마라");
     }
 
     @Test
-    @DisplayName("FR-21/AC-Δ1: 명확한 대상은 되묻지 않고 즉시 propose — 미리보기+버튼이 곧 확인")
+    @DisplayName("FR-21/AC-Δ1: 명확한 대상은 되묻지 않고 즉시 propose — 폼+[저장]이 곧 확인")
     void encodesImmediateProposeForClearTargets() {
         assertThat(PROMPT).contains("추가 확인 질문 없이 즉시 제안(propose)한다");
-        assertThat(PROMPT).contains("미리보기+[저장] 버튼이 곧 확인이다");
+        assertThat(PROMPT).contains("작성 폼+[저장]이 곧 확인이다");
     }
 
     @Test
@@ -105,9 +105,10 @@ class AgentSystemPromptTest {
     @Test
     @DisplayName("FR-15·22/AC-77·AC-Δ2: 다중 날짜 발화는 순차 제안 — 이른 날짜만 제안 + 나머지 저장 후 이어서 안내, 근거 포함")
     void encodesMultiDateSequentialProposal() {
-        // changes/0023 ADR-61: 구 "분리 안내"에서 개정 — 문구는 명령이 아니라 근거(pending 단일 대기 →
-        // 한 번에 하나만 저장 가능 → 가장 이른 날짜부터)를 담는다(ADR-60 사유 정보량 원칙의 프롬프트 측 적용).
-        assertThat(PROMPT).contains("한 번에 하나만 저장할 수 있으니");
+        // changes/0023 ADR-61: 구 "분리 안내"에서 개정 — 문구는 명령이 아니라 근거(폼은 엔트리 1건 →
+        // 가장 이른 날짜부터)를 담는다(ADR-60 사유 정보량 원칙의 프롬프트 측 적용). 0029 TΔ4에서 근거가
+        // "pending 단일 대기"에서 "작성 폼 1건"으로 바뀌었다 — 규칙은 같고 소유자가 옮겨졌다.
+        assertThat(PROMPT).contains("작성 폼은 한 번에 한 건(엔트리 1건)만 담을 수 있으니");
         assertThat(PROMPT).contains("active_date(가장 이른 날짜) 세그먼트");
         assertThat(PROMPT).contains("나머지 날짜는 저장 후 이어서 제안하겠다는 안내를 담는다");
         assertThat(PROMPT).contains("다른 날짜의 시도를 한 날짜의 회차로 합치지도 마라");

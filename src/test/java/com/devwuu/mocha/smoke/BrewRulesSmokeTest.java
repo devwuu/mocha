@@ -4,17 +4,15 @@ import com.devwuu.mocha.agent.OpenAiChatClient;
 import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
 import com.devwuu.mocha.agent.prompt.TurnPrompt;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
+import com.devwuu.mocha.agent.turn.TurnDraft;
+import com.devwuu.mocha.agent.turn.TurnProposalSink;
 import com.devwuu.mocha.agent.turn.TurnUserMessage;
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
-import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.repository.NoteRepository;
-import com.devwuu.mocha.repository.PendingStore;
-import com.devwuu.mocha.slack.outbound.PreviewBlocks;
-import com.devwuu.mocha.slack.outbound.PreviewMessenger;
 import com.openai.client.OpenAIClient;
 import com.openai.client.okhttp.OpenAIOkHttpClient;
 import org.junit.jupiter.api.Tag;
@@ -29,9 +27,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 
@@ -46,17 +42,16 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  *   <li>AC-74·75: {@code ideas/sample.md} 07-18 발화 → 회차 2개, 시도별 레시피·feedback과 맛 감상(tasting) 분리</li>
  *   <li>AC-66·76: grind {@code "210클릭 (매버릭 2.0)"} 형식, "10ml정도"→10·"2분 40초"→160 number 정규화</li>
  *   <li>AC-Δ2(AC-77 개정): 두 날짜(07-18·07-19) 발화 + 세그먼트 컨텍스트 → 이른 날짜(07-18) 제안 +
- *       나머지(07-19) "저장 후 이어서" 안내. 세그먼트 부재(분해 실패 폴백) 턴은 pending 미생성 + 분리 안내</li>
+ *       나머지(07-19) "저장 후 이어서" 안내. 세그먼트 부재(분해 실패 폴백) 턴은 제안 미생성 + 분리 안내</li>
  * </ul>
  * <p>단언하지 않는다 — 모델 출력이라 판정은 로그로 한다(CLAUDE.md §5.3 관측). 협력자는 인메모리 fake라
- * 파일·Slack 접촉이 없고, pending draft의 brews 배열이 관측 대상이다.
+ * 파일·Slack 접촉이 없고, 제안 결과 draft의 brews 배열이 관측 대상이다.
  * 기본 test 제외(@Tag("openai")), 실행은 온디맨드 Test 태스크로만.
  */
 @Tag("openai")
 class BrewRulesSmokeTest {
 
     private static final String USER = "U-smoke";
-    private static final String CHANNEL = "C-smoke";
 
     /** AC-74·75 — 같은 날 2회 시도 실사용 샘플(07-18 부분) → 회차 2개·감상/피드백 분리 관측. */
     @Test
@@ -78,16 +73,16 @@ class BrewRulesSmokeTest {
     /** AC-Δ2(TΔ3d) — 두 날짜 발화 + 세그먼트 컨텍스트 → 이른 날짜(07-18) 제안 + 나머지(07-19) 저장 후 이어서 안내 관측. */
     @Test
     void printsSequentialProposalForSegmentedMultiDate() throws Exception {
-        // 기대: pending 생성 — draft 최신 엔트리 date=2026-07-18(active_date만 제안) + 최종 응답에 07-19를
+        // 기대: 제안 생성 — draft 최신 엔트리 date=2026-07-18(active_date만 제안) + 최종 응답에 07-19를
         //       저장 후 이어서 제안하겠다는 안내. 세그먼트는 수동 분할로 대체(결정론·비용 절약) — 실 세그먼터
         //       매핑·실패 경로는 OpenAiUtteranceSegmenterTest가 모킹으로 검증한다(§5.2 어댑터 전략).
         runProposalSmoke("MULTI-DATE SEQUENTIAL PROPOSAL (AC-Δ2)", sampleWhole(), sampleSegments());
     }
 
-    /** AC-Δ2 폴백 — 두 날짜 발화인데 세그먼트 부재(분해 실패 턴) → pending 미생성 + 분리 안내 관측. */
+    /** AC-Δ2 폴백 — 두 날짜 발화인데 세그먼트 부재(분해 실패 턴) → 제안 미생성 + 분리 안내 관측. */
     @Test
     void printsMultiDateFallbackGuidanceWithoutSegments() throws Exception {
-        // 기대: pending 없음(제안 tool 미호출 — 호출해도 V-16 게이트가 거부) + "한 날짜씩 나눠 보내달라" 폴백 응답.
+        // 기대: 제안 없음(제안 tool 미호출 — 호출해도 V-16 게이트가 거부) + "한 날짜씩 나눠 보내달라" 폴백 응답.
         runProposalSmoke("MULTI-DATE FALLBACK (AC-Δ2 폴백)", sampleWhole(), null);
     }
 
@@ -100,12 +95,10 @@ class BrewRulesSmokeTest {
         ObjectMapper mapper = MochaObjectMapper.create();
         Clock clock = Clock.fixed(Instant.parse("2026-07-21T01:00:00Z"), ZoneId.of("Asia/Seoul"));
 
-        InMemoryPendingStore pendingStore = new InMemoryPendingStore();
+        TurnProposalSink proposals = new TurnProposalSink();
         ToolCallbackProvider toolkit = toolkit()
                 .noteRepository(new EmptyNoteRepository())
                 .mapper(mapper)
-                .pendingStore(pendingStore)
-                .previewMessenger(new StubPreviewMessenger())
                 .clock(clock)
                 .build();
         TurnPrompt input = new TurnPromptAssembler(mapper, clock)
@@ -115,16 +108,16 @@ class BrewRulesSmokeTest {
                 // 케이스 날짜 고정(clock)과 관심사가 다르다. millis만 쓰므로 존은 무관하다.
                 new OpenAiChatClient(client, model, 10, 100_000, Duration.ofSeconds(60), 4_000,
                         mapper, Clock.systemUTC())
-                .runTurn(input, toolkit.forTurn(USER, CHANNEL, new TurnUserMessage(message, segments), null));
+                .runTurn(input, toolkit.forTurn(USER, new TurnUserMessage(message, segments), null, proposals));
 
         System.out.println("=== BREW RULES SMOKE (" + label + ") model=" + model + " ===");
         System.out.println("입력      = " + message);
         System.out.println("최종 응답 = " + reply);
-        Optional<PendingNote> pending = pendingStore.get(USER);
-        if (pending.isEmpty()) {
-            System.out.println("pending 없음 — 제안 tool 미호출 (다중 날짜 폴백 시나리오에서는 기대 동작)");
+        Optional<TurnDraft> proposed = proposals.proposal();
+        if (proposed.isEmpty()) {
+            System.out.println("제안 없음 — 제안 tool 미호출 (다중 날짜 폴백 시나리오에서는 기대 동작)");
         } else {
-            List<Entry> entries = pending.get().draft().entries();
+            List<Entry> entries = proposed.get().note().entries();
             Entry latest = entries.get(entries.size() - 1);
             System.out.println("draft 최신 엔트리 date = " + latest.date()
                     + " (순차 제안 시나리오 기대: active_date=가장 이른 날짜)");
@@ -184,37 +177,6 @@ class BrewRulesSmokeTest {
         @Override
         public void delete(long id) {
             throw new UnsupportedOperationException("스모크는 커밋하지 않는다");
-        }
-    }
-
-    private static final class InMemoryPendingStore implements PendingStore {
-        private final Map<String, PendingNote> store = new HashMap<>();
-
-        @Override
-        public void put(String userId, PendingNote pending) {
-            store.put(userId, pending);
-        }
-
-        @Override
-        public Optional<PendingNote> get(String userId) {
-            return Optional.ofNullable(store.get(userId));
-        }
-
-        @Override
-        public void clear(String userId) {
-            store.remove(userId);
-        }
-    }
-
-    /** Slack 미접촉 — 미리보기 전송을 고정 ts로 대체한다. */
-    private static final class StubPreviewMessenger extends PreviewMessenger {
-        StubPreviewMessenger() {
-            super(new PreviewBlocks(), null);
-        }
-
-        @Override
-        public String publish(String channelId, PendingNote pending) {
-            return "1720000000.000123";
         }
     }
 

@@ -57,24 +57,9 @@ class DomainSerializationTest {
         assertThat(restored).isEqualTo(original);
     }
 
-    @Test
-    @DisplayName("T1-1: PendingNote(draft+match) 직렬화 왕복 동일성")
-    void pendingNoteRoundTrip() throws Exception {
-        OffsetDateTime ts = OffsetDateTime.of(2026, 7, 10, 9, 30, 0, 0, ZoneOffset.ofHours(9));
-        PendingNote pendingNew = new PendingNote(sampleNote(), MatchInfo.newNote(), "1720000000.000100", ts);
-        PendingNote pendingExisting = new PendingNote(
-                sampleNote(),
-                MatchInfo.existing(1L, LocalDate.of(2026, 7, 9)),
-                "1720000000.000200",
-                ts
-        );
-
-        for (PendingNote original : List.of(pendingNew, pendingExisting)) {
-            String json = mapper.writeValueAsString(original);
-            PendingNote restored = mapper.readValue(json, PendingNote.class);
-            assertThat(restored).isEqualTo(original);
-        }
-    }
+    // (구 T1-1 PendingNote 왕복 케이스는 0029 TΔ4에서 타입과 함께 사라졌다 — 작성 중 데이터가
+    //  서버에 영속되지 않으므로 왕복시킬 저장 형식이 없다. 클라이언트와 주고받는 draft의 형태는
+    //  TurnDraftContractTest가 계약으로 소유한다.)
 
     @Test
     @DisplayName("T1-1: JSON 필드명은 snake_case + match=new는 note_id/date 생략")
@@ -264,42 +249,6 @@ class DomainSerializationTest {
         Recipe nonFinite = Recipe.normalize(new Recipe(
                 null, Double.POSITIVE_INFINITY, 240.0, Double.NEGATIVE_INFINITY, Double.NaN, null, null, null, null, null));
         assertThat(nonFinite).isEqualTo(new Recipe(null, null, 240.0, null, null, null, null, null, null, null));
-    }
-
-    // --- 0012 TΔ1: PendingNote mode·target (FR-21, changes/0012) ---
-
-    @Test
-    @DisplayName("0012-TΔ1: edit 모드 PendingNote(mode+target) 직렬화 왕복 동일성")
-    void editModePendingNoteRoundTrip() throws Exception {
-        OffsetDateTime ts = OffsetDateTime.of(2026, 7, 10, 9, 30, 0, 0, ZoneOffset.ofHours(9));
-        PendingNote editPending = new PendingNote(
-                PendingNote.Mode.EDIT,
-                sampleNote(),
-                new PendingNote.EditTarget(1L, LocalDate.of(2026, 7, 9)),
-                true,   // 날짜 이동 충돌 경고 — 재시작 후에도 [저장]/[취소]까지 유지돼야 한다(V-10, TΔ5)
-                null,   // match는 record 모드 한정(data-model §2.3)
-                "1720000000.000300",
-                ts
-        );
-
-        String json = mapper.writeValueAsString(editPending);
-        PendingNote restored = mapper.readValue(json, PendingNote.class);
-
-        assertThat(json).contains("\"mode\":\"edit\"").contains("\"date_conflict\":true");
-        assertThat(restored).isEqualTo(editPending);
-        assertThat(restored.dateConflict()).isTrue();
-        assertThat(restored.target()).isEqualTo(
-                new PendingNote.EditTarget(1L, LocalDate.of(2026, 7, 9)));
-    }
-
-    // (0012 이전 pending.json 하위 호환 테스트는 제거 — 기존 데이터는 배포 전 수동 삭제로 결정, delta 비범위.)
-
-    @Test
-    @DisplayName("0012-TΔ1: 알 수 없는 mode 값은 역직렬화 거부")
-    void invalidPendingModeRejected() {
-        assertThatThrownBy(() -> mapper.readValue("\"delete\"", PendingNote.Mode.class))
-                .isInstanceOf(JacksonException.class)
-                .hasMessageContaining("unknown pending mode");
     }
 
     // --- TΔ1: coffee_name Sourced 승격 (V-5, changes/0010) ---

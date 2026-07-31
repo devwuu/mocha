@@ -3,14 +3,12 @@ package com.devwuu.mocha.agent.tool;
 import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
 import com.devwuu.mocha.agent.tool.validation.ToolValidation;
 import com.devwuu.mocha.agent.turn.TurnDraft;
+import com.devwuu.mocha.agent.turn.TurnProposalSink;
 import com.devwuu.mocha.agent.turn.TurnUserMessage;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
-import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.repository.NoteRepository;
-import com.devwuu.mocha.repository.PendingStore;
-import com.devwuu.mocha.slack.outbound.PreviewMessenger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.databind.ObjectMapper;
@@ -31,8 +29,11 @@ import java.util.Map;
  * (ADR-45, findings-TΔ0 §SDK).
  * <p>changes/0029 TΔ1에서 {@code propose_edit}과 단일 대기 게이트가 함께 사라졌다 — 저장된 노트 수정은
  * UI 전용이 되고(delta 0029 D-1·D-2), 검증 진입점은 여기 하나만 남는다(백로그 R-3·R-4 해소).
- * <p>POLICY: 노트·pending 쓰기는 제안 tool {@code propose_record}와 버튼 커밋뿐 — 읽기 tool·
- * 최종 텍스트는 파일 무변화 (ref: specs/coffee-note-agent/plan.md#ADR-45, AC-59).
+ * <p>TΔ4에서 제안의 <b>효과</b>가 바뀌었다: 종전에는 서버의 pending 행을 쓰고 Slack 미리보기를 보냈으나,
+ * 이제는 {@link TurnProposalSink}에 결과를 실어 <b>응답으로 돌려주는</b> 데까지다 — 작성 중 데이터는
+ * 클라이언트(폼)가 소유하고 서버는 기억하지 않는다(OQ-1, delta 0029 D-2).
+ * <p>POLICY: 이 tool은 어떤 상태도 쓰지 않는다 — 노트 쓰기는 사용자 확정([저장])만 하고, 제안은 값을
+ * 돌려줄 뿐이다. 조회 tool·최종 텍스트도 무변화다 (ref: specs/coffee-note-agent/plan.md#ADR-45, AC-59).
  */
 class ProposalTools {
 
@@ -100,17 +101,13 @@ class ProposalTools {
                     BREW_SCHEMA);
 
     private final NoteRepository noteRepository;
-    private final PendingStore pendingStore;
-    private final PreviewMessenger previewMessenger;
     private final RecordProposalValidator recordValidator;
     private final ObjectMapper mapper;
     private final Clock clock;
 
-    ProposalTools(NoteRepository noteRepository, PendingStore pendingStore, PreviewMessenger previewMessenger,
-                  RecordProposalValidator recordValidator, ObjectMapper mapper, Clock clock) {
+    ProposalTools(NoteRepository noteRepository, RecordProposalValidator recordValidator,
+                  ObjectMapper mapper, Clock clock) {
         this.noteRepository = noteRepository;
-        this.pendingStore = pendingStore;
-        this.previewMessenger = previewMessenger;
         this.recordValidator = recordValidator;
         this.mapper = mapper;
         this.clock = clock;
@@ -142,21 +139,20 @@ class ProposalTools {
     // 않고, 갱신 재호출도 같은 턴 클로저를 써 턴 안에서 일관된다(TΔ2b, findings-TΔ0 §C-2·C-5).
     // draft는 컨텍스트 조립기가 모델에게 보여준 것과 같은 값이다 — 모델이 본 draft와 게이트가 대조하는
     // draft가 갈리면 거부 사유가 모델 입장에서 근거 없는 말이 된다(§C-5 드리프트 방지, 0029 TΔ2).
-    ToolCallback proposeRecord(String userId, String channelId, TurnUserMessage utterance, TurnDraft draft) {
+    ToolCallback proposeRecord(String userId, TurnUserMessage utterance, TurnDraft draft, TurnProposalSink sink) {
         return new ToolCallback(
                 "propose_record",
-                "신규 시음 기록(또는 기존 노트에 더하는 새 시음)을 제안한다 — 검증 통과 시 확인 대기(pending)가 "
-                        + "만들어지고 미리보기가 전송된다. 저장은 사용자의 [저장] 버튼만 한다. 작성 중인 draft가 있으면 "
+                "신규 시음 기록(또는 기존 노트에 더하는 새 시음)을 제안한다 — 검증 통과 시 제안 내용이 사용자 "
+                        + "화면의 작성 폼으로 돌아간다. 저장은 사용자의 [저장] 확정만 한다. 작성 중인 draft가 있으면 "
                         + "재호출은 그 draft 위에 이번 발화를 반영한 전체 내용이어야 한다 — 건드리지 않은 필드도 draft "
                         + "값을 그대로 다시 실어라. 검증 거부는 사유를 돌려주니 정정해 재호출해라.",
                 PROPOSE_RECORD_SCHEMA,
-                argumentsJson -> executeProposeRecord(userId, channelId, utterance, draft, argumentsJson));
+                argumentsJson -> executeProposeRecord(userId, utterance, draft, sink, argumentsJson));
     }
 
-    private String executeProposeRecord(String userId, String channelId, TurnUserMessage utterance,
-                                        TurnDraft draft, String argumentsJson) {
+    private String executeProposeRecord(String userId, TurnUserMessage utterance,
+                                        TurnDraft draft, TurnProposalSink sink, String argumentsJson) {
         ProposeRecordArgs args = mapper.readValue(argumentsJson, ProposeRecordArgs.class);
-        PendingNote pending = pendingStore.get(userId).orElse(null);
         // POLICY: 제안 tool의 서버 검증 실패는 오류 사유를 tool 결과로 반환 — 조용한 드롭·서버 대행 금지
         //         (ref: specs/coffee-note-agent/plan.md#ADR-45, AC-9).
         ToolValidation<RecordProposal> validation = recordValidator.validate(args, utterance, draft);
@@ -187,22 +183,17 @@ class ProposalTools {
                 proposal.meta().roastLevel(), proposal.meta().officialNotes(),
                 proposal.meta().sources(), List.of(entry), now, now);
 
-        // FR-5 갱신 경로: 대기 중 재호출은 preview_ts·created_at을 보존해 같은 미리보기 메시지를 edit로
-        // 갱신한다(재전송 아님, data-model §2.3). "같은 대상인가"는 더 이상 판정하지 않는다 — 단일 대기
-        // 게이트가 0029 TΔ1에서 사라졌고, 대기 내용은 다음 제안이 그대로 대체한다(delta 0029 D-2).
-        PendingNote next = pending == null
-                ? new PendingNote(proposedNote, proposal.match(), null, now)
-                : new PendingNote(PendingNote.Mode.RECORD, proposedNote, null, false, proposal.match(),
-                        pending.previewTs(), pending.createdAt());
+        // POLICY: 제안의 효과는 결과를 수거함에 싣는 것까지다 — 서버 상태(노트·pending)를 쓰지 않는다.
+        //         저장(커밋)은 사용자 확정만 하고, 작성 중 데이터는 클라이언트 폼이 소유한다
+        //         (ref: plan.md#ADR-45·#ADR-3, changes/0029 tasks TΔ4, delta 0029 D-2).
+        // 실을 값이 곧 다음 턴의 draft 형태인 이유는 TurnProposalSink javadoc에 있다. "같은 대상인가"는
+        // 판정하지 않는다 — 단일 대기 게이트가 TΔ1에서 사라졌고, 폼 내용은 다음 제안이 그대로 대체한다.
+        sink.accept(new TurnDraft(proposedNote, proposal.match()));
 
-        String failure = persistAndPublish(userId, channelId, pending, next);
-        if (failure != null) {
-            return ToolSupport.errorOutput(mapper, failure);
-        }
         // 0029 TΔ3: 제안 성공 접힘(구 ADR-46 규칙 ①) 폐기 — 제안 tool은 트랜스크립트를 건드리지 않는다.
-        // 접힘은 커밋([저장]/[취소])·TTL만 남았고, 문맥 축적은 라우터의 턴 완결 지점이 단독으로 소유한다.
-        log.info("propose_record 수용: user={} noteId={} match={} updated={}",
-                userId, proposedNote.id(), proposal.match().type(), pending != null);
+        // 접힘은 커밋·TTL만 남았고, 문맥 축적은 라우터의 턴 완결 지점이 단독으로 소유한다.
+        log.info("propose_record 수용: user={} noteId={} match={} draftBased={}",
+                userId, proposedNote.id(), proposal.match().type(), draft != null);
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("proposed", true);
@@ -211,30 +202,8 @@ class ProposalTools {
             result.put("note_id", proposedNote.id());
         }
         result.put("target_date", proposal.targetDate().toString());
-        result.put("updated_existing_pending", pending != null);
+        // 새로 만든 제안인지 작성 중이던 폼을 고친 것인지 — 모델의 최종 안내 문구가 갈리는 지점이다.
+        result.put("updated_draft", draft != null);
         return mapper.writeValueAsString(result);
-    }
-
-    // ---- pending 영속 + 미리보기 전송 ----
-
-    // POLICY: 제안은 pending까지 — 노트 커밋은 [저장] 버튼(action_id)만, 에이전트 미경유
-    //         (ref: specs/coffee-note-agent/plan.md#ADR-45, #ADR-3).
-    // put을 먼저 해 재시작 생존(NFR-2)을 확보하고, 전송 후 확정된 preview_ts로 재저장한다. 전송 실패 시
-    // 이전 상태로 되돌린다 — 신규는 "미리보기 없으면 pending 없음", 갱신은 무변화(ADR-48 정신).
-    private String persistAndPublish(String userId, String channelId, PendingNote before, PendingNote next) {
-        pendingStore.put(userId, next);
-        try {
-            String previewTs = previewMessenger.publish(channelId, next);
-            pendingStore.put(userId, next.withPreviewTs(previewTs));
-            return null;
-        } catch (Exception publishFailure) {
-            if (before == null) {
-                pendingStore.clear(userId);
-            } else {
-                pendingStore.put(userId, before);
-            }
-            log.warn("제안 미리보기 전송 실패(pending 이전 상태 복원): user={}", userId, publishFailure);
-            return "미리보기 전송에 실패했다 — 제안은 반영되지 않았다. 사용자에게 잠시 후 다시 요청해 달라고 안내해라.";
-        }
     }
 }
