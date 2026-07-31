@@ -8,7 +8,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 /**
- * {@code note_official_notes} 테이블 매핑 — 로스터리 전시 테이스팅 노트 1건
+ * {@code note_official_note} 테이블 매핑 — 로스터리 전시 테이스팅 노트 1건
  * (ref: data-model.md#2.1 official_notes, FR-7).
  * <p>값만 갖는다 — source는 배열 전체에 하나이므로 {@link NoteEntity#getOfficialNotesSource()}가 소유한다(Q-8).
  * 그래서 여기에는 {@link SourcedValue}가 없다.
@@ -17,7 +17,7 @@ import jakarta.persistence.Table;
  * 연관을 두지 않는다({@link NoteEntity} POLICY). 부모 조회·조립은 QueryDSL 질의가 소유한다.
  */
 @Entity
-@Table(name = "note_official_notes")
+@Table(name = "note_official_note")
 public class NoteOfficialNoteEntity {
 
     @Id

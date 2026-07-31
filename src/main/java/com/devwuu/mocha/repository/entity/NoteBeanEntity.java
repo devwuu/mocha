@@ -10,14 +10,14 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 /**
- * {@code note_beans} 테이블 매핑 — 원두 1종 (ref: data-model.md#2.1 beans, V-14, ADR-53).
+ * {@code note_bean} 테이블 매핑 — 원두 1종 (ref: data-model.md#2.1 beans, V-14, ADR-53).
  * <p>출처 우선순위(V-6)가 요소 서브필드 단위로 적용되므로 description·process가 각각 {@link SourcedValue}다.
  *
  * <p>{@code noteId}는 연관 매핑이 아니라 평범한 컬럼이다 — 스키마에 FK가 없고(ADR-74) 엔티티에도
  * 연관을 두지 않는다({@link NoteEntity} POLICY). 부모 조회·조립은 QueryDSL 질의가 소유한다.
  */
 @Entity
-@Table(name = "note_beans")
+@Table(name = "note_bean")
 public class NoteBeanEntity {
 
     @Id

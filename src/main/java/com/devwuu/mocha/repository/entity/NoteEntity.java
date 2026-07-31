@@ -15,7 +15,7 @@ import jakarta.persistence.Table;
 import java.time.OffsetDateTime;
 
 /**
- * {@code notes} 테이블 매핑 — 커피 1종 (ref: data-model.md#2.1, changes/0028-rdb-storage/delta.md#스키마).
+ * {@code note} 테이블 매핑 — 커피 1종 (ref: data-model.md#2.1, changes/0028-rdb-storage/delta.md#스키마).
  *
  * <p>POLICY: 도메인 {@link com.devwuu.mocha.domain.Note}(불변 record)를 엔티티로 바꾸지 않는다 — 영속 관심사가
  * 도메인으로 새지 않게 별도 클래스로 둔다(백엔드 CLAUDE.md §4, REVIEW.md §2). 양방향 변환은 이 패키지의
@@ -32,7 +32,7 @@ import java.time.OffsetDateTime;
  * 같은 규칙으로 통일한다.
  */
 @Entity
-@Table(name = "notes")
+@Table(name = "note")
 public class NoteEntity {
 
     @Id
@@ -55,7 +55,7 @@ public class NoteEntity {
     @AttributeOverride(name = "source", column = @Column(name = "roast_level_source", length = 16))
     private SourcedValue roastLevel;
 
-    // Q-8: official_notes는 배열 전체에 source 하나 — 값은 note_official_notes, source는 여기.
+    // Q-8: official_notes는 배열 전체에 source 하나 — 값은 note_official_note, source는 여기.
     @Enumerated(EnumType.STRING)
     @Column(name = "official_notes_source", length = 16)
     private Source officialNotesSource;
@@ -82,7 +82,7 @@ public class NoteEntity {
     @Column(name = "modified_by", nullable = false, length = 16)
     private String modifiedBy;
 
-    // 하위 컬렉션은 여기 없다 — 자식(note_beans·note_official_notes·note_aliases·note_sources)은
+    // 하위 컬렉션은 여기 없다 — 자식(note_bean·note_official_note·note_alias·note_source)은
     // note_id로 각자 서 있고, 조립과 정렬(seq 오름차순 / 별칭은 id 오름차순)은 질의가 소유한다.
 
     protected NoteEntity() {

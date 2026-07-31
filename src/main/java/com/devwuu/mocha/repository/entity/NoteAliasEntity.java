@@ -10,7 +10,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 /**
- * {@code note_aliases} 테이블 매핑 — 내부 매칭·검색 전용 별칭 1건
+ * {@code note_alias} 테이블 매핑 — 내부 매칭·검색 전용 별칭 1건
  * (ref: data-model.md#2.1 aliases, V-13, ADR-37).
  * <p>{@code alias}는 첫 등장 표시 형태(보존 대상), {@code normalized}는 대조·중복 제거 기준이다 —
  * 정규화는 저장값이 아니라 <i>기준</i>이므로 둘을 함께 갖는다. 중복 제거 자체는 스키마의
@@ -20,7 +20,7 @@ import jakarta.persistence.Table;
  * 연관을 두지 않는다({@link NoteEntity} POLICY). 부모 조회·조립은 QueryDSL 질의가 소유한다.
  */
 @Entity
-@Table(name = "note_aliases")
+@Table(name = "note_alias")
 public class NoteAliasEntity {
 
     @Id
