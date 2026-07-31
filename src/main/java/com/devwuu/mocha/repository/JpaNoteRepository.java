@@ -106,7 +106,10 @@ public class JpaNoteRepository implements NoteRepository {
     //         (ref: data-model.md#2.2, changes/0028-rdb-storage/delta.md#동기, AC-Δ4).
     private void insertEntry(long noteId, Entry entry) {
         long entryId = notes.insertAndFlush(NoteEntityMapper.toEntryEntity(noteId, entry)).getId();
-        List<Brew> brews = entry.brews();
+        insertBrews(entryId, entry.brews());
+    }
+
+    private void insertBrews(long entryId, List<Brew> brews) {
         for (int seq = 0; seq < brews.size(); seq++) {
             long brewId = notes.insertAndFlush(new BrewEntity(entryId, seq)).getId();
             Brew brew = brews.get(seq);
@@ -187,9 +190,90 @@ public class JpaNoteRepository implements NoteRepository {
         return after.stream().filter(alias -> !known.contains(Aliases.normalize(alias))).toList();
     }
 
+    /**
+     * 수정 세션 커밋 — 계약은 {@link NoteRepository#applyEdit}가 소유하고, 여기서는 그 정책이 행으로 어떻게
+     * 떨어지는지만 다룬다.
+     *
+     * <p><b>검증 셋을 먼저 통과시킨다</b>(노트 존재 → V-9 → draft 엔트리 1건 → 대상 엔트리 존재). 어느
+     * 하나라도 걸리면 <b>쓰기를 시작하기 전에</b> 던지므로 부분 반영이 남지 않는다 — 트랜잭션 롤백에
+     * 기대지 않아도 되는 형태다.
+     *
+     * <p>대상 엔트리 존재는 조회한 도메인이 아니라 <b>행으로</b> 확인한다({@code findEntry}). 로드 경계
+     * 위생(ADR-66)이 회차 0개 엔트리를 드롭할 수 있어(V-15) 도메인으로 판정하면 <b>행은 있는데 소실로
+     * 보이는</b> 갈래가 생긴다 — 고칠 대상이 무엇인지는 행이 답한다.
+     *
+     * <p><b>수정은 지우고 다시 넣는 것이 아니라 고치는 것이다.</b> 노트 본문과 엔트리를 관리되는 엔티티로
+     * 꺼내 필드를 바꾸면 flush가 UPDATE로 내보낸다 — 재기록({@code upsertEntry})이 엔트리를 통째 교체하는
+     * 것과 갈리는 지점이고, 그래서 {@code entry.created_at}이 보존되고 {@code modified_at}이 실제 수정
+     * 시각으로 움직인다. 논리 FK({@code note_id})로 찾을 뿐 연관 매핑은 여전히 없다(TΔ3a).
+     */
     @Override
+    @Transactional
     public Note applyEdit(long noteId, LocalDate targetDate, Note draft) {
-        throw new UnsupportedOperationException("TΔ5c에서 구현");
+        NoteEntity row = notes.findById(noteId)
+                .orElseThrow(() -> new IllegalStateException("수정 대상 노트 소실: " + noteId));
+        // POLICY: coffee_name은 노트 생성 후 불변 — 수정 세션에서도 변경 불가, 다른 값이면 커밋 거부
+        //         (ref: specs/coffee-note-agent/data-model.md#V-9).
+        if (!Objects.equals(row.getCoffeeName().value(), Sourced.valueOrNull(draft.coffeeName()))) {
+            throw new IllegalArgumentException("coffee_name은 노트 생성 후 불변(V-9): " + noteId);
+        }
+        if (draft.entries().size() != 1) {
+            throw new IllegalArgumentException(
+                    "edit draft는 대상 엔트리 1건만 담는다(data-model §2.3): " + draft.entries().size() + "건");
+        }
+        EntryEntity target = notes.findEntry(noteId, targetDate)
+                .orElseThrow(() -> new IllegalStateException("수정 대상 엔트리 소실: " + noteId + " " + targetDate));
+
+        Entry edited = draft.entries().getFirst();
+        moveEntry(noteId, target, targetDate, edited.date());
+        replaceBrews(target.getId(), edited.brews());
+        updateNoteFields(noteId, row, draft);
+        return findById(noteId).orElseThrow(() -> new IllegalStateException("방금 저장한 노트 조회 실패: " + noteId));
+    }
+
+    // POLICY: 날짜 이동으로 이동처 date에 기존 엔트리가 있으면 그 엔트리를 덮어쓰고 원본 date는 제거한다 —
+    //         엔트리 총수 1 감소. 경고 표기는 미리보기(V-10 전반부)의 몫
+    //         (ref: specs/coffee-note-agent/data-model.md#V-10).
+    // 이동은 행 교체가 아니라 tasted_on UPDATE다 — 같은 기록이 다른 날짜에 놓이는 것이므로 행이 살아남아야
+    // created_at이 보존된다(교체였다면 매번 새로 발급된다 — 재기록 경로가 치르는 대가, TΔ5b).
+    // 이동처를 먼저 비우는 순서는 파일 구현과 갈리는 지점이다: 파일은 목록을 메모리에서 재조립해 한 번에
+    // 썼지만 DB는 중간 상태에서 UNIQUE(note_id, tasted_on)를 검사하고, Hibernate의 flush 순서가
+    // INSERT → UPDATE → DELETE라 em.remove()에 맡기면 이동 UPDATE가 아직 살아 있는 행과 부딪힌다.
+    private void moveEntry(long noteId, EntryEntity target, LocalDate targetDate, LocalDate movedTo) {
+        if (movedTo.equals(targetDate)) {
+            return;
+        }
+        notes.findEntryId(noteId, movedTo).ifPresent(notes::deleteEntry);
+        target.updateTastedOn(movedTo);
+    }
+
+    /**
+     * 회차 통째 교체 — 엔트리 행은 살려 두고 그 아래만 갈아끼운다.
+     *
+     * <p>회차에는 필드 단위 갱신 개념이 없다(ADR-59 — 서버는 회차 단위 병합을 하지 않고 에이전트가 구성한
+     * 배열을 신뢰한다). 삭제가 벌크라 즉시 나가므로 {@code UNIQUE(entry_id, seq)}가 새 회차보다 먼저 풀린다.
+     */
+    private void replaceBrews(long entryId, List<Brew> brews) {
+        notes.deleteBrews(entryId);
+        insertBrews(entryId, brews);
+    }
+
+    /**
+     * 노트 단위 필드 갱신 — <b>커피명을 제외한 전부</b>가 수정 범위다(FR-21). 배열 3종은 통째 교체하고,
+     * <b>별칭은 건드리지 않는다</b> — 수정 세션에 별칭 갱신이라는 개념이 없다(V-13, 원본 존치).
+     *
+     * <p>노트 본문은 관리되는 엔티티의 필드 갱신이라 dirty checking이 UPDATE를 내보내고, 그때
+     * {@code modified_at}을 감사 리스너가 채운다(TΔ4). <b>flush를 손으로 걸지 않는다</b> — 뒤따르는 조립
+     * 질의가 이 트랜잭션의 미반영 쓰기와 겹쳐 auto-flush를 유발하고, Hibernate의 flush는 컨텍스트 전체를
+     * 대상으로 하므로 노트 UPDATE도 함께 나간다. 영속성 관리는 JPA에 맡기고 이 클래스는 <b>무엇을
+     * 고칠지</b>만 정한다.
+     */
+    private void updateNoteFields(long noteId, NoteEntity row, Note draft) {
+        NoteEntityMapper.updateNoteEntity(row, draft);
+        notes.deleteNoteArraysExceptAliases(noteId);
+        notes.insertAll(NoteEntityMapper.toBeanEntities(noteId, draft.beans()));
+        notes.insertAll(NoteEntityMapper.toOfficialNoteEntities(noteId, draft.officialNotes()));
+        notes.insertAll(NoteEntityMapper.toSourceEntities(noteId, draft.sources()));
     }
 
     // ────────────────────────────── 조립 ──────────────────────────────

@@ -81,6 +81,24 @@ public final class NoteEntityMapper {
                 roastery == null ? null : Aliases.normalize(roastery));
     }
 
+    /**
+     * 노트 본문 행의 <b>수정 가능한 필드</b>를 draft 값으로 덮는다 (FR-21, TΔ5c 수정 세션 커밋).
+     *
+     * <p>{@code coffee_name}은 대상이 아니다 — 노트 생성 후 불변이라(V-9) {@link NoteEntity}에 setter조차
+     * 없다. 값 검증(draft가 다른 커피명을 실었는가)은 저장소가 앞에서 거부하므로 여기 도달하지 않는다.
+     *
+     * <p>배열 자식(beans·official_notes·sources)은 별도 테이블이라 이 메서드 밖에서 교체된다. 갱신을
+     * 저장소가 아니라 여기 둔 것은 <b>정규화 비교 키</b>(Q-6) 때문이다 — 로스터리가 바뀌면 함께 움직여야
+     * 하는데, 계산을 호출부에 두면 {@link #toNoteEntity}와 규칙이 갈라진다.
+     */
+    public static void updateNoteEntity(NoteEntity row, Note draft) {
+        String roastery = Sourced.valueOrNull(draft.roastery());
+        row.updateRoastery(toSourcedValue(draft.roastery()),
+                roastery == null ? null : Aliases.normalize(roastery));
+        row.updateRoastLevel(toSourcedValue(draft.roastLevel()));
+        row.updateOfficialNotesSource(draft.officialNotes() == null ? null : draft.officialNotes().source());
+    }
+
     /** 원두 행 — 순서는 {@code seq}가 소유한다(0부터). */
     public static List<NoteBeanEntity> toBeanEntities(Long noteId, List<Bean> beans) {
         List<NoteBeanEntity> rows = new ArrayList<>();

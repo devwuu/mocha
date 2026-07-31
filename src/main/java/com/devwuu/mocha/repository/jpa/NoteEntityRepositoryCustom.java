@@ -1,5 +1,7 @@
 package com.devwuu.mocha.repository.jpa;
 
+import com.devwuu.mocha.repository.entity.EntryEntity;
+
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.Optional;
@@ -37,17 +39,49 @@ public interface NoteEntityRepositoryCustom {
      * 한 건을 보장하므로(V-10) 답은 최대 하나다.
      *
      * <p>행이 아니라 <b>id만</b> 돌려주는 것은 곧 지울 대상이기 때문이다 — 엔티티로 실어 오면 벌크 삭제
-     * 뒤 영속성 컨텍스트에 죽은 사본이 남는다.
+     * 뒤 영속성 컨텍스트에 죽은 사본이 남는다. <b>수정할</b> 대상은 {@link #findEntry}가 준다.
      */
     Optional<Long> findEntryId(long noteId, LocalDate tastedOn);
 
     /**
-     * 엔트리 한 건을 하위부터 지운다 — {@code tasting}·{@code recipe} → {@code brew} → {@code entry}.
+     * 같은 조회를 <b>관리되는 엔티티</b>로 — 대상이 지울 것이 아니라 <b>고칠 것</b>일 때 쓴다(날짜 이동).
+     *
+     * <p>{@link #findEntryId}와 갈라 두는 이유가 그대로 계약이다: 돌려준 엔티티는 영속성 컨텍스트에 붙어
+     * 있어 필드를 바꾸면 flush가 UPDATE로 내보낸다 — 지우고 다시 넣지 않으므로 {@code created_at}이
+     * 보존되고 {@code modified_at}은 감사 리스너가 채운다(TΔ4). 논리 FK({@code note_id})로 찾을 뿐
+     * 연관 매핑은 여전히 없다.
+     */
+    Optional<EntryEntity> findEntry(long noteId, LocalDate tastedOn);
+
+    /**
+     * 노트의 배열 자식을 지운다 — {@code note_bean}·{@code note_official_note}·{@code note_source}.
+     *
+     * <p><b>별칭은 대상이 아니다</b>(이름에 박아 둔 이유): 수정 세션은 별칭을 건드리지 않고 원본을 존치한다
+     * (V-13). 별칭 축적은 재기록 경로({@code upsertEntry})만의 개념이고, 별칭에는 seq가 없어 지웠다 다시
+     * 넣으면 id가 밀려 첫 등장 순서까지 무너진다.
+     *
+     * <p>세 배열은 통째 교체가 정책이라 부분 갱신 메서드를 두지 않는다 — {@code seq}가 순서를 소유하므로
+     * 지우고 다시 넣어도 순서는 그대로다(별칭과 갈리는 지점).
+     */
+    void deleteNoteArraysExceptAliases(long noteId);
+
+    /**
+     * 엔트리의 <b>회차만</b> 지운다 — {@code tasting}·{@code recipe} → {@code brew}. 엔트리 행은 남는다.
+     *
+     * <p>수정 세션이 엔트리를 <b>살려 둔 채</b> 회차를 갈아끼우는 자리다(TΔ5c) — 회차는 통째 교체가
+     * 정책이라(ADR-59) 부분 갱신 개념이 없고, {@code UNIQUE(entry_id, seq)} 때문에 새 회차를 넣기 전에
+     * 옛 seq가 비어 있어야 한다.
+     */
+    void deleteBrews(long entryId);
+
+    /**
+     * 엔트리 한 건을 하위부터 지운다 — {@link #deleteBrews} 뒤에 {@code entry} 행까지.
      * FK가 없으므로 순서를 코드가 소유한다(ADR-74).
      *
-     * <p><b>벌크 DML이라 즉시 DB에 나간다</b> — 같은 {@code (note_id, tasted_on)}으로 다시 삽입하기 전에
-     * UNIQUE가 풀려 있어야 하는데, {@code em.remove()}로는 그 순서를 만들 수 없다(Hibernate는 flush에서
-     * 삭제를 삽입 <b>뒤로</b> 미룬다). 파일 구현과 갈리는 지점이다 — DB는 중간 상태에서 제약을 검사한다.
+     * <p><b>벌크 DML이라 즉시 DB에 나간다</b> — 같은 {@code (note_id, tasted_on)}을 다시 쓰기 전에 UNIQUE가
+     * 풀려 있어야 하는데, {@code em.remove()}로는 그 순서를 만들 수 없다. Hibernate의 flush 순서는
+     * INSERT → UPDATE → DELETE라 삭제가 <b>항상 마지막</b>이다: 재삽입이든 날짜 이동 UPDATE든 아직 살아
+     * 있는 행과 부딪힌다. 파일 구현과 갈리는 지점이다 — DB는 중간 상태에서 제약을 검사한다.
      */
     void deleteEntry(long entryId);
 }

@@ -17,9 +17,11 @@ import java.time.LocalDate;
  * <p>{@code noteId}는 연관 매핑이 아니라 평범한 컬럼이다 — 스키마에 FK가 없고(ADR-74) 엔티티에도
  * 연관을 두지 않는다({@link NoteEntity} POLICY). 부모 조회·조립은 QueryDSL 질의가 소유한다.
  *
- * <p>필드 단위 수정 메서드를 두지 않는다 — 엔트리는 같은 날 재저장 시 <b>통째 교체</b>가 정책이고
- * (ref: data-model.md#2.2 POLICY, ADR-4·59) 회차 단위 서버 병합이 없다. 날짜 이동(TΔ5c)이 갱신을 요구하면
- * 그때 추가한다(루트 CLAUDE.md §4).
+ * <p>수정 메서드는 <b>{@code tasted_on} 하나</b>다. 같은 날 재저장은 여전히 <b>통째 교체</b>가 정책이지만
+ * (ref: data-model.md#2.2 POLICY, ADR-4·59) 수정 세션의 <b>날짜 이동</b>(TΔ5c, V-10)은 교체가 아니라
+ * 이동이다 — 같은 기록이 다른 날짜에 놓이는 것이라 행이 살아남아야 {@code created_at}이 보존되고
+ * {@code modified_at}이 실제 수정 시각으로 움직인다. TΔ3b가 <i>"날짜 이동이 갱신을 요구하면 그때
+ * 추가한다"</i>로 남겨 둔 자리다(루트 CLAUDE.md §4).
  */
 @Entity
 @Table(name = "entry")
@@ -59,5 +61,13 @@ public class EntryEntity extends BaseEntity {
 
     public LocalDate getTastedOn() {
         return tastedOn;
+    }
+
+    /**
+     * 날짜 이동 (V-10, FR-21) — 이동처가 비어 있어야 {@code UNIQUE(note_id, tasted_on)}를 지난다.
+     * 비우는 책임은 호출부({@code JpaNoteRepository})가 진다.
+     */
+    public void updateTastedOn(LocalDate tastedOn) {
+        this.tastedOn = tastedOn;
     }
 }
