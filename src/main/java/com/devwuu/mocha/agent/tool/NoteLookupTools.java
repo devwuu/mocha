@@ -96,7 +96,7 @@ class NoteLookupTools {
                 Sourced.valueOrNull(note.roastery()),
                 Aliases.dedupNormalized(aliases),
                 beansSummary(note.beans()),
-                note.officialNotes() == null ? List.of() : note.officialNotes().value(),
+                Sourced.valuesOrEmpty(note.officialNotes()),
                 note.entries().stream().map(Entry::date).max(Comparator.naturalOrder()).orElse(null));
     }
 

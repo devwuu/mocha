@@ -276,11 +276,11 @@ public class PreviewBlocks {
     }
 
     private static String officialNotesText(Sourced<List<String>> officialNotes) {
-        if (officialNotes == null || officialNotes.value() == null || officialNotes.value().isEmpty()) {
-            return null;
+        List<String> values = Sourced.valuesOrEmpty(officialNotes);
+        if (values.isEmpty()) {
+            return null;   // 영역 미출력 — 빈 목록과 필드 부재를 구분하지 않는다(ADR-22)
         }
-        String joined = String.join(", ", officialNotes.value());
-        return joined + sourceTag(officialNotes.source());
+        return String.join(", ", values) + sourceTag(officialNotes.source());
     }
 
     // 레시피 표기 — 10필드 중 있는 항목만(FR-4 "채워진 내용 전체"·FR-18), 전무(null)면 null 반환(영역 미출력, ADR-22).

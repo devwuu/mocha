@@ -201,8 +201,7 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
                 Sourced.valueOrNull(note.roastery()),
                 beanLines(note.beans()),
                 Sourced.valueOrNull(note.roastLevel()),
-                note.officialNotes() == null || note.officialNotes().value() == null
-                        ? List.of() : note.officialNotes().value(),
+                Sourced.valuesOrEmpty(note.officialNotes()),
                 entry.date(),
                 tasting.myTaste(),
                 tasting.rating());

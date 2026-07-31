@@ -115,10 +115,7 @@ public final class NoteEntityMapper {
      * {@link #toNoteEntity}가 {@code note.official_notes_source}로 싣는다(Q-8).
      */
     public static List<NoteOfficialNoteEntity> toOfficialNoteEntities(Long noteId, Sourced<List<String>> officialNotes) {
-        List<String> values = Sourced.valueOrNull(officialNotes);
-        if (values == null) {
-            return List.of();
-        }
+        List<String> values = Sourced.valuesOrEmpty(officialNotes);
         List<NoteOfficialNoteEntity> rows = new ArrayList<>();
         for (int seq = 0; seq < values.size(); seq++) {
             rows.add(new NoteOfficialNoteEntity(noteId, seq, values.get(seq)));
