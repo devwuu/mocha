@@ -48,14 +48,14 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>이 클래스는 기존 테스트가 커버하지 못한 한 갭(③ data/ 무변화)만 직접 단언한다. 나머지 UNCHANGED
  * 항목은 아래 기존 테스트가 이미 가드한다(중복 단언하지 않음 — 위치 이동 시 이 표를 갱신할 것):
  * <ul>
- *   <li>① 단일 대기 거부(FR-22/AC-30) — {@link com.devwuu.mocha.agent.tool.validation.ProposalValidatorsTest}
- *       (record·edit 양 경로의 "먼저 저장/취소" 거부), {@link com.devwuu.mocha.agent.tool.ToolCallbackProviderTest}
- *       (tool 반환의 "단일 대기" 오류 + 대기·미리보기 무변화)</li>
+ *   <li>~~① 단일 대기 거부(FR-22/AC-30)~~ — 원칙 자체가 changes/0029 TΔ1에서 폐기됐다(delta 0029 D-2).
+ *       그 자리는 {@link com.devwuu.mocha.agent.tool.ToolCallbackProviderTest}의 "게이트 폐기 — 대기 내용을
+ *       대체한다"가 대신 가드한다.</li>
  *   <li>① [저장] 커밋 경로(ADR-3·45) — {@link SlackCommitHandlerTest}
  *       ("[저장] 커밋 → pending clear → 카드 배달 → 버튼 소진 순서가 종전과 동일" 회귀 가드 포함)</li>
- *   <li>② propose_edit 날짜 2개 통과(AC-Δ4, V-16 record 전용) —
- *       {@link com.devwuu.mocha.agent.tool.validation.ProposalValidatorsTest}
- *       ("AC-Δ4: 날짜 2개(대상 date + new_date 이동)의 propose_edit는 게이트에 걸리지 않고 통과한다")</li>
+ *   <li>~~② propose_edit 날짜 2개 통과(AC-Δ4)~~ — tool이 changes/0029 TΔ1에서 폐기됐다. V-16이 기록
+ *       경로 전용이라는 성질은 {@link com.devwuu.mocha.agent.tool.validation.ProposalValidatorsTest}의
+ *       게이트 케이스군이 계속 가드한다.</li>
  *   <li>④ 트랜스크립트 접힘 이벤트(AC-61) —
  *       {@link com.devwuu.mocha.agent.conversation.FoldingChatMemoryTest}
  *       ("접힘 이벤트(제안 성공·[저장]·[취소]) 각각에서 문맥이 비워진다"),
@@ -94,8 +94,6 @@ class Change0023RegressionGuardTest {
                 url -> new byte[0], photoStore, photoBufferStore, new StubPhotoInfoExtractor(),
                 Duration.ofMinutes(3), clock);
         ToolCallbackProvider toolCallbackProvider = toolkit()
-                .responder(responder)
-                .artifactDir(Path.of("unused-artifact"))
                 .mapper(mapper)
                 .pendingStore(pendingStore)
                 .transcript(transcript)

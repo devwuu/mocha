@@ -203,7 +203,7 @@ public class JpaPendingStore implements PendingStore {
                 return "edit 모드 target 결손";
             }
             // target.note_id는 수정 대상의 정체성 — 결손이면 소비처가 갱신 대상을 찾을 수 없다. 게이트의
-            // 같은 대상 판정(SinglePendingGate.requireSameEditTargetOrFree)이 id 비교에서 NPE로 새고,
+            // 구 단일 대기 게이트의 같은 대상 판정(0029 TΔ1에서 폐기)이 id 비교에서 NPE로 새고,
             // 거부 사유에는 커피명 대신 리터럴 "null"이 노출된다(draft.coffee_name과 동일 부류, CR25-10).
             if (pending.target().noteId() == null) {
                 return "edit 모드 target.note_id 결손";

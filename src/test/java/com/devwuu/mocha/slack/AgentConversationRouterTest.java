@@ -95,8 +95,6 @@ class AgentConversationRouterTest {
                 Duration.ofMinutes(3), clock);
         // fake ChatClient는 tool 실행기를 부르지 않으므로 lookup·제안 협력자는 미접촉 — 장착 목록 계약만 쓴다.
         ToolCallbackProvider toolCallbackProvider = toolkit()
-                .responder(responder)
-                .artifactDir(Path.of("unused-artifact"))
                 .mapper(MochaObjectMapper.create())
                 .pendingStore(pendingStore)
                 .transcript(transcript)
@@ -125,7 +123,7 @@ class AgentConversationRouterTest {
     }
 
     @Test
-    @DisplayName("FR-22/ADR-44: 버튼 외 텍스트 수신 = 에이전트 턴 — tool 5종 장착, 최종 텍스트 응답, 트랜스크립트 축적")
+    @DisplayName("FR-22/ADR-44: 버튼 외 텍스트 수신 = 에이전트 턴 — tool 3종 장착, 최종 텍스트 응답, 트랜스크립트 축적")
     void textMessageRunsAgentTurn() {
         chatClient.reply = "커피 얘기 좋아요 멍! 🐾";
 
@@ -137,7 +135,7 @@ class AgentConversationRouterTest {
         List<TurnPrompt.Message> messages = chatClient.lastContext.messages();
         assertThat(messages.get(messages.size() - 1)).isEqualTo(TurnPrompt.Message.user("요즘 커피 뭐가 맛있어?"));
         assertThat(chatClient.lastTools).extracting(ToolCallback::name).containsExactly(
-                "list_notes", "get_note", "propose_record", "propose_edit", "send_entry_card");
+                "list_notes", "get_note", "propose_record");   // 0029 TΔ1에서 5종 → 3종
         // 제안 없는 턴은 트랜스크립트에 쌓인다(FR-23) — 다음 턴의 문맥이 된다.
         assertThat(transcript.view(USER))
                 .containsExactly(new TranscriptTurn("요즘 커피 뭐가 맛있어?", "커피 얘기 좋아요 멍! 🐾"));

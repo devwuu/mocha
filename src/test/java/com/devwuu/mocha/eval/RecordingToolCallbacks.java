@@ -31,7 +31,7 @@ final class RecordingToolCallbacks extends ToolCallbackProvider {
     RecordingToolCallbacks(ToolCallbackProvider delegate, ObjectMapper mapper) {
         // 상위 조립물은 쓰지 않는다 — 전 호출을 delegate로 넘긴다. 미접촉을 null로 정직하게 남기는
         // 픽스처 관례와 같은 정신(협력자를 조용히 끼워 넣어 경로를 가리지 않는다).
-        super(null, null, null, null, null, null, null, null, null, null, null);
+        super(null, null, null, null, null, null, null);
         this.delegate = delegate;
         this.mapper = mapper;
     }

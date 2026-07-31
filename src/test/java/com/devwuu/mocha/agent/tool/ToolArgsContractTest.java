@@ -13,32 +13,21 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * TΔ1(changes/0018) · TΔ2a(changes/0021): tool 인자 타입의 구조 계약 — V-9 구조 차단과
- * data-model §3 JSON 스키마(beans·brews 개정형)와의 역직렬화 정합을 단언한다.
+ * TΔ1(changes/0018) · TΔ2a(changes/0021): tool 인자 타입의 구조 계약 — data-model §3 JSON
+ * 스키마(beans·brews 개정형)와의 역직렬화 정합을 단언한다.
+ * <p>changes/0029 TΔ1에서 {@code propose_edit} 계약 케이스 2건(V-9 patch 구조 차단·patch 역직렬화)이
+ * tool 폐기와 함께 사라졌다. <b>V-9(커피명 불변) 자체는 살아 있다</b> — 수정 경로가 UI로 옮겨졌으므로
+ * 가드도 노트 수정 API(TΔ5)·수정 화면(TΔ13)에서 다시 세운다.
  */
 class ToolArgsContractTest {
 
     private final ObjectMapper mapper = MochaObjectMapper.create();
 
     @Test
-    @DisplayName("V-9/AC-38: propose_edit patch 스키마에 coffee_name 필드 자체가 없다 — 커피명 변경의 구조 차단")
-    void editPatchHasNoCoffeeNameComponent() {
-        // 컴파일 수준 차단의 반사 단언: patch.coffeeName()은 애초에 컴파일되지 않으며,
-        // 여기서는 레코드 컴포넌트 목록에 없음을 회귀 가드로 박는다(ADR-45).
-        List<String> patchFields = componentNames(ProposeEditArgs.Patch.class);
-        assertThat(patchFields).doesNotContain("coffeeName");
-        // 대조: 신규 기록 인자에는 coffee_name이 있다 — 이름은 기록 생성 경로로만 들어온다.
-        assertThat(componentNames(ProposeRecordArgs.class)).contains("coffeeName");
-    }
-
-    @Test
     @DisplayName("changes/0021: 인자 스키마에서 구 단일 필드(origin/process/my_taste/rating/recipe)가 제거됐다 — beans·brews로 대체")
     void legacySingleFieldsRemovedFromArgs() {
         assertThat(componentNames(ProposeRecordArgs.class))
-                .contains("beans", "brews")
-                .doesNotContain("origin", "process", "myTaste", "myTasteOriginal", "rating", "recipe");
-        assertThat(componentNames(ProposeEditArgs.Patch.class))
-                .contains("beans", "brews")
+                .contains("coffeeName", "beans", "brews")
                 .doesNotContain("origin", "process", "myTaste", "myTasteOriginal", "rating", "recipe");
     }
 
@@ -87,38 +76,6 @@ class ToolArgsContractTest {
         assertThat(args.match()).isEqualTo(
                 new ProposeRecordArgs.MatchArg("existing", "12", "2026-07-16"));
         assertThat(args.sources()).containsExactly("https://frob.co.kr/products/chelbesa");
-    }
-
-    @Test
-    @DisplayName("data-model §3.4: propose_edit 인자(note_id+date+patch)가 역직렬화되고 brews 속 rating 위반도 값으로 도착한다")
-    void proposeEditArgsDeserialize() {
-        String json = """
-                {
-                  "note_id": 12,
-                  "date": "2026-07-13",
-                  "patch": {
-                    "roastery": { "value": "프릳츠", "source": "user" },
-                    "beans": null,
-                    "roast_level": null,
-                    "official_notes": null,
-                    "brews": [
-                      { "recipe": null,
-                        "tasting": { "my_taste": "더 새콤했음", "my_taste_original": "더 새콤했다",
-                                     "rating": "다섯 개 만점" } }
-                    ],
-                    "new_date": "2026-07-15"
-                  }
-                }
-                """;
-        ProposeEditArgs args = mapper.readValue(json, ProposeEditArgs.class);
-
-        assertThat(args.noteId()).isEqualTo("12");
-        assertThat(args.date()).isEqualTo("2026-07-13");
-        assertThat(args.patch().roastery()).isEqualTo(new SourcedArg<>("프릳츠", "user"));
-        assertThat(args.patch().beans()).isNull(); // null = 유지 — 통째 교체 인자(§3.4)
-        assertThat(args.patch().newDate()).isEqualTo("2026-07-15");
-        // V-1 위반 값은 역직렬화 예외가 아니라 String으로 도착한다 — 거부 사유 반환은 검증 진입점(RecordProposalValidator 등)의 몫.
-        assertThat(args.patch().brews().getFirst().tasting().rating()).isEqualTo("다섯 개 만점");
     }
 
     private static List<String> componentNames(Class<?> recordClass) {

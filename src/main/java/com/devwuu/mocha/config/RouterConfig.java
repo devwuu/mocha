@@ -3,7 +3,6 @@ package com.devwuu.mocha.config;
 import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
 import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
-import com.devwuu.mocha.agent.tool.validation.EditProposalValidator;
 import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
 import com.devwuu.mocha.llm.AliasGenerator;
 import com.devwuu.mocha.llm.PhotoInfoExtractor;
@@ -22,7 +21,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import tools.jackson.databind.ObjectMapper;
 
-import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 
@@ -37,16 +35,11 @@ import java.time.Duration;
 @Configuration
 public class RouterConfig {
 
-    // 제안 검증 진입점 2종(툴별 1클래스 — ADR-64). record는 V-16 연도 없는 표기 해석 기준 시계만
-    // 주입받는 순수 협력자, edit는 다중 날짜 게이트가 없어(record 전용, ADR-60) 의존이 없다.
+    // 제안 검증 진입점 — 0029 TΔ1 이후 record 하나뿐이다(수정은 UI 전용, delta 0029 D-1). V-16 연도 없는
+    // 표기 해석 기준 시계만 주입받는 순수 협력자다.
     @Bean
     public RecordProposalValidator recordProposalValidator(Clock clock) {
         return new RecordProposalValidator(clock);
-    }
-
-    @Bean
-    public EditProposalValidator editProposalValidator() {
-        return new EditProposalValidator();
     }
 
     // 턴 컨텍스트 조립기(ADR-44·TΔ7a) — 트랜스크립트·pending·OCR·세그먼트를 모델 입력으로 직렬화.
@@ -55,25 +48,19 @@ public class RouterConfig {
         return new TurnPromptAssembler(mapper, clock);
     }
 
-    // function tool 5종 façade(ADR-44·45) — 도메인 협력자를 받아 역할별 구현(조회·제안 축)을 내부 조립한다.
+    // function tool 3종 façade(ADR-44·45) — 도메인 협력자를 받아 역할별 구현(조회·제안 축)을 내부 조립한다.
+    // 0029 TΔ1에서 조회 tool의 렌더·송신 의존(send_entry_card)이 끊겨 산출 디렉터리 주입도 함께 빠졌다.
     @Bean
     public ToolCallbackProvider toolCallbackProvider(
             NoteRepository noteRepository,
-            NoteRenderer noteRenderer,
-            SlackResponder responder,
-            // 산출 루트 선언은 RenderConfig가 소유하는 상수 하나를 공유한다 — 렌더러가 쓰는 디렉터리와
-            // 조회 tool이 카드를 찾는 디렉터리가 갈라지지 않게(changes/0025 CR25-9, ADR-50 POLICY).
-            @Value(RenderConfig.DEFAULT_ARTIFACT_DIR) String artifactDir,
             ObjectMapper mapper,
             PendingStore pendingStore,
             PreviewMessenger previewMessenger,
             RecordProposalValidator recordProposalValidator,
-            EditProposalValidator editProposalValidator,
             FoldingChatMemory transcript,
             Clock clock) {
-        return new ToolCallbackProvider(noteRepository, noteRenderer, responder, Path.of(artifactDir),
-                mapper, pendingStore, previewMessenger, recordProposalValidator, editProposalValidator,
-                transcript, clock);
+        return new ToolCallbackProvider(noteRepository, mapper, pendingStore, previewMessenger,
+                recordProposalValidator, transcript, clock);
     }
 
     // 사진 수신 배관(FR-10·ADR-29·31) — 라우터(버퍼 그룹핑·OCR)와 커밋 핸들러(스테이징 이관·정리)가 공유한다.

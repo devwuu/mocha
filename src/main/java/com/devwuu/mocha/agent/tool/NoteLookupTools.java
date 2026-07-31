@@ -5,40 +5,27 @@ import com.devwuu.mocha.domain.Bean;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.Sourced;
-import com.devwuu.mocha.render.CardFiles;
-import com.devwuu.mocha.render.NoteRenderer;
 import com.devwuu.mocha.repository.NoteRepository;
-import com.devwuu.mocha.slack.outbound.SlackResponder;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import tools.jackson.databind.ObjectMapper;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.time.LocalDate;
-import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
- * 검색·회상 축 tool 3종 — {@code list_notes}·{@code get_note}·{@code send_entry_card}
- * (ref: specs/coffee-note-agent/data-model.md#3.1~3.2·3.5, spec FR-14/FR-20; changes/0018 TΔ5).
+ * 검색·회상 축 tool 2종 — {@code list_notes}·{@code get_note}
+ * (ref: specs/coffee-note-agent/data-model.md#3.1~3.2, spec FR-14; changes/0018 TΔ5, 0029 TΔ1).
  * <p>{@link ToolCallbackProvider}(façade)가 조립하는 내부 협력자라 Spring 빈이 아니다. 전부 읽기 전용이다:
- * 노트·pending 파일을 바꾸지 않고(AC-Δ4), 카드 재전송도 기존 파생물 재사용이 우선이다.
- * <p>값 수준 확인(미존재 note_id·날짜 형식)의 위반은 예외가 아니라 <b>사유를 담은 오류 결과</b>로 돌려줘
+ * 노트·pending을 바꾸지 않는다(AC-Δ4).
+ * <p>changes/0029 TΔ1에서 {@code send_entry_card}가 사라졌다 — 기록 열람·카드 공유는 갤러리·상세 화면이
+ * 가져간다(delta 0029 D-5, 카드는 TΔ9의 온디맨드 생성). 그와 함께 이 클래스의 렌더·송신 의존도 끊겼다.
+ * <p>값 수준 확인(미존재 note_id)의 위반은 예외가 아니라 <b>사유를 담은 오류 결과</b>로 돌려줘
  * 에이전트가 루프 안에서 정정한다(ADR-45 — 환각 필터).
  */
 class NoteLookupTools {
-
-    private static final Logger log = LoggerFactory.getLogger(NoteLookupTools.class);
-
-    // 카드 재전송 캡션 — 모카 톤 유지(delta UNCHANGED). 구 검색 세션 종료 안내("됐어")는 세션 소멸로 뺐다.
-    static final String CARD_CAPTION = "이 기록이에요 멍! 🐾";
 
     private static final String LIST_NOTES_SCHEMA = """
             {"type":"object","properties":{},"required":[],"additionalProperties":false}""";
@@ -48,24 +35,11 @@ class NoteLookupTools {
               "note_id":{"type":"integer","description":"대상 노트 id — list_notes 응답의 id"}
             },"required":["note_id"],"additionalProperties":false}""";
 
-    private static final String SEND_ENTRY_CARD_SCHEMA = """
-            {"type":"object","properties":{
-              "note_id":{"type":"integer","description":"대상 노트 id — list_notes 응답의 id"},
-              "date":{"type":"string","description":"대상 시음 엔트리 날짜(YYYY-MM-DD) — get_note 응답의 entries[].date"}
-            },"required":["note_id","date"],"additionalProperties":false}""";
-
     private final NoteRepository noteRepository;
-    private final NoteRenderer noteRenderer;
-    private final SlackResponder responder;
-    private final Path artifactDir;
     private final ObjectMapper mapper;
 
-    NoteLookupTools(NoteRepository noteRepository, NoteRenderer noteRenderer, SlackResponder responder,
-                    Path artifactDir, ObjectMapper mapper) {
+    NoteLookupTools(NoteRepository noteRepository, ObjectMapper mapper) {
         this.noteRepository = noteRepository;
-        this.noteRenderer = noteRenderer;
-        this.responder = responder;
-        this.artifactDir = artifactDir;
         this.mapper = mapper;
     }
 
@@ -129,78 +103,5 @@ class NoteLookupTools {
             return ToolSupport.errorOutput(mapper, ToolSupport.missingNoteReason(args.noteId()));
         }
         return mapper.writeValueAsString(note.get());
-    }
-
-    // ---- send_entry_card (data-model §3.5, FR-20) ----
-
-    ToolCallback sendEntryCard(String channelId) {
-        return new ToolCallback(
-                "send_entry_card",
-                "기존 시음 엔트리의 카드 이미지를 사용자 채널에 전송한다 — 기존 기록을 찾는 발화의 답은 이 카드다. "
-                        + "전송까지 이 tool이 끝내므로 최종 텍스트에 카드 내용을 반복할 필요 없다.",
-                SEND_ENTRY_CARD_SCHEMA,
-                argumentsJson -> executeSendEntryCard(channelId, argumentsJson));
-    }
-
-    private String executeSendEntryCard(String channelId, String argumentsJson) {
-        SendEntryCardArgs args = mapper.readValue(argumentsJson, SendEntryCardArgs.class);
-        Optional<Note> note = ToolSupport.resolveNote(noteRepository, args.noteId());
-        if (note.isEmpty()) {
-            return ToolSupport.errorOutput(mapper, ToolSupport.missingNoteReason(args.noteId()));
-        }
-        LocalDate date;
-        try {
-            date = LocalDate.parse(args.date() == null ? "" : args.date().strip());
-        } catch (DateTimeParseException e) {
-            return ToolSupport.errorOutput(mapper,
-                    "date '" + args.date() + "'는 날짜 형식이 아니다 — YYYY-MM-DD로 보내라.");
-        }
-        // 환각 필터(get_note 미존재 오류와 같은 정신): 실존하지 않는 엔트리의 카드를 굽지 않는다.
-        LocalDate target = date;
-        Optional<Entry> entry = note.get().entries().stream()
-                .filter(e -> target.equals(e.date())).findFirst();
-        if (entry.isEmpty()) {
-            return ToolSupport.errorOutput(mapper, "노트 '" + note.get().id() + "'에는 " + date
-                    + " 시음 엔트리가 없다 — get_note로 실제 엔트리 날짜를 확인해라.");
-        }
-
-        // POLICY: 검색 응답은 새 파생물을 최소화한다 — 그 엔트리의 회차 카드 전부가 이미 있으면 재사용,
-        //         하나라도 없으면 그 엔트리만 증분 렌더 (ref: specs/coffee-note-agent/data-model.md#3.5,
-        //         구 ADR-25 정신 승계, changes/0021 ADR-59 회차화).
-        List<Path> cards = CardFiles.expectedCards(artifactDir, note.get(), entry.get());
-        boolean reused = !cards.isEmpty() && cards.stream().allMatch(Files::exists);
-        if (!reused) {
-            cards = noteRenderer.renderEntryCard(note.get().id(), date);
-        }
-        // 회차 카드 전부를 순서대로 재전송한다(FR-20, changes/0021 TΔ5b). 일부만 실패하면 성공분은 배달하고
-        // 실패분을 결과에 명시한다(부분 폴백 — plan §7, tool 결과는 실제 처리 결과를 명시(FR-22)).
-        int delivered = 0;
-        List<String> failedCards = new ArrayList<>();
-        for (Path card : cards) {
-            try {
-                // 캡션은 첫 성공 카드에만 싣는다 — 같은 안내를 카드 수만큼 반복하지 않는다(TΔ5b).
-                responder.postImage(channelId, card, delivered == 0 ? CARD_CAPTION : null);
-                delivered++;
-            } catch (RuntimeException e) {
-                log.warn("검색 카드 재전송 실패: noteId={} card={}", note.get().id(), card.getFileName(), e);
-                failedCards.add(card.getFileName().toString());
-            }
-        }
-        log.info("검색 카드 재전송: noteId={} date={} cards={} delivered={} reused={}",
-                note.get().id(), date, cards.size(), delivered, reused);
-        if (delivered == 0) {
-            return ToolSupport.errorOutput(mapper, "카드 전송에 전부 실패했다 — 채널에 도착한 카드가 없다. "
-                    + "사용자에게 카드를 보내지 못했다고 안내해라.");
-        }
-
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("sent", true);
-        result.put("note_id", note.get().id());
-        result.put("date", date.toString());
-        result.put("cards_sent", delivered);
-        if (!failedCards.isEmpty()) {
-            result.put("cards_failed", failedCards);
-        }
-        return mapper.writeValueAsString(result);
     }
 }

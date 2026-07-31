@@ -12,12 +12,10 @@ import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
 import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.json.MochaObjectMapper;
-import com.devwuu.mocha.render.NoteRenderer;
 import com.devwuu.mocha.repository.NoteRepository;
 import com.devwuu.mocha.repository.PendingStore;
 import com.devwuu.mocha.slack.outbound.PreviewBlocks;
 import com.devwuu.mocha.slack.outbound.PreviewMessenger;
-import com.devwuu.mocha.slack.outbound.SlackResponder;
 import com.openai.client.OpenAIClient;
 import com.openai.client.okhttp.OpenAIOkHttpClient;
 import org.junit.jupiter.api.Tag;
@@ -106,9 +104,6 @@ class BrewRulesSmokeTest {
         InMemoryPendingStore pendingStore = new InMemoryPendingStore();
         ToolCallbackProvider toolkit = toolkit()
                 .noteRepository(new EmptyNoteRepository())
-                .noteRenderer(new NoOpRenderer())
-                .responder(new PrintingResponder())
-                .artifactDir(Path.of("build/smoke-artifact"))
                 .mapper(mapper)
                 .pendingStore(pendingStore)
                 .previewMessenger(new StubPreviewMessenger())
@@ -225,39 +220,7 @@ class BrewRulesSmokeTest {
         }
     }
 
-    private static final class PrintingResponder implements SlackResponder {
-        @Override
-        public void post(String channelId, String text) {
-            System.out.println("[responder.post] " + text);
-        }
 
-        @Override
-        public void postImage(String channelId, Path imagePath, String caption) {
-            System.out.println("[responder.postImage] " + imagePath);
-        }
-
-        @Override
-        public void finalizePreview(String channelId, PendingNote pending, String statusText) {
-            // no-op
-        }
-    }
-
-    private static final class NoOpRenderer implements NoteRenderer {
-        @Override
-        public void renderAll() {
-            // no-op
-        }
-
-        @Override
-        public List<Path> renderEntryCard(long noteId, LocalDate date) {
-            return List.of(Path.of("build/smoke-artifact/unused.jpg"));
-        }
-
-        @Override
-        public void removeEntryCard(long noteId, LocalDate date) {
-            // no-op
-        }
-    }
 
     // .env.local(KEY=VALUE properties)에서 OPENAI_API_KEY를 읽는다. 없으면 환경변수 폴백. 파일 내용은 프로세스만 읽는다.
     private static String resolveApiKey() throws Exception {

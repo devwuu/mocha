@@ -32,7 +32,7 @@ public class FoldingChatMemory {
      * TTL 소멸(규칙 ③)은 호출부 트리거가 아니라 내부 판정이라 여기 없다.
      */
     public enum FoldTrigger {
-        /** ① 제안 tool 성공(pending 생성·갱신) — 배선: propose_record/propose_edit tool 구현체(ADR-45). 이후 문맥은 pending draft가 대신한다. */
+        /** ① 제안 tool 성공(pending 생성·갱신) — 배선: propose_record tool 구현체(ADR-45). 이후 문맥은 pending draft가 대신한다. */
         PROPOSAL_ACCEPTED,
         /** ② [저장] 커밋 — 배선: 저장 버튼 액션 핸들러(ADR-3 커밋 경로). */
         SAVE_COMMIT,

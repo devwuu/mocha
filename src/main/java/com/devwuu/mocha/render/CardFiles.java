@@ -13,7 +13,7 @@ import java.util.List;
 /**
  * 회차 카드 JPG 파일 경로 규약 — {@code artifact/cards/<접미>/<date>-taste-<n>.jpg}·{@code <date>-recipe-<n>.jpg},
  * n = 회차 번호(= brews 배열 순서, 1부터) (ref: data-model.md §2.4, plan.md#ADR-54·59, changes/0021 TΔ5a).
- * <p>렌더러(산출·정리)와 카드 재전송(send_entry_card의 파생물 재사용 판정 — data-model §3.5)이 같은 규약을
+ * <p>렌더러(산출·정리)와 카드 파생물 재사용 판정(data-model §3.5)이 같은 규약을
  * 공유하도록 한곳에 모은다. 카드 위에 회차를 표기하지 않으므로 파일명이 회차 구분의 유일한 표현이다(ADR-54 POLICY).
  * <p>폴더 접미({@code <id>-<로스터리>-<커피명>})는 <b>노트에서 여기가 직접 만든다</b> — 인자로 문자열을 받으면
  * 사진과 카드가 다른 접미로 갈릴 수 있다. 조립 규칙 자체는 {@link NoteFolderName}이 단일 소유한다

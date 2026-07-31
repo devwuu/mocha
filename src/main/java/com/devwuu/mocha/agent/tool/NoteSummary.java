@@ -7,10 +7,10 @@ import java.util.List;
  * {@code list_notes} tool 응답의 노트당 1항목 — 전체 노트 메타(읽기)
  * (ref: specs/coffee-note-agent/data-model.md#3.1).
  * <p>구 매칭·검색 후보 페이로드의 승계 — {@code aliases} 포함으로 표기 비일관(한/영 교차·부분 표기)을
- * 흡수한다(plan ADR-37, AC-53). 에이전트의 동일성 판단(FR-14)·검색(FR-20) 공용 재료.
+ * 흡수한다(plan ADR-37, AC-53). 에이전트의 동일성 판단(FR-14) 재료 — 검색(FR-20)은 UI로 옮겨졌다(0029).
  *
- * @param id            노트 식별자 — DB 대체키(changes/0028 ADR-75). 에이전트가 {@code get_note}·
- *                      {@code propose_edit}에 {@code note_id}로 되넘기는 값이다.
+ * @param id            노트 식별자 — DB 대체키(changes/0028 ADR-75). 에이전트가 {@code get_note}에
+ *                      {@code note_id}로 되넘기는 값이다.
  * @param coffeeName    커피 이름 표시값.
  * @param roastery      로스터리 표시값 — 없으면 null.
  * @param aliases       내부 별칭(커피명·로스터리 통합) — 사용자 미표시 값이지만 매칭 재료로 페이로드에 싣는다.

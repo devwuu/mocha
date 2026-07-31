@@ -5,7 +5,6 @@ import com.devwuu.mocha.agent.OpenAiChatClient;
 import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
 import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
-import com.devwuu.mocha.agent.tool.validation.EditProposalValidator;
 import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.llm.AliasGenerator;
@@ -225,13 +224,12 @@ class ConfigDefaultsTest {
     }
 
     @Test
-    @DisplayName("AC-Δ4(changes/0025 TΔ4a): RouterConfig가 협력자 스텁만으로 턴 배선 6종을 조립한다")
+    @DisplayName("AC-Δ4(changes/0025 TΔ4a): RouterConfig가 협력자 스텁만으로 턴 배선 5종을 조립한다")
     void routerBeansAssembleFromCollaborators() {
         // R-1: 0024 TΔ1b가 라우터 생성자 안 조립을 이 config로 이관했다(ADR-63) — 주입 지점이 늘어난 만큼
         // 배선 누락이 기동 실패로만 드러난다. 협력자는 전부 스텁이라 이 테스트는 "조립되는가"만 본다.
         routerRunner().run(context -> {
             assertThat(context.getBean(RecordProposalValidator.class)).isNotNull();
-            assertThat(context.getBean(EditProposalValidator.class)).isNotNull();
             assertThat(context.getBean(TurnPromptAssembler.class)).isNotNull();
             assertThat(context.getBean(ToolCallbackProvider.class)).isNotNull();
             assertThat(context.getBean(SlackCommitHandler.class)).isNotNull();

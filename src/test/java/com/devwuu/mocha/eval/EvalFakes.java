@@ -75,8 +75,8 @@ final class EvalFakes {
 
     /**
      * 렌더 미수행 — 카드 굽기(Thymeleaf + Playwright/Chromium)를 통째로 뺀다.
-     * <p>v1은 커밋하지 않으므로 카드 렌더 경로는 {@code send_entry_card}로만 닿는데, 그 tool이 판정 대상이
-     * 아니어서 실 렌더러를 물릴 이유가 없다(findings-TΔ0 §1.2 — {@code FakeCardImageRenderer} 불필요 판정).
+     * <p>v1은 커밋하지 않으므로 에이전트 턴이 카드 렌더에 닿을 경로가 없다 — changes/0029 TΔ1에서
+     * {@code send_entry_card}까지 폐기돼 더 분명해졌다(findings-TΔ0 §1.2 — 실 렌더러 불필요 판정).
      */
     static final class NoOpNoteRenderer implements NoteRenderer {
 

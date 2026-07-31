@@ -8,7 +8,6 @@ import com.devwuu.mocha.domain.Bean;
 import com.devwuu.mocha.domain.Brew;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.NoteMeta;
-import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.domain.Sourced;
 
 import java.time.Clock;
@@ -21,20 +20,19 @@ import java.util.stream.Collectors;
 /**
  * {@code propose_record} 인자의 서버 검증 진입점 — strict schema가 보장 못 하는 <b>값 수준 규칙</b>을
  * 결정론으로 강제한다 (ref: specs/coffee-note-agent/data-model.md#5, plan#ADR-45, changes/0018 TΔ1).
- * <p>검증 진입점은 툴별 클래스 1개씩이다(ADR-64 — 새 툴 추가 시 파일 1개씩 성장, edit는
- * {@link EditProposalValidator}). 양 진입점이 공유하는 규칙 패밀리는 같은 패키지의 구체 클래스에 위임한다
- * — 출처 {@code SourceRules}(V-5·V-14), 회차 {@code BrewRules}(V-1·V-8·V-15), 단일 대기
- * {@code SinglePendingGate}. 진입점 고유 검증(필수값·회차 0개 거부·V-16 다중 날짜 게이트·match 판정)은
- * 여기 남는다.
+ * <p>changes/0029 TΔ1 이후 <b>유일한 검증 진입점</b>이다 — {@code propose_edit}과 단일 대기 게이트가 함께
+ * 폐기됐다(delta 0029 D-1·D-2). 진입점이 하나로 줄며 백로그 R-3(try/catch 중복)·R-4(RejectedException
+ * 결합 미강제)의 근거도 소멸했다. 규칙 패밀리는 같은 패키지의 구체 클래스에 위임한다 — 출처
+ * {@code SourceRules}(V-5·V-14), 회차 {@code BrewRules}(V-1·V-8·V-15). 진입점 고유 검증(필수값·회차 0개
+ * 거부·V-16 다중 날짜 게이트·match 판정)은 여기 남는다.
  * <ul>
  *   <li>V-1 rating 4범주, V-5 source enum 제약, V-8 recipe 정규화, V-11 my_taste 병존</li>
  *   <li>V-14 beans 정규화, V-15 회차(brews) 정규화 — 빈 회차 드롭·회차 0개 거부(changes/0021)</li>
- *   <li>단일 대기 거부(FR-22/AC-30)</li>
  *   <li>V-16 다중 날짜 게이트(record 전용) — 원문 다중 날짜의 분해 우회 제안 거부(changes/0023)</li>
  * </ul>
  * <p>POLICY: 제안 tool의 서버 검증 실패는 오류 사유를 tool 결과로 반환 — 조용한 드롭·서버 대행 금지
- * (ref: specs/coffee-note-agent/plan.md#ADR-45, AC-9). 순수 도메인 계층 — SDK·I/O 무관, pending 조회는
- * 호출부(tool 구현, TΔ6)의 몫이다. 시계는 V-16의 연도 없는 표기("7/18") 해석 기준일에만 쓰인다.
+ * (ref: specs/coffee-note-agent/plan.md#ADR-45, AC-9). 순수 도메인 계층 — SDK·I/O 무관하고, 확인 대기
+ * (pending)를 판정 입력으로 보지 않는다. 시계는 V-16의 연도 없는 표기("7/18") 해석 기준일에만 쓰인다.
  * <p>POLICY: agent/tool/은 tool 정의·인자·검증만 — 턴 전처리·컨텍스트 운반체는 agent/turn/에,
  * 새 인터페이스 없이 구체 클래스로 (ref: plan.md#ADR-64).
  */
@@ -51,12 +49,10 @@ public class RecordProposalValidator {
      * {@code propose_record} 검증 — 통과 시 도메인 타입으로 정규화된 {@link RecordProposal}.
      *
      * @param args      strict schema를 통과한 미검증 인자.
-     * @param pending   현재 확인 대기 — 없으면 null. 단일 대기 판정 입력.
      * @param utterance 이번 턴의 사용자 원문·세그먼트 컨텍스트 — 다중 날짜 게이트(V-16)의 판정 입력.
      *                  이번 턴 원문만 본다 — 트랜스크립트의 과거 발화는 탐지 대상이 아니다(ADR-60).
      */
-    public ToolValidation<RecordProposal> validate(ProposeRecordArgs args, PendingNote pending,
-                                                   TurnUserMessage utterance) {
+    public ToolValidation<RecordProposal> validate(ProposeRecordArgs args, TurnUserMessage utterance) {
         try {
             Sourced<String> coffeeName = SourceRules.sourced(
                     "coffee_name", args.coffeeName(), SourceRules.COFFEE_NAME_SOURCES);
@@ -66,8 +62,6 @@ public class RecordProposalValidator {
             }
             Sourced<String> roastery = SourceRules.sourced(
                     "roastery", args.roastery(), SourceRules.ENRICHABLE_SOURCES);
-            SinglePendingGate.requireUpdatableOrFree(
-                    pending, coffeeName.value(), roastery == null ? null : roastery.value());
             List<Bean> beans = SourceRules.beans(args.beans());
             Sourced<String> roastLevel = SourceRules.sourced(
                     "roast_level", args.roastLevel(), SourceRules.ENRICHABLE_SOURCES);
@@ -95,8 +89,8 @@ public class RecordProposalValidator {
         }
     }
 
-    // POLICY: 다중 날짜 게이트는 record 전용 — propose_edit 경로에 날짜 수 게이트 금지(날짜 이동·정정
-    //         발화는 날짜 2개가 정당하고, 스키마+단일 대기가 이미 강제) (ref: plan.md#ADR-60, data-model.md#V-16).
+    // POLICY: 다중 날짜 게이트는 기록(propose_record) 경로 전용 (ref: plan.md#ADR-60, data-model.md#V-16).
+    //         종전 "propose_edit 경로에 금지"라는 대비항은 그 tool과 함께 소멸했다(0029 TΔ1).
     // V-16: 분해(ADR-61)를 우회한 뭉뚱그림 제안의 최종 방어선. 원문에서 서로 다른 절대 날짜 2개 이상이
     // 탐지되면, 세그먼트 분해가 수행됐고 target_date가 탐지 집합 안에 있을 때만 통과한다. 세그먼트는
     // 라우터의 턴 전처리(TΔ3b)가 주입한다 — 세그먼터 실패 턴은 컨텍스트 부재 = 전부 거부로, 분리 안내

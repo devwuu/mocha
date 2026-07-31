@@ -254,7 +254,7 @@ class JpaPendingStoreTest extends PostgresIntegrationTest {
     @Test
     @DisplayName("0025-CR25-10/ADR-66: edit 모드 target.note_id 결손은 empty 반환 + 행 삭제(게이트 NPE·모델 대면 null 차단)")
     void corruptEditWithMissingTargetNoteIdIsDiscarded() {
-        // note_id 결손 target이 통과하면 SinglePendingGate의 같은 대상 판정이 id 비교에서 NPE로 새고,
+        // note_id 결손 target이 통과하면 구 단일 대기 게이트(0029 TΔ1 폐기)의 같은 대상 판정이 NPE로 새고,
         // 거부 사유에는 리터럴 "null"이 노출된다(draft.coffee_name과 동일 부류).
         PendingNote editPending = editSample(OffsetDateTime.now(FIXED));
         seedRow(entityOf(editPending, mapper.writeValueAsString(editPending.draft()),

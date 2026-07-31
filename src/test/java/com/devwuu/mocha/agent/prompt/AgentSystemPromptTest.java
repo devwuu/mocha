@@ -47,7 +47,8 @@ class AgentSystemPromptTest {
     @DisplayName("FR-5: 확인 대기 중 발화는 수정 의도 우선 + 검색 격리 + 커피 이름 변경 거부(V-9)")
     void encodesPendingRevisionPriority() {
         assertThat(PROMPT).contains("수정 의도를 우선 고려한다");
-        assertThat(PROMPT).contains("대기 중 검색·카드 요청은 대기 내용을 바꾸지 않는다");
+        // 0029 TΔ1: 카드 전송 tool이 폐기돼 "검색·카드"가 "조회"로 줄었다 — 격리 규칙 자체는 유지.
+        assertThat(PROMPT).contains("대기 중 조회 요청은 대기 내용을 바꾸지 않는다");
         assertThat(PROMPT).contains("커피 이름 변경 요청은 오타 정정을 포함해 예외 없이 거부");
     }
 
@@ -135,11 +136,12 @@ class AgentSystemPromptTest {
     }
 
     @Test
-    @DisplayName("FR-20/FR-14: 검색·매칭 tool 흐름 — list_notes 출발·카드가 답·today 기준 상대 날짜")
+    @DisplayName("FR-14: 매칭 tool 흐름 — list_notes 출발·today 기준 상대 날짜")
     void encodesToolWorkflow() {
         assertThat(PROMPT).contains("list_notes");
         assertThat(PROMPT).contains("get_note");
-        assertThat(PROMPT).contains("send_entry_card");
         assertThat(PROMPT).contains("today 기준으로 절대 날짜");
+        // 0029 TΔ1: 폐기된 tool을 다시 부르게 두지 않는다 — 수정·카드 전송은 UI 몫이다(D-1·D-5).
+        assertThat(PROMPT).doesNotContain("propose_edit").doesNotContain("send_entry_card");
     }
 }

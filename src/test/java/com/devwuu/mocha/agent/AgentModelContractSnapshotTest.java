@@ -20,10 +20,12 @@ import static com.devwuu.mocha.agent.tool.ToolCallbackProviderFixture.toolkit;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * TΔ0b(changes/0024): 모델 대면 계약 스냅샷 가드 — tool 5종의 name·description·parametersSchema와
- * 시스템 프롬프트를 재정비 착수 시점 캡처와 <b>바이트 단위</b>로 비교한다 (AC-Δ4, delta UNCHANGED 표).
+ * TΔ0b(changes/0024): 모델 대면 계약 스냅샷 가드 — 장착 tool의 name·description·parametersSchema와
+ * 시스템 프롬프트를 캡처본과 <b>바이트 단위</b>로 비교한다 (AC-Δ4, delta UNCHANGED 표).
  * <p>구조 재정비(조립 이관·패키지 분할·명명 정리)의 전 과정에서 이 테스트가 그린이어야 한다 —
- * 배치·배선만 바뀌고 <b>이 가드의 범위(tool 5종 정의 + 시스템 프롬프트)</b>는 안 바뀌었음의 증거다.
+ * 배치·배선만 바뀌고 <b>이 가드의 범위(tool 정의 + 시스템 프롬프트)</b>는 안 바뀌었음의 증거다.
+ * <p>스냅샷은 changes/0029 TΔ1에서 재캡처됐다 — tool 5종 → 3종({@code propose_edit}·
+ * {@code send_entry_card} 폐기)과 시스템 프롬프트 개정이 delta 0029 D-1·D-5로 결정된 계약 변경이다.
  * 모델 대면 표면의 나머지 — 드라이버가 장착하는 내장 web_search(OpenAiChatClient)와 턴 컨텍스트
  * 조립(TurnPromptAssembler) — 는 이 스냅샷 밖이며 각자의 테스트가 가드한다.
  * <p>의도된 계약 변경(spec 델타로 결정된 프롬프트·스키마 수정)이 생기면 {@link #recaptureSnapshot()}을
@@ -35,7 +37,7 @@ class AgentModelContractSnapshotTest {
     private static final String SNAPSHOT_RESOURCE = "/contract/agent-model-contract.snapshot.txt";
 
     @Test
-    @DisplayName("AC-Δ4: tool 5종 name·description·parametersSchema + 시스템 프롬프트 = 캡처 시점과 바이트 단위 동일")
+    @DisplayName("AC-Δ4: 장착 tool name·description·parametersSchema + 시스템 프롬프트 = 캡처 시점과 바이트 단위 동일")
     void modelFacingContractMatchesSnapshot() throws IOException {
         assertThat(serializeCurrentContract()).isEqualTo(loadSnapshot());
     }

@@ -3,7 +3,6 @@ package com.devwuu.mocha.agent.tool;
 import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
 import com.devwuu.mocha.agent.conversation.TranscriptTurn;
-import com.devwuu.mocha.agent.tool.validation.EditProposalValidator;
 import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
 import com.devwuu.mocha.agent.turn.TurnUserMessage;
 import com.devwuu.mocha.domain.Aliases;
@@ -15,17 +14,13 @@ import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
 import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.domain.Rating;
-import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.domain.Tasting;
 import com.devwuu.mocha.json.MochaObjectMapper;
-import com.devwuu.mocha.render.NoteRenderer;
-import com.devwuu.mocha.repository.NoteFolderName;
 import com.devwuu.mocha.repository.NoteRepository;
 import com.devwuu.mocha.repository.PendingStore;
 import com.devwuu.mocha.slack.outbound.PreviewBlocks;
 import com.devwuu.mocha.slack.outbound.PreviewMessenger;
-import com.devwuu.mocha.slack.outbound.SlackResponder;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -33,9 +28,6 @@ import org.junit.jupiter.api.io.TempDir;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-import java.io.IOException;
-import java.io.UncheckedIOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
@@ -44,20 +36,20 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * TΔ5·TΔ6(changes/0018): function tool 5종 — 읽기·카드 3종(list_notes 페이로드, get_note 미존재 오류,
- * send_entry_card 재사용/증분 분기)과 제안 2종(propose_record/propose_edit — pending 생성·갱신(FR-5)·
- * 미리보기 전송·단일 대기 거부·충돌 경고·트랜스크립트 접힘)을 결정론으로 단언한다
- * (data-model §3, plan ADR-45·46, AC-Δ4·Δ5·Δ6). 외부 호출 없음 — 협력자는 전부 fake(모듈 CLAUDE.md §5.2).
+ * TΔ5·TΔ6(changes/0018): function tool 3종 — 읽기 2종(list_notes 페이로드, get_note 미존재 오류)과
+ * 제안 1종(propose_record — pending 생성·갱신(FR-5)·미리보기 전송·트랜스크립트 접힘)을 결정론으로
+ * 단언한다 (data-model §3, plan ADR-45·46, AC-Δ4·Δ5·Δ6).
+ * 외부 호출 없음 — 협력자는 전부 fake(모듈 CLAUDE.md §5.2).
+ * <p>changes/0029 TΔ1에서 {@code propose_edit}·{@code send_entry_card} 케이스군과 단일 대기 거부
+ * 케이스가 대상 구조와 함께 사라졌다 — 수정·조회는 UI로 옮겨진다(delta 0029 D-1·D-2·D-5).
  */
 class ToolCallbackProviderTest {
 
@@ -73,33 +65,29 @@ class ToolCallbackProviderTest {
     private final StubNoteRepository noteRepository = new StubNoteRepository();
     private final FakePendingStore pendingStore = new FakePendingStore();
     private final MutableClock clock = new MutableClock();
-    private RecordingRenderer renderer;
-    private RecordingResponder responder;
     private CapturingPreviewMessenger previewMessenger;
     private FoldingChatMemory transcript;
     private ToolCallbackProvider toolCallbackProvider;
 
     @BeforeEach
     void setUp() {
-        renderer = new RecordingRenderer(artifactDir, noteRepository);
-        responder = new RecordingResponder();
         previewMessenger = new CapturingPreviewMessenger();
         transcript = new FoldingChatMemory(20, Duration.ofHours(1), clock);
         // R-7 명시 예외: 실 협력자 조립 자체가 검증 대상이라 픽스처(ToolCallbackProviderFixture)를 경유하지
         // 않는다 — 위치 인자 배선이 어긋나면 픽스처 경유 테스트는 함께 눈이 멀기 때문에 원 생성자를 그대로
         // 통과시키는 지점을 하나 남긴다(TΔ4b, changes/0025).
-        toolCallbackProvider = new ToolCallbackProvider(noteRepository, renderer, responder, artifactDir, mapper,
-                pendingStore, previewMessenger, new RecordProposalValidator(clock),
-                new EditProposalValidator(), transcript, clock);
+        toolCallbackProvider = new ToolCallbackProvider(noteRepository, mapper, pendingStore,
+                previewMessenger, new RecordProposalValidator(clock), transcript, clock);
     }
 
     @Test
-    @DisplayName("plan §3/ADR-44: forTurn은 function tool 5종을 strict 스키마(additionalProperties=false)로 장착한다")
-    void forTurnExposesFiveStrictTools() {
+    @DisplayName("plan §3/ADR-44: forTurn은 function tool 3종을 strict 스키마(additionalProperties=false)로 장착한다")
+    void forTurnExposesThreeStrictTools() {
         List<ToolCallback> tools = toolCallbackProvider.forTurn(USER, CHANNEL, UTTERANCE);
 
+        // 0029 TΔ1: propose_edit(수정은 UI 전용)·send_entry_card(갤러리 대체)가 폐기돼 5종 → 3종이다.
         assertThat(tools).extracting(ToolCallback::name)
-                .containsExactly("list_notes", "get_note", "propose_record", "propose_edit", "send_entry_card");
+                .containsExactly("list_notes", "get_note", "propose_record");
         for (ToolCallback tool : tools) {
             JsonNode schema = mapper.readTree(tool.parametersSchema());
             assertThat(schema.get("additionalProperties").asBoolean()).isFalse();
@@ -107,21 +95,6 @@ class ToolCallbackProviderTest {
             List<String> properties = new ArrayList<>(schema.get("properties").propertyNames());
             assertThat(required(schema)).containsExactlyInAnyOrderElementsOf(properties);
         }
-    }
-
-    @Test
-    @DisplayName("V-9/AC-38: propose_edit patch 스키마에 coffee_name 필드 자체가 없다 — 구조 차단(strict 유지)")
-    void proposeEditSchemaHasNoCoffeeName() {
-        ToolCallback proposeEdit = tool("propose_edit");
-        JsonNode patch = mapper.readTree(proposeEdit.parametersSchema()).get("properties").get("patch");
-
-        List<String> patchFields = new ArrayList<>(patch.get("properties").propertyNames());
-        assertThat(patchFields).doesNotContain("coffee_name").contains("roastery", "new_date");
-        // 중첩 객체도 strict 계약 유지 — patch의 전 필드가 required에 있다.
-        assertThat(required(patch)).containsExactlyInAnyOrderElementsOf(patchFields);
-        // 대조: propose_record에는 coffee_name이 있다 — 이름은 기록 생성 경로로만 들어온다.
-        JsonNode recordSchema = mapper.readTree(tool("propose_record").parametersSchema());
-        assertThat(new ArrayList<>(recordSchema.get("properties").propertyNames())).contains("coffee_name");
     }
 
     // ---- propose_record (TΔ6) ----
@@ -175,20 +148,21 @@ class ToolCallbackProviderTest {
     }
 
     @Test
-    @DisplayName("AC-30/AC-Δ5: 확인 대기 중 다른 커피의 새 기록 제안은 거부 — pending 무변화·미리보기 미전송·접힘 없음")
-    void proposeRecordRejectsDifferentCoffeeWhilePending() {
+    @DisplayName("0029 D-2: 단일 대기 게이트 폐기 — 대기 중 다른 커피의 제안도 거부되지 않고 대기 내용을 대체한다")
+    void proposeRecordReplacesPendingWithDifferentCoffee() {
+        // 구 AC-30(다른 커피 거부)의 자리다. 게이트의 동일성 키에 수정 대상 필드(roastery)가 섞여 있어
+        // 로스터리 정정이 논리적으로 불가능했고(delta 0029 §1.2), 그 구조를 통째로 걷어낸 결과가 이것이다.
         execute("propose_record",
                 recordArgs("커피베라 예가체프 G1", "커피베라", "null", "2026-07-16", "{\"type\":\"new\",\"note_id\":null,\"date\":null}"));
-        transcript.append(USER, new TranscriptTurn("이번엔 첼베사", "네 멍"));
 
         JsonNode result = mapper.readTree(execute("propose_record",
                 recordArgs("Ethiopia Chelbesa", "FroB", "null", "2026-07-16", "{\"type\":\"new\",\"note_id\":null,\"date\":null}")));
 
-        assertThat(result.get("error").asString()).contains("단일 대기");
+        assertThat(result.has("error")).isFalse();
         assertThat(pendingStore.get(USER).orElseThrow().draft().coffeeName().value())
-                .isEqualTo("커피베라 예가체프 G1"); // 대기 불변
-        assertThat(previewMessenger.published).hasSize(1); // 거부 턴엔 미전송
-        assertThat(transcript.view(USER)).hasSize(1);      // 제안 실패 — 접힘 없음
+                .isEqualTo("Ethiopia Chelbesa");           // 새 제안이 대기를 대체
+        assertThat(previewMessenger.published).hasSize(2); // 같은 미리보기를 edit로 갱신
+        assertThat(previewMessenger.published.get(1).previewTs()).isEqualTo(previewMessenger.ts);
     }
 
     @Test
@@ -226,165 +200,6 @@ class ToolCallbackProviderTest {
         assertThat(result.get("error").asString()).contains("미리보기");
         assertThat(pendingStore.get(USER)).isEmpty(); // "미리보기 없으면 pending 없음" 불변
         assertThat(transcript.view(USER)).hasSize(1);
-    }
-
-    // ---- propose_edit (TΔ6) ----
-
-    @Test
-    @DisplayName("AC-Δ4/FR-21: propose_edit 검증 통과 — pending(mode=edit) 생성 + patch 적용 + ✏️ 미리보기 + 접힘")
-    void proposeEditCreatesEditPendingAndPublishesPreview() {
-        noteRepository.put(note(12L, "Ethiopia Chelbesa", "FroB",
-                Aliases.empty(), LocalDate.of(2026, 7, 13)));
-        transcript.append(USER, new TranscriptTurn("첼베사 평가 바꿔줘", "네 멍"));
-
-        JsonNode result = mapper.readTree(execute("propose_edit",
-                editArgs(12L, "2026-07-13",
-                        brewsPatchJson("더 새콤했음", "더 새콤했다", "\"맛있다\""))));
-
-        PendingNote pending = pendingStore.get(USER).orElseThrow();
-        assertThat(pending.mode()).isEqualTo(PendingNote.Mode.EDIT);
-        assertThat(pending.target()).isEqualTo(
-                new PendingNote.EditTarget(12L, LocalDate.of(2026, 7, 13)));
-        assertThat(pending.draft().entries()).hasSize(1);
-        // brews는 통째 교체(§3.4) — 에이전트가 rating까지 반영한 전체 배열을 구성해 보낸다(ADR-59).
-        assertThat(pending.draft().entries().get(0).brews().getFirst().tasting().myTaste()).isEqualTo("더 새콤했음");
-        assertThat(pending.draft().entries().get(0).brews().getFirst().tasting().rating()).isEqualTo(Rating.GOOD);
-        assertThat(pending.dateConflict()).isFalse();
-        assertThat(pending.previewTs()).isEqualTo(previewMessenger.ts);
-        assertThat(previewMessenger.published).hasSize(1);
-        assertThat(result.get("proposed").asBoolean()).isTrue();
-        assertThat(transcript.view(USER)).isEmpty(); // 제안 성공 접힘(AC-Δ6)
-    }
-
-    @Test
-    @DisplayName("data-model §3.4/ADR-59: patch의 brews는 통째 교체 — 회차 수가 다른 배열(회차 append 반영)로도 그대로 교체된다")
-    void proposeEditReplacesBrewsWholesale() {
-        noteRepository.put(note(12L, "Ethiopia Chelbesa", "FroB",
-                Aliases.empty(), LocalDate.of(2026, 7, 13)));
-
-        // 회차를 하나 더 기록하는 수정 발화 — 에이전트가 기존 회차를 포함해 append한 전체 배열을 구성한다(V-15).
-        execute("propose_edit", editArgs(12L, "2026-07-13",
-                "\"brews\": [%s, %s]".formatted(
-                        tastingBrewJson("새콤하고 좋았음", "새콤하고 좋았다", "\"맛있다\""),
-                        tastingBrewJson("식으니까 더 맛있음", "식으니까 더 맛있네", "\"완전 내스타일\""))));
-
-        // 서버는 회차 단위 병합 없이 배열을 신뢰해 통째 교체한다 — 배열 순서 = 회차 번호 유지(ADR-59).
-        Entry draftEntry = pendingStore.get(USER).orElseThrow().draft().entries().get(0);
-        assertThat(draftEntry.brews()).hasSize(2);
-        assertThat(draftEntry.brews())
-                .extracting(brew -> brew.tasting().myTaste())
-                .containsExactly("새콤하고 좋았음", "식으니까 더 맛있음");
-        assertThat(draftEntry.brews().get(1).tasting().rating()).isEqualTo(Rating.PERFECT);
-    }
-
-    @Test
-    @DisplayName("data-model §3.4: brews 없는 patch(null=유지)는 기존 회차를 건드리지 않는다")
-    void proposeEditKeepsBrewsWhenPatchOmitsThem() {
-        noteRepository.put(note(12L, "Ethiopia Chelbesa", "FroB",
-                Aliases.empty(), LocalDate.of(2026, 7, 13)));
-
-        execute("propose_edit", editArgs(12L, "2026-07-13",
-                "\"roastery\": {\"value\": \"프롭\", \"source\": \"user\"}"));
-
-        PendingNote pending = pendingStore.get(USER).orElseThrow();
-        assertThat(pending.draft().roastery().value()).isEqualTo("프롭"); // 지정 필드만 반영
-        Entry draftEntry = pending.draft().entries().get(0);
-        assertThat(draftEntry.brews()).hasSize(1); // 회차 유지 — brews 부재는 교체 아님
-        assertThat(draftEntry.brews().getFirst().tasting().myTaste()).isEqualTo("새콤하고 좋았음");
-        assertThat(draftEntry.brews().getFirst().tasting().rating()).isEqualTo(Rating.GOOD);
-    }
-
-    @Test
-    @DisplayName("V-10/AC-39: 날짜 이동처에 기존 엔트리가 있으면 date_conflict를 서버가 계산해 pending에 싣는다 — 경고 표기 근거")
-    void proposeEditFlagsDateMoveConflict() {
-        noteRepository.put(note(12L, "Ethiopia Chelbesa", "FroB",
-                Aliases.empty(), LocalDate.of(2026, 7, 10), LocalDate.of(2026, 7, 13)));
-
-        JsonNode result = mapper.readTree(execute("propose_edit",
-                editArgs(12L, "2026-07-13", "\"new_date\":\"2026-07-10\"")));
-
-        PendingNote pending = pendingStore.get(USER).orElseThrow();
-        assertThat(pending.draft().entries().get(0).date()).isEqualTo(LocalDate.of(2026, 7, 10));
-        assertThat(pending.dateConflict()).isTrue(); // PreviewBlocks가 이 플래그로 덮어쓰기 경고 섹션을 그린다
-        assertThat(result.get("date_conflict").asBoolean()).isTrue();
-    }
-
-    @Test
-    @DisplayName("V-10: 이동처에 기존 엔트리가 없으면 date_conflict=false — 자유 날짜 이동은 경고 없이 제안된다")
-    void proposeEditDateMoveWithoutConflict() {
-        noteRepository.put(note(12L, "Ethiopia Chelbesa", "FroB",
-                Aliases.empty(), LocalDate.of(2026, 7, 13)));
-
-        JsonNode result = mapper.readTree(execute("propose_edit",
-                editArgs(12L, "2026-07-13", "\"new_date\":\"2026-07-20\"")));
-
-        PendingNote pending = pendingStore.get(USER).orElseThrow();
-        assertThat(pending.draft().entries().get(0).date()).isEqualTo(LocalDate.of(2026, 7, 20));
-        assertThat(pending.dateConflict()).isFalse();
-        assertThat(result.get("date_conflict").asBoolean()).isFalse();
-    }
-
-    @Test
-    @DisplayName("FR-5: 같은 대상 재호출 = 누적 반영 — 직전 변경 유지 + preview_ts·created_at 보존 + 이동 충돌 경고 유지")
-    void proposeEditRecallAccumulatesOnPendingDraft() {
-        noteRepository.put(note(12L, "Ethiopia Chelbesa", "FroB",
-                Aliases.empty(), LocalDate.of(2026, 7, 10), LocalDate.of(2026, 7, 13)));
-        execute("propose_edit", editArgs(12L, "2026-07-13",
-                brewsPatchJson("더 새콤했음", "더 새콤했다", "null") + ",\"new_date\":\"2026-07-10\""));
-        OffsetDateTime firstCreatedAt = pendingStore.get(USER).orElseThrow().createdAt();
-        clock.advanceMinutes(10);
-
-        // rating만 고치는 발화 — 에이전트는 직전 감상을 포함한 전체 brews 배열을 다시 구성한다(§3.4 통째 교체).
-        execute("propose_edit", editArgs(12L, "2026-07-13",
-                brewsPatchJson("더 새콤했음", "더 새콤했다", "\"완전 내스타일\"")));
-
-        PendingNote updated = pendingStore.get(USER).orElseThrow();
-        assertThat(updated.draft().entries().get(0).brews().getFirst().tasting().myTaste()).isEqualTo("더 새콤했음"); // 직전 변경 유지
-        assertThat(updated.draft().entries().get(0).brews().getFirst().tasting().rating()).isEqualTo(Rating.PERFECT); // 이번 변경 반영
-        assertThat(updated.draft().entries().get(0).date()).isEqualTo(LocalDate.of(2026, 7, 10)); // 이동 유지
-        assertThat(updated.dateConflict()).isTrue(); // new_date 없는 재호출에도 충돌 경고 유지(V-10)
-        assertThat(updated.createdAt()).isEqualTo(firstCreatedAt);
-        assertThat(previewMessenger.published).hasSize(2);
-        assertThat(previewMessenger.published.get(1).previewTs()).isEqualTo(previewMessenger.ts);
-    }
-
-    @Test
-    @DisplayName("propose_edit: 확인 대기 중 다른 대상의 수정 제안은 거부(단일 대기 준용) — 대기·미리보기 무변화")
-    void proposeEditRejectsDifferentTargetWhilePending() {
-        noteRepository.put(note(12L, "Ethiopia Chelbesa", "FroB",
-                Aliases.empty(), LocalDate.of(2026, 7, 10), LocalDate.of(2026, 7, 13)));
-        execute("propose_edit", editArgs(12L, "2026-07-13",
-                brewsPatchJson("새콤했음", "새콤했다", "\"맛있다\"")));
-
-        JsonNode result = mapper.readTree(execute("propose_edit",
-                editArgs(12L, "2026-07-10",
-                        brewsPatchJson("밍밍했음", "밍밍했다", "\"맛이 없다\""))));
-
-        assertThat(result.get("error").asString()).contains("단일 대기");
-        assertThat(pendingStore.get(USER).orElseThrow().target().date()).isEqualTo(LocalDate.of(2026, 7, 13));
-        assertThat(previewMessenger.published).hasSize(1);
-    }
-
-    @Test
-    @DisplayName("data-model §3.4: 미존재 note_id·비숫자 note_id·미존재 엔트리 날짜의 수정 제안은 오류 사유 반환 — 환각 필터")
-    void proposeEditRejectsUnknownTargets() {
-        noteRepository.put(note(12L, "Ethiopia Chelbesa", "FroB",
-                Aliases.empty(), LocalDate.of(2026, 7, 13)));
-
-        JsonNode unknownId = mapper.readTree(execute("propose_edit",
-                rawEditArgs("999", "2026-07-13", brewsPatchJson("새콤했음", "새콤했다", "\"맛있다\""))));
-        // E-6(changes/0028): slug 폐기가 만든 새 실패 경로 — 스키마 위반(비숫자)도 미존재 id와 같은 부류로
-        // 수렴한다. 역직렬화 예외로 새면 에이전트가 정정할 사유를 못 받는다.
-        JsonNode notAnId = mapper.readTree(execute("propose_edit",
-                rawEditArgs("\"2026-07-13-102030\"", "2026-07-13", brewsPatchJson("새콤했음", "새콤했다", "\"맛있다\""))));
-        JsonNode unknownDate = mapper.readTree(execute("propose_edit",
-                editArgs(12L, "2026-07-01", brewsPatchJson("새콤했음", "새콤했다", "\"맛있다\""))));
-
-        assertThat(unknownId.get("error").asString()).contains("999", "list_notes");
-        assertThat(notAnId.get("error").asString()).contains("2026-07-13-102030", "list_notes");
-        assertThat(unknownDate.get("error").asString()).contains("2026-07-01", "get_note");
-        assertThat(pendingStore.get(USER)).isEmpty();
-        assertThat(previewMessenger.published).isEmpty();
     }
 
     // ---- 읽기·카드 tool (TΔ5) ----
@@ -438,117 +253,6 @@ class ToolCallbackProviderTest {
         assertThat(notAnId.get("error").asString()).contains("ghost-note", "list_notes");
     }
 
-    @Test
-    @DisplayName("data-model §3.5/AC-31: 그 엔트리의 회차 카드가 전부 있으면 그대로 postImage — 새 렌더 없음(파생물 재사용)")
-    void sendEntryCardReusesExistingCard() throws IOException {
-        noteRepository.put(note(12L, "Ethiopia Chelbesa", "FroB",
-                Aliases.empty(), LocalDate.of(2026, 7, 13)));
-        // 픽스처 엔트리 = 감상 회차 1개 → 기대 카드 집합 = <date>-taste-1.jpg 1장(changes/0021 TΔ5a).
-        Path existingCard = artifactDir.resolve("cards/12-FroB-Ethiopia-Chelbesa/2026-07-13-taste-1.jpg");
-        Files.createDirectories(existingCard.getParent());
-        Files.write(existingCard, new byte[]{1});
-
-        JsonNode result = mapper.readTree(execute("send_entry_card",
-                "{\"note_id\":12,\"date\":\"2026-07-13\"}"));
-
-        assertThat(renderer.rendered).isEmpty();
-        assertThat(responder.postedImages).hasSize(1);
-        assertThat(responder.postedImages.get(0).path()).isEqualTo(existingCard);
-        assertThat(responder.postedImages.get(0).channelId()).isEqualTo(CHANNEL);
-        assertThat(result.get("sent").asBoolean()).isTrue();
-    }
-
-    @Test
-    @DisplayName("data-model §3.5: 카드 파일 부재 시에만 그 엔트리만 증분 렌더 후 전송")
-    void sendEntryCardRendersIncrementallyWhenCardMissing() {
-        noteRepository.put(note(12L, "Ethiopia Chelbesa", "FroB",
-                Aliases.empty(), LocalDate.of(2026, 7, 13)));
-
-        JsonNode result = mapper.readTree(execute("send_entry_card",
-                "{\"note_id\":12,\"date\":\"2026-07-13\"}"));
-
-        assertThat(renderer.rendered).containsExactly("12/2026-07-13");
-        assertThat(responder.postedImages).hasSize(1);
-        assertThat(responder.postedImages.get(0).path())
-                .isEqualTo(artifactDir.resolve("cards/12-FroB-Ethiopia-Chelbesa/2026-07-13-taste-1.jpg"));
-        assertThat(result.get("sent").asBoolean()).isTrue();
-    }
-
-    @Test
-    @DisplayName("send_entry_card: 미존재 note_id·미존재 엔트리 날짜는 오류 사유 반환 — 전송·렌더 없음(환각 필터)")
-    void sendEntryCardRejectsUnknownTargets() {
-        noteRepository.put(note(12L, "Ethiopia Chelbesa", "FroB",
-                Aliases.empty(), LocalDate.of(2026, 7, 13)));
-
-        JsonNode unknownId = mapper.readTree(execute("send_entry_card",
-                "{\"note_id\":999,\"date\":\"2026-07-13\"}"));
-        JsonNode unknownDate = mapper.readTree(execute("send_entry_card",
-                "{\"note_id\":12,\"date\":\"2026-07-01\"}"));
-        JsonNode badDate = mapper.readTree(execute("send_entry_card",
-                "{\"note_id\":12,\"date\":\"엊그제\"}"));
-
-        assertThat(unknownId.get("error").asString()).contains("999");
-        assertThat(unknownDate.get("error").asString()).contains("2026-07-01", "get_note");
-        assertThat(badDate.get("error").asString()).contains("YYYY-MM-DD");
-        assertThat(renderer.rendered).isEmpty();
-        assertThat(responder.postedImages).isEmpty();
-    }
-
-    @Test
-    @DisplayName("FR-20/AC-Δ6: 회차 2개 엔트리는 회차 카드 4장 전부를 순서대로 재전송한다 — 캡션은 첫 카드에만(TΔ5b)")
-    void sendEntryCardSendsAllBrewCards() throws IOException {
-        noteRepository.put(twoBrewNote(18L, LocalDate.of(2026, 7, 18)));
-        List<Path> existing = seedCards("18-FroB-Ethiopia-Chelbesa",
-                "2026-07-18-taste-1.jpg", "2026-07-18-recipe-1.jpg",
-                "2026-07-18-taste-2.jpg", "2026-07-18-recipe-2.jpg");
-
-        JsonNode result = mapper.readTree(execute("send_entry_card",
-                "{\"note_id\":18,\"date\":\"2026-07-18\"}"));
-
-        assertThat(renderer.rendered).isEmpty(); // 전부 존재 → 재사용(§3.5)
-        assertThat(responder.postedImages).extracting(PostedImage::path)
-                .containsExactlyElementsOf(existing); // 회차 오름차순, 회차 안에서 감상 → 레시피
-        assertThat(responder.postedImages.get(0).caption()).isEqualTo(NoteLookupTools.CARD_CAPTION);
-        assertThat(responder.postedImages).filteredOn(img -> img.caption() != null).hasSize(1);
-        assertThat(result.get("sent").asBoolean()).isTrue();
-        assertThat(result.get("cards_sent").asInt()).isEqualTo(4);
-        assertThat(result.has("cards_failed")).isFalse();
-    }
-
-    @Test
-    @DisplayName("plan §7: 일부 카드 전송 실패 → 성공분은 배달하고 실패분을 결과에 명시한다(부분 폴백)")
-    void sendEntryCardReportsPartialFailure() throws IOException {
-        noteRepository.put(twoBrewNote(18L, LocalDate.of(2026, 7, 18)));
-        seedCards("18-FroB-Ethiopia-Chelbesa",
-                "2026-07-18-taste-1.jpg", "2026-07-18-recipe-1.jpg",
-                "2026-07-18-taste-2.jpg", "2026-07-18-recipe-2.jpg");
-        responder.failFilenames.add("2026-07-18-recipe-1.jpg");
-
-        JsonNode result = mapper.readTree(execute("send_entry_card",
-                "{\"note_id\":18,\"date\":\"2026-07-18\"}"));
-
-        assertThat(responder.postedImages).hasSize(3);
-        assertThat(result.get("sent").asBoolean()).isTrue();
-        assertThat(result.get("cards_sent").asInt()).isEqualTo(3);
-        assertThat(result.get("cards_failed")).hasSize(1);
-        assertThat(result.get("cards_failed").get(0).asString()).isEqualTo("2026-07-18-recipe-1.jpg");
-    }
-
-    @Test
-    @DisplayName("plan §7: 카드 전송 전부 실패 → 오류 사유 반환(에이전트가 미도착을 안내할 근거)")
-    void sendEntryCardReturnsErrorWhenAllSendsFail() throws IOException {
-        noteRepository.put(note(12L, "Ethiopia Chelbesa", "FroB",
-                Aliases.empty(), LocalDate.of(2026, 7, 13)));
-        seedCards("12-FroB-Ethiopia-Chelbesa", "2026-07-13-taste-1.jpg");
-        responder.failFilenames.add("2026-07-13-taste-1.jpg");
-
-        JsonNode result = mapper.readTree(execute("send_entry_card",
-                "{\"note_id\":12,\"date\":\"2026-07-13\"}"));
-
-        assertThat(responder.postedImages).isEmpty();
-        assertThat(result.get("error").asString()).contains("카드");
-    }
-
     // ---- 헬퍼 ----
 
     private String execute(String toolName, String argumentsJson) {
@@ -578,28 +282,11 @@ class ToolCallbackProviderTest {
                 targetDate, matchJson);
     }
 
-    /** propose_edit 인자 JSON — patch에 바꿀 필드 조각만 싣는다(strict 전 필드 전송은 SDK 몫, null=유지 계약 검증). */
-    private static String editArgs(long noteId, String date, String patchFieldsJson) {
-        return rawEditArgs(String.valueOf(noteId), date, patchFieldsJson);
-    }
-
-    /** note_id를 JSON 리터럴 그대로 싣는 변형 — 스키마 위반 값(비숫자)의 도착 경로를 재현한다(E-6). */
-    private static String rawEditArgs(String noteIdLiteral, String date, String patchFieldsJson) {
-        return """
-                {"note_id": %s, "date": "%s", "patch": {%s}}
-                """.formatted(noteIdLiteral, date, patchFieldsJson);
-    }
-
     /** 감상만 담은 회차 1개 JSON 조각 — brews 배열 요소(data-model §3.3, changes/0021). */
     private static String tastingBrewJson(String myTaste, String original, String ratingJson) {
         return """
                 {"recipe": null, "tasting": {"my_taste": "%s", "my_taste_original": "%s", "rating": %s}}"""
                 .formatted(myTaste, original, ratingJson);
-    }
-
-    /** patch의 brews 통째 교체 조각 — 특정 필드만 고치는 발화도 에이전트가 전체 배열을 구성한다(§3.4). */
-    private static String brewsPatchJson(String myTaste, String original, String ratingJson) {
-        return "\"brews\": [%s]".formatted(tastingBrewJson(myTaste, original, ratingJson));
     }
 
     private static List<String> required(JsonNode schema) {
@@ -620,33 +307,6 @@ class ToolCallbackProviderTest {
                 aliases, List.of(), entries,
                 OffsetDateTime.parse("2026-07-13T10:20:30+09:00"),
                 OffsetDateTime.parse("2026-07-14T10:00:00+09:00"));
-    }
-
-    /** 회차 2개(각각 recipe+tasting) 엔트리 1건 노트 — 기대 카드 4장(taste·recipe × 회차 2)의 픽스처(AC-Δ6). */
-    private static Note twoBrewNote(Long id, LocalDate date) {
-        Entry entry = new Entry(date, List.of(
-                new Brew(new Recipe(null, 15.0, 250.0, null, null, null, "210클릭 (매버릭 2.0)", null, null, null), new Tasting("새콤하고 좋았음", null, Rating.GOOD)),
-                new Brew(new Recipe(null, 15.0, 250.0, null, null, null, "205클릭 (매버릭 2.0)", null, null, null), new Tasting("더 새콤했음", null, Rating.PERFECT))),
-                OffsetDateTime.parse("2026-07-18T10:00:00+09:00"));
-        return new Note(id, new Sourced<>("Ethiopia Chelbesa", Source.USER), new Sourced<>("FroB", Source.USER),
-                List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), null)),
-                null, new Sourced<>(List.of("자스민"), Source.SEARCH),
-                Aliases.empty(), List.of(), List.of(entry),
-                OffsetDateTime.parse("2026-07-18T10:00:00+09:00"),
-                OffsetDateTime.parse("2026-07-18T10:00:00+09:00"));
-    }
-
-    /** artifact/cards/<노트 폴더>/ 아래에 기존 카드 파일을 심는다 — 재사용(§3.5) 분기 픽스처.
-     *  폴더 접미는 TΔ7 생성기 산출(<id>-<로스터리>-<커피명>)이다 — 실 경로와 같은 값이어야 재사용 분기가 성립한다(TΔ6c). */
-    private List<Path> seedCards(String noteFolder, String... filenames) throws IOException {
-        List<Path> cards = new ArrayList<>();
-        for (String filename : filenames) {
-            Path card = artifactDir.resolve("cards").resolve(noteFolder).resolve(filename);
-            Files.createDirectories(card.getParent());
-            Files.write(card, new byte[]{1});
-            cards.add(card);
-        }
-        return cards;
     }
 
     // ---- fakes (모듈 CLAUDE.md §5.2 — 외부 의존은 인터페이스 stub/fake) ----
@@ -746,70 +406,6 @@ class ToolCallbackProviderTest {
 
         void advanceMinutes(long minutes) {
             instant = instant.plus(Duration.ofMinutes(minutes));
-        }
-    }
-
-    private static final class RecordingRenderer implements NoteRenderer {
-        private final Path artifactDir;
-        private final NoteRepository noteRepository;
-        private final List<String> rendered = new ArrayList<>();
-
-        private RecordingRenderer(Path artifactDir, NoteRepository noteRepository) {
-            this.artifactDir = artifactDir;
-            this.noteRepository = noteRepository;
-        }
-
-        @Override
-        public void renderAll() {
-            throw new UnsupportedOperationException("카드 재전송은 전체 리렌더를 부르지 않는다");
-        }
-
-        @Override
-        public List<Path> renderEntryCard(long noteId, LocalDate date) {
-            rendered.add(noteId + "/" + date);
-            // 실 렌더러와 같은 자리에서 접미를 만든다 — 폴더 규약(TΔ7)을 fake가 따로 정의하지 않게(TΔ6c).
-            Path noteDir = artifactDir.resolve("cards")
-                    .resolve(NoteFolderName.of(noteRepository.findById(noteId).orElseThrow()));
-            // 회차화(changes/0021 TΔ5a) — 픽스처 엔트리(감상 회차 1개)의 산출 형태.
-            Path card = noteDir.resolve(date + "-taste-1.jpg");
-            try {
-                Files.createDirectories(card.getParent());
-                Files.write(card, new byte[]{1});
-            } catch (IOException e) {
-                throw new UncheckedIOException(e);
-            }
-            return List.of(card);
-        }
-
-        @Override
-        public void removeEntryCard(long noteId, LocalDate date) {
-            throw new UnsupportedOperationException("카드 재전송은 파생물을 지우지 않는다");
-        }
-    }
-
-    private record PostedImage(String channelId, Path path, String caption) {
-    }
-
-    private static final class RecordingResponder implements SlackResponder {
-        private final List<PostedImage> postedImages = new ArrayList<>();
-        private final Set<String> failFilenames = new HashSet<>(); // 파일명 단위 업로드 실패 주입(부분 폴백 검증)
-
-        @Override
-        public void post(String channelId, String text) {
-            throw new UnsupportedOperationException("읽기·카드·제안 tool은 평문 통지를 보내지 않는다");
-        }
-
-        @Override
-        public void postImage(String channelId, Path imagePath, String caption) {
-            if (failFilenames.contains(imagePath.getFileName().toString())) {
-                throw new IllegalStateException("files.upload 실패: " + imagePath.getFileName());
-            }
-            postedImages.add(new PostedImage(channelId, imagePath, caption));
-        }
-
-        @Override
-        public void finalizePreview(String channelId, PendingNote pending, String statusText) {
-            throw new UnsupportedOperationException("읽기·카드·제안 tool은 버튼 소진을 만지지 않는다");
         }
     }
 }
