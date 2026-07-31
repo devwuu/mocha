@@ -170,15 +170,14 @@ public class AgentConversationRouter implements ConversationRouter {
                             PendingNote pendingBefore, List<String> bufferNames) {
         PendingNote pendingAfter = pendingStore.get(userId).orElse(null);
         boolean proposalAccepted = !Objects.equals(pendingBefore, pendingAfter);
-        if (proposalAccepted) {
+        if (proposalAccepted && !bufferNames.isEmpty()) {
             // 사진은 pending으로 이관됐다 — 버퍼만 비운다(스테이징 원본은 [저장] 시 commit이 옮긴다, FR-10).
-            if (!bufferNames.isEmpty()) {
-                photoIntake.clearBuffer(userId);
-            }
-            // POLICY: 제안 성공 턴은 트랜스크립트에 재축적하지 않는다 — 접힘(제안 tool이 수행) 후 문맥은
-            //         구조화된 pending draft가 대신한다 (ref: specs/coffee-note-agent/plan.md#ADR-46, spec FR-23).
-            return;
+            photoIntake.clearBuffer(userId);
         }
+        // POLICY: 성공 턴은 제안 여부와 무관하게 트랜스크립트에 쌓는다 — 0029 TΔ3에서 제안 성공 접힘(구
+        //         ADR-46 규칙 ①)이 폐기됐다. 남는 것은 커밋 접힘과 TTL뿐이라, 제안된 draft의 대화 문맥이
+        //         [저장]/[취소]까지 살아 있고 다중 날짜 이어가기(ADR-61)의 남은 날짜도 함께 남는다
+        //         (ref: specs/coffee-note-agent/plan.md#ADR-46, spec FR-23, changes/0029 baseline.md §4.3).
         transcript.append(userId, new TranscriptTurn(userText, reply));
     }
 

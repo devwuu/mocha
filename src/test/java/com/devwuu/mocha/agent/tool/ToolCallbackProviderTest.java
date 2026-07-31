@@ -77,7 +77,7 @@ class ToolCallbackProviderTest {
         // 않는다 — 위치 인자 배선이 어긋나면 픽스처 경유 테스트는 함께 눈이 멀기 때문에 원 생성자를 그대로
         // 통과시키는 지점을 하나 남긴다(TΔ4b, changes/0025).
         toolCallbackProvider = new ToolCallbackProvider(noteRepository, mapper, pendingStore,
-                previewMessenger, new RecordProposalValidator(clock), transcript, clock);
+                previewMessenger, new RecordProposalValidator(clock), clock);
     }
 
     @Test
@@ -100,7 +100,7 @@ class ToolCallbackProviderTest {
     // ---- propose_record (TΔ6) ----
 
     @Test
-    @DisplayName("AC-Δ4/AC-2: propose_record 검증 통과 — pending(mode=record) 생성 + 미리보기 전송 + preview_ts 영속 + 접힘")
+    @DisplayName("AC-Δ4/AC-2: propose_record 검증 통과 — pending(mode=record) 생성 + 미리보기 전송 + preview_ts 영속")
     void proposeRecordCreatesPendingAndPublishesPreview() {
         transcript.append(USER, new TranscriptTurn("어제 마신 예가체프 새콤했어", "기록할게요 멍"));
 
@@ -117,13 +117,13 @@ class ToolCallbackProviderTest {
         assertThat(pending.draft().entries().get(0).brews().getFirst().tasting().rating()).isEqualTo(Rating.GOOD);
         assertThat(pending.match().type()).isEqualTo(MatchInfo.MatchType.NEW);
         assertThat(pending.previewTs()).isEqualTo(previewMessenger.ts);
-        // 미리보기 1회 전송 + 성공 결과 + 제안 성공 접힘(ADR-46 규칙 ①, AC-Δ6).
+        // 미리보기 1회 전송 + 성공 결과. 0029 TΔ3: 제안 성공 접힘이 폐기돼 tool은 트랜스크립트를 건드리지 않는다.
         assertThat(previewMessenger.published).hasSize(1);
         assertThat(previewMessenger.channels).containsExactly(CHANNEL);
         assertThat(result.get("proposed").asBoolean()).isTrue();
         // 신규 제안 결과에는 식별자가 실리지 않는다 — 없는 값을 null로 실어 보내지 않는다(D-1).
         assertThat(result.has("note_id")).isFalse();
-        assertThat(transcript.view(USER)).isEmpty();
+        assertThat(transcript.view(USER)).hasSize(1);   // 제안 전 문맥이 그대로 살아 있다(구 규칙 ① 폐기)
     }
 
     @Test
@@ -189,7 +189,7 @@ class ToolCallbackProviderTest {
     }
 
     @Test
-    @DisplayName("ADR-48 정신: 미리보기 전송 실패 시 신규 pending을 남기지 않고 오류 사유 반환 — 접힘 없음")
+    @DisplayName("ADR-48 정신: 미리보기 전송 실패 시 신규 pending을 남기지 않고 오류 사유 반환 — 문맥 무변화")
     void proposeRecordClearsPendingWhenPreviewPublishFails() {
         transcript.append(USER, new TranscriptTurn("어제 마신 예가체프", "기록할게요 멍"));
         previewMessenger.fail = true;

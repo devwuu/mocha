@@ -1,6 +1,5 @@
 package com.devwuu.mocha.config;
 
-import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
 import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
 import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
@@ -49,7 +48,8 @@ public class RouterConfig {
     }
 
     // function tool 3종 façade(ADR-44·45) — 도메인 협력자를 받아 역할별 구현(조회·제안 축)을 내부 조립한다.
-    // 0029 TΔ1에서 조회 tool의 렌더·송신 의존(send_entry_card)이 끊겨 산출 디렉터리 주입도 함께 빠졌다.
+    // 0029 TΔ1에서 조회 tool의 렌더·송신 의존(send_entry_card)이 끊겨 산출 디렉터리 주입도 함께 빠졌고,
+    // TΔ3에서 제안 성공 접힘 폐기로 트랜스크립트 주입도 빠졌다 — tool 계층은 대화 문맥을 모른다.
     @Bean
     public ToolCallbackProvider toolCallbackProvider(
             NoteRepository noteRepository,
@@ -57,10 +57,9 @@ public class RouterConfig {
             PendingStore pendingStore,
             PreviewMessenger previewMessenger,
             RecordProposalValidator recordProposalValidator,
-            FoldingChatMemory transcript,
             Clock clock) {
         return new ToolCallbackProvider(noteRepository, mapper, pendingStore, previewMessenger,
-                recordProposalValidator, transcript, clock);
+                recordProposalValidator, clock);
     }
 
     // 사진 수신 배관(FR-10·ADR-29·31) — 라우터(버퍼 그룹핑·OCR)와 커밋 핸들러(스테이징 이관·정리)가 공유한다.

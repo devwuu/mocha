@@ -1,6 +1,5 @@
 package com.devwuu.mocha.agent.tool;
 
-import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
 import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
 import com.devwuu.mocha.repository.NoteRepository;
 import com.devwuu.mocha.repository.PendingStore;
@@ -31,7 +30,6 @@ public final class ToolCallbackProviderFixture {
     private PendingStore pendingStore;
     private PreviewMessenger previewMessenger;
     private RecordProposalValidator recordValidator;
-    private FoldingChatMemory transcript;
     private Clock clock;
 
     private ToolCallbackProviderFixture() {
@@ -67,11 +65,6 @@ public final class ToolCallbackProviderFixture {
         return this;
     }
 
-    public ToolCallbackProviderFixture transcript(FoldingChatMemory transcript) {
-        this.transcript = transcript;
-        return this;
-    }
-
     /** 시계 지정 — 미지정 기록 검증기는 이 시계로 파생된다(프로덕션 배선과 동일 조합). */
     public ToolCallbackProviderFixture clock(Clock clock) {
         this.clock = clock;
@@ -83,6 +76,6 @@ public final class ToolCallbackProviderFixture {
         RecordProposalValidator record = recordValidator != null ? recordValidator
                 : clock != null ? new RecordProposalValidator(clock) : null;
         return new ToolCallbackProvider(noteRepository, mapper, pendingStore, previewMessenger,
-                record, transcript, clock);
+                record, clock);
     }
 }

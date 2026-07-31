@@ -1,7 +1,6 @@
 package com.devwuu.mocha.agent.tool;
 
 import com.devwuu.mocha.agent.OpenAiChatClient;
-import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
 import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
 import com.devwuu.mocha.agent.turn.TurnDraft;
 import com.devwuu.mocha.agent.turn.TurnUserMessage;
@@ -31,12 +30,14 @@ public class ToolCallbackProvider {
     private final NoteLookupTools lookupTools;
     private final ProposalTools proposalTools;
 
+    // 0029 TΔ3: 트랜스크립트 주입이 빠졌다 — 제안 성공 접힘이 폐기되며 tool 계층이 대화 문맥을
+    // 건드릴 이유가 사라졌다(접힘은 커밋·TTL만, 축적은 라우터 소유).
     public ToolCallbackProvider(NoteRepository noteRepository, ObjectMapper mapper, PendingStore pendingStore,
                                 PreviewMessenger previewMessenger, RecordProposalValidator recordValidator,
-                                FoldingChatMemory transcript, Clock clock) {
+                                Clock clock) {
         this.lookupTools = new NoteLookupTools(noteRepository, mapper);
         this.proposalTools = new ProposalTools(noteRepository, pendingStore, previewMessenger, recordValidator,
-                transcript, mapper, clock);
+                mapper, clock);
     }
 
     /**

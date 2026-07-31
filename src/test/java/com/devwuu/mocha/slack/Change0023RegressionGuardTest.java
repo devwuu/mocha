@@ -96,7 +96,6 @@ class Change0023RegressionGuardTest {
         ToolCallbackProvider toolCallbackProvider = toolkit()
                 .mapper(mapper)
                 .pendingStore(pendingStore)
-                .transcript(transcript)
                 .clock(clock)
                 .build();
         // 버튼 미수신 경로만 돌리므로 커밋 핸들러는 접촉되지 않는다 — 접촉되면 null 협력자로 즉시 실패한다.

@@ -16,8 +16,11 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * 작업 트랜스크립트 — 에이전트 턴의 대화 문맥을 사용자당 1건 유지한다
  * (ref: specs/coffee-note-agent/plan.md#ADR-46, spec FR-23, data-model.md#2.5).
- * <p>POLICY: 트랜스크립트는 메모리 전용·결정론 접힘(제안 성공·커밋·TTL) — {@code data/} 아래
+ * <p>POLICY: 트랜스크립트는 메모리 전용·결정론 접힘(커밋·TTL) — {@code data/} 아래
  * 파일 생성 금지, 재시작 시 소멸 (ref: specs/coffee-note-agent/plan.md#ADR-46, spec NFR-2 예외).
+ * <p>changes/0029 TΔ3: 접힘 3규칙 → 2규칙 — <b>제안 tool 성공 시 접힘(구 규칙 ①)이 폐기</b>됐다. draft는
+ * 이제 턴 입력으로 매번 실려 오므로(TΔ2) 문맥을 대신하는 것이 아니라 대화와 함께 살아 있고, 다중 날짜
+ * 이어가기(ADR-61)의 남은 날짜 문맥이 [저장] 시점까지 유지된다(baseline.md §4.3).
  * <p>접힘은 전부 관측 가능한 결정론 이벤트다(LLM 판단·요약 콜 없음) — 명시 접힘은
  * {@link #clear(String, FoldTrigger)}(배선 지점은 {@link FoldTrigger} 참조), TTL 소멸·턴 상한 드롭은
  * 이 클래스가 내부 판정한다. TTL 만료 판정은 다음 접근 시점에 지연 수행한다(백그라운드 스케줄러
@@ -28,15 +31,13 @@ public class FoldingChatMemory {
     private static final Logger log = LoggerFactory.getLogger(FoldingChatMemory.class);
 
     /**
-     * 명시 접힘 트리거 — 배선 지점 정의 (ref: plan.md#ADR-46 접힘 규칙 ①②).
-     * TTL 소멸(규칙 ③)은 호출부 트리거가 아니라 내부 판정이라 여기 없다.
+     * 명시 접힘 트리거 — 배선 지점 정의 (ref: plan.md#ADR-46 접힘 규칙, 0029 TΔ3 개정본의 커밋 규칙).
+     * TTL 소멸은 호출부 트리거가 아니라 내부 판정이라 여기 없다.
      */
     public enum FoldTrigger {
-        /** ① 제안 tool 성공(pending 생성·갱신) — 배선: propose_record tool 구현체(ADR-45). 이후 문맥은 pending draft가 대신한다. */
-        PROPOSAL_ACCEPTED,
-        /** ② [저장] 커밋 — 배선: 저장 버튼 액션 핸들러(ADR-3 커밋 경로). */
+        /** [저장] 커밋 — 배선: 저장 버튼 액션 핸들러(ADR-3 커밋 경로). */
         SAVE_COMMIT,
-        /** ② [취소] 커밋 — 배선: 취소 버튼 액션 핸들러. */
+        /** [취소] 커밋 — 배선: 취소 버튼 액션 핸들러. */
         CANCEL_COMMIT
     }
 
@@ -99,7 +100,7 @@ public class FoldingChatMemory {
         });
     }
 
-    /** 현재 문맥 조회 — TTL 경과 시 상태를 소멸시키고 빈 문맥을 반환한다(ADR-46 접힘 규칙 ③). */
+    /** 현재 문맥 조회 — TTL 경과 시 상태를 소멸시키고 빈 문맥을 반환한다(ADR-46 접힘 TTL 규칙). */
     public List<TranscriptTurn> view(String userId) {
         Objects.requireNonNull(userId, "userId");
         State state = transcripts.get(userId);
@@ -116,7 +117,7 @@ public class FoldingChatMemory {
         return List.copyOf(state.turns);
     }
 
-    /** 명시 접힘 — 제안 성공·[저장]/[취소] 커밋 시 문맥을 비운다(ADR-46 접힘 규칙 ①②). 없으면 no-op. */
+    /** 명시 접힘 — [저장]/[취소] 커밋 시 문맥을 비운다(ADR-46 접힘 커밋 규칙). 없으면 no-op. */
     public void clear(String userId, FoldTrigger trigger) {
         Objects.requireNonNull(userId, "userId");
         Objects.requireNonNull(trigger, "trigger");

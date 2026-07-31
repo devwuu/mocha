@@ -97,7 +97,6 @@ class AgentConversationRouterTest {
         ToolCallbackProvider toolCallbackProvider = toolkit()
                 .mapper(MochaObjectMapper.create())
                 .pendingStore(pendingStore)
-                .transcript(transcript)
                 .clock(clock)
                 .build();
         router = new AgentConversationRouter(pendingStore, transcript, chatClient, toolCallbackProvider,
@@ -211,20 +210,20 @@ class AgentConversationRouterTest {
     }
 
     @Test
-    @DisplayName("ADR-46 규칙 ①/FR-10: 제안 성공 턴 — 접힘 유지(턴 재축적 없음) + 버퍼 소비")
-    void proposalTurnKeepsFoldAndConsumesBuffer() {
+    @DisplayName("0029 TΔ3/FR-10: 제안 성공 턴도 트랜스크립트에 쌓인다(구 규칙 ① 접힘 폐기) + 버퍼 소비")
+    void proposalTurnAccumulatesTranscriptAndConsumesBuffer() {
         bufferPhoto("bag.jpg");
         transcript.append(USER, new TranscriptTurn("이 커피 뭐더라", "찾아볼게요 멍"));
-        chatClient.onRun = () -> {
-            // 제안 tool 성공 효과 시뮬레이션(TΔ6 계약) — pending 생성 + 트랜스크립트 접힘.
-            pendingStore.put(USER, pendingNote());
-            transcript.clear(USER, FoldingChatMemory.FoldTrigger.PROPOSAL_ACCEPTED);
-        };
+        // 제안 tool 성공 효과 시뮬레이션(TΔ6 계약) — pending만 생긴다. tool은 더 이상 접지 않는다(TΔ3).
+        chatClient.onRun = () -> pendingStore.put(USER, pendingNote());
 
         router.onMessage(message("어제 마신 걸로 기록해줘"));
 
         assertThat(responder.posted).containsExactly(chatClient.reply);
-        assertThat(transcript.view(USER)).isEmpty();      // 접힘 후 문맥은 pending draft가 대신한다(FR-23)
+        // 제안 전 문맥 + 이번 턴이 함께 남는다 — [저장]까지 대화가 살아 있어야 이어가기(ADR-61)가 성립한다.
+        assertThat(transcript.view(USER)).containsExactly(
+                new TranscriptTurn("이 커피 뭐더라", "찾아볼게요 멍"),
+                new TranscriptTurn("어제 마신 걸로 기록해줘", chatClient.reply));
         assertThat(photoBufferStore.get(USER)).isEmpty(); // 사진은 pending으로 이관 — 버퍼 소비
     }
 

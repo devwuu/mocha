@@ -1,6 +1,5 @@
 package com.devwuu.mocha.agent.tool;
 
-import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
 import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
 import com.devwuu.mocha.agent.tool.validation.ToolValidation;
 import com.devwuu.mocha.agent.turn.TurnDraft;
@@ -104,18 +103,15 @@ class ProposalTools {
     private final PendingStore pendingStore;
     private final PreviewMessenger previewMessenger;
     private final RecordProposalValidator recordValidator;
-    private final FoldingChatMemory transcript;
     private final ObjectMapper mapper;
     private final Clock clock;
 
     ProposalTools(NoteRepository noteRepository, PendingStore pendingStore, PreviewMessenger previewMessenger,
-                  RecordProposalValidator recordValidator, FoldingChatMemory transcript,
-                  ObjectMapper mapper, Clock clock) {
+                  RecordProposalValidator recordValidator, ObjectMapper mapper, Clock clock) {
         this.noteRepository = noteRepository;
         this.pendingStore = pendingStore;
         this.previewMessenger = previewMessenger;
         this.recordValidator = recordValidator;
-        this.transcript = transcript;
         this.mapper = mapper;
         this.clock = clock;
     }
@@ -203,8 +199,8 @@ class ProposalTools {
         if (failure != null) {
             return ToolSupport.errorOutput(mapper, failure);
         }
-        // 제안 성공 = 트랜스크립트 접힘(ADR-46 규칙 ①) — 이후 문맥은 pending draft가 대신한다.
-        transcript.clear(userId, FoldingChatMemory.FoldTrigger.PROPOSAL_ACCEPTED);
+        // 0029 TΔ3: 제안 성공 접힘(구 ADR-46 규칙 ①) 폐기 — 제안 tool은 트랜스크립트를 건드리지 않는다.
+        // 접힘은 커밋([저장]/[취소])·TTL만 남았고, 문맥 축적은 라우터의 턴 완결 지점이 단독으로 소유한다.
         log.info("propose_record 수용: user={} noteId={} match={} updated={}",
                 userId, proposedNote.id(), proposal.match().type(), pending != null);
 

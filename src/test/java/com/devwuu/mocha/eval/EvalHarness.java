@@ -153,7 +153,6 @@ final class EvalHarness {
                 .mapper(mapper)
                 .pendingStore(pendingStore)
                 .previewMessenger(new EvalFakes.StubPreviewMessenger())
-                .transcript(transcript)
                 .clock(clock)  // 검증기는 프로덕션(RouterConfig)과 같은 조합으로 파생된다
                 .build();
         RecordingToolCallbacks recorder = new RecordingToolCallbacks(toolkit, mapper);

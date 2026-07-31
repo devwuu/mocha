@@ -20,7 +20,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * FoldingChatMemory의 접힘·TTL·상한 계약 검증 — 결정론 이벤트(제안 성공·커밋·TTL·턴 상한)로만
+ * FoldingChatMemory의 접힘·TTL·상한 계약 검증 — 결정론 이벤트(커밋·TTL·턴 상한)로만
  * 문맥이 접히는지 확인한다 (ref: changes/0018 tasks.md TΔ3, plan.md#ADR-46, spec FR-23, AC-Δ6).
  */
 class FoldingChatMemoryTest {
@@ -94,7 +94,7 @@ class FoldingChatMemoryTest {
 
     @ParameterizedTest
     @EnumSource(FoldingChatMemory.FoldTrigger.class)
-    @DisplayName("AC-Δ6/AC-61: 접힘 이벤트(제안 성공·[저장]·[취소]) 각각에서 문맥이 비워진다")
+    @DisplayName("AC-Δ6/AC-61: 접힘 이벤트([저장]·[취소] 커밋) 각각에서 문맥이 비워진다 — 제안 성공 접힘은 0029 TΔ3에서 폐기")
     void clearFoldsTranscriptOnEachTrigger(FoldingChatMemory.FoldTrigger trigger) {
         transcript.append(USER, new TranscriptTurn("검색 왕복 1", "후보 목록"));
         transcript.append(USER, new TranscriptTurn("두 번째 거", "미리보기 보냈멍"));

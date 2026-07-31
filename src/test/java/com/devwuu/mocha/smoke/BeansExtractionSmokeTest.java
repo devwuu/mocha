@@ -1,7 +1,6 @@
 package com.devwuu.mocha.smoke;
 
 import com.devwuu.mocha.agent.OpenAiChatClient;
-import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
 import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
 import com.devwuu.mocha.agent.prompt.TurnPrompt;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
@@ -69,7 +68,6 @@ class BeansExtractionSmokeTest {
                 .mapper(mapper)
                 .pendingStore(pendingStore)
                 .previewMessenger(new StubPreviewMessenger())
-                .transcript(new FoldingChatMemory(20, Duration.ofHours(1), clock))
                 .clock(clock)
                 .build();
 
