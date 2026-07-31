@@ -24,6 +24,13 @@ build/
 !**/src/main/**/build/
 !**/src/test/**/build/
 
+### frontend (changes/0029 TΔ23) ###
+# 의존성 트리. 정본은 package-lock.json이고 그것은 커밋한다(빌드가 npm ci로 재현한다).
+/frontend/node_modules/
+# 프론트 빌드 산출물은 /build/frontend 로 나가므로 위 build/ 규칙이 이미 잡는다 —
+# 소스 트리(frontend/)에는 산출물을 두지 않는 것이 TΔ23의 결정이다.
+npm-debug.log*
+
 ### STS ###
 .apt_generated
 .classpath

@@ -1,0 +1,37 @@
+/*
+ * 배관 확인용 최소 스타일 (changes/0029 TΔ23).
+ * 디자인 시스템은 화면이 들어오는 S1·S2 슬라이스에서 정한다 — 여기서 선점하지 않는다.
+ */
+:root {
+  font-family: system-ui, -apple-system, sans-serif;
+  color-scheme: light dark;
+}
+
+body {
+  margin: 0;
+}
+
+main {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  text-align: center;
+}
+
+h1 {
+  margin: 0;
+  font-size: 2rem;
+  font-weight: 600;
+}
+
+p {
+  margin: 0;
+  opacity: 0.7;
+}
+
+code {
+  font-family: ui-monospace, monospace;
+}

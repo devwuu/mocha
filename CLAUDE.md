@@ -17,6 +17,7 @@
 - **DB(PostgreSQL)** — **원본 데이터의 소유자**(ADR-73). 노트·엔트리·회차·pending이 행으로 산다. 레포 트리 밖에 있고(로컬은 `docker-compose.yml`의 컨테이너 볼륨), 트리에 있는 것은 **스키마 정의뿐**이다 — Flyway 마이그레이션(`src/main/resources/db/migration/`)이 스키마를 단독 소유한다.
 - `data/` — **런타임 산출(파일로 남는 원본)**: 사진 아카이브(`photos/`)와 photo buffer. 노트·pending은 0028에서 DB로 이관돼 여기 없다. 커밋하지 않는다(§5).
 - `artifact/` — **런타임 산출(파생물)**: 엔트리 카드 JPG(`cards/`). index HTML은 ADR-55로, 썸네일은 ADR-32로 폐기됐다. **DB에서 전체 재생성 가능**하므로 커밋하지 않는다.
+- `frontend/` — **클라이언트 소스 트리**(React + TypeScript + Vite). 앱 UI가 사는 곳이고 백엔드와 **한 저장소·한 프로세스**로 돈다: `./gradlew build`가 프론트를 함께 빌드하고 산출물을 Spring이 정적 서빙한다(changes/0029 ADR-78). 산출물은 `build/frontend/`로 나가므로 이 트리에는 소스만 있다. `node_modules/`는 커밋하지 않고 `package-lock.json`이 정본이다.
 - (이후 모듈이 추가되면 각 모듈 루트에 `CLAUDE.md`를 둔다.)
 
 ## 3. spec과의 관계 (SDD)
