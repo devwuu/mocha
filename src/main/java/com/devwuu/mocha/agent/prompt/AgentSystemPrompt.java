@@ -20,8 +20,9 @@ package com.devwuu.mocha.agent.prompt;
  * data-model.md#V-15/#V-16; changes/0023 TΔ3d).
  * <p>POLICY: sources에는 로스터리+원두명 동시 확인 출처만 — 값 채움과 동일 가드
  * (ref: plan.md#ADR-49, spec AC-58).
- * <p>POLICY: source 우선순위 user &gt; photo &gt; search — 시스템 프롬프트·스키마 제약·미리보기 확인으로
- * 강제 (ref: plan.md#ADR-45, data-model.md#V-6).
+ * <p>POLICY: source 우선순위 user &gt; photo &gt; search — 시스템 프롬프트·스키마 제약·미리보기 확인,
+ * 그리고 <b>draft 대조</b>(턴 입력 draft의 상위 출처 값을 하위 출처가 덮는 제안은 서버가 거부)로 강제
+ * (ref: plan.md#ADR-45, data-model.md#V-6; changes/0029 TΔ2).
  */
 public final class AgentSystemPrompt {
 
@@ -42,9 +43,11 @@ public final class AgentSystemPrompt {
             - 상대 날짜("어제", "엊그제")는 컨텍스트의 today 기준으로 절대 날짜(YYYY-MM-DD)로 해석한다.
             - tool이 오류 사유를 돌려주면 사유에 맞게 정정해 재호출하고, 정정할 수 없으면 사용자에게 사유를 안내한다.
 
-            ## 확인 대기(pending) 중일 때
-            - 확인 대기가 있으면 애매한 발화는 대기 내용에 대한 수정 의도를 우선 고려한다 — 수정 발화는 제안 tool을 다시 호출해 대기 내용을 갱신한다(수정 유실 방지).
-            - 대기 중 조회 요청은 대기 내용을 바꾸지 않는다(격리).
+            ## 작성 중인 draft가 있을 때
+            - 컨텍스트의 draft는 사용자가 이미 보고 고칠 수 있었던 현재 폼 상태다 — 애매한 발화는 이 draft에 대한 수정 의도를 우선 고려한다.
+            - 추가 발화는 draft를 새로 만들지 말고 **그 위에 반영**한다 — 제안 tool을 다시 호출하되, 이번 발화가 건드리지 않은 필드는 draft 값을 그대로 다시 실어 보낸다(빠뜨리면 유실이다).
+            - draft에 이미 값이 있는 필드는 더 낮은 출처로 덮지 않는다(user > photo > search) — 사용자가 고친 값을 검색·사진 보강으로 되돌리면 서버가 거부한다. draft 값을 유지하거나, 사용자가 이번 발화로 직접 바꿔 말한 경우에만 바꾼다.
+            - draft 상태에서의 조회 요청은 draft를 바꾸지 않는다(격리).
             - 커피 이름 변경 요청은 오타 정정을 포함해 예외 없이 거부하고, 다른 커피는 새로 등록하라고 안내한다.
 
             ## 필드 값 규칙 (언어 정책)

@@ -2,13 +2,13 @@ package com.devwuu.mocha.agent.prompt;
 
 import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.agent.conversation.TranscriptTurn;
+import com.devwuu.mocha.agent.turn.TurnDraft;
 import com.devwuu.mocha.agent.turn.TurnUserMessage;
 import com.devwuu.mocha.domain.Bean;
 import com.devwuu.mocha.domain.Brew;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
-import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.domain.Tasting;
@@ -29,9 +29,12 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * 컨텍스트 조립 계약 검증 — 트랜스크립트+pending draft+OCR 결과+today가 instructions·messages로
+ * 컨텍스트 조립 계약 검증 — 트랜스크립트+draft+OCR 결과+today가 instructions·messages로
  * 조립되는지, OCR 실패·무정보가 컨텍스트에 새지 않는지(AC-28) 결정론적으로 확인한다
  * (ref: changes/0018 tasks.md TΔ7a, plan.md#ADR-44, spec FR-22).
+ * <p>changes/0029 TΔ2에서 대기(pending) 주입이 draft 주입으로 바뀌었다 — {@code mode}·{@code target}·
+ * {@code date_conflict} 단언은 수정 세션(TΔ1 폐기)과 함께 사라졌고, 그 자리에 "이 draft 위에 반영하라"
+ * 지시와 출처 우선순위(V-6) 지시의 단언이 들어왔다.
  */
 class TurnPromptAssemblerTest {
 
@@ -91,40 +94,33 @@ class TurnPromptAssemblerTest {
     }
 
     @Test
-    @DisplayName("pending 부재 시 '없음'으로 명시된다 — 대기 상태 오인 방지")
-    void statesAbsenceOfPending() {
+    @DisplayName("draft 부재 시 '없음'으로 명시된다 — 작성 중 상태 오인 방지")
+    void statesAbsenceOfDraft() {
         TurnPrompt context = assembler.assemble("안녕", List.of(), null, null, null);
 
-        assertThat(context.instructions()).contains("확인 대기(pending): 없음");
+        assertThat(context.instructions()).contains("작성 중인 draft: 없음");
     }
 
     @Test
-    @DisplayName("ADR-46: record pending의 mode·match·draft가 컨텍스트에 실린다 — 접힘 후 문맥의 압축본")
-    void includesRecordPendingDraft() {
-        PendingNote pending = new PendingNote(draft(), MatchInfo.newNote(), "171.001", NOW);
+    @DisplayName("TΔ2: draft의 match·노트 내용이 컨텍스트에 실린다 — 모델이 그 위에 발화를 반영할 재료")
+    void includesDraftContent() {
+        TurnDraft turnDraft = new TurnDraft(draft(), MatchInfo.newNote());
 
-        TurnPrompt context = assembler.assemble("산미는 낮음으로 바꿔줘", List.of(), pending, null, null);
+        TurnPrompt context = assembler.assemble("산미는 낮음으로 바꿔줘", List.of(), turnDraft, null, null);
 
-        assertThat(context.instructions()).contains("\"mode\":\"record\"");
         assertThat(context.instructions()).contains("\"type\":\"new\"");
         assertThat(context.instructions()).contains("Ethiopia Chelbesa");
         assertThat(context.instructions()).contains("새콤하고 좋았음");
-        // 배관 필드는 판단 재료가 아니다 — preview_ts가 새지 않는다.
-        assertThat(context.instructions()).doesNotContain("171.001");
     }
 
     @Test
-    @DisplayName("V-10: edit pending은 target과 date_conflict까지 싣는다 — 수정 대상·경고 문맥 유지")
-    void includesEditPendingTargetAndConflict() {
-        PendingNote pending = new PendingNote(PendingNote.Mode.EDIT, draft(),
-                new PendingNote.EditTarget(7L, LocalDate.of(2026, 7, 16)),
-                null, null, NOW).withDateConflict(true);
+    @DisplayName("TΔ2: draft 주입에 '이 draft 위에 반영'과 출처 우선순위 지시가 함께 실린다 (V-6)")
+    void draftBlockCarriesOverwriteInstruction() {
+        TurnPrompt context = assembler.assemble("산미도 좋았음", List.of(),
+                new TurnDraft(draft(), MatchInfo.newNote()), null, null);
 
-        TurnPrompt context = assembler.assemble("역시 원래 날짜로 둘래", List.of(), pending, null, null);
-
-        assertThat(context.instructions()).contains("\"mode\":\"edit\"");
-        assertThat(context.instructions()).contains("\"target\":{\"note_id\":7,\"date\":\"2026-07-16\"}");
-        assertThat(context.instructions()).contains("\"date_conflict\":true");
+        assertThat(context.instructions()).contains("이 draft 위에 이번 발화를 반영해 전체를 다시 제안해라");
+        assertThat(context.instructions()).contains("user > photo > search");
     }
 
     @Test

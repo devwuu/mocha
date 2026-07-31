@@ -50,7 +50,8 @@ class AgentModelContractSnapshotTest {
     private static String serializeCurrentContract() {
         // 협력자는 전부 null — executor는 호출하지 않고 정의만 캡처한다(정의는 협력자 무관 상수).
         ToolCallbackProvider toolkit = toolkit().build();
-        List<ToolCallback> tools = toolkit.forTurn("U-snapshot", "C-snapshot", new TurnUserMessage("스냅샷", null));
+        List<ToolCallback> tools = toolkit.forTurn("U-snapshot", "C-snapshot",
+                new TurnUserMessage("스냅샷", null), null);
 
         StringBuilder contract = new StringBuilder();
         for (ToolCallback tool : tools) {

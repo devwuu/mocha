@@ -2,6 +2,7 @@ package com.devwuu.mocha.eval;
 
 import com.devwuu.mocha.agent.tool.ToolCallback;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
+import com.devwuu.mocha.agent.turn.TurnDraft;
 import com.devwuu.mocha.agent.turn.TurnUserMessage;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -37,8 +38,8 @@ final class RecordingToolCallbacks extends ToolCallbackProvider {
     }
 
     @Override
-    public List<ToolCallback> forTurn(String userId, String channelId, TurnUserMessage utterance) {
-        return delegate.forTurn(userId, channelId, utterance).stream()
+    public List<ToolCallback> forTurn(String userId, String channelId, TurnUserMessage utterance, TurnDraft draft) {
+        return delegate.forTurn(userId, channelId, utterance, draft).stream()
                 .map(this::recording)
                 .toList();
     }

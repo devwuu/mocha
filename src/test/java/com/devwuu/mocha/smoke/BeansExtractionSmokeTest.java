@@ -84,7 +84,7 @@ class BeansExtractionSmokeTest {
                 // 케이스 날짜 고정(clock)과 관심사가 다르다. millis만 쓰므로 존은 무관하다.
                 new OpenAiChatClient(client, model, 10, 100_000, Duration.ofSeconds(60), 4_000,
                         mapper, Clock.systemUTC())
-                .runTurn(input, toolkit.forTurn(USER, CHANNEL, new TurnUserMessage(message, null)));
+                .runTurn(input, toolkit.forTurn(USER, CHANNEL, new TurnUserMessage(message, null), null));
 
         System.out.println("=== BEANS EXTRACTION SMOKE (TΔ3a, AC-64) model=" + model + " ===");
         System.out.println("입력      = " + message);

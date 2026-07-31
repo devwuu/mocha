@@ -3,6 +3,7 @@ package com.devwuu.mocha.agent.tool;
 import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
 import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
 import com.devwuu.mocha.agent.tool.validation.ToolValidation;
+import com.devwuu.mocha.agent.turn.TurnDraft;
 import com.devwuu.mocha.agent.turn.TurnUserMessage;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
@@ -141,25 +142,28 @@ class ProposalTools {
 
     // ---- propose_record (data-model §3.3, FR-2/FR-5) ----
 
-    // 턴 원문(utterance)은 클로저 캡처로만 유입된다 — 턴 시작 시점 고정 값이라 pending처럼 재조회하지
+    // 턴 원문(utterance)·draft는 클로저 캡처로만 유입된다 — 턴 시작 시점 고정 값이라 pending처럼 재조회하지
     // 않고, 갱신 재호출도 같은 턴 클로저를 써 턴 안에서 일관된다(TΔ2b, findings-TΔ0 §C-2·C-5).
-    ToolCallback proposeRecord(String userId, String channelId, TurnUserMessage utterance) {
+    // draft는 컨텍스트 조립기가 모델에게 보여준 것과 같은 값이다 — 모델이 본 draft와 게이트가 대조하는
+    // draft가 갈리면 거부 사유가 모델 입장에서 근거 없는 말이 된다(§C-5 드리프트 방지, 0029 TΔ2).
+    ToolCallback proposeRecord(String userId, String channelId, TurnUserMessage utterance, TurnDraft draft) {
         return new ToolCallback(
                 "propose_record",
                 "신규 시음 기록(또는 기존 노트에 더하는 새 시음)을 제안한다 — 검증 통과 시 확인 대기(pending)가 "
-                        + "만들어지고 미리보기가 전송된다. 저장은 사용자의 [저장] 버튼만 한다. 확인 대기 중 재호출은 "
-                        + "대기 내용 갱신이다(수정 발화 반영). 검증 거부는 사유를 돌려주니 정정해 재호출해라.",
+                        + "만들어지고 미리보기가 전송된다. 저장은 사용자의 [저장] 버튼만 한다. 작성 중인 draft가 있으면 "
+                        + "재호출은 그 draft 위에 이번 발화를 반영한 전체 내용이어야 한다 — 건드리지 않은 필드도 draft "
+                        + "값을 그대로 다시 실어라. 검증 거부는 사유를 돌려주니 정정해 재호출해라.",
                 PROPOSE_RECORD_SCHEMA,
-                argumentsJson -> executeProposeRecord(userId, channelId, utterance, argumentsJson));
+                argumentsJson -> executeProposeRecord(userId, channelId, utterance, draft, argumentsJson));
     }
 
     private String executeProposeRecord(String userId, String channelId, TurnUserMessage utterance,
-                                        String argumentsJson) {
+                                        TurnDraft draft, String argumentsJson) {
         ProposeRecordArgs args = mapper.readValue(argumentsJson, ProposeRecordArgs.class);
         PendingNote pending = pendingStore.get(userId).orElse(null);
         // POLICY: 제안 tool의 서버 검증 실패는 오류 사유를 tool 결과로 반환 — 조용한 드롭·서버 대행 금지
         //         (ref: specs/coffee-note-agent/plan.md#ADR-45, AC-9).
-        ToolValidation<RecordProposal> validation = recordValidator.validate(args, utterance);
+        ToolValidation<RecordProposal> validation = recordValidator.validate(args, utterance, draft);
         if (validation instanceof ToolValidation.Rejected<RecordProposal>(String reason)) {
             log.info("propose_record 검증 거부: user={} reason={}", userId, reason);
             return ToolSupport.errorOutput(mapper, reason);
@@ -177,10 +181,11 @@ class ProposalTools {
 
         OffsetDateTime now = OffsetDateTime.now(clock);
         Entry entry = new Entry(proposal.targetDate(), proposal.brews(), now);
-        // POLICY: draft의 식별자는 기존 노트면 그 id, 신규면 null이다 — id는 INSERT가 발급하므로 저장 전
+        // POLICY: 제안 노트의 식별자는 기존 노트면 그 id, 신규면 null이다 — id는 INSERT가 발급하므로 저장 전
         //         draft가 식별자를 가질 방법이 없고, 이 null이 그대로 커밋의 신규/기존 분기가 된다
         //         (ref: changes/0028 D-1, ADR-75 — 구 recordSlug 대체키 발급은 근거와 함께 소멸했다).
-        Note draft = new Note(
+        // 이름이 proposedNote인 이유: 이 메서드의 draft는 턴 입력(TurnDraft)이 이미 쓰고 있다(0029 TΔ2).
+        Note proposedNote = new Note(
                 existing ? proposal.match().noteId() : null,
                 proposal.meta().coffeeName(), proposal.meta().roastery(), proposal.meta().beans(),
                 proposal.meta().roastLevel(), proposal.meta().officialNotes(),
@@ -190,8 +195,8 @@ class ProposalTools {
         // 갱신한다(재전송 아님, data-model §2.3). "같은 대상인가"는 더 이상 판정하지 않는다 — 단일 대기
         // 게이트가 0029 TΔ1에서 사라졌고, 대기 내용은 다음 제안이 그대로 대체한다(delta 0029 D-2).
         PendingNote next = pending == null
-                ? new PendingNote(draft, proposal.match(), null, now)
-                : new PendingNote(PendingNote.Mode.RECORD, draft, null, false, proposal.match(),
+                ? new PendingNote(proposedNote, proposal.match(), null, now)
+                : new PendingNote(PendingNote.Mode.RECORD, proposedNote, null, false, proposal.match(),
                         pending.previewTs(), pending.createdAt());
 
         String failure = persistAndPublish(userId, channelId, pending, next);
@@ -201,13 +206,13 @@ class ProposalTools {
         // 제안 성공 = 트랜스크립트 접힘(ADR-46 규칙 ①) — 이후 문맥은 pending draft가 대신한다.
         transcript.clear(userId, FoldingChatMemory.FoldTrigger.PROPOSAL_ACCEPTED);
         log.info("propose_record 수용: user={} noteId={} match={} updated={}",
-                userId, draft.id(), proposal.match().type(), pending != null);
+                userId, proposedNote.id(), proposal.match().type(), pending != null);
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("proposed", true);
         // 신규는 아직 id가 없다(D-1) — 없는 식별자를 null로 실어 보내지 않는다. 기존 노트 대상일 때만 싣는다.
-        if (draft.id() != null) {
-            result.put("note_id", draft.id());
+        if (proposedNote.id() != null) {
+            result.put("note_id", proposedNote.id());
         }
         result.put("target_date", proposal.targetDate().toString());
         result.put("updated_existing_pending", pending != null);

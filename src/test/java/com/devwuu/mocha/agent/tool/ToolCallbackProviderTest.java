@@ -83,7 +83,7 @@ class ToolCallbackProviderTest {
     @Test
     @DisplayName("plan §3/ADR-44: forTurn은 function tool 3종을 strict 스키마(additionalProperties=false)로 장착한다")
     void forTurnExposesThreeStrictTools() {
-        List<ToolCallback> tools = toolCallbackProvider.forTurn(USER, CHANNEL, UTTERANCE);
+        List<ToolCallback> tools = toolCallbackProvider.forTurn(USER, CHANNEL, UTTERANCE, null);
 
         // 0029 TΔ1: propose_edit(수정은 UI 전용)·send_entry_card(갤러리 대체)가 폐기돼 5종 → 3종이다.
         assertThat(tools).extracting(ToolCallback::name)
@@ -260,7 +260,7 @@ class ToolCallbackProviderTest {
     }
 
     private ToolCallback tool(String toolName) {
-        return toolCallbackProvider.forTurn(USER, CHANNEL, UTTERANCE).stream()
+        return toolCallbackProvider.forTurn(USER, CHANNEL, UTTERANCE, null).stream()
                 .filter(tool -> tool.name().equals(toolName))
                 .findFirst().orElseThrow();
     }

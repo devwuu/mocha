@@ -5,10 +5,12 @@ import com.devwuu.mocha.agent.tool.BrewArg;
 import com.devwuu.mocha.agent.tool.ProposeRecordArgs;
 import com.devwuu.mocha.agent.tool.RecordProposal;
 import com.devwuu.mocha.agent.tool.SourcedArg;
+import com.devwuu.mocha.agent.turn.TurnDraft;
 import com.devwuu.mocha.agent.turn.TurnUserMessage;
 import com.devwuu.mocha.domain.Bean;
 import com.devwuu.mocha.domain.Brew;
 import com.devwuu.mocha.domain.MatchInfo;
+import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Source;
@@ -87,7 +89,7 @@ class ProposalValidatorsTest {
     // TΔ2b 배선: 기존 검증 단언 전부를 턴 원문(단일 날짜 = 게이트 비발동)이 실린 호출로 통과시켜
     // 배선 회귀를 상시 가드한다. 다중 날짜 원문의 판정(V-16 게이트)은 MultiDateGateV16이 단언한다.
     private ToolValidation<RecordProposal> validateRecord(ProposeRecordArgs args) {
-        return recordValidator.validate(args, new TurnUserMessage("7월 16일 새콤하고 좋았음", null));
+        return recordValidator.validate(args, new TurnUserMessage("7월 16일 새콤하고 좋았음", null), null);
     }
 
     // ---- TΔ2b 턴 원문 배선 ----
@@ -98,8 +100,8 @@ class ProposalValidatorsTest {
         @Test
         @DisplayName("TΔ2b: 게이트 비발동 원문(null·단일 날짜)이면 판정 결과는 동일하다 — 배선 자체는 판정에 영향 없음")
         void utteranceWiringDoesNotAffectJudgement() {
-            RecordProposal withoutUtterance = okOf(recordValidator.validate(recordArgs(), null));
-            RecordProposal withSingleDate = okOf(recordValidator.validate(recordArgs(), new TurnUserMessage("7월 16일 새콤하고 좋았음", null)));
+            RecordProposal withoutUtterance = okOf(recordValidator.validate(recordArgs(), null, null));
+            RecordProposal withSingleDate = okOf(recordValidator.validate(recordArgs(), new TurnUserMessage("7월 16일 새콤하고 좋았음", null), null));
             assertThat(withSingleDate).isEqualTo(withoutUtterance);
         }
     }
@@ -113,7 +115,7 @@ class ProposalValidatorsTest {
         @Test
         @DisplayName("AC-Δ1: 다중 날짜 원문의 분해 우회 제안(세그먼트 부재)은 거부된다 — 사유에 탐지 집합·다음 행동 포함")
         void multiDateWithoutSegmentsRejectedWithReason() {
-            String reason = rejectionOf(recordValidator.validate(recordArgs(), new TurnUserMessage("7월 16일은 새콤했고 7월 17일은 고소했음", null)));
+            String reason = rejectionOf(recordValidator.validate(recordArgs(), new TurnUserMessage("7월 16일은 새콤했고 7월 17일은 고소했음", null), null));
             assertThat(reason)
                     .contains("2026-07-16").contains("2026-07-17")   // 탐지 날짜 집합
                     .contains("V-16")                                 // 위반 이유
@@ -128,7 +130,8 @@ class ProposalValidatorsTest {
                     new TurnUserMessage.Segment(LocalDate.of(2026, 7, 17), "7월 17일은 고소했음"));
             String reason = rejectionOf(recordValidator.validate(
                     recordArgs("커피베라 예가체프 G1", "맛있다", "2026-07-20",
-                            new ProposeRecordArgs.MatchArg("new", null, null)), new TurnUserMessage("7월 16일은 새콤했고 7월 17일은 고소했음", segments)));
+                            new ProposeRecordArgs.MatchArg("new", null, null)),
+                    new TurnUserMessage("7월 16일은 새콤했고 7월 17일은 고소했음", segments), null));
             assertThat(reason)
                     .contains("2026-07-20")                          // 위반 이유 — 집합 밖 target_date
                     .contains("2026-07-16").contains("2026-07-17")   // 탐지 날짜 집합
@@ -144,21 +147,152 @@ class ProposalValidatorsTest {
             TurnUserMessage utterance = new TurnUserMessage("7월 16일은 새콤했고 7월 17일은 고소했음", segments);
 
             // 순차 제안의 첫 턴 — 가장 이른 날짜 세그먼트의 제안이 통과한다.
-            RecordProposal earliest = okOf(recordValidator.validate(recordArgs(), utterance));
+            RecordProposal earliest = okOf(recordValidator.validate(recordArgs(), utterance, null));
             assertThat(earliest.targetDate()).isEqualTo(LocalDate.of(2026, 7, 16));
 
             // 게이트 기준은 집합 소속뿐 — 이른 날짜 강제는 프롬프트 몫이라 "저장 후 이어서" 턴의
             // 나중 날짜 제안도 게이트에 막히지 않는다(ADR-60).
             RecordProposal later = okOf(recordValidator.validate(
                     recordArgs("커피베라 예가체프 G1", "맛있다", "2026-07-17",
-                            new ProposeRecordArgs.MatchArg("new", null, null)), utterance));
+                            new ProposeRecordArgs.MatchArg("new", null, null)), utterance, null));
             assertThat(later.targetDate()).isEqualTo(LocalDate.of(2026, 7, 17));
         }
 
         @Test
         @DisplayName("V-16/ADR-60: 상대 날짜는 세지 않는다 — 절대 날짜 1개 + 상대 날짜 발화는 게이트 비발동")
         void relativeDatesDoNotTriggerGate() {
-            okOf(recordValidator.validate(recordArgs(), new TurnUserMessage("어제는 별로였는데 7월 16일은 새콤하고 좋았음", null)));
+            okOf(recordValidator.validate(recordArgs(), new TurnUserMessage("어제는 별로였는데 7월 16일은 새콤하고 좋았음", null), null));
+        }
+    }
+
+    // ---- V-6 draft 대조 게이트 (changes/0029 TΔ2) ----
+
+    /**
+     * 턴 입력 draft의 상위 출처 값을 하위 출처가 덮는 제안은 거부된다(V-6). 이 델타가 없애려는 실패
+     * — 사용자가 폼에서 고친 값이 재제안의 검색·사진 보강으로 되돌아가는 것(delta 0029 §1.2) — 의
+     * 결정론 방어선이다.
+     * <p>동시에 <b>오거부를 만들지 않는지</b>도 함께 단언한다. 구 {@code SinglePendingGate}는 동일성 키에
+     * 수정 대상 필드(roastery)를 섞어 "로스터리를 고치려면 로스터리가 이미 같아야 한다"는 모순을 만들었다.
+     * 여기 게이트의 키는 V-9로 불변인 coffee_name뿐이라 같은 함정이 없다는 것을 {@link
+     * #differentCoffeeSkipsGate()}가 못박는다.
+     */
+    @Nested
+    class DraftPriorityGateV6 {
+
+        private static final String COFFEE = "커피베라 예가체프 G1";
+
+        private ToolValidation<RecordProposal> validateWithDraft(ProposeRecordArgs args, TurnDraft draft) {
+            return recordValidator.validate(args, new TurnUserMessage("7월 16일 새콤하고 좋았음", null), draft);
+        }
+
+        private static ProposeRecordArgs proposal(String coffeeName, SourcedArg<String> roastery,
+                                                  SourcedArg<List<String>> officialNotes, List<BeanArg> beans) {
+            return new ProposeRecordArgs(
+                    new SourcedArg<>(coffeeName, "user"), roastery, beans, null, officialNotes,
+                    List.of(tastingBrew("새콤하고 좋았음", "새콤하고 좋았다", "맛있다")),
+                    TASTED.toString(), new ProposeRecordArgs.MatchArg("new", null, null), null);
+        }
+
+        private static TurnDraft draftOf(String coffeeName, Sourced<String> roastery,
+                                         Sourced<List<String>> officialNotes, List<Bean> beans) {
+            Note note = new Note(null, new Sourced<>(coffeeName, Source.USER), roastery, beans,
+                    null, officialNotes, List.of(), List.of(), null, null);
+            return new TurnDraft(note, MatchInfo.newNote());
+        }
+
+        @Test
+        @DisplayName("V-6: draft의 user 값을 search 값이 덮는 제안은 거부된다 — 사유에 양쪽 값·출처·다음 행동")
+        void searchOverwritingUserValueRejected() {
+            TurnDraft draft = draftOf(COFFEE, new Sourced<>("모모스", Source.USER), null, List.of());
+
+            String reason = rejectionOf(validateWithDraft(
+                    proposal(COFFEE, new SourcedArg<>("FroB", "search"), null, null), draft));
+
+            assertThat(reason)
+                    .contains("roastery")
+                    .contains("모모스").contains("FroB")         // 판단 근거 — 양쪽 값
+                    .contains("user").contains("search")         // 판단 근거 — 양쪽 출처
+                    .contains("V-6")
+                    .contains("draft 값을 그대로 두고 다시 제안해라"); // 다음 행동(bare rejection 금지)
+        }
+
+        @Test
+        @DisplayName("V-6: photo 값을 search가 덮어도 거부된다 — 서열은 user > photo > search 전체에 적용")
+        void searchOverwritingPhotoValueRejected() {
+            TurnDraft draft = draftOf(COFFEE, new Sourced<>("모모스", Source.PHOTO), null, List.of());
+
+            assertThat(rejectionOf(validateWithDraft(
+                    proposal(COFFEE, new SourcedArg<>("FroB", "search"), null, null), draft)))
+                    .contains("photo").contains("search");
+        }
+
+        @Test
+        @DisplayName("V-6: official_notes도 같은 대조 대상이다 — 목록 값의 하위 출처 덮어쓰기 거부")
+        void officialNotesDowngradeRejected() {
+            TurnDraft draft = draftOf(COFFEE, null,
+                    new Sourced<>(List.of("자두", "홍차"), Source.USER), List.of());
+
+            assertThat(rejectionOf(validateWithDraft(
+                    proposal(COFFEE, null, new SourcedArg<>(List.of("청포도"), "search"), null), draft)))
+                    .contains("official_notes").contains("자두").contains("청포도");
+        }
+
+        @Test
+        @DisplayName("AC-1: 사용자가 직접 바꿔 말한 정정(source=user)은 통과한다 — 게이트가 수정을 막지 않는다")
+        void sameRankCorrectionPasses() {
+            TurnDraft draft = draftOf(COFFEE, new Sourced<>("FroB", Source.USER), null, List.of());
+
+            RecordProposal ok = okOf(validateWithDraft(
+                    proposal(COFFEE, new SourcedArg<>("모모스", "user"), null, null), draft));
+
+            assertThat(Sourced.valueOrNull(ok.meta().roastery())).isEqualTo("모모스");
+        }
+
+        @Test
+        @DisplayName("V-6: 같은 값 재보고는 출처가 낮아도 통과한다 — 되돌아간 값이 없다")
+        void sameValueWithLowerSourcePasses() {
+            TurnDraft draft = draftOf(COFFEE, new Sourced<>("모모스", Source.USER), null, List.of());
+
+            okOf(validateWithDraft(proposal(COFFEE, new SourcedArg<>("모모스", "search"), null, null), draft));
+        }
+
+        @Test
+        @DisplayName("V-6: 제안이 값을 비우는 것은 덮어쓰기가 아니다 — 발화로 지우는 경로를 막지 않는다")
+        void clearingValuePasses() {
+            TurnDraft draft = draftOf(COFFEE, new Sourced<>("모모스", Source.USER), null, List.of());
+
+            okOf(validateWithDraft(proposal(COFFEE, new SourcedArg<>(null, null), null, null), draft));
+        }
+
+        @Test
+        @DisplayName("커피명이 다르면 게이트는 발동하지 않는다 — 구 SinglePendingGate 오거부(delta §1.2)의 재발 방지")
+        void differentCoffeeSkipsGate() {
+            // draft에는 로스터리가 user 출처로 박혀 있지만, 이번 제안은 다른 커피다 —
+            // 동일성 키에 수정 대상이 섞여 있던 구 게이트라면 여기서 정당한 제안을 거부했다.
+            TurnDraft draft = draftOf(COFFEE, new Sourced<>("모모스", Source.USER), null, List.of());
+
+            RecordProposal ok = okOf(validateWithDraft(
+                    proposal("케냐 키암부 AA", new SourcedArg<>("FroB", "search"), null, null), draft));
+
+            assertThat(Sourced.valueOrNull(ok.meta().coffeeName())).isEqualTo("케냐 키암부 AA");
+            assertThat(Sourced.valueOrNull(ok.meta().roastery())).isEqualTo("FroB");
+        }
+
+        @Test
+        @DisplayName("beans는 대조 대상이 아니다 — 요소 재구성(블렌드 분해·병합)이 정상 경로라 오거부를 만들지 않는다")
+        void beansAreNotComparedElementWise() {
+            TurnDraft draft = draftOf(COFFEE, null, null,
+                    List.of(new Bean(new Sourced<>("에티오피아 예가체프", Source.USER), null)));
+
+            okOf(validateWithDraft(proposal(COFFEE, null, null,
+                    List.of(new BeanArg(new SourcedArg<>("콜롬비아 우일라", "search"), new SourcedArg<>(null, null)))),
+                    draft));
+        }
+
+        @Test
+        @DisplayName("draft 부재 턴은 게이트 비발동 — 첫 발화의 검색 보강이 막히지 않는다")
+        void absentDraftSkipsGate() {
+            okOf(validateWithDraft(proposal(COFFEE, new SourcedArg<>("FroB", "search"), null, null), null));
         }
     }
 

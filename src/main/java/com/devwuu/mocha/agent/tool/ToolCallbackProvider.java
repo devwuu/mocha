@@ -3,6 +3,7 @@ package com.devwuu.mocha.agent.tool;
 import com.devwuu.mocha.agent.OpenAiChatClient;
 import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
 import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
+import com.devwuu.mocha.agent.turn.TurnDraft;
 import com.devwuu.mocha.agent.turn.TurnUserMessage;
 import com.devwuu.mocha.repository.NoteRepository;
 import com.devwuu.mocha.repository.PendingStore;
@@ -40,13 +41,14 @@ public class ToolCallbackProvider {
 
     /**
      * 에이전트 턴 1회에 장착할 tool 목록 — 제안 tool이 pending을 소유할 사용자와, 미리보기를 배달할
-     * 채널, 그리고 이번 턴의 사용자 원문({@code utterance} — 다중 날짜 게이트 V-16의 판정 입력)을 턴마다
-     * 바인딩한다. 툴킷은 애플리케이션 수명 객체라 턴별 값은 이 인자로만 유입된다(TΔ2b, findings-TΔ0 §C-2).
+     * 채널, 이번 턴의 사용자 원문({@code utterance} — 다중 날짜 게이트 V-16의 판정 입력), 그리고 작성 중인
+     * 폼 상태({@code draft} — 출처 우선순위 대조 V-6의 판정 입력, 0029 TΔ2)를 턴마다 바인딩한다.
+     * 툴킷은 애플리케이션 수명 객체라 턴별 값은 이 인자로만 유입된다(TΔ2b, findings-TΔ0 §C-2).
      */
-    public List<ToolCallback> forTurn(String userId, String channelId, TurnUserMessage utterance) {
+    public List<ToolCallback> forTurn(String userId, String channelId, TurnUserMessage utterance, TurnDraft draft) {
         return List.of(
                 lookupTools.listNotes(),
                 lookupTools.getNote(),
-                proposalTools.proposeRecord(userId, channelId, utterance));
+                proposalTools.proposeRecord(userId, channelId, utterance, draft));
     }
 }

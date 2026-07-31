@@ -44,12 +44,22 @@ class AgentSystemPromptTest {
     }
 
     @Test
-    @DisplayName("FR-5: 확인 대기 중 발화는 수정 의도 우선 + 검색 격리 + 커피 이름 변경 거부(V-9)")
-    void encodesPendingRevisionPriority() {
+    @DisplayName("TΔ2: draft 중 발화는 수정 의도 우선 + 조회 격리 + 커피 이름 변경 거부(V-9)")
+    void encodesDraftRevisionPriority() {
         assertThat(PROMPT).contains("수정 의도를 우선 고려한다");
-        // 0029 TΔ1: 카드 전송 tool이 폐기돼 "검색·카드"가 "조회"로 줄었다 — 격리 규칙 자체는 유지.
-        assertThat(PROMPT).contains("대기 중 조회 요청은 대기 내용을 바꾸지 않는다");
+        // 0029 TΔ1: 카드 전송 tool이 폐기돼 "검색·카드"가 "조회"로 줄었다.
+        // 0029 TΔ2: 대상이 서버 pending → 클라이언트 draft로 바뀌었다 — 격리 규칙 자체는 유지.
+        assertThat(PROMPT).contains("draft 상태에서의 조회 요청은 draft를 바꾸지 않는다");
         assertThat(PROMPT).contains("커피 이름 변경 요청은 오타 정정을 포함해 예외 없이 거부");
+    }
+
+    @Test
+    @DisplayName("TΔ2/AC-1: 추가 발화는 draft 위에 반영 + draft 값은 하위 출처로 덮지 않는다(V-6)")
+    void encodesDraftOverlayAndPriority() {
+        assertThat(PROMPT).contains("draft를 새로 만들지 말고 **그 위에 반영**한다");
+        // 유실 방지의 핵심 — 이번 발화가 건드리지 않은 필드도 그대로 다시 실어야 한다.
+        assertThat(PROMPT).contains("이번 발화가 건드리지 않은 필드는 draft 값을 그대로 다시 실어 보낸다");
+        assertThat(PROMPT).contains("draft에 이미 값이 있는 필드는 더 낮은 출처로 덮지 않는다");
     }
 
     @Test

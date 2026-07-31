@@ -7,6 +7,7 @@ import com.devwuu.mocha.agent.prompt.TurnPrompt;
 import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
 import com.devwuu.mocha.agent.turn.TastingDateDetector;
+import com.devwuu.mocha.agent.turn.TurnDraft;
 import com.devwuu.mocha.agent.turn.TurnUserMessage;
 import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.llm.UtteranceSegmenter;
@@ -113,8 +114,13 @@ public class AgentConversationRouter implements ConversationRouter {
             List<TurnUserMessage.Segment> segments = segmentIfMultiDate(userId, message.text());
 
             PendingNote pendingBefore = pendingStore.get(userId).orElse(null);
+            // 0029 TΔ2: 턴 입력 draft = 폼 상태. Slack 경로에는 폼이 없으므로 서버 pending에서 만든다 —
+            // TΔ4에서 pending이 사라지면 이 어댑터 한 줄만 걷히고, 그 자리를 요청 본문의 draft가 채운다
+            // (TΔ6 POST /api/agent/turn). 조립기와 게이트에 같은 값을 넘겨 드리프트를 막는다(§C-5).
+            TurnDraft draft = pendingBefore == null ? null
+                    : new TurnDraft(pendingBefore.draft(), pendingBefore.match());
             TurnPrompt context = promptAssembler.assemble(
-                    message.text(), transcript.view(userId), pendingBefore, ocr, segments);
+                    message.text(), transcript.view(userId), draft, ocr, segments);
 
             // POLICY: 턴 진입 관측에 사용자 발화 원문을 함께 남긴다 — 종전에는 폴백(ADR-48) 1지점에만 원문이
             //         남아 outcome=완료로 끝난 행동 실패의 원문이 회수되지 않았고, 그 결과 박제 루프(ADR-69 ①)의
@@ -126,7 +132,8 @@ public class AgentConversationRouter implements ConversationRouter {
             // TΔ2b 배선: 턴 원문·세그먼트를 제안 검증기까지 나른다(다중 날짜 게이트 V-16의 판정 입력, ADR-60).
             // 라우터가 1회 만들어 조립기와 같은 값을 넘긴다 — 턴 안에서 값이 일관된다(findings-TΔ0 §C-5).
             TurnUserMessage utterance = new TurnUserMessage(message.text(), segments);
-            String reply = chatClient.runTurn(context, toolCallbackProvider.forTurn(userId, channelId, utterance));
+            String reply = chatClient.runTurn(context,
+                    toolCallbackProvider.forTurn(userId, channelId, utterance, draft));
 
             // 모델의 최종 텍스트가 곧 Slack 응답이다(ADR-44) — 미리보기·카드는 tool 구현체가 이미 보냈다.
             responder.post(channelId, reply);
