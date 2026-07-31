@@ -259,7 +259,7 @@ class SlackCommitHandlerTest {
     }
 
     // 손상 pending(엔트리·edit target 결손)의 방어는 저장소 로드 경계로 이관됐다(ADR-66, 0025 TΔ2b) —
-    // 소비처 재검증 분기 제거. 훼손 시나리오는 JsonFilePendingStoreTest의 무결성 테스트가 소유한다.
+    // 소비처 재검증 분기 제거. 훼손 시나리오는 JpaPendingStoreTest의 무결성 테스트가 소유한다.
 
     // --- 버튼 1회 소진(ADR-20, AC-22) — 구 TΔ2(changes/0009) 절 포팅 ---
 
@@ -501,7 +501,7 @@ class SlackCommitHandlerTest {
     }
 
     // 손상 edit pending(target 결손) 방어도 저장소 로드 경계로 이관됐다(ADR-66, 0025 TΔ2b) —
-    // JsonFilePendingStoreTest.corruptEditWithoutTargetIsDiscarded가 소유한다.
+    // JpaPendingStoreTest.corruptEditWithoutTargetIsDiscarded가 소유한다.
 
     // ---- 헬퍼 ----
 

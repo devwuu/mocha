@@ -2,6 +2,7 @@ package com.devwuu.mocha.eval;
 
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.repository.JpaNoteRepository;
+import com.devwuu.mocha.repository.jpa.PendingNoteEntityRepository;
 import com.devwuu.mocha.support.PostgresIntegrationTest;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.DynamicTest;
@@ -57,6 +58,10 @@ class EvalCaseRunnerTest extends PostgresIntegrationTest {
     @Autowired
     private JpaNoteRepository noteRepository;
 
+    // pending도 같은 스키마의 행이 됐다(changes/0028 TΔ8) — 회차 간 격리를 아래 clean이 함께 진다.
+    @Autowired
+    private PendingNoteEntityRepository pendings;
+
     @Autowired
     private Flyway flyway;
 
@@ -107,7 +112,7 @@ class EvalCaseRunnerTest extends PostgresIntegrationTest {
             // 회차 간 격리 — 앞 회차가 심은 노트도, 발급된 id도 남기지 않는다.
             flyway.clean();
             flyway.migrate();
-            EvalHarness.Run run = EvalHarness.run(evalCase, workDir, settings, noteRepository);
+            EvalHarness.Run run = EvalHarness.run(evalCase, workDir, settings, noteRepository, pendings);
             List<String> failures = EvalJudge.judge(evalCase, run, mapper);
             if (!failures.isEmpty()) {
                 failedRepetitions++;

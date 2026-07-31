@@ -12,9 +12,9 @@ import com.devwuu.mocha.llm.PhotoInfoExtractor;
 import com.devwuu.mocha.llm.UtteranceSegmenter;
 import com.devwuu.mocha.llm.VisionExtraction;
 import com.devwuu.mocha.llm.VisionHint;
-import com.devwuu.mocha.repository.JsonFilePendingStore;
 import com.devwuu.mocha.repository.JsonFilePhotoBufferStore;
 import com.devwuu.mocha.repository.LocalPhotoStore;
+import com.devwuu.mocha.repository.PendingStore;
 import com.devwuu.mocha.repository.StagedImage;
 import com.devwuu.mocha.slack.inbound.IncomingMessage;
 import com.devwuu.mocha.slack.inbound.SlackPhotoIntake;
@@ -32,7 +32,10 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Stream;
 
 import static com.devwuu.mocha.agent.tool.ToolCallbackProviderFixture.toolkit;
@@ -74,11 +77,13 @@ class Change0023RegressionGuardTest {
     @Test
     @DisplayName("AC-Δ5/delta UNCHANGED: 다중 날짜 턴 처리(세그먼트 주입·세그먼터 실패 폴백) 후 data/ 아래 신규 파일이 없다 — 이어가기는 트랜스크립트(메모리)만 의존")
     void multiDateTurnLeavesDataDirUntouched() throws IOException {
-        // 실제 파일 store 3종을 @TempDir data dir에 배선 — fake가 아니라 실 파일 I/O 경계로 단언한다
+        // 남은 파일 store 2종을 @TempDir data dir에 배선 — fake가 아니라 실 파일 I/O 경계로 단언한다
         // (delta UNCHANGED "저장/메모리 상태 구조: 새 파일·저장소 없음", NFR-2 예외 목록 불변).
+        // pending은 DB로 옮겨져(changes/0028 TΔ8) 더 이상 data/ 아래 파일 후보가 아니다 — 이 단언의
+        // 대상에서 빠졌으므로 여기서는 인메모리 fake로 채운다(DB를 띄우는 것은 이 가드의 관심이 아니다).
         Clock clock = Clock.fixed(Instant.parse("2026-07-17T01:20:30Z"), SEOUL);
         var mapper = MochaObjectMapper.create();
-        var pendingStore = new JsonFilePendingStore(dataDir, mapper, Duration.ofHours(24), clock);
+        var pendingStore = new InMemoryPendingStore();
         var photoBufferStore = new JsonFilePhotoBufferStore(dataDir, mapper);
         var photoStore = new LocalPhotoStore(dataDir);
         var transcript = new FoldingChatMemory(20, Duration.ofHours(1), clock);
@@ -124,7 +129,27 @@ class Change0023RegressionGuardTest {
         }
     }
 
-    // ---- fakes (모듈 CLAUDE.md §5.2 — 외부 의존은 인터페이스 stub/fake, store만 실 파일) ----
+    // ---- fakes (모듈 CLAUDE.md §5.2 — 외부 의존은 인터페이스 stub/fake, 파일 store만 실 파일) ----
+
+    /** pending은 DB로 갔다(TΔ8) — 이 가드가 보는 것은 data/ 아래 파일이라 여기서는 메모리로 충분하다. */
+    private static final class InMemoryPendingStore implements PendingStore {
+        private final Map<String, PendingNote> byUser = new HashMap<>();
+
+        @Override
+        public void put(String userId, PendingNote pending) {
+            byUser.put(userId, pending);
+        }
+
+        @Override
+        public Optional<PendingNote> get(String userId) {
+            return Optional.ofNullable(byUser.get(userId));
+        }
+
+        @Override
+        public void clear(String userId) {
+            byUser.remove(userId);
+        }
+    }
 
     /** 제안 없는 응답만 돌려주는 fake 루프 드라이버 — LLM 미접촉. */
     private static final class FakeChatClient implements ChatClient {

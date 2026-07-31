@@ -5,10 +5,12 @@ import com.devwuu.mocha.domain.PendingNote;
 import java.util.Optional;
 
 /**
- * 확인 대기 노트(pending) 저장소 — {@code data/pending.json} (ref: plan.md#ADR-3, data-model.md#2.3).
- * <p>재시작 생존(NFR-2, AC-7)을 위해 파일로 영속화한다. 단일 사용자 전제(NFR-6)라 사용자당 최대 1건이며,
- * {@code userId}는 인터페이스 계약(plan §3)을 따르되 저장을 분할하지 않는다 — 워크스페이스 격리가 경계다.
- * <p>구현: {@link JsonFilePendingStore}.
+ * 확인 대기 노트(pending) 저장소 — {@code pending_note} 한 행
+ * (ref: plan.md#ADR-3, data-model.md#2.3, changes/0028 ADR-73).
+ * <p>재시작 생존(NFR-2, AC-7)을 위해 DB에 영속화한다. 단일 사용자 전제(NFR-6)라 사용자당 최대 1건이며,
+ * {@code userId}는 인터페이스 계약(plan §3)을 따르되 저장을 분할하지 않는다 — 그 계약이 곧 {@code user_id}
+ * 기본키다(값은 A1에서 단일, 멀티테넌시는 A3).
+ * <p>구현: {@link JpaPendingStore}.
  */
 public interface PendingStore {
 

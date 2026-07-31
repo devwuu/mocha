@@ -634,7 +634,7 @@ class ProposalValidatorsTest {
 
         // 훼손 pending(target·draft 결손)의 방어는 저장소 로드 경계로 이관됐다(ADR-66, 0025 TΔ2b) — 소비처(게이트)
         // 재검증 분기 제거. get()이 훼손 파일을 정리 후 부재로 수렴시켜 게이트에는 온전한 pending만 도달한다.
-        // 훼손 시나리오는 JsonFilePendingStoreTest의 무결성 테스트가 소유한다(corruptMissingDraft·corruptEditWithoutTarget 등).
+        // 훼손 시나리오는 JpaPendingStoreTest의 무결성 테스트가 소유한다(corruptNullDraft·corruptEditWithoutTarget 등).
 
         @Test
         @DisplayName("§3.4: patch의 brews는 통째 교체로 정규화되어 도착한다 — 빈 회차 드롭 포함(V-15)")

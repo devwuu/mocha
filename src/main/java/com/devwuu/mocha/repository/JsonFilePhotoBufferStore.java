@@ -14,7 +14,9 @@ import java.util.Optional;
 /**
  * {@code data/photo-buffer.json} 파일 기반 {@link PhotoBufferStore} (ref: spec FR-10, tasks T4-2).
  * <p>단일 파일(단일 사용자 NFR-6). 쓰기는 임시 파일 → move(replace) 원자적 반영으로 쓰기 도중 죽어도 원본이
- * 깨지지 않게 한다({@link JsonFilePendingStore}와 동일 정신, CLAUDE.md §3).
+ * 깨지지 않게 한다(구 {@code JsonFilePendingStore}와 동일 정신, CLAUDE.md §3).
+ * <p>pending이 DB로 간 뒤에도(TΔ8) 이 저장소는 파일로 남는다 — buffer는 TTL로 소멸하는 임시 상태라
+ * 매체가 갈리는 실害가 관측된 적이 없다(changes/0028 D-3, 정리는 A2).
  */
 public class JsonFilePhotoBufferStore implements PhotoBufferStore {
 

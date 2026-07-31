@@ -18,7 +18,7 @@ import com.devwuu.mocha.render.CardImageRenderer;
 import com.devwuu.mocha.render.NoteRenderer;
 import com.devwuu.mocha.render.Theme;
 import com.devwuu.mocha.repository.JpaNoteRepository;
-import com.devwuu.mocha.repository.JsonFilePendingStore;
+import com.devwuu.mocha.repository.JpaPendingStore;
 import com.devwuu.mocha.repository.JsonFilePhotoBufferStore;
 import com.devwuu.mocha.repository.LocalPhotoStore;
 import com.devwuu.mocha.repository.NoteRepository;
@@ -26,6 +26,7 @@ import com.devwuu.mocha.repository.PendingStore;
 import com.devwuu.mocha.repository.PhotoBufferStore;
 import com.devwuu.mocha.repository.PhotoStore;
 import com.devwuu.mocha.repository.jpa.NoteEntityRepository;
+import com.devwuu.mocha.repository.jpa.PendingNoteEntityRepository;
 import com.devwuu.mocha.slack.SlackCommitHandler;
 import com.devwuu.mocha.slack.inbound.PhotoDownloader;
 import com.devwuu.mocha.slack.inbound.SlackPhotoIntake;
@@ -196,12 +197,13 @@ class ConfigDefaultsTest {
                     assertThat(context.getBean(NoteRepository.class)).isInstanceOf(JpaNoteRepository.class);
                     assertThat(context.getBean(PhotoStore.class)).isInstanceOf(LocalPhotoStore.class);
                     assertThat(context.getBean(PhotoBufferStore.class)).isInstanceOf(JsonFilePhotoBufferStore.class);
+                    // 사진 경로는 여전히 설정 키에서만 파생된다(CLAUDE.md §3) — 하드코딩 회귀를 여기서 잡는다.
+                    // pending은 DB로 옮겨져 data.dir 파생이 사라졌으므로(TΔ8) 경로 단언 대상이 이쪽만 남았다.
+                    assertThat(ReflectionTestUtils.getField(context.getBean(PhotoStore.class), "photosDir"))
+                            .isEqualTo(Path.of("build/test-data/photos"));
 
                     PendingStore pendingStore = context.getBean(PendingStore.class);
-                    assertThat(pendingStore).isInstanceOf(JsonFilePendingStore.class);
-                    // 경로는 설정 키에서만 파생된다(CLAUDE.md §3) — 하드코딩 회귀를 여기서 잡는다.
-                    assertThat(ReflectionTestUtils.getField(pendingStore, "pendingFile"))
-                            .isEqualTo(Path.of("build/test-data/pending.json"));
+                    assertThat(pendingStore).isInstanceOf(JpaPendingStore.class);
                     assertThat(ReflectionTestUtils.getField(pendingStore, "ttl")).isEqualTo(Duration.ofMinutes(30));
                 });
     }
@@ -253,9 +255,10 @@ class ConfigDefaultsTest {
     private static ApplicationContextRunner repositoryRunner() {
         return isolatedRunner()
                 .withUserConfiguration(CommonConfig.class, RepositoryConfig.class)
-                // 노트 저장소가 DB로 옮겨지며 생긴 협력자(TΔ6a) — 이 러너는 JPA 컨텍스트를 띄우지 않으므로
-                // 스텁으로 채운다. 배선 단언은 어떤 메서드도 부르지 않는다.
-                .withBean(NoteEntityRepository.class, () -> stub(NoteEntityRepository.class));
+                // 노트·pending 저장소가 DB로 옮겨지며 생긴 협력자(TΔ6a·TΔ8) — 이 러너는 JPA 컨텍스트를
+                // 띄우지 않으므로 스텁으로 채운다. 배선 단언은 어떤 메서드도 부르지 않는다.
+                .withBean(NoteEntityRepository.class, () -> stub(NoteEntityRepository.class))
+                .withBean(PendingNoteEntityRepository.class, () -> stub(PendingNoteEntityRepository.class));
     }
 
     // 턴 협력자 배선 러너 — 의존 빈 13종을 스텁으로 채운다(인터페이스는 Proxy, 구체 클래스는 무해한 실인스턴스).
