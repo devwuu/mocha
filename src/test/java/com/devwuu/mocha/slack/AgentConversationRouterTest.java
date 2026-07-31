@@ -311,7 +311,7 @@ class AgentConversationRouterTest {
         OffsetDateTime at = OffsetDateTime.parse("2026-07-16T10:00:00+09:00");
         Entry entry = new Entry(LocalDate.of(2026, 7, 16),
                 List.of(new Brew(null, new Tasting("새콤하고 좋았음", null, Rating.GOOD))), at);
-        Note draft = new Note("2026-07-16-102030", new Sourced<>("커피베라 예가체프 G1", Source.USER),
+        Note draft = new Note(1L, new Sourced<>("커피베라 예가체프 G1", Source.USER),
                 new Sourced<>("커피베라", Source.USER),
                 List.of(), null, null, List.of(), List.of(entry), at, at);
         return new PendingNote(draft, MatchInfo.newNote(), "1720000000.000789", at);
@@ -446,7 +446,7 @@ class AgentConversationRouterTest {
         }
 
         @Override
-        public void moveEntryPhotos(String slug, String fromDate, String toDate) {
+        public void moveEntryPhotos(String noteFolder, String fromDate, String toDate) {
             throw new UnsupportedOperationException();
         }
 

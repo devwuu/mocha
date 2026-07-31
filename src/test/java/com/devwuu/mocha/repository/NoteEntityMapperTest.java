@@ -67,7 +67,7 @@ class NoteEntityMapperTest {
                 List.of(new Brew(null, new Tasting("오늘은 밍밍했음", "오늘은 밍밍했음", Rating.OKAY_NOT_MINE))),
                 UPDATED);
         return new Note(
-                "coffeevera-yirgacheffe-g1",
+                NOTE_ID,
                 new Sourced<>("커피베라 예가체프 G1", Source.USER),
                 new Sourced<>("커피베라", Source.USER),
                 List.of(new Bean(new Sourced<>("에티오피아 예가체프", Source.USER), new Sourced<>("워시드", Source.SEARCH)),
@@ -95,7 +95,7 @@ class NoteEntityMapperTest {
     @DisplayName("TΔ3c: 빈 값 노트 왕복 — 배열 전무·부재 필드가 그대로 복원된다")
     void emptyNoteRoundTrip() {
         Note original = new Note(
-                "bare",
+                NOTE_ID,
                 new Sourced<>("이름만 있는 커피", Source.USER),
                 null,                       // 로스터리 부재 → 정규화 컬럼도 null
                 List.of(),
@@ -248,6 +248,6 @@ class NoteEntityMapperTest {
             entries.add(NoteEntityMapper.toEntry(entryEntity, brews));
         }
 
-        return NoteEntityMapper.toNote(original.slug(), noteEntity, beans, officialNotes, aliases, sources, entries);
+        return NoteEntityMapper.toNote(noteEntity, beans, officialNotes, aliases, sources, entries);
     }
 }

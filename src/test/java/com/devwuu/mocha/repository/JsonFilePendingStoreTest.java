@@ -44,7 +44,7 @@ class JsonFilePendingStoreTest {
 
     private static PendingNote sampleDraft(OffsetDateTime createdAt) {
         Note draft = new Note(
-                "coffeevera-yirgacheffe-g1",
+                1L,
                 new Sourced<>("커피베라 예가체프 G1", Source.USER),
                 new Sourced<>("커피베라", Source.USER),
                 List.of(new Bean(new Sourced<>("에티오피아 예가체프", Source.SEARCH), new Sourced<>("워시드", Source.SEARCH))),
@@ -104,7 +104,7 @@ class JsonFilePendingStoreTest {
         PendingNote editPending = new PendingNote(
                 PendingNote.Mode.EDIT,
                 record.draft(),
-                new PendingNote.EditTarget("coffeevera-yirgacheffe-g1", LocalDate.of(2026, 7, 9)),
+                new PendingNote.EditTarget(1L, LocalDate.of(2026, 7, 9)),
                 null,
                 record.previewTs(),
                 createdAt
@@ -117,7 +117,7 @@ class JsonFilePendingStoreTest {
         assertThat(reopened.get(USER)).contains(editPending);
         assertThat(reopened.get(USER).orElseThrow().mode()).isEqualTo(PendingNote.Mode.EDIT);
         assertThat(reopened.get(USER).orElseThrow().target())
-                .isEqualTo(new PendingNote.EditTarget("coffeevera-yirgacheffe-g1", LocalDate.of(2026, 7, 9)));
+                .isEqualTo(new PendingNote.EditTarget(1L, LocalDate.of(2026, 7, 9)));
     }
 
     // (0012 이전 pending.json 하위 호환 테스트는 제거 — 기존 데이터는 배포 전 수동 삭제로 결정, delta 비범위.)
@@ -154,16 +154,8 @@ class JsonFilePendingStoreTest {
         assertThat(pendingFile()).doesNotExist();
     }
 
-    @Test
-    @DisplayName("0025-TΔ2b-1/AC-Δ2②: draft.slug 공백은 empty 반환 + 파일 삭제")
-    void corruptBlankSlugIsDiscarded() throws Exception {
-        writePendingTree(sampleDraft(OffsetDateTime.now(FIXED)),
-                tree -> ((ObjectNode) tree.get("draft")).put("slug", "  "));
-        JsonFilePendingStore store = new JsonFilePendingStore(dataDir, MochaObjectMapper.create(), TTL, FIXED);
-
-        assertThat(store.get(USER)).isEmpty();
-        assertThat(pendingFile()).doesNotExist();
-    }
+    // (구 "draft.slug 공백" 케이스는 폐기 — id는 INSERT가 발급하므로 record 모드 신규 draft는 정상적으로
+    //  식별자가 없다. 검사를 그대로 옮기면 신규 pending이 전부 훼손 판정된다(changes/0028 TΔ0b §4 E-5).)
 
     @Test
     @DisplayName("0025-TΔ2b-1/AC-Δ2②: draft 엔트리 0건은 empty 반환 + 파일 삭제")
@@ -206,7 +198,7 @@ class JsonFilePendingStoreTest {
         PendingNote editPending = new PendingNote(
                 PendingNote.Mode.EDIT,
                 sampleDraft(createdAt).draft(),
-                new PendingNote.EditTarget("coffeevera-yirgacheffe-g1", LocalDate.of(2026, 7, 9)),
+                new PendingNote.EditTarget(1L, LocalDate.of(2026, 7, 9)),
                 null, "1720570200.000100", createdAt);
         writePendingWithout(editPending, "target");
         JsonFilePendingStore store = new JsonFilePendingStore(dataDir, MochaObjectMapper.create(), TTL, FIXED);
@@ -216,17 +208,17 @@ class JsonFilePendingStoreTest {
     }
 
     @Test
-    @DisplayName("0025-CR25-10/ADR-66: edit 모드 target.slug 공백은 empty 반환 + 파일 삭제(게이트 NPE·모델 대면 null 차단)")
-    void corruptEditWithBlankTargetSlugIsDiscarded() throws Exception {
-        // slug 결손 target이 통과하면 SinglePendingGate의 같은 대상 판정이 slug 비교에서 NPE로 새고,
+    @DisplayName("0025-CR25-10/ADR-66: edit 모드 target.note_id 결손은 empty 반환 + 파일 삭제(게이트 NPE·모델 대면 null 차단)")
+    void corruptEditWithMissingTargetNoteIdIsDiscarded() throws Exception {
+        // note_id 결손 target이 통과하면 SinglePendingGate의 같은 대상 판정이 id 비교에서 NPE로 새고,
         // 거부 사유에는 리터럴 "null"이 노출된다(draft.coffee_name과 동일 부류).
         OffsetDateTime createdAt = OffsetDateTime.now(FIXED);
         PendingNote editPending = new PendingNote(
                 PendingNote.Mode.EDIT,
                 sampleDraft(createdAt).draft(),
-                new PendingNote.EditTarget("coffeevera-yirgacheffe-g1", LocalDate.of(2026, 7, 9)),
+                new PendingNote.EditTarget(1L, LocalDate.of(2026, 7, 9)),
                 null, "1720570200.000100", createdAt);
-        writePendingTree(editPending, tree -> ((ObjectNode) tree.get("target")).remove("slug"));
+        writePendingTree(editPending, tree -> ((ObjectNode) tree.get("target")).remove("note_id"));
         JsonFilePendingStore store = new JsonFilePendingStore(dataDir, MochaObjectMapper.create(), TTL, FIXED);
 
         assertThat(store.get(USER)).isEmpty();

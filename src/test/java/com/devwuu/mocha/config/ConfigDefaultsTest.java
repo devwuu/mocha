@@ -17,7 +17,7 @@ import com.devwuu.mocha.llm.VisionClient;
 import com.devwuu.mocha.render.CardImageRenderer;
 import com.devwuu.mocha.render.NoteRenderer;
 import com.devwuu.mocha.render.Theme;
-import com.devwuu.mocha.repository.JsonFileNoteRepository;
+import com.devwuu.mocha.repository.JpaNoteRepository;
 import com.devwuu.mocha.repository.JsonFilePendingStore;
 import com.devwuu.mocha.repository.JsonFilePhotoBufferStore;
 import com.devwuu.mocha.repository.LocalPhotoStore;
@@ -25,6 +25,7 @@ import com.devwuu.mocha.repository.NoteRepository;
 import com.devwuu.mocha.repository.PendingStore;
 import com.devwuu.mocha.repository.PhotoBufferStore;
 import com.devwuu.mocha.repository.PhotoStore;
+import com.devwuu.mocha.repository.jpa.NoteEntityRepository;
 import com.devwuu.mocha.slack.SlackCommitHandler;
 import com.devwuu.mocha.slack.inbound.PhotoDownloader;
 import com.devwuu.mocha.slack.inbound.SlackPhotoIntake;
@@ -192,7 +193,7 @@ class ConfigDefaultsTest {
         repositoryRunner()
                 .withPropertyValues("mocha.data.dir=build/test-data", "mocha.pending.ttl=30m")
                 .run(context -> {
-                    assertThat(context.getBean(NoteRepository.class)).isInstanceOf(JsonFileNoteRepository.class);
+                    assertThat(context.getBean(NoteRepository.class)).isInstanceOf(JpaNoteRepository.class);
                     assertThat(context.getBean(PhotoStore.class)).isInstanceOf(LocalPhotoStore.class);
                     assertThat(context.getBean(PhotoBufferStore.class)).isInstanceOf(JsonFilePhotoBufferStore.class);
 
@@ -212,8 +213,10 @@ class ConfigDefaultsTest {
         // 싣지 않는 컨텍스트에서 placeholder 미해결로 기동이 막힌다(TΔ3d가 자매 키에서 없앤 바로 그 실패).
         // 값은 plan §5 문서값(./data · 24시간)과 일치해야 한다.
         repositoryRunner().run(context -> {
-            assertThat(ReflectionTestUtils.getField(context.getBean(NoteRepository.class), "notesDir"))
-                    .isEqualTo(Path.of("./data/notes"));
+            // 노트는 DB로 옮겨져 data.dir 파생이 아니다(TΔ6a) — 같은 default를 지금도 파생시키는 사진 저장소로
+            // 단언 대상을 옮겼다. 키·default(`./data`)는 그대로이므로 이 테스트가 지키는 것은 변하지 않았다.
+            assertThat(ReflectionTestUtils.getField(context.getBean(PhotoStore.class), "photosDir"))
+                    .isEqualTo(Path.of("./data/photos"));
             assertThat(ReflectionTestUtils.getField(context.getBean(PendingStore.class), "ttl"))
                     .isEqualTo(Duration.ofHours(24));
         });
@@ -248,7 +251,11 @@ class ConfigDefaultsTest {
 
     // 저장소 배선 러너 — 전역 빈(Clock·ObjectMapper)은 실제 CommonConfig에서 받아 앱과 조건을 맞춘다.
     private static ApplicationContextRunner repositoryRunner() {
-        return isolatedRunner().withUserConfiguration(CommonConfig.class, RepositoryConfig.class);
+        return isolatedRunner()
+                .withUserConfiguration(CommonConfig.class, RepositoryConfig.class)
+                // 노트 저장소가 DB로 옮겨지며 생긴 협력자(TΔ6a) — 이 러너는 JPA 컨텍스트를 띄우지 않으므로
+                // 스텁으로 채운다. 배선 단언은 어떤 메서드도 부르지 않는다.
+                .withBean(NoteEntityRepository.class, () -> stub(NoteEntityRepository.class));
     }
 
     // 턴 협력자 배선 러너 — 의존 빈 13종을 스텁으로 채운다(인터페이스는 Proxy, 구체 클래스는 무해한 실인스턴스).

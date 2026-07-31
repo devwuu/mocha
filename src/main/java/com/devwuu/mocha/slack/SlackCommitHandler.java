@@ -9,6 +9,7 @@ import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.llm.AliasGenerator;
 import com.devwuu.mocha.render.NoteRenderer;
+import com.devwuu.mocha.repository.NoteFolderName;
 import com.devwuu.mocha.repository.NoteRepository;
 import com.devwuu.mocha.repository.PendingStore;
 import com.devwuu.mocha.slack.inbound.IncomingAction;
@@ -81,10 +82,9 @@ public class SlackCommitHandler {
         // previewTs는 pending clear 이후엔 다시 못 읽으므로 clear 전에 지역 변수로 확보한다(버튼 소진 대상, findings-TΔ0 §1).
         PendingNote pending = pendingOpt.get();
         Note draft = pending.draft();
-        String slug = draft.slug();
         Entry entry = latestEntry(draft);
         boolean editMode = pending.mode() == PendingNote.Mode.EDIT;
-        // pending 구조 무결성(slug·엔트리·edit target 존재)은 저장소 로드 경계가 보장한다 — 여기서 재검증하지
+        // pending 구조 무결성(엔트리·edit target 존재)은 저장소 로드 경계가 보장한다 — 여기서 재검증하지
         // 않는다(훼손 파일은 get()에서 정리 후 부재로 수렴) (ref: plan.md#ADR-66 POLICY, data-model §2.3).
 
         // edit 커밋은 별도 경로 — 신규 기록(record) 흐름은 mode 도입 전과 동일하게 유지한다(delta AC-Δ6).
@@ -93,11 +93,7 @@ public class SlackCommitHandler {
             return;
         }
 
-        // 사진 커밋: 스테이징 원본을 photos/<slug>/<date>/로 아카이브 이동한다(FR-10, changes/0014 ADR-32).
-        // 로컬 move라 저장 커밋 경계 안에서 수행한다(외부 I/O는 수신 시점에 이미 끝남, CLAUDE.md §3).
-        // 반환 경로는 노트에 싣지 않는다 — 사진은 아카이브 전용, JSON 기록 없음(delta AC-Δ1).
         String date = entry.date().toString();
-        photoIntake.commitStaged(userId, slug, date);
         Entry committedEntry = entry;
 
         // 신규 노트(match=NEW) 첫 커밋에 한해 별칭을 1콜로 생성한다(노트당 평생 1회 — 관측 축적은 TΔ3).
@@ -109,13 +105,23 @@ public class SlackCommitHandler {
                 : Aliases.empty();
 
         // POLICY: 사용자 [저장] 확인을 거친 뒤에만 저장한다 (ref: plan.md#ADR-3, AC-4).
-        Note saved = noteRepository.upsertEntry(slug, metaOf(draft), committedEntry, aliases);
+        // draft.id()가 null이면 신규 INSERT, 있으면 그 노트에 병합한다(D-1, changes/0028).
+        Note saved = noteRepository.upsertEntry(draft.id(), metaOf(draft), committedEntry, aliases);
+
+        // 사진 커밋: 스테이징 원본을 photos/<접미>/<date>/로 아카이브 이동한다(FR-10, changes/0014 ADR-32).
+        // 로컬 move라 저장 커밋 경계 안에서 수행한다(외부 I/O는 수신 시점에 이미 끝남, CLAUDE.md §3).
+        // 반환 경로는 노트에 싣지 않는다 — 사진은 아카이브 전용, DB 기록 없음(delta AC-Δ1).
+        // 저장 '뒤'인 이유: 폴더 접미의 앞자리가 id인데 신규 노트의 id는 INSERT가 발급한다
+        // (ref: changes/0028 §파일 경로 규약 "사진 최종 경로 확정 시점이 뒤로 밀린다", TΔ9b).
+        // 실패 정책(이동 실패를 best-effort로 수렴)은 아직 TΔ9b 몫이다 — 여기서는 순서만 옮겼다.
+        photoIntake.commitStaged(userId, NoteFolderName.of(saved), date);
+
         pendingStore.clear(userId);
         photoIntake.clearBuffer(userId);
-        log.info("[저장] 커밋 완료: slug={} entries={}", saved.slug(), saved.entries().size());
+        log.info("[저장] 커밋 완료: noteId={} entries={}", saved.id(), saved.entries().size());
 
         // 저장은 이미 커밋됨 — 카드 렌더·전송 실패는 데이터 손실이 아니다. 실패해도 저장은 유지하고 안내 텍스트로 폴백한다.
-        deliverEntryCards(action.channelId(), slug, committedEntry);
+        deliverEntryCards(action.channelId(), saved.id(), committedEntry);
 
         // 커밋·배달 이후 미리보기 버튼을 1회 소진한다 — 실패해도 저장·배달 결과는 유지된다(ADR-20, AC-Δ2).
         finalizePreviewQuietly(action.channelId(), pending, MochaMessages.FINALIZE_SAVED);
@@ -140,34 +146,43 @@ public class SlackCommitHandler {
     private void commitEdit(IncomingAction action, PendingNote pending, Entry entry) {
         String userId = action.userId();
         PendingNote.EditTarget target = pending.target();
-        String slug = target.slug();
+        long noteId = target.noteId();
 
         // V-7 준용: [저장] 시점에 수정 대상(노트/엔트리)이 소실됐으면 커밋 없이 만료 안내로 수렴한다(plan §7).
         // 죽은 세션이므로 만료 경로와 동일하게 pending·스테이징 사진을 정리한다.
-        Optional<Entry> origin = noteRepository.findBySlug(slug)
+        Optional<Note> originNote = noteRepository.findById(noteId);
+        Optional<Entry> origin = originNote
                 .flatMap(note -> note.entries().stream()
                         .filter(e -> e.date().equals(target.date())).findFirst());
         if (origin.isEmpty()) {
-            log.warn("[저장] 무효 — 수정 대상 소실: user={} slug={} date={}", userId, slug, target.date());
+            log.warn("[저장] 무효 — 수정 대상 소실: user={} noteId={} date={}", userId, noteId, target.date());
             pendingStore.clear(userId);
             photoIntake.discard(userId);
             responder.post(action.channelId(), MochaMessages.NOTHING_TO_SAVE);
             return;
         }
 
+        // POLICY: 사진 폴더 접미는 draft가 아니라 '저장된 원본 노트'로 만든다 — 폴더명은 생성 시점 스냅샷이고
+        //         (changes/0028 §파일 경로 규약 파생 결정 2) A1에는 그 이름을 기억하는 곳이 없다(note_photo는 A2).
+        //         수정 후 값으로 계산하면 이번 세션의 로스터리 수정이 곧바로 폴더를 가른다. 재계산인 이상 과거에
+        //         로스터리가 수정된 노트는 옛 폴더와 갈릴 수 있으나 사진 유실은 없고 식별은 앞의 id가 보장한다
+        //         (ref: changes/0028-rdb-storage/delta.md#파일-경로-규약, 사용자 확정 2026-07-31).
+        String noteFolder = NoteFolderName.of(originNote.get());
+
         // 수정 중 스테이징된 새 사진을 대상 엔트리 날짜의 아카이브 폴더로 이동한다(AC-Δ5 = spec AC-41).
-        // 반환 경로는 노트에 싣지 않는다 — 사진은 아카이브 전용, JSON 기록 없음(changes/0014 ADR-32).
+        // 반환 경로는 노트에 싣지 않는다 — 사진은 아카이브 전용, DB 기록 없음(changes/0014 ADR-32).
+        // 수정 세션은 id를 이미 알고 있어 record 경로와 달리 순서가 그대로다(TΔ9b).
         String date = entry.date().toString();
-        photoIntake.commitStaged(userId, slug, date);
+        photoIntake.commitStaged(userId, noteFolder, date);
         Entry committedEntry = entry;
 
         // POLICY: 사용자 [저장] 확인을 거친 뒤에만 저장한다 (ref: plan.md#ADR-3, AC-37).
-        Note saved = noteRepository.applyEdit(slug, target.date(), withLatestEntry(pending.draft(), committedEntry));
+        Note saved = noteRepository.applyEdit(noteId, target.date(), withLatestEntry(pending.draft(), committedEntry));
         pendingStore.clear(userId);
         photoIntake.clearBuffer(userId);
         boolean dateMoved = !target.date().equals(entry.date());
-        log.info("[저장] 수정 커밋 완료: slug={} {} → {} entries={}",
-                slug, target.date(), entry.date(), saved.entries().size());
+        log.info("[저장] 수정 커밋 완료: noteId={} {} → {} entries={}",
+                noteId, target.date(), entry.date(), saved.entries().size());
 
         // 파생물 정리: 날짜 이동이면 옛 date 카드부터 지운다. 삭제 실패는 커밋을 되돌리지 않고 새 카드 렌더로
         // 계속 진행한다 — 남은 옛 카드는 renderAll(--rerender)이 정리한다(plan §7, AC-39).
@@ -175,36 +190,36 @@ public class SlackCommitHandler {
             // POLICY: 날짜 이동 시 사진 폴더 이동은 best-effort — 실패해도 커밋을 되돌리지 않는다(사진은 옛 폴더
             //         잔류, 아카이브로서 유효). 옛 카드 삭제와 동일 정책 (ref: plan.md#ADR-32, §7, FR-21).
             try {
-                photoIntake.moveEntryPhotos(slug, target.date().toString(), entry.date().toString());
+                photoIntake.moveEntryPhotos(noteFolder, target.date().toString(), entry.date().toString());
             } catch (RuntimeException e) {
-                log.warn("사진 폴더 이동 실패(수정은 저장됨, 사진은 옛 폴더 잔류): slug={} {} → {}",
-                        slug, target.date(), entry.date(), e);
+                log.warn("사진 폴더 이동 실패(수정은 저장됨, 사진은 옛 폴더 잔류): noteFolder={} {} → {}",
+                        noteFolder, target.date(), entry.date(), e);
             }
             try {
-                noteRenderer.removeEntryCard(slug, target.date());
+                noteRenderer.removeEntryCard(noteId, target.date());
             } catch (RuntimeException e) {
-                log.warn("옛 카드 삭제 실패(수정은 저장됨, --rerender로 정리 가능): slug={} date={}",
-                        slug, target.date(), e);
+                log.warn("옛 카드 삭제 실패(수정은 저장됨, --rerender로 정리 가능): noteId={} date={}",
+                        noteId, target.date(), e);
             }
         }
         // 새 date 회차 카드 증분 렌더 → 갱신 카드 배달(AC-37).
-        deliverEntryCards(action.channelId(), slug, committedEntry);
+        deliverEntryCards(action.channelId(), noteId, committedEntry);
 
         // 커밋·배달 이후 미리보기 버튼을 1회 소진한다(0009 재사용) — 실패해도 저장·배달 결과는 유지된다(ADR-20).
         finalizePreviewQuietly(action.channelId(), pending, MochaMessages.FINALIZE_SAVED);
     }
 
     // 커밋 직후 카드 배달 — 방금 그 엔트리의 회차 카드 전부를 순서대로 배달한다(FR-16, changes/0021 TΔ5b).
-    // POLICY: 저장 시점 렌더는 증분 — 방금 그 (slug,date) 엔트리의 회차 카드만 굽는다(전체 재래스터화는 --rerender)
+    // POLICY: 저장 시점 렌더는 증분 — 방금 그 (noteId,date) 엔트리의 회차 카드만 굽는다(전체 재래스터화는 --rerender)
     //         (ref: plan.md#ADR-10·ADR-59, AC-Δ7).
     // POLICY: 카드 이미지 생성·전송 실패는 저장을 되돌리지 않는다 — 렌더 실패는 안내 텍스트로 폴백하고,
     //         전송은 일부만 실패하면 성공분은 배달하며 실패분만 안내한다(부분 폴백) (ref: plan.md §7, AC-18, FR-16).
-    private void deliverEntryCards(String channelId, String slug, Entry entry) {
+    private void deliverEntryCards(String channelId, long noteId, Entry entry) {
         List<Path> cards;
         try {
-            cards = noteRenderer.renderEntryCard(slug, entry.date());
+            cards = noteRenderer.renderEntryCard(noteId, entry.date());
         } catch (RuntimeException e) {
-            log.warn("카드 렌더 실패(저장은 유지됨, --rerender로 복구 가능): slug={} date={}", slug, entry.date(), e);
+            log.warn("카드 렌더 실패(저장은 유지됨, --rerender로 복구 가능): noteId={} date={}", noteId, entry.date(), e);
             responder.post(channelId, MochaMessages.SAVE_DONE_NO_IMAGE);
             return;
         }
@@ -215,8 +230,8 @@ public class SlackCommitHandler {
                 responder.postImage(channelId, card, delivered == 0 ? MochaMessages.SAVE_DONE_CAPTION : null);
                 delivered++;
             } catch (RuntimeException e) {
-                log.warn("카드 배달 실패(저장은 유지됨, --rerender로 복구 가능): slug={} card={}",
-                        slug, card.getFileName(), e);
+                log.warn("카드 배달 실패(저장은 유지됨, --rerender로 복구 가능): noteId={} card={}",
+                        noteId, card.getFileName(), e);
             }
         }
         if (delivered == 0) {
@@ -237,7 +252,7 @@ public class SlackCommitHandler {
         }
     }
 
-    // draft(Note)에서 노트 단위 메타만 뽑는다 — 엔트리·slug·타임스탬프는 upsertEntry가 다룬다.
+    // draft(Note)에서 노트 단위 메타만 뽑는다 — 엔트리·식별자·타임스탬프는 upsertEntry가 다룬다.
     private static NoteMeta metaOf(Note draft) {
         return new NoteMeta(
                 draft.coffeeName(),
@@ -253,7 +268,7 @@ public class SlackCommitHandler {
         List<Entry> entries = new java.util.ArrayList<>(draft.entries());
         entries.set(entries.size() - 1, entry);
         return new Note(
-                draft.slug(), draft.coffeeName(), draft.roastery(), draft.beans(),
+                draft.id(), draft.coffeeName(), draft.roastery(), draft.beans(),
                 draft.roastLevel(), draft.officialNotes(), draft.sources(),
                 entries, draft.createdAt(), draft.updatedAt());
     }

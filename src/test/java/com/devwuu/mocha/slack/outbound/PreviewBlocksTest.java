@@ -59,7 +59,7 @@ class PreviewBlocksTest {
     @DisplayName("AC-2/AC-15: 기존 매칭 + 검색 필드에는 (검색) 표기, 사용자 필드에는 표기 없음")
     void existingMatchAndSearchTags() {
         Note draft = new Note(
-                "coffeevera-yirgacheffe-g1",
+                1L,
                 new Sourced<>("커피베라 예가체프 G1", Source.USER),
                 new Sourced<>("커피베라", Source.USER),          // 사용자 값 — (검색) 없음
                 List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), new Sourced<>("워시드", Source.SEARCH))), // 검색 보강 — (검색)
@@ -70,7 +70,7 @@ class PreviewBlocksTest {
                 OffsetDateTime.now(),
                 OffsetDateTime.now());
         PendingNote pending = new PendingNote(
-                draft, MatchInfo.existing("coffeevera-yirgacheffe-g1", LocalDate.of(2026, 7, 10)),
+                draft, MatchInfo.existing(1L, LocalDate.of(2026, 7, 10)),
                 null, OffsetDateTime.now());
 
         List<LayoutBlock> blocks = previewBlocks.build(pending);
@@ -124,7 +124,7 @@ class PreviewBlocksTest {
     @DisplayName("AC-15: 신규 매칭이면 '새 노트' 표기, 사용자 전용 필드엔 (검색) 없음, 검색 무결과면 출처 블록 생략")
     void newMatchWithoutSearch() {
         Note draft = new Note(
-                "coffeevera-yirgacheffe-g1",
+                1L,
                 new Sourced<>("커피베라 예가체프 G1", Source.USER),
                 new Sourced<>("커피베라", Source.USER),
                 List.of(), null,
@@ -153,7 +153,7 @@ class PreviewBlocksTest {
     @DisplayName("AC-22/AC-Δ1: buildFinalized는 [저장]/[취소] 버튼을 없애고 필드 내용은 유지한 채 상태 문구 섹션을 붙인다")
     void buildFinalizedDropsButtonsKeepsFields() {
         Note draft = new Note(
-                "coffeevera-yirgacheffe-g1",
+                1L,
                 new Sourced<>("커피베라 예가체프 G1", Source.USER),
                 new Sourced<>("커피베라", Source.USER),
                 List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), new Sourced<>("워시드", Source.SEARCH))),
@@ -164,7 +164,7 @@ class PreviewBlocksTest {
                 OffsetDateTime.now(),
                 OffsetDateTime.now());
         PendingNote pending = new PendingNote(
-                draft, MatchInfo.existing("coffeevera-yirgacheffe-g1", LocalDate.of(2026, 7, 10)),
+                draft, MatchInfo.existing(1L, LocalDate.of(2026, 7, 10)),
                 "1720000000.000999", OffsetDateTime.now());
 
         List<LayoutBlock> blocks = previewBlocks.buildFinalized(pending, MochaMessages.FINALIZE_SAVED);
@@ -194,7 +194,7 @@ class PreviewBlocksTest {
     void coffeeNameSourceTags() {
         // photo 유래 커피명 — (사진) 표기, photo로 채운 로스터리도 (사진)
         Note photoDraft = new Note(
-                "coffeevera-yirgacheffe-g1",
+                1L,
                 new Sourced<>("커피베라 예가체프 G1", Source.PHOTO),
                 new Sourced<>("커피베라", Source.PHOTO),
                 List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), null)),
@@ -213,7 +213,7 @@ class PreviewBlocksTest {
 
         // user 유래 커피명 — 표기 없음
         Note userDraft = new Note(
-                "coffeevera-yirgacheffe-g1",
+                1L,
                 new Sourced<>("커피베라 예가체프 G1", Source.USER),
                 new Sourced<>("커피베라", Source.USER),
                 List.of(), null, null,
@@ -232,7 +232,7 @@ class PreviewBlocksTest {
     @DisplayName("AC-24: 레시피가 있으면 '이렇게 내렸어요' 영역에 있는 항목이 표시된다")
     void recipeShownWhenPresent() {
         Note draft = new Note(
-                "coffeevera-yirgacheffe-g1",
+                1L,
                 new Sourced<>("커피베라 예가체프 G1", Source.USER),
                 new Sourced<>("커피베라", Source.USER),
                 List.of(), null, null,
@@ -258,7 +258,7 @@ class PreviewBlocksTest {
     void recipePartialAndAbsent() {
         // 물량만 있는 부분 레시피 — 원두·분쇄도 항목은 표시하지 않음
         Note partial = new Note(
-                "coffeevera-yirgacheffe-g1",
+                1L,
                 new Sourced<>("커피베라 예가체프 G1", Source.USER),
                 new Sourced<>("커피베라", Source.USER),
                 List.of(), null, null, List.of(),
@@ -273,7 +273,7 @@ class PreviewBlocksTest {
 
         // 레시피 전무(null) — 영역 자체 미출력
         Note none = new Note(
-                "coffeevera-yirgacheffe-g1",
+                1L,
                 new Sourced<>("커피베라 예가체프 G1", Source.USER),
                 new Sourced<>("커피베라", Source.USER),
                 List.of(), null, null, List.of(),
@@ -292,7 +292,7 @@ class PreviewBlocksTest {
         Recipe edge = Recipe.normalize(new Recipe(
                 null, Double.POSITIVE_INFINITY, 240.0, null, 0.3, null, null, null, null, null));
         Note draft = new Note(
-                "coffeevera-yirgacheffe-g1",
+                1L,
                 new Sourced<>("커피베라 예가체프 G1", Source.USER),
                 new Sourced<>("커피베라", Source.USER),
                 List.of(), null, null, List.of(),
@@ -317,7 +317,7 @@ class PreviewBlocksTest {
                 new Brew(first, new Tasting("텁텁했음", null, Rating.OKAY_NOT_MINE)),
                 new Brew(second, new Tasting("훨씬 나았음", null, Rating.GOOD))), OffsetDateTime.now());
         Note draft = new Note(
-                "coffeevera-yirgacheffe-g1",
+                1L,
                 new Sourced<>("커피베라 예가체프 G1", Source.USER),
                 new Sourced<>("커피베라", Source.USER),
                 List.of(), null, null, List.of(),
@@ -355,7 +355,7 @@ class PreviewBlocksTest {
                 "핸드드립", 15.0, 240.0, 200.0, 160.0, 92.0, "중간", "하리오 V60",
                 "뜸 40ml 30초 → 100ml → 100ml", "다음엔 조금 굵게"));
         Note draft = new Note(
-                "coffeevera-yirgacheffe-g1",
+                1L,
                 new Sourced<>("커피베라 예가체프 G1", Source.USER),
                 new Sourced<>("커피베라", Source.USER),
                 List.of(), null, null, List.of(),
@@ -387,7 +387,7 @@ class PreviewBlocksTest {
                 new Brew(null, new Tasting("식으니까 더 맛있었음", null, null))), // 레시피 없이 마신 회차
                 OffsetDateTime.now());
         Note draft = new Note(
-                "coffeevera-yirgacheffe-g1",
+                1L,
                 new Sourced<>("커피베라 예가체프 G1", Source.USER),
                 new Sourced<>("커피베라", Source.USER),
                 List.of(), null, null, List.of(),
@@ -412,7 +412,7 @@ class PreviewBlocksTest {
         Note draft = editDraft(LocalDate.of(2026, 7, 10));
         PendingNote pending = new PendingNote(
                 PendingNote.Mode.EDIT, draft,
-                new PendingNote.EditTarget(draft.slug(), LocalDate.of(2026, 7, 10)),
+                new PendingNote.EditTarget(draft.id(), LocalDate.of(2026, 7, 10)),
                 null, null, OffsetDateTime.now());
 
         List<LayoutBlock> blocks = previewBlocks.build(pending);
@@ -439,7 +439,7 @@ class PreviewBlocksTest {
         Note draft = editDraft(LocalDate.of(2026, 7, 12));
         PendingNote pending = new PendingNote(
                 PendingNote.Mode.EDIT, draft,
-                new PendingNote.EditTarget(draft.slug(), LocalDate.of(2026, 7, 10)),
+                new PendingNote.EditTarget(draft.id(), LocalDate.of(2026, 7, 10)),
                 true, null, null, OffsetDateTime.now());
 
         List<LayoutBlock> blocks = previewBlocks.build(pending);
@@ -484,7 +484,7 @@ class PreviewBlocksTest {
     // edit 모드 draft — 대상 노트를 로드한 사본 형태(엔트리 1건, 날짜는 인자).
     private static Note editDraft(LocalDate entryDate) {
         return new Note(
-                "coffeevera-yirgacheffe-g1",
+                1L,
                 new Sourced<>("커피베라 예가체프 G1", Source.USER),
                 new Sourced<>("커피베라", Source.USER),
                 List.of(), null, null,

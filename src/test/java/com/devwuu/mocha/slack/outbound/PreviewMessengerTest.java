@@ -39,7 +39,7 @@ class PreviewMessengerTest {
 
     private static PendingNote pending(String previewTs) {
         Note draft = new Note(
-                "coffeevera-yirgacheffe-g1", new Sourced<>("커피베라 예가체프 G1", Source.USER),
+                1L, new Sourced<>("커피베라 예가체프 G1", Source.USER),
                 new Sourced<>("커피베라", Source.USER), List.of(), null, null, List.of(),
                 List.of(new Entry(LocalDate.of(2026, 7, 10),
                         List.of(new Brew(null, new Tasting("새콤함", null, Rating.GOOD))), OffsetDateTime.now())),

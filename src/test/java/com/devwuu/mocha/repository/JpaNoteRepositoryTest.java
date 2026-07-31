@@ -1,6 +1,7 @@
 package com.devwuu.mocha.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Bean;
@@ -158,6 +159,31 @@ class JpaNoteRepositoryTest extends PostgresIntegrationTest {
     @DisplayName("TΔ5a: 빈 저장소의 findAll은 빈 목록이다")
     void findAllOnEmptyRepository() {
         assertThat(repo.findAll()).isEmpty();
+    }
+
+    // ─────────────────────── 미구현 표식 (TΔ6d — TΔ5b·TΔ5c가 지운다) ───────────────────────
+
+    /**
+     * TΔ6d 관측: 컴파일이 닫히며 <b>전량 그린</b>이 됐다. tasks.md는 이 시점에 {@code upsertEntry}·
+     * {@code applyEdit} 미구현분이 빨강으로 남으리라 예고했지만, 그 둘을 밟던 유일한 테스트
+     * ({@code SlackCommitHandlerTest})가 핸들러 계약 검증으로 층이 정리되며 fake로 갈아탔다.
+     * 그래서 <b>미구현이 어떤 테스트에도 관측되지 않는 상태</b>가 됐다.
+     *
+     * <p>빨강 대신 <b>명시적 표식</b>을 둔다 — TΔ5a가 {@code nextAvailableSlug}에 같은 처리를 한 선례가 있다.
+     * TΔ5b·TΔ5c가 구현하면 이 두 테스트가 실패하므로 <b>삭제가 강제된다</b>: 미구현 구간의 끝이 코드로 표시된다.
+     */
+    @Test
+    @DisplayName("TΔ6d 표식: upsertEntry는 아직 미구현이다 — TΔ5b가 구현하며 이 테스트를 지운다")
+    void upsertEntryIsNotImplementedYet() {
+        assertThatThrownBy(() -> repo.upsertEntry(null, null, null, Aliases.empty()))
+                .isInstanceOf(UnsupportedOperationException.class);
+    }
+
+    @Test
+    @DisplayName("TΔ6d 표식: applyEdit은 아직 미구현이다 — TΔ5c가 구현하며 이 테스트를 지운다")
+    void applyEditIsNotImplementedYet() {
+        assertThatThrownBy(() -> repo.applyEdit(1L, LocalDate.of(2026, 7, 11), null))
+                .isInstanceOf(UnsupportedOperationException.class);
     }
 
     // ────────────────────────────── 표본 ──────────────────────────────

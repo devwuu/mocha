@@ -75,7 +75,7 @@ public class SlackPhotoIntake {
             Optional<PendingNote> pending = pendingStore.get(userId);
             if (pending.isPresent()) {
                 // 진행 중 노트가 있으면 사진은 스테이징에만 둔다 — 아카이브 전용이라 draft·미리보기를 건드리지
-                // 않고(렌더 없음), [저장] 시 commitStaged가 photos/<slug>/<date>/로 옮긴다(changes/0014 ADR-32).
+                // 않고(렌더 없음), [저장] 시 commitStaged가 photos/<접미>/<date>/로 옮긴다(changes/0014 ADR-32).
                 List<String> staged = stageAll(userId, media);
                 log.info("pending 중 사진 스테이징: user={} photos={}", userId, staged.size());
             } else {
@@ -125,14 +125,19 @@ public class SlackPhotoIntake {
         return result;
     }
 
-    /** 스테이징 원본을 photos/&lt;slug&gt;/&lt;date&gt;/로 이동해 확정하고 상대 경로 목록을 돌려준다(V-4, FR-10). */
-    public List<String> commitStaged(String userId, String slug, String date) {
-        return photoStore.commit(userId, slug, date);
+    /**
+     * 스테이징 원본을 {@code photos/<noteFolder>/<date>/}로 이동해 확정하고 상대 경로 목록을 돌려준다(V-4, FR-10).
+     *
+     * @param noteFolder {@link com.devwuu.mocha.repository.NoteFolderName}이 만든 폴더 접미
+     *                   ({@code <id>-<로스터리>-<커피명>}) — id가 아니다(changes/0028 §파일 경로 규약).
+     */
+    public List<String> commitStaged(String userId, String noteFolder, String date) {
+        return photoStore.commit(userId, noteFolder, date);
     }
 
     /** 수정 세션 날짜 이동 시 그 엔트리의 아카이브 폴더를 새 날짜로 동반 이동한다(ADR-32, FR-21) — best-effort는 호출부가 감싼다. */
-    public void moveEntryPhotos(String slug, String fromDate, String toDate) {
-        photoStore.moveEntryPhotos(slug, fromDate, toDate);
+    public void moveEntryPhotos(String noteFolder, String fromDate, String toDate) {
+        photoStore.moveEntryPhotos(noteFolder, fromDate, toDate);
     }
 
     /** 대기 중이던 스테이징 사진·버퍼를 함께 폐기한다 — 취소·pending 만료 경로(FR-10). */
