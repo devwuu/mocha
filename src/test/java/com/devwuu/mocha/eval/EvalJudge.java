@@ -152,9 +152,9 @@ final class EvalJudge {
         }
         boolean unchanged = run.notesBefore().equals(run.notesAfter());
         if (expectUnchanged && !unchanged) {
-            failures.add("노트 저장소 기대=무변화 — 파일이 바뀌었다: " + notesDiff(run));
+            failures.add("노트 저장소 기대=무변화 — 노트가 바뀌었다: " + notesDiff(run));
         } else if (!expectUnchanged && unchanged) {
-            failures.add("노트 저장소 기대=변화 — 파일이 그대로다");
+            failures.add("노트 저장소 기대=변화 — 노트가 그대로다");
         }
     }
 

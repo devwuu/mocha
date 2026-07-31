@@ -24,9 +24,9 @@ import java.time.OffsetDateTime;
  * 그래서 스키마가 강제하는 무결성은 컬럼 수준(mode·created_at·draft 부재)까지고, JSONB 내부 결손
  * ({@code draft.coffee_name} 공백 등)은 애플리케이션이 계속 판정한다(ADR-66).
  *
- * <p>{@code targetNoteId}·{@code matchNoteId}가 {@code Long}인 것은 스키마가 {@code bigint}이기 때문이다 —
- * 도메인 {@link PendingNote.EditTarget}·{@link MatchInfo}는 이 시점에 아직 slug({@code String})를 들고 있고,
- * 식별자 전환은 TΔ6a가 소유한다. 엔티티는 스키마 쪽에 맞춰 두고 그 사이의 간극은 변환기가 흡수한다.
+ * <p>{@code targetNoteId}·{@code matchNoteId}가 {@code Long}인 것은 스키마가 {@code bigint}이기 때문이다.
+ * 도메인 {@link PendingNote.EditTarget}·{@link MatchInfo}도 TΔ6a에서 {@code Long}으로 전환돼 이제
+ * 양쪽 표현이 같다 — 엔티티가 스키마 쪽에 맞춰 서 있던 동안의 간극은 소멸했다.
  */
 @Entity
 @Table(name = "pending_note")

@@ -65,7 +65,7 @@ class ToolArgsContractTest {
                                    "rating": "맛있다" } }
                   ],
                   "target_date": "2026-07-16",
-                  "match": { "type": "existing", "slug": "2026-07-13-102030", "date": "2026-07-16" },
+                  "match": { "type": "existing", "note_id": 12, "date": "2026-07-16" },
                   "sources": ["https://frob.co.kr/products/chelbesa"]
                 }
                 """;
@@ -82,17 +82,19 @@ class ToolArgsContractTest {
         assertThat(args.brews().getFirst().tasting()).isEqualTo(
                 new BrewArg.TastingArg("새콤하고 좋았음", "새콤하고 좋았다", "맛있다"));
         assertThat(args.targetDate()).isEqualTo("2026-07-16");
+        // note_id는 스키마상 정수지만 인자 record는 원시 String으로 받는다 — 위반 값(비숫자)이 역직렬화
+        // 예외로 새지 않고 거부 사유로 돌아가게 하는 계약이다(changes/0028 TΔ0b §4 E-6).
         assertThat(args.match()).isEqualTo(
-                new ProposeRecordArgs.MatchArg("existing", "2026-07-13-102030", "2026-07-16"));
+                new ProposeRecordArgs.MatchArg("existing", "12", "2026-07-16"));
         assertThat(args.sources()).containsExactly("https://frob.co.kr/products/chelbesa");
     }
 
     @Test
-    @DisplayName("data-model §3.4: propose_edit 인자(slug+date+patch)가 역직렬화되고 brews 속 rating 위반도 값으로 도착한다")
+    @DisplayName("data-model §3.4: propose_edit 인자(note_id+date+patch)가 역직렬화되고 brews 속 rating 위반도 값으로 도착한다")
     void proposeEditArgsDeserialize() {
         String json = """
                 {
-                  "slug": "2026-07-13-102030",
+                  "note_id": 12,
                   "date": "2026-07-13",
                   "patch": {
                     "roastery": { "value": "프릳츠", "source": "user" },
@@ -110,7 +112,7 @@ class ToolArgsContractTest {
                 """;
         ProposeEditArgs args = mapper.readValue(json, ProposeEditArgs.class);
 
-        assertThat(args.slug()).isEqualTo("2026-07-13-102030");
+        assertThat(args.noteId()).isEqualTo("12");
         assertThat(args.date()).isEqualTo("2026-07-13");
         assertThat(args.patch().roastery()).isEqualTo(new SourcedArg<>("프릳츠", "user"));
         assertThat(args.patch().beans()).isNull(); // null = 유지 — 통째 교체 인자(§3.4)

@@ -133,7 +133,7 @@ class AgentLoopProbeSmokeTest {
                         pendingInput.add(ResponseInputItem.ofFunctionCallOutput(
                                 ResponseInputItem.FunctionCallOutput.builder()
                                         .callId(call.callId())
-                                        .output("{\"slug\":\"waikiki\",\"coffee_name\":\"와이키키\","
+                                        .output("{\"id\":7,\"coffee_name\":\"와이키키\","
                                                 + "\"roastery\":\"모모스커피\",\"origin\":\"블렌드\","
                                                 + "\"aliases\":[\"waikiki\",\"모모스 와이키키\"]}")
                                         .build()));
@@ -167,10 +167,10 @@ class AgentLoopProbeSmokeTest {
         FunctionTool.Parameters params = FunctionTool.Parameters.builder()
                 .putAdditionalProperty("type", JsonValue.from("object"))
                 .putAdditionalProperty("properties", JsonValue.from(Map.of(
-                        "slug_or_name", Map.of(
+                        "note_id_or_name", Map.of(
                                 "type", "string",
-                                "description", "조회할 노트의 slug 또는 커피 이름"))))
-                .putAdditionalProperty("required", JsonValue.from(List.of("slug_or_name")))
+                                "description", "조회할 노트의 id 또는 커피 이름"))))
+                .putAdditionalProperty("required", JsonValue.from(List.of("note_id_or_name")))
                 .putAdditionalProperty("additionalProperties", JsonValue.from(false))
                 .build();
         return FunctionTool.builder()

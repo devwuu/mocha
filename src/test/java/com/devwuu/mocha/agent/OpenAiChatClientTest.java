@@ -119,13 +119,13 @@ class OpenAiChatClientTest {
             return "{\"coffee_name\":\"와이키키\"}";
         });
         ScriptedChatClient client = new ScriptedChatClient(8, List.of(
-                response("resp_1", functionCall("call_1", "get_note", "{\"slug\":\"waikiki\"}")),
+                response("resp_1", functionCall("call_1", "get_note", "{\"note_id\":7}")),
                 response("resp_2", message("와이키키 노트 찾았다멍"))));
 
         String result = client.runTurn(context("와이키키 보여줘"), List.of(tool));
 
         assertThat(result).isEqualTo("와이키키 노트 찾았다멍");
-        assertThat(receivedArgs).containsExactly("{\"slug\":\"waikiki\"}");
+        assertThat(receivedArgs).containsExactly("{\"note_id\":7}");
 
         // 두 번째 요청 = previousResponseId + function_call_output(callId 짝)만, tool 정의는 재전송.
         ResponseCreateParams second = client.sent.get(1);
@@ -150,7 +150,7 @@ class OpenAiChatClientTest {
             return "{}";
         });
         ScriptedChatClient client = new ScriptedChatClient(2, List.of(
-                response("resp_loop", functionCall("call_n", "get_note", "{\"slug\":\"x\"}"))));
+                response("resp_loop", functionCall("call_n", "get_note", "{\"note_id\":7}"))));
 
         assertThatThrownBy(() -> client.runTurn(context("계속 조회해"), List.of(tool)))
                 .isInstanceOf(AgentException.class)
@@ -172,7 +172,7 @@ class OpenAiChatClientTest {
         });
         // 첫 이터레이션 usage(80+30=110)가 상한(100)을 넘고 턴이 계속되려 한다 → 이터레이션 경계에서 중단.
         ScriptedChatClient client = new ScriptedChatClient(8, 100, Duration.ofSeconds(60), List.of(
-                responseWithUsage("resp_1", 80, 30, functionCall("call_1", "get_note", "{\"slug\":\"x\"}"))));
+                responseWithUsage("resp_1", 80, 30, functionCall("call_1", "get_note", "{\"note_id\":7}"))));
 
         assertThatThrownBy(() -> client.runTurn(context("기록해줘"), List.of(tool)))
                 .isInstanceOf(AgentException.class)
@@ -198,7 +198,7 @@ class OpenAiChatClientTest {
         //  사라진다 — 시계를 흘려 "늦게 끝난 호출"로 바꿔 ADR-62 경로를 그대로 검증한다.)
         SteppingClock clock = new SteppingClock();
         ScriptedChatClient client = new ScriptedChatClient(8, 100_000, Duration.ofSeconds(30), List.of(
-                response("resp_1", functionCall("call_1", "get_note", "{\"slug\":\"x\"}"))), clock);
+                response("resp_1", functionCall("call_1", "get_note", "{\"note_id\":7}"))), clock);
         client.onSend = () -> clock.advance(Duration.ofSeconds(40));
 
         assertThatThrownBy(() -> client.runTurn(context("기록해줘"), List.of(tool)))
@@ -216,7 +216,7 @@ class OpenAiChatClientTest {
     void derivesRequestTimeoutFromRemainingTurnBudget() {
         SteppingClock clock = new SteppingClock();
         ScriptedChatClient client = new ScriptedChatClient(8, 100_000, Duration.ofSeconds(60), List.of(
-                response("resp_1", functionCall("call_1", "get_note", "{\"slug\":\"x\"}")),
+                response("resp_1", functionCall("call_1", "get_note", "{\"note_id\":7}")),
                 response("resp_2", message("찾았다멍"))), clock);
         // 첫 호출이 15초, tool 실행이 5초를 쓴다 → 두 번째 호출의 잔여는 60 - 20 = 40초.
         client.onSend = () -> clock.advance(Duration.ofSeconds(15));
@@ -301,7 +301,7 @@ class OpenAiChatClientTest {
     void skipsModelCallWhenRemainingBudgetIsBelowFloor() {
         SteppingClock clock = new SteppingClock();
         ScriptedChatClient client = new ScriptedChatClient(8, 100_000, Duration.ofSeconds(5), List.of(
-                response("resp_1", functionCall("call_1", "get_note", "{\"slug\":\"x\"}")),
+                response("resp_1", functionCall("call_1", "get_note", "{\"note_id\":7}")),
                 response("resp_2", message("찾았다멍"))), clock);
         // 첫 호출 4.5초 → 잔여 500ms. 이터레이션 경계 판정(경과 4.5s < 5s)은 통과하지만 호출할 예산은 아니다.
         client.onSend = () -> clock.advance(Duration.ofMillis(4_500));
@@ -319,7 +319,7 @@ class OpenAiChatClientTest {
     @DisplayName("AC-Δ3 (ADR-62): 상한 미달 시 동작 불변 — 턴 완료 + 관측 로그에 이터레이션별 usage 합산")
     void accumulatesUsageAcrossIterationsWhenUnderCaps() {
         ScriptedChatClient client = new ScriptedChatClient(8, 100_000, Duration.ofSeconds(60), List.of(
-                responseWithUsage("resp_1", 80, 30, functionCall("call_1", "get_note", "{\"slug\":\"x\"}")),
+                responseWithUsage("resp_1", 80, 30, functionCall("call_1", "get_note", "{\"note_id\":7}")),
                 responseWithUsage("resp_2", 120, 50, message("찾았다멍"))));
 
         String result = client.runTurn(context("와이키키 보여줘"), List.of(getNoteTool(args -> "{}")));
@@ -339,7 +339,7 @@ class OpenAiChatClientTest {
             throw new IllegalArgumentException("rating은 4범주만 허용");
         });
         ScriptedChatClient client = new ScriptedChatClient(8, List.of(
-                response("resp_1", functionCall("call_1", "get_note", "{\"slug\":\"x\"}")),
+                response("resp_1", functionCall("call_1", "get_note", "{\"note_id\":7}")),
                 response("resp_2", message("rating을 다시 알려달라멍"))));
 
         String result = client.runTurn(context("기록해줘"), List.of(tool));
@@ -481,7 +481,7 @@ class OpenAiChatClientTest {
         AtomicInteger executions = new AtomicInteger();
         ScriptedChatClient client = new ScriptedChatClient(8, List.of(
                 incompleteResponse("resp_1", Response.IncompleteDetails.Reason.MAX_OUTPUT_TOKENS,
-                        functionCall("call_1", "get_note", "{\"slug\":\"waik"))));
+                        functionCall("call_1", "get_note", "{\"note_id\":7"))));
 
         assertThatThrownBy(() -> client.runTurn(context("와이키키 보여줘"),
                 List.of(getNoteTool(args -> {
@@ -568,7 +568,7 @@ class OpenAiChatClientTest {
     @DisplayName("AC-Δ9: 턴 관측 로그에 tool 시퀀스(web_search 포함)·호출 수가 남는다 (plan §6)")
     void logsTurnObservationWithToolSequence() {
         ScriptedChatClient client = new ScriptedChatClient(8, List.of(
-                response("resp_1", functionCall("call_1", "get_note", "{\"slug\":\"x\"}")),
+                response("resp_1", functionCall("call_1", "get_note", "{\"note_id\":7}")),
                 response("resp_2", webSearchCall("ws_1"), message("찾았다멍"))));
 
         client.runTurn(context("와이키키 공식 페이지 찾아줘"), List.of(getNoteTool(args -> "{}")));
@@ -637,8 +637,8 @@ class OpenAiChatClientTest {
 
     private static ToolCallback getNoteTool(ToolCallback.Executor executor) {
         return new ToolCallback("get_note", "저장된 커피 노트 1건을 조회한다.", """
-                {"type":"object","properties":{"slug":{"type":"string"}},\
-                "required":["slug"],"additionalProperties":false}""", executor);
+                {"type":"object","properties":{"note_id":{"type":"integer"}},\
+                "required":["note_id"],"additionalProperties":false}""", executor);
     }
 
     /**

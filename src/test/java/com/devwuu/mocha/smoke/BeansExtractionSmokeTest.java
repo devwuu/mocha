@@ -112,22 +112,17 @@ class BeansExtractionSmokeTest {
         }
 
         @Override
-        public Optional<Note> findBySlug(String slug) {
+        public Optional<Note> findById(long id) {
             return Optional.empty();
         }
 
         @Override
-        public String nextAvailableSlug(String base) {
-            return base;
-        }
-
-        @Override
-        public Note upsertEntry(String slug, NoteMeta meta, Entry entry, Aliases aliases) {
+        public Note upsertEntry(Long noteId, NoteMeta meta, Entry entry, Aliases aliases) {
             throw new UnsupportedOperationException("스모크는 커밋하지 않는다");
         }
 
         @Override
-        public Note applyEdit(String slug, LocalDate targetDate, Note draft) {
+        public Note applyEdit(long noteId, LocalDate targetDate, Note draft) {
             throw new UnsupportedOperationException("스모크는 커밋하지 않는다");
         }
     }
@@ -187,12 +182,12 @@ class BeansExtractionSmokeTest {
         }
 
         @Override
-        public List<Path> renderEntryCard(String slug, LocalDate date) {
+        public List<Path> renderEntryCard(String noteFolder, LocalDate date) {
             return List.of(Path.of("build/smoke-artifact/unused.jpg"));
         }
 
         @Override
-        public void removeEntryCard(String slug, LocalDate date) {
+        public void removeEntryCard(String noteFolder, LocalDate date) {
             // no-op
         }
     }

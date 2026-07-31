@@ -49,7 +49,7 @@ class TurnPromptAssemblerTest {
     private static Note draft() {
         Entry entry = new Entry(LocalDate.of(2026, 7, 16),
                 List.of(new Brew(null, new Tasting("새콤하고 좋았음", "새콤하고 좋았다", Rating.GOOD))), NOW);
-        return new Note("2026-07-16-100000",
+        return new Note(7L,
                 new Sourced<>("Ethiopia Chelbesa", Source.USER), new Sourced<>("FroB", Source.USER),
                 List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), null)),
                 null, null, List.of(), List.of(entry), NOW, NOW);
@@ -117,13 +117,13 @@ class TurnPromptAssemblerTest {
     @DisplayName("V-10: edit pending은 target과 date_conflict까지 싣는다 — 수정 대상·경고 문맥 유지")
     void includesEditPendingTargetAndConflict() {
         PendingNote pending = new PendingNote(PendingNote.Mode.EDIT, draft(),
-                new PendingNote.EditTarget("2026-07-16-100000", LocalDate.of(2026, 7, 16)),
+                new PendingNote.EditTarget(7L, LocalDate.of(2026, 7, 16)),
                 null, null, NOW).withDateConflict(true);
 
         TurnPrompt context = assembler.assemble("역시 원래 날짜로 둘래", List.of(), pending, null, null);
 
         assertThat(context.instructions()).contains("\"mode\":\"edit\"");
-        assertThat(context.instructions()).contains("\"target\":{\"slug\":\"2026-07-16-100000\",\"date\":\"2026-07-16\"}");
+        assertThat(context.instructions()).contains("\"target\":{\"note_id\":7,\"date\":\"2026-07-16\"}");
         assertThat(context.instructions()).contains("\"date_conflict\":true");
     }
 

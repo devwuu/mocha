@@ -6,8 +6,9 @@ import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
 import com.devwuu.mocha.domain.PendingNote;
 import com.devwuu.mocha.json.MochaObjectMapper;
+import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.llm.OpenAiUtteranceSegmenter;
-import com.devwuu.mocha.repository.JsonFileNoteRepository;
+import com.devwuu.mocha.repository.JpaNoteRepository;
 import com.devwuu.mocha.repository.JsonFilePendingStore;
 import com.devwuu.mocha.slack.AgentConversationRouter;
 import com.devwuu.mocha.slack.inbound.IncomingMessage;
@@ -40,10 +41,14 @@ import static com.devwuu.mocha.agent.tool.ToolCallbackProviderFixture.toolkit;
  * <p>진입점은 {@link AgentConversationRouter#onMessage} — 루프가 아니라 라우터다. 탐지기 → 세그먼터 →
  * 게이트 전처리가 0021의 실측 실패 지점이라 루프 레벨 진입으로는 그 구간이 통째로 빠진다(ADR-68).
  *
- * <p>조립 원칙은 "판정 대상은 실물, 부수효과만 대체"다. 저장소는 인메모리 Map이 아니라 {@code @TempDir}
- * 위의 실 JSON 파일 구현체를 쓴다 — pending diff가 판정 대상이라 직렬화 왕복 자체가 검증에 포함되고
- * (백엔드 CLAUDE.md §5.2), 케이스 픽스처도 실사용 {@code data/} 포맷 그대로 복사하면 된다.
- * 나머지 대체물은 {@link EvalFakes} 참조.
+ * <p>조립 원칙은 "판정 대상은 실물, 부수효과만 대체"다. 저장소는 인메모리 Map이 아니라 실 구현체를 쓴다 —
+ * 직렬화·영속 왕복 자체가 검증에 포함되기 때문이다(백엔드 CLAUDE.md §5.2). 노트는 {@link JpaNoteRepository}
+ * (로컬 Postgres의 {@code test} 스키마 — changes/0028 TΔ10a)이고, pending은 아직 {@code @TempDir} 위의
+ * {@link JsonFilePendingStore}다(DB 이관은 TΔ8). 나머지 대체물은 {@link EvalFakes} 참조.
+ *
+ * <p><b>호출부 계약</b>: 노트 저장소는 주입받는다 — 스키마 초기화(회차 간 격리)와 Spring 컨텍스트 소유는
+ * {@link EvalCaseRunnerTest}의 몫이다. 회차마다 스키마가 새로 깔리므로 {@code BIGSERIAL}이 1부터 다시
+ * 발급되고, 케이스가 심는 노트의 id는 <b>픽스처 순서로 결정된다</b>(재현성 — 구 slug 고정의 승계).
  *
  * <p>턴 실패는 예외로 오지 않는다 — {@code onMessage}가 삼키고 재요청 안내를 보낸다(ADR-48). 그래서
  * 판정은 전부 사후 상태({@link Run})로 하고, 폴백 여부만 응답 텍스트와 {@link MochaMessages#AGENT_TURN_FAILED}의
@@ -86,8 +91,8 @@ final class EvalHarness {
      * @param pendingBefore     턴 진입 전 {@code pending.json} 원문. 없었으면 empty.
      * @param pendingAfter      마지막 턴 종료 후 {@code pending.json} 원문. 바이트 비교로 "무변화"를 가른다.
      * @param pendingNote       마지막 턴 종료 후 역직렬화된 pending. 없으면 null.
-     * @param notesBefore       진입 전 노트 파일 스냅샷(파일명 → 내용).
-     * @param notesAfter        종료 후 노트 파일 스냅샷 — 커밋은 [저장] 버튼에서만 일어나므로(AC-59) 무변화가 기대다.
+     * @param notesBefore       진입 전 노트 스냅샷(id → 직렬화 본문).
+     * @param notesAfter        종료 후 노트 스냅샷 — 커밋은 [저장] 버튼에서만 일어나므로(AC-59) 무변화가 기대다.
      * @param replies           턴별 최종 응답 텍스트(발화 시퀀스와 같은 길이).
      * @param elapsedMs         전 발화 소요(비용·시간 실측용 — TΔ3 baseline 입력).
      */
@@ -116,25 +121,27 @@ final class EvalHarness {
     }
 
     /**
-     * 케이스를 1회 실행한다. 저장소는 {@code workDir} 아래에 새로 깔리므로 회차 간 상태가 섞이지 않는다.
+     * 케이스를 1회 실행한다. pending은 {@code workDir} 아래에 새로 깔리고 노트 스키마는 호출부가 회차마다
+     * 새로 만들므로 회차 간 상태가 섞이지 않는다.
      *
-     * @param evalCase 실행할 케이스.
-     * @param workDir  이 회차 전용 작업 디렉터리(빈 디렉터리 — 호출부가 회차마다 새로 판다).
-     * @param settings 실행 파라미터.
+     * @param evalCase       실행할 케이스.
+     * @param workDir        이 회차 전용 작업 디렉터리(빈 디렉터리 — 호출부가 회차마다 새로 판다).
+     * @param settings       실행 파라미터.
+     * @param noteRepository 빈 {@code test} 스키마에 붙은 실 저장소 — 호출부가 회차마다 스키마를 새로 깔아 준다.
      */
-    static Run run(EvalCase evalCase, Path workDir, Settings settings) throws IOException {
+    static Run run(EvalCase evalCase, Path workDir, Settings settings, JpaNoteRepository noteRepository)
+            throws IOException {
         Path dataDir = workDir.resolve("data");
         Path artifactDir = workDir.resolve("artifact");
-        Files.createDirectories(dataDir.resolve("notes"));
+        Files.createDirectories(dataDir);
         Files.createDirectories(artifactDir);
-        loadFixtures(evalCase, dataDir);
 
-        // 케이스 today는 instant까지 고정한다 — pending slug(YYYY-MM-DD-HHmmss)가 시각에서 파생돼
-        // 날짜만 고정하면 회차마다 slug가 흔들린다(findings-TΔ0 §1.1). 라우터의 시계 고정점 2종이 이 하나에서 나온다.
+        // 케이스 today는 instant까지 고정한다 — 턴 타임스탬프·TTL 판정이 시각에서 파생돼 날짜만 고정하면
+        // 회차마다 흔들린다(findings-TΔ0 §1.1). 라우터의 시계 고정점 2종이 이 하나에서 나온다.
         Clock clock = Clock.fixed(evalCase.today().toInstant(), SEOUL);
         JsonMapper mapper = MochaObjectMapper.create();
+        loadFixtures(evalCase, dataDir, noteRepository, mapper);
 
-        JsonFileNoteRepository noteRepository = new JsonFileNoteRepository(dataDir, mapper, clock);
         JsonFilePendingStore pendingStore =
                 new JsonFilePendingStore(dataDir, mapper, Settings.PENDING_TTL, clock);
         FoldingChatMemory transcript =
@@ -178,7 +185,7 @@ final class EvalHarness {
         // pending 원문은 store.get() 전에 뜬다 — TTL 초과분은 get이 파일을 지우므로(V-7), 나중에 뜨면
         // "초기 상태가 있었다"는 사실 자체가 사라진다.
         Optional<String> pendingBefore = readPendingFile(dataDir);
-        Map<String, String> notesBefore = snapshotNotes(dataDir);
+        Map<String, String> notesBefore = snapshotNotes(noteRepository, mapper);
 
         long startedAt = System.nanoTime();
         for (String utterance : evalCase.utterances()) {
@@ -193,13 +200,16 @@ final class EvalHarness {
                 readPendingFile(dataDir),
                 pendingStore.get(USER).orElse(null),
                 notesBefore,
-                snapshotNotes(dataDir),
+                snapshotNotes(noteRepository, mapper),
                 List.copyOf(responder.posted),
                 elapsedMs);
     }
 
-    // 케이스 동봉 픽스처를 실 저장소 레이아웃(data/notes/<slug>.json, data/pending.json)으로 깐다.
-    private static void loadFixtures(EvalCase evalCase, Path dataDir) throws IOException {
+    // 케이스 동봉 픽스처를 실 저장소로 깐다 — 노트는 DB INSERT(파일명 순), pending은 data/pending.json.
+    // 노트 파일명 오름차순으로 심으므로 BIGSERIAL이 발급하는 id가 회차마다 같다(재현성). 픽스처 JSON의
+    // id 필드는 insert가 무시한다 — 발급자는 DB다(TΔ5a 계약).
+    private static void loadFixtures(EvalCase evalCase, Path dataDir, JpaNoteRepository noteRepository,
+                                     JsonMapper mapper) throws IOException {
         EvalCase.Initial initial = evalCase.initial();
         if (initial == null) {
             return;
@@ -207,9 +217,10 @@ final class EvalHarness {
         if (initial.notes() != null) {
             Path source = evalCase.dir().resolve(initial.notes());
             try (Stream<Path> files = Files.list(source)) {
-                for (Path file : files.filter(p -> p.getFileName().toString().endsWith(".json")).toList()) {
-                    Files.copy(file, dataDir.resolve("notes").resolve(file.getFileName().toString()),
-                            StandardCopyOption.REPLACE_EXISTING);
+                for (Path file : files.filter(p -> p.getFileName().toString().endsWith(".json"))
+                        .sorted().toList()) {
+                    noteRepository.insert(mapper.readValue(
+                            Files.readString(file, StandardCharsets.UTF_8), Note.class));
                 }
             }
         }
@@ -226,16 +237,12 @@ final class EvalHarness {
                 : Optional.empty();
     }
 
-    private static Map<String, String> snapshotNotes(Path dataDir) throws IOException {
-        Path notesDir = dataDir.resolve("notes");
-        if (!Files.isDirectory(notesDir)) {
-            return Map.of();
-        }
+    // 노트 저장소 스냅샷 — 파일 시절의 "파일명 → 내용"을 "id → 직렬화 본문"이 승계한다. 저장소가 id
+    // 오름차순을 보장하므로(NoteRepository 계약) 순서는 결정적이고, 직렬화를 거치므로 값 변화도 잡힌다.
+    private static Map<String, String> snapshotNotes(JpaNoteRepository noteRepository, JsonMapper mapper) {
         Map<String, String> snapshot = new LinkedHashMap<>();
-        try (Stream<Path> files = Files.list(notesDir)) {
-            for (Path file : files.sorted().toList()) {
-                snapshot.put(file.getFileName().toString(), Files.readString(file, StandardCharsets.UTF_8));
-            }
+        for (Note note : noteRepository.findAll()) {
+            snapshot.put(String.valueOf(note.id()), mapper.writeValueAsString(note));
         }
         return snapshot;
     }

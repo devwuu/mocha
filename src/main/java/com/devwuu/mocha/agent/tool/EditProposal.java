@@ -13,7 +13,7 @@ import java.util.List;
  * (ref: specs/coffee-note-agent/data-model.md#3.4, plan#ADR-45·59).
  * <p>patch 필드는 null = 유지. coffee_name은 인자 스키마에 없어 여기까지 올 수 없다(V-9 구조 차단).
  *
- * @param slug          수정 대상 노트.
+ * @param noteId        수정 대상 노트 id — 리졸브된 노트에서 오므로 항상 채워진다(D-1, changes/0028).
  * @param targetDate    수정 대상 엔트리 날짜 — pending target의 근거.
  * @param roastery      로스터리 새 값 — null이면 유지. 이하 동일.
  * @param beans         원두 구성 새 값(V-14 정규화, 통째 교체) — null이면 유지 (changes/0021 ADR-53).
@@ -25,7 +25,7 @@ import java.util.List;
  *                      이동 충돌(V-10) 판정은 제안 수용 지점이 현 draft 기준으로 재계산한다(ProposalTools POLICY).
  */
 public record EditProposal(
-        String slug,
+        Long noteId,
         LocalDate targetDate,
         Sourced<String> roastery,
         List<Bean> beans,

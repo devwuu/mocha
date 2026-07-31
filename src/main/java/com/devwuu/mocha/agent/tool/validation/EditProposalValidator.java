@@ -28,7 +28,7 @@ import java.util.List;
  * </ul>
  * <p>POLICY: 제안 tool의 서버 검증 실패는 오류 사유를 tool 결과로 반환 — 조용한 드롭·서버 대행 금지
  * (ref: specs/coffee-note-agent/plan.md#ADR-45, AC-9). 순수 도메인 계층 — SDK·I/O 무관, 대상 노트
- * 리졸브(slug → Note)와 pending 조회는 호출부(tool 구현, TΔ6)의 몫이다.
+ * 리졸브(note_id → Note)와 pending 조회는 호출부(tool 구현, TΔ6)의 몫이다.
  * <p>POLICY: agent/tool/은 tool 정의·인자·검증만 — 턴 전처리·컨텍스트 운반체는 agent/turn/에,
  * 새 인터페이스 없이 구체 클래스로 (ref: plan.md#ADR-64).
  */
@@ -39,7 +39,7 @@ public class EditProposalValidator {
      * patch의 beans·brews는 배열 통째 교체 의미다 — null만 유지(data-model §3.4).
      *
      * @param args    strict schema를 통과한 미검증 인자.
-     * @param note    slug로 리졸브된 대상 노트 — 미존재 오류는 호출부(tool 구현)가 이미 반환했다.
+     * @param note    note_id로 리졸브된 대상 노트 — 미존재 오류는 호출부(tool 구현)가 이미 반환했다.
      * @param pending 현재 확인 대기 — 없으면 null. 단일 대기 판정 입력.
      */
     public ToolValidation<EditProposal> validate(ProposeEditArgs args, Note note, PendingNote pending) {
@@ -50,10 +50,10 @@ public class EditProposalValidator {
             }
             // 환각 필터(get_note 미존재 오류와 같은 정신): 실존하지 않는 엔트리를 대상으로 수정 세션이 열리지 않게.
             if (note.entries().stream().noneMatch(e -> targetDate.equals(e.date()))) {
-                throw new RejectedException("노트 '" + note.slug() + "'에는 " + targetDate
+                throw new RejectedException("노트 '" + note.id() + "'에는 " + targetDate
                         + " 시음 엔트리가 없다 — get_note로 실제 엔트리 날짜를 확인해라.");
             }
-            SinglePendingGate.requireSameEditTargetOrFree(pending, note.slug(), targetDate);
+            SinglePendingGate.requireSameEditTargetOrFree(pending, note.id(), targetDate);
 
             ProposeEditArgs.Patch patch = args.patch() == null ? ProposeEditArgs.Patch.empty() : args.patch();
             Sourced<String> roastery = SourceRules.sourced(
@@ -78,7 +78,7 @@ public class EditProposalValidator {
             }
 
             return ToolValidation.ok(new EditProposal(
-                    note.slug(), targetDate, roastery, beans, roastLevel, officialNotes,
+                    note.id(), targetDate, roastery, beans, roastLevel, officialNotes,
                     brews, newDate));
         } catch (RejectedException rejection) {
             return ToolValidation.rejected(rejection.getMessage());

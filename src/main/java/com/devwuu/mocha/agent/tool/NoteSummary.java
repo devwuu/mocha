@@ -9,7 +9,8 @@ import java.util.List;
  * <p>구 매칭·검색 후보 페이로드의 승계 — {@code aliases} 포함으로 표기 비일관(한/영 교차·부분 표기)을
  * 흡수한다(plan ADR-37, AC-53). 에이전트의 동일성 판단(FR-14)·검색(FR-20) 공용 재료.
  *
- * @param slug          노트 식별자.
+ * @param id            노트 식별자 — DB 대체키(changes/0028 ADR-74). 에이전트가 {@code get_note}·
+ *                      {@code propose_edit}에 {@code note_id}로 되넘기는 값이다.
  * @param coffeeName    커피 이름 표시값.
  * @param roastery      로스터리 표시값 — 없으면 null.
  * @param aliases       내부 별칭(커피명·로스터리 통합) — 사용자 미표시 값이지만 매칭 재료로 페이로드에 싣는다.
@@ -18,7 +19,7 @@ import java.util.List;
  * @param lastTasted    최근 시음일 — 상대 날짜 단서("엊그제 마신 거") 해석 재료.
  */
 public record NoteSummary(
-        String slug,
+        Long id,
         String coffeeName,
         String roastery,
         List<String> aliases,

@@ -20,7 +20,8 @@ import java.util.List;
  * @param dir        케이스 폴더 경로. {@code initial}의 상대 참조를 해석하는 기준점.
  * @param origin     관측 출처(델타 번호·로그 날짜 등). 케이스가 왜 존재하는지의 유일한 기록이라 필수다(ADR-68).
  * @param today      고정 시각 — {@code Clock.fixed}의 instant. 날짜만이 아니라 <b>시각까지</b> 고정하는 이유는
- *                   pending slug({@code YYYY-MM-DD-HHmmss})가 시각에서 파생돼 재현이 흔들리기 때문이다(findings-TΔ0 §1.1).
+ *                   턴 타임스탬프·TTL 판정이 시각에서 파생돼 재현이 흔들리기 때문이다(findings-TΔ0 §1.1).
+ *                   노트 id의 재현성은 시계가 아니라 회차별 스키마 재생성이 진다(changes/0028 TΔ6b).
  * @param utterances 발화 시퀀스. 2개 이상이면 멀티턴 — 같은 라우터 인스턴스에 순차 주입한다(트랜스크립트·pending 승계).
  * @param initial    턴 진입 전 저장소 상태(동봉 픽스처 참조).
  * @param expect     기대 계약.
@@ -42,11 +43,12 @@ public record EvalCase(
 
     /**
      * 초기 저장소 상태 — 케이스 폴더에 동봉된 픽스처를 가리키는 <b>폴더 상대 경로</b>.
-     * <p>인라인 필드가 아니라 파일 참조인 이유: 러너가 실 {@code JsonFileNoteRepository}/{@code JsonFilePendingStore}
-     * 포맷 그대로 {@code @TempDir}에 복사하면 되고(직렬화 왕복이 판정 대상 — findings-TΔ0 §1.2),
-     * 실사용 {@code data/}에서 파일을 그대로 떠 오는 박제도 그만큼 싸진다(ADR-69 ①).
+     * <p>인라인 필드가 아니라 파일 참조인 이유: 러너가 도메인 JSON 그대로 실 저장소에 심으면 되고
+     * (직렬화 왕복이 판정 대상 — findings-TΔ0 §1.2), 실사용에서 노트를 그대로 떠 오는 박제도 그만큼 싸진다(ADR-69 ①).
      *
-     * @param notes   노트 픽스처 디렉터리({@code <slug>.json} 모음). null이면 노트 0건에서 시작.
+     * @param notes   노트 픽스처 디렉터리(도메인 {@code Note} JSON 모음). null이면 노트 0건에서 시작.
+     *                <b>파일명 오름차순으로 INSERT되고 id는 DB가 발급한다</b> — 픽스처의 {@code id} 필드는
+     *                무시되므로, 케이스가 특정 id를 전제하면 파일명 순서로 고정한다(changes/0028 TΔ6b).
      * @param pending 초기 pending 파일({@code pending.json} 포맷). null이면 대기 없음에서 시작.
      */
     public record Initial(String notes, String pending) {

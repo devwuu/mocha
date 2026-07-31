@@ -117,7 +117,7 @@ public class JsonFilePendingStore implements PendingStore {
     }
 
     // data-model §2.3 로드 무결성 집합 — 훼손 사유 문자열(정상이면 null).
-    // 필수 필드(mode·createdAt·draft·slug·coffee_name·엔트리, edit의 target·target.slug)의 부재·공백을 판정한다.
+    // 필수 필드(mode·createdAt·draft·coffee_name·엔트리, edit의 target·target.note_id)의 부재·공백을 판정한다.
     // 최상위 null은 JSON `null`/필드 부재에서 나올 수 있어 여기서 방어한다(엔트리 배열 자체의 null은 도메인
     // 생성자가 빈 배열로 수렴시킨다 — V-3, CR25-10). 무결성 검사 자체가 NPE로 새면 로드 경계 관문이 무력화된다.
     private String integrityDefect(PendingNote pending) {
@@ -135,9 +135,9 @@ public class JsonFilePendingStore implements PendingStore {
         if (draft == null) {
             return "draft 필드 결손";
         }
-        if (draft.slug() == null || draft.slug().isBlank()) {
-            return "draft.slug 공백";
-        }
+        // 구 "draft.slug 공백" 검사는 승계하지 않는다 — id는 INSERT가 발급하므로 record 모드 신규 draft는
+        // 정상적으로 id가 없다(D-1). 그대로 옮기면 신규 pending이 전부 훼손 판정된다(changes/0028 TΔ0b §4 E-5).
+        // 승계되는 쪽은 아래 edit 모드의 target 검사다 — 그쪽은 저장된 노트만 대상이라 항상 채워진다.
         // coffee_name은 기록 정체성(record는 propose 시 필수, edit draft는 원본 노트 사본) — 결손이면 소비처가
         // 모델 대면 사유에 커피명 대신 null을 노출하므로 관문에서 막는다(RecordProposalValidator 필수 검증과 대칭).
         String coffeeName = Sourced.valueOrNull(draft.coffeeName());
@@ -151,11 +151,11 @@ public class JsonFilePendingStore implements PendingStore {
             if (pending.target() == null) {
                 return "edit 모드 target 결손";
             }
-            // target.slug는 수정 대상의 정체성 — 결손이면 소비처가 갱신 대상을 찾을 수 없다. 게이트의
-            // 같은 대상 판정(SinglePendingGate.requireSameEditTargetOrFree)이 slug 비교에서 NPE로 새고,
+            // target.note_id는 수정 대상의 정체성 — 결손이면 소비처가 갱신 대상을 찾을 수 없다. 게이트의
+            // 같은 대상 판정(SinglePendingGate.requireSameEditTargetOrFree)이 id 비교에서 NPE로 새고,
             // 거부 사유에는 커피명 대신 리터럴 "null"이 노출된다(draft.coffee_name과 동일 부류, CR25-10).
-            if (pending.target().slug() == null || pending.target().slug().isBlank()) {
-                return "edit 모드 target.slug 공백";
+            if (pending.target().noteId() == null) {
+                return "edit 모드 target.note_id 결손";
             }
         }
         return null;

@@ -86,12 +86,12 @@ final class EvalFakes {
         }
 
         @Override
-        public List<Path> renderEntryCard(String slug, LocalDate date) {
+        public List<Path> renderEntryCard(String noteFolder, LocalDate date) {
             return List.of();
         }
 
         @Override
-        public void removeEntryCard(String slug, LocalDate date) {
+        public void removeEntryCard(String noteFolder, LocalDate date) {
             // no-op
         }
     }
@@ -110,7 +110,7 @@ final class EvalFakes {
         }
 
         @Override
-        public List<String> commit(String userId, String slug, String date) {
+        public List<String> commit(String userId, String noteFolder, String date) {
             throw new UnsupportedOperationException("eval은 커밋하지 않는다 — 쓰기는 제안까지만(AC-59)");
         }
 
@@ -120,7 +120,7 @@ final class EvalFakes {
         }
 
         @Override
-        public void moveEntryPhotos(String slug, String fromDate, String toDate) {
+        public void moveEntryPhotos(String noteFolder, String fromDate, String toDate) {
             throw new UnsupportedOperationException("eval은 커밋하지 않는다");
         }
 

@@ -1,10 +1,14 @@
 package com.devwuu.mocha.eval;
 
 import com.devwuu.mocha.json.MochaObjectMapper;
+import com.devwuu.mocha.repository.JpaNoteRepository;
+import com.devwuu.mocha.support.PostgresIntegrationTest;
+import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.TestFactory;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.beans.factory.annotation.Autowired;
 import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
@@ -40,9 +44,21 @@ import static org.assertj.core.api.Assertions.fail;
  * <p>스킵 안전(AC-Δ2): 키가 없거나 케이스 디렉터리가 없거나 비면 <b>스킵</b>으로 끝난다. 케이스는 실발화라
  * 비커밋이고, 클론 직후 환경에는 없는 것이 정상이라 부재가 실패일 수 없다. 반대로 <b>케이스 파일이 있는데
  * 스키마를 위반</b>하면 스킵이 아니라 실패다 — 로더가 사유와 함께 터뜨린다(AC-Δ1).
+ *
+ * <p><b>DB 선행 조건</b>(changes/0028 TΔ6b): 노트 저장소가 실 Postgres가 되면서 실행 전
+ * {@code docker compose up -d}가 필요하다 — 기본 {@code test}가 이미 지고 있는 조건과 같다(TΔ10a).
+ * 스키마 소유·격리는 {@link PostgresIntegrationTest}가 지고, <b>회차 간</b> 격리는 이 클래스가
+ * 회차마다 {@code clean → migrate}로 진다 — 그래야 {@code BIGSERIAL}이 1부터 다시 발급돼 케이스가 심는
+ * 노트의 id가 회차마다 같다(구 slug 고정이 지던 재현성의 승계).
  */
 @Tag("eval")
-class EvalCaseRunnerTest {
+class EvalCaseRunnerTest extends PostgresIntegrationTest {
+
+    @Autowired
+    private JpaNoteRepository noteRepository;
+
+    @Autowired
+    private Flyway flyway;
 
     private static final String CASES_DIR = "mocha.eval.cases-dir";
     private static final String REPETITIONS = "mocha.eval.repetitions";
@@ -88,7 +104,10 @@ class EvalCaseRunnerTest {
         for (int repetition = 1; repetition <= repetitions; repetition++) {
             Path workDir = Files.createDirectories(
                     workRoot.resolve(evalCase.id()).resolve("rep-" + repetition));
-            EvalHarness.Run run = EvalHarness.run(evalCase, workDir, settings);
+            // 회차 간 격리 — 앞 회차가 심은 노트도, 발급된 id도 남기지 않는다.
+            flyway.clean();
+            flyway.migrate();
+            EvalHarness.Run run = EvalHarness.run(evalCase, workDir, settings, noteRepository);
             List<String> failures = EvalJudge.judge(evalCase, run, mapper);
             if (!failures.isEmpty()) {
                 failedRepetitions++;

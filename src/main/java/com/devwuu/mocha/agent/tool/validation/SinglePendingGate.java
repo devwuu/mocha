@@ -38,15 +38,15 @@ final class SinglePendingGate {
     }
 
     // POLICY: 단일 대기 원칙 준용(record든 edit든) — 확인 대기 중 다른 대상의 수정 세션은 거부한다.
-    //         같은 대상(slug+date)의 propose_edit 재호출만 FR-5 후속 수정으로 통과시킨다
+    //         같은 대상(note_id+date)의 propose_edit 재호출만 FR-5 후속 수정으로 통과시킨다
     //         (ref: plan.md#ADR-45, 구 수정 진입 거부의 승계).
-    static void requireSameEditTargetOrFree(PendingNote pending, String slug, LocalDate targetDate) {
+    static void requireSameEditTargetOrFree(PendingNote pending, Long noteId, LocalDate targetDate) {
         if (pending == null) {
             return;
         }
         if (pending.mode() == PendingNote.Mode.EDIT
                 && pending.target() != null
-                && pending.target().slug().equals(slug)
+                && pending.target().noteId().equals(noteId)
                 && pending.target().date().equals(targetDate)) {
             return; // FR-5: 수정 세션의 후속 수정 발화 = 같은 대상의 propose_edit 재호출 → 갱신 경로.
         }
@@ -76,7 +76,7 @@ final class SinglePendingGate {
         // pending의 구조 무결성(mode별 draft·target 존재)은 저장소 로드 경계가 보장하므로 재검증 없이 참조한다
         // (ref: plan.md#ADR-66 POLICY, data-model §2.3).
         String current = pending.mode() == PendingNote.Mode.EDIT
-                ? "수정 세션(" + pending.target().slug() + ")"
+                ? "수정 세션(노트 " + pending.target().noteId() + ")"
                 : "새 기록(" + draftCoffeeName(pending) + ")";
         return "확인 대기 중인 " + current + "이 이미 있다 — 단일 대기 원칙상 다른 제안을 받을 수 없다. "
                 + "사용자에게 먼저 [저장]이나 [취소]로 마무리해 달라고 안내해라.";

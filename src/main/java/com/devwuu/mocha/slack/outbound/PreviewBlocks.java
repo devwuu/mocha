@@ -341,9 +341,10 @@ public class PreviewBlocks {
         return String.join(" ", links);
     }
 
-    // 신규 노트는 slug가 아직 없을 수 있다 — 커밋은 userId로 pending을 조회하므로 value는 참고용.
+    // 신규 노트는 id가 아직 없다(D-1 — INSERT가 발급) — 커밋은 userId로 pending을 조회하므로 value는 참고용.
+    // 식별자 전환분만 여기서 처리한다(TΔ6b); 나머지 Slack 계층·로그 문구는 TΔ6d 소유다.
     private static String saveValue(Note draft) {
-        return draft.slug() != null ? draft.slug() : "";
+        return draft.id() != null ? String.valueOf(draft.id()) : "";
     }
 
     private static Entry latestEntry(Note draft) {

@@ -133,19 +133,20 @@ public class RecordProposalValidator {
     private static MatchInfo toMatchInfo(ProposeRecordArgs.MatchArg match) {
         if (match == null || match.type() == null) {
             throw new RejectedException("match가 없다 — 신규면 {\"type\":\"new\"}, 기존 노트 대상이면 "
-                    + "{\"type\":\"existing\",\"slug\":...,\"date\":...}를 채워라.");
+                    + "{\"type\":\"existing\",\"note_id\":...,\"date\":...}를 채워라.");
         }
         return switch (match.type()) {
             case "new" -> MatchInfo.newNote();
             case "existing" -> {
-                if (ValidationSupport.blankToNull(match.slug()) == null) {
-                    throw new RejectedException("match.type=existing인데 slug가 없다 — 대상 노트 slug를 채워라.");
+                Long noteId = ValidationSupport.parseNoteId("match.note_id", match.noteId());
+                if (noteId == null) {
+                    throw new RejectedException("match.type=existing인데 note_id가 없다 — 대상 노트 id를 채워라.");
                 }
                 LocalDate date = ValidationSupport.parseDate("match.date", match.date());
                 if (date == null) {
                     throw new RejectedException("match.type=existing인데 date가 없다 — 대상 날짜(YYYY-MM-DD)를 채워라.");
                 }
-                yield MatchInfo.existing(match.slug(), date);
+                yield MatchInfo.existing(noteId, date);
             }
             default -> throw new RejectedException("match.type '" + match.type()
                     + "'는 허용되지 않는다 — new|existing 중 하나여야 한다.");

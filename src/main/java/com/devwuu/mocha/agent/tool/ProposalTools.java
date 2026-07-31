@@ -19,7 +19,6 @@ import tools.jackson.databind.ObjectMapper;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,9 +39,6 @@ import java.util.Optional;
 class ProposalTools {
 
     private static final Logger log = LoggerFactory.getLogger(ProposalTools.class);
-
-    // slug 시각 세그먼트(ADR-28, V-2) — 생성 시각을 HHmmss로 붙여 날짜 세그먼트와 겹치지 않게 한다.
-    private static final DateTimeFormatter SLUG_TIME = DateTimeFormatter.ofPattern("HHmmss");
 
     // 제안 tool 공통 인자 조각 — strict 계약(전 필드 required, additionalProperties=false)을 조각 단위로 지킨다.
     private static final String RATING_SCHEMA = """
@@ -92,9 +88,9 @@ class ProposalTools {
               "target_date":{"type":"string","description":"시음일 YYYY-MM-DD — 상대 날짜(\\"어제\\")는 컨텍스트의 today 기준으로 절대화해 보낸다. 발화에 시음 날짜가 2개 이상 섞여 있으면 컨텍스트의 자동 분해 세그먼트 중 active_date(가장 이른 날짜)로만 제안한다 — 세그먼트 컨텍스트가 없으면(분해 실패) 이 tool을 호출하지 말고 한 날짜씩 나눠 보내달라고 안내한다(FR-15, ADR-61)"},
               "match":{"type":"object","description":"신규/기존 판정 — 기존 노트의 시음 기록이면 existing(list_notes로 대조)","properties":{
                 "type":{"type":"string","enum":["new","existing"]},
-                "slug":{"type":["string","null"],"description":"existing일 때 대상 노트 slug"},
+                "note_id":{"type":["integer","null"],"description":"existing일 때 대상 노트 id — list_notes 응답의 id"},
                 "date":{"type":["string","null"],"description":"existing일 때 대상 날짜 YYYY-MM-DD"}
-              },"required":["type","slug","date"],"additionalProperties":false},
+              },"required":["type","note_id","date"],"additionalProperties":false},
               "sources":{"type":"array","items":{"type":"string"},"description":"검색 참조 링크 — 동일성 가드를 통과한 출처만(AC-58)"}
             },"required":["coffee_name","roastery","beans","roast_level","official_notes","brews","target_date","match","sources"],"additionalProperties":false}"""
             .formatted(
@@ -109,7 +105,7 @@ class ProposalTools {
     //         (ref: specs/coffee-note-agent/plan.md#ADR-45, data-model.md#V-9, spec AC-38).
     private static final String PROPOSE_EDIT_SCHEMA = """
             {"type":"object","properties":{
-              "slug":{"type":"string","description":"수정 대상 노트 slug — list_notes/get_note로 확인한 실존 slug"},
+              "note_id":{"type":"integer","description":"수정 대상 노트 id — list_notes/get_note로 확인한 실존 id"},
               "date":{"type":"string","description":"수정 대상 엔트리 날짜 YYYY-MM-DD — get_note 응답의 entries[].date"},
               "patch":{"type":"object","description":"바꿀 필드만 채우는 부분 패치 — null은 유지. 커피 이름은 바꿀 수 없다(다른 커피는 새 기록)","properties":{
                 "roastery":%s,
@@ -119,7 +115,7 @@ class ProposalTools {
                 "brews":{"type":["array","null"],"description":"회차 배열 새 값 — 통째 교체, null이면 유지. 특정 회차만 고칠 때도 대상 회차를 반영한 전체 배열을 구성한다(V-15)","items":%s},
                 "new_date":{"type":["string","null"],"description":"날짜 이동처 YYYY-MM-DD — 이동 없으면 null. 충돌은 서버가 계산해 경고한다(V-10)"}
               },"required":["roastery","beans","roast_level","official_notes","brews","new_date"],"additionalProperties":false}
-            },"required":["slug","date","patch"],"additionalProperties":false}"""
+            },"required":["note_id","date","patch"],"additionalProperties":false}"""
             .formatted(
                     sourcedSchema("로스터리 새 값", true),
                     BEAN_SCHEMA,
@@ -197,17 +193,21 @@ class ProposalTools {
         RecordProposal proposal = ((ToolValidation.Ok<RecordProposal>) validation).value();
 
         // 환각 필터(get_note 미존재 오류와 같은 정신): match=existing의 대상 노트가 실존해야 커밋(upsertEntry)이
-        // 유령 slug로 새 파일을 만들지 않는다.
-        if (proposal.match().type() == MatchInfo.MatchType.EXISTING
-                && ToolSupport.resolveNote(noteRepository, proposal.match().slug()).isEmpty()) {
-            log.info("propose_record 검증 거부: user={} reason=미존재 match.slug {}", userId, proposal.match().slug());
-            return ToolSupport.errorOutput(mapper, ToolSupport.missingNoteReason(proposal.match().slug()));
+        // 유령 id로 새 노트를 만들지 않는다. 여기까지 온 note_id는 검증이 Long으로 정규화한 값이다.
+        boolean existing = proposal.match().type() == MatchInfo.MatchType.EXISTING;
+        if (existing && noteRepository.findById(proposal.match().noteId()).isEmpty()) {
+            log.info("propose_record 검증 거부: user={} reason=미존재 match.note_id {}",
+                    userId, proposal.match().noteId());
+            return ToolSupport.errorOutput(mapper, ToolSupport.missingNoteReason(proposal.match().noteId()));
         }
 
         OffsetDateTime now = OffsetDateTime.now(clock);
         Entry entry = new Entry(proposal.targetDate(), proposal.brews(), now);
+        // POLICY: draft의 식별자는 기존 노트면 그 id, 신규면 null이다 — id는 INSERT가 발급하므로 저장 전
+        //         draft가 식별자를 가질 방법이 없고, 이 null이 그대로 커밋의 신규/기존 분기가 된다
+        //         (ref: changes/0028 D-1, ADR-74 — 구 recordSlug 대체키 발급은 근거와 함께 소멸했다).
         Note draft = new Note(
-                recordSlug(proposal, pending, now),
+                existing ? proposal.match().noteId() : null,
                 proposal.meta().coffeeName(), proposal.meta().roastery(), proposal.meta().beans(),
                 proposal.meta().roastLevel(), proposal.meta().officialNotes(),
                 proposal.meta().sources(), List.of(entry), now, now);
@@ -225,28 +225,18 @@ class ProposalTools {
         }
         // 제안 성공 = 트랜스크립트 접힘(ADR-46 규칙 ①) — 이후 문맥은 pending draft가 대신한다.
         transcript.clear(userId, FoldingChatMemory.FoldTrigger.PROPOSAL_ACCEPTED);
-        log.info("propose_record 수용: user={} slug={} match={} updated={}",
-                userId, draft.slug(), proposal.match().type(), pending != null);
+        log.info("propose_record 수용: user={} noteId={} match={} updated={}",
+                userId, draft.id(), proposal.match().type(), pending != null);
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("proposed", true);
-        result.put("slug", draft.slug());
+        // 신규는 아직 id가 없다(D-1) — 없는 식별자를 null로 실어 보내지 않는다. 기존 노트 대상일 때만 싣는다.
+        if (draft.id() != null) {
+            result.put("note_id", draft.id());
+        }
         result.put("target_date", proposal.targetDate().toString());
         result.put("updated_existing_pending", pending != null);
         return mapper.writeValueAsString(result);
-    }
-
-    // slug 확정(V-2): 기존 노트 대상은 그 slug, 신규는 최초 기록일+생성 시각 대체키. 갱신 경로에서 직전 제안도
-    // 신규였으면 할당된 slug를 보존한다 — 대기 중 정정마다 slug가 흔들리지 않게(구 draft 병합과 동일 효과).
-    private String recordSlug(RecordProposal proposal, PendingNote pending, OffsetDateTime now) {
-        if (proposal.match().type() == MatchInfo.MatchType.EXISTING) {
-            return proposal.match().slug();
-        }
-        if (pending != null && pending.match() != null
-                && pending.match().type() == MatchInfo.MatchType.NEW && pending.draft().slug() != null) {
-            return pending.draft().slug();
-        }
-        return noteRepository.nextAvailableSlug(proposal.targetDate() + "-" + now.format(SLUG_TIME));
     }
 
     // ---- propose_edit (data-model §3.4, FR-21) ----
@@ -263,9 +253,9 @@ class ProposalTools {
 
     private String executeProposeEdit(String userId, String channelId, String argumentsJson) {
         ProposeEditArgs args = mapper.readValue(argumentsJson, ProposeEditArgs.class);
-        Optional<Note> noteOpt = ToolSupport.resolveNote(noteRepository, args.slug());
+        Optional<Note> noteOpt = ToolSupport.resolveNote(noteRepository, args.noteId());
         if (noteOpt.isEmpty()) {
-            return ToolSupport.errorOutput(mapper, ToolSupport.missingNoteReason(args.slug()));
+            return ToolSupport.errorOutput(mapper, ToolSupport.missingNoteReason(args.noteId()));
         }
         Note note = noteOpt.get();
         PendingNote pending = pendingStore.get(userId).orElse(null);
@@ -298,7 +288,7 @@ class ProposalTools {
         PendingNote next = pending != null
                 ? pending.withDraft(draft).withDateConflict(dateConflict)
                 : new PendingNote(PendingNote.Mode.EDIT, draft,
-                        new PendingNote.EditTarget(note.slug(), proposal.targetDate()), null, null, now)
+                        new PendingNote.EditTarget(note.id(), proposal.targetDate()), null, null, now)
                         .withDateConflict(dateConflict);
 
         String failure = persistAndPublish(userId, channelId, pending, next);
@@ -307,13 +297,13 @@ class ProposalTools {
         }
         // 제안 성공 = 트랜스크립트 접힘(ADR-46 규칙 ①) — 이후 문맥은 pending draft가 대신한다.
         transcript.clear(userId, FoldingChatMemory.FoldTrigger.PROPOSAL_ACCEPTED);
-        log.info("propose_edit 수용: user={} slug={} target={} movedTo={} conflict={} updated={}",
-                userId, note.slug(), proposal.targetDate(),
+        log.info("propose_edit 수용: user={} noteId={} target={} movedTo={} conflict={} updated={}",
+                userId, note.id(), proposal.targetDate(),
                 entryDate.equals(proposal.targetDate()) ? null : entryDate, dateConflict, pending != null);
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("proposed", true);
-        result.put("slug", note.slug());
+        result.put("note_id", note.id());
         result.put("date", proposal.targetDate().toString());
         result.put("entry_date", entryDate.toString());
         result.put("date_conflict", dateConflict);
@@ -326,7 +316,7 @@ class ProposalTools {
                 .filter(e -> targetDate.equals(e.date()))
                 .findFirst().orElseThrow(); // 실존은 검증(EditProposalValidator)이 이미 보장했다.
         return new Note(
-                note.slug(), note.coffeeName(), note.roastery(), note.beans(),
+                note.id(), note.coffeeName(), note.roastery(), note.beans(),
                 note.roastLevel(), note.officialNotes(), note.sources(),
                 List.of(target), note.createdAt(), note.updatedAt());
     }
@@ -339,7 +329,7 @@ class ProposalTools {
         Entry entry = new Entry(entryDate,
                 proposal.brews() != null ? proposal.brews() : baseEntry.brews(), now);
         return new Note(
-                base.slug(), base.coffeeName(),
+                base.id(), base.coffeeName(),
                 proposal.roastery() != null ? proposal.roastery() : base.roastery(),
                 proposal.beans() != null ? proposal.beans() : base.beans(),
                 proposal.roastLevel() != null ? proposal.roastLevel() : base.roastLevel(),

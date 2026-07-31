@@ -27,6 +27,21 @@ final class ValidationSupport {
         }
     }
 
+    // 노트 식별자 인자(match.note_id)의 정규화 — 스키마는 정수를 요구하지만 위반 값이 오면 예외가 아니라
+    // 거부 사유로 돌려준다(parseDate와 같은 정신, changes/0028 TΔ0b §4 E-6). 부재는 null로 수렴시켜
+    // "없다"와 "형식이 아니다"의 문구를 호출부가 가르게 한다.
+    static Long parseNoteId(String field, String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return Long.valueOf(raw.strip());
+        } catch (NumberFormatException e) {
+            throw new RejectedException(field + " '" + raw + "'는 노트 id가 아니다 — list_notes 응답의 "
+                    + "숫자 id를 그대로 보내라.");
+        }
+    }
+
     static String blankToNull(String s) {
         return s == null || s.isBlank() ? null : s;
     }
