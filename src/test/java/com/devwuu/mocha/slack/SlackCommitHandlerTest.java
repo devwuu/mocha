@@ -621,6 +621,12 @@ class SlackCommitHandlerTest {
             return saved;
         }
 
+        // 삭제는 Slack 커밋 흐름에 없다 — 노출은 A2(수정 화면의 삭제 버튼)다. 호출되면 그 자체가 회귀다.
+        @Override
+        public void delete(long id) {
+            throw new UnsupportedOperationException("커밋 핸들러는 노트를 지우지 않는다 — 삭제 노출은 A2 범위다");
+        }
+
         private static Note withId(Note note, long id) {
             return new Note(id, note.coffeeName(), note.roastery(), note.beans(), note.roastLevel(),
                     note.officialNotes(), note.aliases(), note.sources(), note.entries(),

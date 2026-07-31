@@ -66,4 +66,23 @@ public interface NoteRepository {
      *                                  (호출부가 만료 안내로 수렴, plan §7).
      */
     Note applyEdit(long noteId, LocalDate targetDate, Note draft);
+
+    /**
+     * 노트 한 건 삭제 — 하위 행(엔트리·회차·레시피·감상·배열 4종)을 <b>남기지 않는다</b>
+     * (ref: changes/0028-rdb-storage/delta.md#삭제-정책, AC-Δ8).
+     *
+     * <p>POLICY: hard delete — {@code deleted_at} 계열 컬럼을 두지 않는다. 1인용 개인 기록이라 복구 요구가
+     * 관측된 적이 없고, soft delete는 <b>모든 조회에 조건을 얹는다</b>(ref: delta.md#삭제-정책, Q-3·Q-12).
+     *
+     * <p><b>A1에는 호출부가 없다</b> — 삭제 UI(수정 화면의 삭제 버튼)는 A2 범위이고, 여기서 필요한 것은
+     * 명시적 순서 삭제 코드가 <b>존재하고 테스트로 검증되는 것</b>이다. FK가 없으므로(ADR-74) 그 테스트가
+     * 고아 행을 막는 유일한 안전망이고, A1 기간에 급하면 그 삭제 순서를 psql에 그대로 옮겨 쓸 수 있다.
+     *
+     * <p>없는 {@code id}는 무해하게 지나간다(멱등) — 지울 것이 없다는 것과 지웠다는 것을 A1이 가릴 이유가
+     * 없다. 호출부의 실패 응답이 필요해지는 것은 삭제를 노출하는 A2다.
+     *
+     * <p>사진({@code data/photos/})·카드({@code artifact/cards/})는 대상이 아니다 — 파일시스템에 남고,
+     * 노트↔사진 연결({@code note_photo})은 A2가 들인다(Q-13).
+     */
+    void delete(long id);
 }

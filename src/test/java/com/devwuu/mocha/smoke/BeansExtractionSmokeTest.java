@@ -125,6 +125,11 @@ class BeansExtractionSmokeTest {
         public Note applyEdit(long noteId, LocalDate targetDate, Note draft) {
             throw new UnsupportedOperationException("스모크는 커밋하지 않는다");
         }
+
+        @Override
+        public void delete(long id) {
+            throw new UnsupportedOperationException("스모크는 커밋하지 않는다");
+        }
     }
 
     private static final class InMemoryPendingStore implements PendingStore {

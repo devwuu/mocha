@@ -276,6 +276,22 @@ public class JpaNoteRepository implements NoteRepository {
         notes.insertAll(NoteEntityMapper.toSourceEntities(noteId, draft.sources()));
     }
 
+    /**
+     * 노트 삭제 — 계약은 {@link NoteRepository#delete}가 소유한다.
+     *
+     * <p><b>이 클래스가 더할 정책이 없다</b>: hard delete라 표식을 남길 것이 없고, 남는 것은 순서뿐이라
+     * 행 층({@code deleteNote})이 통째로 진다 — 쓰기 3종 중 유일하게 도메인을 지나지 않는 경로다.
+     *
+     * <p><b>지울 노트를 읽지 않는다.</b> 존재를 먼저 확인하면 그 노트가 영속성 컨텍스트에 실리고, 뒤이은
+     * 벌크 삭제는 컨텍스트를 모르므로 <b>이미 지운 행의 살아 있는 사본</b>이 남는다({@code findEntryId}가
+     * 엔티티가 아니라 id만 돌려주는 것과 같은 이유, TΔ5b). 없는 id는 아무 행도 지우지 못할 뿐이다.
+     */
+    @Override
+    @Transactional
+    public void delete(long id) {
+        notes.deleteNote(id);
+    }
+
     // ────────────────────────────── 조립 ──────────────────────────────
 
     /**

@@ -84,4 +84,20 @@ public interface NoteEntityRepositoryCustom {
      * 있는 행과 부딪힌다. 파일 구현과 갈리는 지점이다 — DB는 중간 상태에서 제약을 검사한다.
      */
     void deleteEntry(long entryId);
+
+    /**
+     * 노트 한 건을 <b>하위부터</b> 통째로 지운다 — tasting·recipe → brew → entry → 배열 4종 → note
+     * (ref: changes/0028-rdb-storage/tasks.md TΔ5d, AC-Δ8).
+     *
+     * <p>{@code cascade}·{@code orphanRemoval}을 쓰지 않으므로(ADR-74) 이 순서를 <b>코드가 소유한다</b> —
+     * {@link #deleteEntry}가 엔트리 하나에 대해 지는 책임을 애그리거트 전체로 넓힌 자리다. 부모를 먼저
+     * 지우면 자식은 걸릴 곳을 잃고 DB는 아무 말도 하지 않는다(FK가 없다).
+     *
+     * <p><b>별칭도 함께 지운다</b> — {@link #deleteNoteArraysExceptAliases}가 별칭을 남기는 것은 수정 세션이
+     * 원본을 존치하기 때문이고(V-13), 노트 자체가 사라지는 자리에서는 그 근거가 없다.
+     *
+     * <p>엔트리·회차를 <b>집합으로</b> 지운다 — 엔트리가 몇 건이든 질의 수가 고정된다(파생
+     * {@code deleteAllBy…}는 엔티티를 로드한 뒤 한 건씩 지운다).
+     */
+    void deleteNote(long noteId);
 }

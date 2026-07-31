@@ -4,6 +4,7 @@ import static com.devwuu.mocha.repository.entity.QBrewEntity.brewEntity;
 import static com.devwuu.mocha.repository.entity.QEntryEntity.entryEntity;
 import static com.devwuu.mocha.repository.entity.QNoteAliasEntity.noteAliasEntity;
 import static com.devwuu.mocha.repository.entity.QNoteBeanEntity.noteBeanEntity;
+import static com.devwuu.mocha.repository.entity.QNoteEntity.noteEntity;
 import static com.devwuu.mocha.repository.entity.QNoteOfficialNoteEntity.noteOfficialNoteEntity;
 import static com.devwuu.mocha.repository.entity.QNoteSourceEntity.noteSourceEntity;
 import static com.devwuu.mocha.repository.entity.QRecipeEntity.recipeEntity;
@@ -136,5 +137,37 @@ class NoteEntityRepositoryCustomImpl implements NoteEntityRepositoryCustom {
     public void deleteEntry(long entryId) {
         deleteBrews(entryId);
         query.delete(entryEntity).where(entryEntity.id.eq(entryId)).execute();
+    }
+
+    @Override
+    public void deleteNote(long noteId) {
+        deleteEntries(noteId);
+        deleteNoteArraysExceptAliases(noteId);
+        // 별칭은 여기서만 지운다 — 수정 세션이 남기는 것은 원본 존치(V-13) 때문이고 노트가 사라지는
+        // 자리에는 그 근거가 없다.
+        query.delete(noteAliasEntity).where(noteAliasEntity.noteId.eq(noteId)).execute();
+        // 노트 행은 마지막이다. 엔티티로 실어 와 em.remove()에 맡기지 않는 것은 deleteEntry와 같은 이유 —
+        // Hibernate의 flush 순서가 삭제를 항상 마지막에 두므로, 삭제가 언제 나가는지를 코드가 쥘 수 없다.
+        query.delete(noteEntity).where(noteEntity.id.eq(noteId)).execute();
+    }
+
+    /**
+     * 노트의 엔트리 <b>전부</b>를 하위부터 — {@link #deleteBrews}를 엔트리마다 부르지 않고 id를 모아 한 번에
+     * 지운다. 엔트리가 몇 건이든 질의 수가 고정된다(수집 2 + 삭제 4).
+     */
+    private void deleteEntries(long noteId) {
+        List<Long> entryIds = query.select(entryEntity.id).from(entryEntity)
+                .where(entryEntity.noteId.eq(noteId)).fetch();
+        if (entryIds.isEmpty()) {
+            return;
+        }
+        List<Long> brewIds = query.select(brewEntity.id).from(brewEntity)
+                .where(brewEntity.entryId.in(entryIds)).fetch();
+        if (!brewIds.isEmpty()) {
+            query.delete(tastingEntity).where(tastingEntity.brewId.in(brewIds)).execute();
+            query.delete(recipeEntity).where(recipeEntity.brewId.in(brewIds)).execute();
+            query.delete(brewEntity).where(brewEntity.id.in(brewIds)).execute();
+        }
+        query.delete(entryEntity).where(entryEntity.id.in(entryIds)).execute();
     }
 }

@@ -801,5 +801,10 @@ class ThymeleafNoteRendererTest {
         public Note applyEdit(long noteId, LocalDate targetDate, Note draft) {
             throw new UnsupportedOperationException("렌더 검증은 저장 경로를 지나지 않는다 — 픽스처는 put으로 심는다");
         }
+
+        @Override
+        public void delete(long id) {
+            throw new UnsupportedOperationException("렌더 검증은 저장 경로를 지나지 않는다 — 픽스처는 put으로 심는다");
+        }
     }
 }

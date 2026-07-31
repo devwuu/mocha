@@ -677,6 +677,11 @@ class ToolCallbackProviderTest {
         public Note applyEdit(long noteId, LocalDate targetDate, Note draft) {
             throw new UnsupportedOperationException("제안 tool은 노트를 쓰지 않는다 — 커밋은 [저장] 버튼만(AC-Δ4)");
         }
+
+        @Override
+        public void delete(long id) {
+            throw new UnsupportedOperationException("제안 tool은 노트를 쓰지 않는다 — 삭제는 A2 범위다");
+        }
     }
 
     private static final class FakePendingStore implements PendingStore {
