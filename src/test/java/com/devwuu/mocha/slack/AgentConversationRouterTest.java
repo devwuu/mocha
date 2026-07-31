@@ -436,7 +436,7 @@ class AgentConversationRouterTest {
         }
 
         @Override
-        public List<String> commit(String userId, String slug, String date) {
+        public List<String> commit(String userId, String noteFolder, String date) {
             throw new UnsupportedOperationException("사진 커밋은 [저장] 버튼 flow의 몫(AC-Δ3)");
         }
 

@@ -20,6 +20,10 @@ class LocalPhotoStoreTest {
 
     private static final String USER = "U123";
 
+    // 노트 폴더 접미 — 실 값은 NoteFolderName이 만든다(<id>-<로스터리>-<커피명>, changes/0028 TΔ7).
+    // 이 저장소는 접미를 해석하지 않고 경로 세그먼트로만 쓰므로 생성 규칙은 NoteFolderNameTest가 소유한다.
+    private static final String NOTE_FOLDER = "12-FroB-Ethiopia-Chelbesa";
+
     private Path dataDir;
     private LocalPhotoStore store;
 
@@ -35,7 +39,7 @@ class LocalPhotoStoreTest {
     }
 
     @Test
-    @DisplayName("T4-1: 스테이징은 slug 미확정이라 photos/.staging/<user> 아래 원본을 보관한다")
+    @DisplayName("T4-1: 스테이징은 노트 폴더 미확정이라 photos/.staging/<user> 아래 원본을 보관한다")
     void stagesOriginalUnderStagingDir() {
         store.stage(USER, "bean.jpg", jpeg(1));
 
@@ -46,40 +50,40 @@ class LocalPhotoStoreTest {
     }
 
     @Test
-    @DisplayName("T4-1: commit은 스테이징을 photos/<slug>/<date>/로 옮기고 photos/ 상대 경로만 반환한다 (V-4)")
-    void commitMovesToSlugDateAndReturnsRelativePaths() throws IOException {
+    @DisplayName("T4-1: commit은 스테이징을 photos/<노트 폴더>/<date>/로 옮기고 photos/ 상대 경로만 반환한다 (V-4)")
+    void commitMovesToNoteFolderDateAndReturnsRelativePaths() throws IOException {
         store.stage(USER, "a.jpg", jpeg(1));
         store.stage(USER, "b.jpg", jpeg(2));
 
-        List<String> relPaths = store.commit(USER, "2026-07-11", "2026-07-11");
+        List<String> relPaths = store.commit(USER, NOTE_FOLDER, "2026-07-11");
 
-        // V-4: JSON에는 photos/ 로 시작하는 상대 경로만. 절대 경로·URL 금지.
+        // V-4: 상대 경로만 남는다. photos/ 로 시작하고 절대 경로·URL은 금지.
         assertThat(relPaths).containsExactly(
-                "photos/2026-07-11/2026-07-11/a.jpg",
-                "photos/2026-07-11/2026-07-11/b.jpg");
+                "photos/" + NOTE_FOLDER + "/2026-07-11/a.jpg",
+                "photos/" + NOTE_FOLDER + "/2026-07-11/b.jpg");
         assertThat(relPaths).allSatisfy(p -> {
             assertThat(p).startsWith("photos/");
             assertThat(Path.of(p).isAbsolute()).isFalse();
             assertThat(p).doesNotContain("://");
         });
         // 실제 원본이 최종 경로로 이동했고 스테이징은 비었다.
-        Path finalDir = dataDir.resolve("photos").resolve("2026-07-11").resolve("2026-07-11");
+        Path finalDir = dataDir.resolve("photos").resolve(NOTE_FOLDER).resolve("2026-07-11");
         assertThat(Files.readAllBytes(finalDir.resolve("a.jpg"))).containsExactly(jpeg(1));
         assertThat(Files.readAllBytes(finalDir.resolve("b.jpg"))).containsExactly(jpeg(2));
         assertThat(dataDir.resolve("photos").resolve(".staging").resolve(USER)).doesNotExist();
     }
 
     @Test
-    @DisplayName("T4-1: 같은 slug/date에 같은 파일명이 다시 오면 -N 접미로 유일화한다(재기록 충돌)")
+    @DisplayName("T4-1: 같은 노트 폴더/date에 같은 파일명이 다시 오면 -N 접미로 유일화한다(재기록 충돌)")
     void deduplicatesCollidingFilenamesInTarget() {
         store.stage(USER, "photo.jpg", jpeg(1));
-        store.commit(USER, "coffeevera", "2026-07-11");
+        store.commit(USER, NOTE_FOLDER, "2026-07-11");
 
         // 같은 날 재기록 — 파일명이 겹쳐도 덮어쓰지 않고 새 이름을 받는다.
         store.stage(USER, "photo.jpg", jpeg(2));
-        List<String> second = store.commit(USER, "coffeevera", "2026-07-11");
+        List<String> second = store.commit(USER, NOTE_FOLDER, "2026-07-11");
 
-        assertThat(second).containsExactly("photos/coffeevera/2026-07-11/photo-2.jpg");
+        assertThat(second).containsExactly("photos/" + NOTE_FOLDER + "/2026-07-11/photo-2.jpg");
     }
 
     @Test
