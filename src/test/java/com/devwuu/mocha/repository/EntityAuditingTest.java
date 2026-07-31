@@ -6,16 +6,15 @@ import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.repository.entity.EntryEntity;
 import com.devwuu.mocha.repository.entity.NoteEntity;
 import com.devwuu.mocha.repository.entity.SourcedValue;
+import com.devwuu.mocha.support.PostgresIntegrationTest;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
-import org.springframework.test.context.TestPropertySource;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
@@ -32,15 +31,13 @@ import java.time.ZoneId;
  * 판별되는가" 둘이다. 값 주입 경로가 Spring Data Auditing이라 단위 테스트로는 관측되지 않는다 —
  * {@code AuditingEntityListener}가 붙는 실 persist/flush가 필요하다.
  *
- * <p>이 테스트는 <b>로컬 Postgres</b>(docker compose)에 붙는다. TΔ10a에서 Testcontainers 기반이 서면
- * 그쪽으로 이관한다(AC-Δ2 — 인메모리 대체 금지).
+ * <p>TΔ10a에서 <b>Testcontainers 기반으로 이관</b>했다(AC-Δ2 — 인메모리 대체 금지). 로컬 Postgres에 붙던
+ * 시절에는 앞선 실행이 남긴 행이 그대로 있었지만, 이제 컨테이너는 매 실행 빈 DB에서 시작한다.
+ * 테스트 간 격리는 {@code @Transactional} 롤백이 소유한다.
  */
-@SpringBootTest
 @Transactional
 @Import(EntityAuditingTest.FixedClockConfig.class)
-// 실 Slack 소켓에 연결하지 않도록 토큰을 빈 값으로 덮는다 (MochaApplicationTests와 동일 이유).
-@TestPropertySource(properties = {"mocha.slack.bot-token=", "mocha.slack.app-token="})
-class EntityAuditingTest {
+class EntityAuditingTest extends PostgresIntegrationTest {
 
     @Autowired
     EntityManager em;

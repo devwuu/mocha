@@ -2,6 +2,7 @@ package com.devwuu.mocha;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.devwuu.mocha.support.PostgresIntegrationTest;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.DisplayName;
@@ -9,18 +10,14 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.env.Environment;
-import org.springframework.test.context.TestPropertySource;
 
 /**
  * TΔ1 (changes/0009) — 파일 로깅 설정 검증.
  * NFR-7/ADR-21: 일 단위 롤링·30일 보존·총 300MB 상한, logs/ 아래 파일 기록.
  */
-@SpringBootTest
-// 실 Slack 소켓에 연결하지 않도록 토큰을 빈 값으로 덮는다 (MochaApplicationTests와 동일 이유).
-@TestPropertySource(properties = {"mocha.slack.bot-token=", "mocha.slack.app-token="})
-class FileLoggingConfigTest {
+// 컨텍스트가 떠야 검증되는 설정이라 DataSource가 필요하다 — Testcontainers 기반을 상속한다(TΔ10a).
+class FileLoggingConfigTest extends PostgresIntegrationTest {
 
 	@Autowired
 	Environment env;

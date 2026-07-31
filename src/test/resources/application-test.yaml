@@ -1,0 +1,36 @@
+# 테스트 전용 프로파일 (ref: specs/coffee-note-agent/changes/0028-rdb-storage — TΔ10a).
+# PostgresIntegrationTest를 상속한 테스트에만 붙는다(@ActiveProfiles("test")). main의 application.yaml을
+# 대체하지 않고 덮어쓰기만 하므로 mocha.* 설정은 그대로 살아 있다.
+#
+# 저장소 통합 테스트는 실 Postgres에 붙는다 — 인메모리(H2) 대체 금지(백엔드 CLAUDE.md §5.2 정신).
+# 검증 대상이 CHECK/UNIQUE 제약, numeric·jsonb·date 타입 왕복, 직렬화라서 방언이 다른 엔진에서는
+# 그린이 아무것도 보증하지 않는다.
+#
+# 대상은 로컬 개발 인스턴스(docker-compose.yml)의 **같은 DB, 다른 스키마**다 — 개발 데이터는 public,
+# 테스트는 test. 컨테이너를 띄우지 않으므로 실행 전 `docker compose up -d`가 선행이다.
+# POLICY: 실행 순서에 의존하지 않도록 스키마는 매 컨텍스트 기동마다 clean → migrate로 새로 만든다
+#         (PostgresIntegrationTest.FreshTestSchema).
+spring:
+  datasource:
+    # 접속 3종은 main과 같은 규약으로 덮을 수 있게 두되 키를 분리한다 — MOCHA_DB_*를 클라우드로 돌려도
+    # 테스트가 따라가서 실 DB의 test 스키마를 clean하는 사고를 막는다(델타 B 대비).
+    url: ${MOCHA_TEST_DB_URL:jdbc:postgresql://localhost:5432/mocha}
+    username: ${MOCHA_TEST_DB_USERNAME:mocha}
+    password: ${MOCHA_TEST_DB_PASSWORD:mocha}
+  jpa:
+    hibernate:
+      # main과 동일 — 스키마 소유권은 Flyway 단독이고 JPA는 대조만 한다.
+      # 엔티티↔DDL 드리프트를 잡는 것이 TΔ3a·TΔ3b의 판정 수단이라 테스트에서 create-drop으로 바꾸지 않는다:
+      # 엔티티에는 제약 선언이 없어(uniqueConstraints·@Check 0건) Hibernate가 만든 스키마에는 V1의
+      # CHECK/UNIQUE 27건이 하나도 없다 → AC-Δ3(제약 위반 삽입 실패)이 검증 불가가 된다.
+      ddl-auto: validate
+    properties:
+      hibernate:
+        # 엔티티가 test 스키마를 향하게 한다. 미지정이면 public(개발 데이터)에 쓴다.
+        default_schema: test
+  flyway:
+    # V1의 무자격 테이블명이 test 스키마에 생성된다. 스키마가 없으면 Flyway가 만든다(create-schemas 기본 true).
+    schemas: test
+    default-schema: test
+    # clean 허용 — 사정권이 test 스키마 하나로 좁혀져 있어 public(개발 데이터)은 대상이 아니다.
+    clean-disabled: false
