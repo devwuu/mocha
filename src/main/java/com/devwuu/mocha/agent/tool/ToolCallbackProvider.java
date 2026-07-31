@@ -5,7 +5,7 @@ import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
 import com.devwuu.mocha.agent.turn.TurnDraft;
 import com.devwuu.mocha.agent.turn.TurnProposalSink;
 import com.devwuu.mocha.agent.turn.TurnUserMessage;
-import com.devwuu.mocha.repository.NoteRepository;
+import com.devwuu.mocha.service.NoteService;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.Clock;
@@ -33,10 +33,10 @@ public class ToolCallbackProvider {
     // 건드릴 이유가 사라졌다(접힘은 커밋·TTL만, 축적은 라우터 소유).
     // 0029 TΔ4: pending 저장소·미리보기 송신 주입이 빠졌다 — 제안이 서버 상태를 쓰지 않고 결과를 돌려주는
     // 값이 되면서, tool 계층에 남아 있던 마지막 Slack 결합(PreviewMessenger)도 함께 끊겼다(baseline §2.2).
-    public ToolCallbackProvider(NoteRepository noteRepository, ObjectMapper mapper,
+    public ToolCallbackProvider(NoteService noteService, ObjectMapper mapper,
                                 RecordProposalValidator recordValidator, Clock clock) {
-        this.lookupTools = new NoteLookupTools(noteRepository, mapper);
-        this.proposalTools = new ProposalTools(noteRepository, recordValidator, mapper, clock);
+        this.lookupTools = new NoteLookupTools(noteService, mapper);
+        this.proposalTools = new ProposalTools(noteService, recordValidator, mapper, clock);
     }
 
     /**

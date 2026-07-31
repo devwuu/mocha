@@ -4,7 +4,7 @@ import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
 import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
 import com.devwuu.mocha.llm.PhotoInfoExtractor;
-import com.devwuu.mocha.repository.NoteRepository;
+import com.devwuu.mocha.service.NoteService;
 import com.devwuu.mocha.repository.PhotoBufferStore;
 import com.devwuu.mocha.repository.PhotoStore;
 import com.devwuu.mocha.slack.inbound.PhotoDownloader;
@@ -43,16 +43,17 @@ public class RouterConfig {
     }
 
     // function tool 3종 façade(ADR-44·45) — 도메인 협력자를 받아 역할별 구현(조회·제안 축)을 내부 조립한다.
+    // TΔ4a에서 주입 타입이 저장소 포트에서 NoteService로 바뀌었다 — tool은 유스케이스만 알고 행을 모른다.
     // 0029 TΔ1에서 조회 tool의 렌더·송신 의존(send_entry_card)이 끊겨 산출 디렉터리 주입도 함께 빠졌고,
     // TΔ3에서 제안 성공 접힘 폐기로 트랜스크립트 주입이, TΔ4에서 pending 저장소·미리보기 송신 주입이
     // 빠졌다 — tool 계층은 대화 문맥도, 서버 대기 상태도, 전송 계층도 모른다.
     @Bean
     public ToolCallbackProvider toolCallbackProvider(
-            NoteRepository noteRepository,
+            NoteService noteService,
             ObjectMapper mapper,
             RecordProposalValidator recordProposalValidator,
             Clock clock) {
-        return new ToolCallbackProvider(noteRepository, mapper, recordProposalValidator, clock);
+        return new ToolCallbackProvider(noteService, mapper, recordProposalValidator, clock);
     }
 
     // 사진 수신 배관(FR-10·ADR-29·31) — 라우터(버퍼 그룹핑·OCR)가 쓴다. TΔ4에서 pending 주입이 빠졌다:

@@ -1,7 +1,7 @@
 package com.devwuu.mocha.agent.tool;
 
 import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
-import com.devwuu.mocha.repository.NoteRepository;
+import com.devwuu.mocha.service.NoteService;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.Clock;
@@ -24,7 +24,7 @@ import java.time.Clock;
  */
 public final class ToolCallbackProviderFixture {
 
-    private NoteRepository noteRepository;
+    private NoteService noteService;
     private ObjectMapper mapper;
     private RecordProposalValidator recordValidator;
     private Clock clock;
@@ -37,8 +37,8 @@ public final class ToolCallbackProviderFixture {
         return new ToolCallbackProviderFixture();
     }
 
-    public ToolCallbackProviderFixture noteRepository(NoteRepository noteRepository) {
-        this.noteRepository = noteRepository;
+    public ToolCallbackProviderFixture noteService(NoteService noteService) {
+        this.noteService = noteService;
         return this;
     }
 
@@ -62,6 +62,6 @@ public final class ToolCallbackProviderFixture {
         // 기록 검증기는 시계 파생 — 시계 미지정이면 null로 남겨 "지정 안 한 협력자" 신호를 유지한다.
         RecordProposalValidator record = recordValidator != null ? recordValidator
                 : clock != null ? new RecordProposalValidator(clock) : null;
-        return new ToolCallbackProvider(noteRepository, mapper, record, clock);
+        return new ToolCallbackProvider(noteService, mapper, record, clock);
     }
 }

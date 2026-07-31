@@ -5,7 +5,6 @@ import com.devwuu.mocha.domain.Brew;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
-import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.repository.entity.BrewEntity;
 import com.devwuu.mocha.repository.entity.EntryEntity;
 import com.devwuu.mocha.repository.entity.NoteAliasEntity;
@@ -28,7 +27,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -42,8 +40,13 @@ import java.util.stream.Stream;
  * <p><b>저장소 3분할의 가운데</b>다(delta §ADR-73). 위로는 {@link NoteRepository} 포트를 구현해 상위
  * 계층에 도메인 record만 보이고(NFR-4, AC-Δ1), 아래로는 {@link NoteEntityRepository} <b>하나만</b>
  * 의존해 행을 넣고 뺀다. 이 클래스가 양쪽 타입을 아는 유일한 자리이며 소유하는 것은 셋이다 —
- * <b>정책</b>(ADR-4·59, V-9·V-13) · <b>도메인↔엔티티 변환</b>({@link NoteEntityMapper} 경유) ·
- * <b>3단 중첩 조립</b>.
+ * <b>행 조율</b>(ADR-4·59의 엔트리 통째 교체, 날짜 이동의 UNIQUE 중간 상태) ·
+ * <b>도메인↔엔티티 변환</b>({@link NoteEntityMapper} 경유) · <b>3단 중첩 조립</b>.
+ *
+ * <p><b>판단은 여기 없다</b>(0029 TΔ4a). V-9(커피명 불변)·V-13(별칭 축적)·신규 노트 분기는
+ * {@link com.devwuu.mocha.service.NoteService}로 올라갔다 — 이 클래스에 남은 것은 "그래서 어떤 행을
+ * 어떤 순서로 건드리는가"뿐이다. 도메인 {@code Note}에 자식 행 id가 없어 조율은 계층을 나눠도 아래에
+ * 남는다(0028 TΔ5c 실측).
  *
  * <p><b>관계는 여기서만 안다.</b> 엔티티에 연관 매핑이 없고(TΔ3a) DB에 FK도 없으므로(ADR-75) 아래 층은
  * 정렬된 평면 행 목록({@link NoteChildRows})까지만 준다. 부모별 그룹핑과
@@ -128,9 +131,9 @@ public class JpaNoteRepository implements NoteRepository {
      * 이므로 저장 전 draft에는 식별자가 없고, 그 부재가 그대로 "아직 저장되지 않음"을 뜻한다 — 구
      * {@code nextAvailableSlug}가 하던 "신규 대체키 발급"이라는 개념 자체가 사라졌다(ADR-75).
      *
-     * <p><b>노트 단위 메타는 갱신하지 않는다.</b> 기존 노트면 {@code meta}에서 쓰는 것은 관측 표기(커피명·
-     * 로스터리)뿐이고 원두 구성·로스팅·공식 노트는 보존한다 — 재기록은 그날의 엔트리를 쌓는 일이지 커피의
-     * 사실을 다시 쓰는 일이 아니다(ADR-4, V-13).
+     * <p><b>노트 단위 메타는 갱신하지 않는다.</b> 기존 노트면 {@code meta}에서 쓰는 것이 없다 — 원두 구성·
+     * 로스팅·공식 노트는 보존한다. 재기록은 그날의 엔트리를 쌓는 일이지 커피의 사실을 다시 쓰는 일이
+     * 아니다(ADR-4). 관측 표기 축적(V-13)은 {@code aliases}로 이미 계산돼 들어온다(TΔ4a).
      */
     @Override
     @Transactional
@@ -140,10 +143,12 @@ public class JpaNoteRepository implements NoteRepository {
         }
         // 소실은 조용히 신규 생성으로 흡수하지 않는다 — 그러면 매칭이 지목한 노트와 별개의 중복 노트가
         // 생기고 사진·카드가 두 id로 갈린다. FK가 없어 DB가 막아주지 않는 자리다(ADR-75).
-        Note existing = findById(noteId)
-                .orElseThrow(() -> new IllegalStateException("병합 대상 노트 소실: " + noteId));
-        replaceEntry(noteId, entry);
-        accumulateAliases(noteId, existing, meta);
+        if (notes.findById(noteId).isEmpty()) {
+            throw new IllegalStateException("병합 대상 노트 소실: " + noteId);
+        }
+        replaceEntryRows(noteId, entry);
+        // 심을 별칭은 호출부가 정한다(TΔ4a) — 기존 행과의 중복 제거도 거기서 끝난 값이라 그대로 넣는다.
+        notes.insertAll(NoteEntityMapper.toAliasEntities(noteId, aliases));
         return findById(noteId).orElseThrow(() -> new IllegalStateException("방금 저장한 노트 조회 실패: " + noteId));
     }
 
@@ -160,74 +165,58 @@ public class JpaNoteRepository implements NoteRepository {
     //         그대로 신뢰한다 (ref: data-model.md#2.2, AC-14, plan.md#ADR-4·59).
     // 행 재사용이 아니라 삭제 후 재삽입인 것은 "통째 교체"의 직역이다 — 엔트리에는 필드 단위 갱신 개념이
     // 없어 수정 메서드도 두지 않았다(TΔ3b). 날짜 오름차순 정렬은 조회 질의가 소유한다(재정렬하지 않는다).
-    private void replaceEntry(long noteId, Entry entry) {
+    private void replaceEntryRows(long noteId, Entry entry) {
         notes.findEntryId(noteId, entry.date()).ifPresent(notes::deleteEntry);
         insertEntry(noteId, entry);
     }
 
     /**
-     * 관측 표기 무콜 축적 (ref: plan.md#ADR-37 축적 ②, V-13, changes/0016).
+     * 노트 메타 갱신 — 계약은 {@link NoteRepository#updateMeta}가 소유하고, 여기서는 그 정책이 행으로 어떻게
+     * 떨어지는지만 다룬다.
      *
-     * <p>이번 기록의 커피명·로스터리 표기가 노트 표시값과 다르면 별칭으로 더한다 — LLM 콜 없이 서버가
-     * 쌓는 갈래다. 판정({@code Aliases.accumulate})은 도메인이 소유하고 이 메서드는 <b>늘어난 표기만</b>
-     * 행으로 옮긴다: 기존 행을 지우고 다시 넣으면 id가 밀려 첫 등장 순서가 무너진다(별칭에는 seq가 없고
-     * 순서를 id가 진다, TΔ3a).
+     * <p><b>노트 존재를 먼저 확인한다</b> — 없으면 쓰기를 시작하기 전에 던지므로 부분 반영이 남지 않고
+     * 트랜잭션 롤백에 기대지 않아도 된다. V-9(커피명 불변)는 여기서 검사하지 않는다: 판단은 service가
+     * 지고(TΔ4a) 이 층에는 커피명을 덮어쓸 수단이 아예 없다.
+     *
+     * <p><b>수정은 지우고 다시 넣는 것이 아니라 고치는 것이다.</b> 노트 본문을 관리되는 엔티티로 꺼내
+     * 필드를 바꾸면 flush가 UPDATE로 내보낸다 — 그래서 {@code created_at}이 보존되고 {@code modified_at}이
+     * 실제 수정 시각으로 움직인다. 배열 자식만 별도 테이블이라 통째 교체된다.
      */
-    private void accumulateAliases(long noteId, Note existing, NoteMeta meta) {
-        Aliases before = existing.aliases();
-        Aliases accumulated = before.accumulate(
-                Sourced.valueOrNull(meta.coffeeName()), Sourced.valueOrNull(existing.coffeeName()),
-                Sourced.valueOrNull(meta.roastery()), Sourced.valueOrNull(existing.roastery()));
-        Aliases added = new Aliases(
-                newcomers(before.coffeeName(), accumulated.coffeeName()),
-                newcomers(before.roastery(), accumulated.roastery()));
-        notes.insertAll(NoteEntityMapper.toAliasEntities(noteId, added));
-    }
-
-    /** 축적 결과에서 기존에 없던 표기만 — 대조 기준은 정규화 키다(표시 형태가 아니라, V-13). */
-    private static List<String> newcomers(List<String> before, List<String> after) {
-        Set<String> known = before.stream().map(Aliases::normalize).collect(Collectors.toSet());
-        return after.stream().filter(alias -> !known.contains(Aliases.normalize(alias))).toList();
+    @Override
+    @Transactional
+    public Note updateMeta(long noteId, NoteMeta meta) {
+        NoteEntity row = notes.findById(noteId)
+                .orElseThrow(() -> new IllegalStateException("수정 대상 노트 소실: " + noteId));
+        updateNoteFields(noteId, row, meta);
+        return findById(noteId).orElseThrow(() -> new IllegalStateException("방금 저장한 노트 조회 실패: " + noteId));
     }
 
     /**
-     * 수정 세션 커밋 — 계약은 {@link NoteRepository#applyEdit}가 소유하고, 여기서는 그 정책이 행으로 어떻게
+     * 엔트리 교체 — 계약은 {@link NoteRepository#replaceEntry}가 소유하고, 여기서는 그 정책이 행으로 어떻게
      * 떨어지는지만 다룬다.
      *
-     * <p><b>검증 셋을 먼저 통과시킨다</b>(노트 존재 → V-9 → draft 엔트리 1건 → 대상 엔트리 존재). 어느
-     * 하나라도 걸리면 <b>쓰기를 시작하기 전에</b> 던지므로 부분 반영이 남지 않는다 — 트랜잭션 롤백에
-     * 기대지 않아도 되는 형태다.
+     * <p><b>검증 셋을 먼저 통과시킨다</b>(노트 존재 → 대상 엔트리 존재). 어느 하나라도 걸리면 <b>쓰기를
+     * 시작하기 전에</b> 던지므로 부분 반영이 남지 않는다.
      *
      * <p>대상 엔트리 존재는 조회한 도메인이 아니라 <b>행으로</b> 확인한다({@code findEntry}). 로드 경계
      * 위생(ADR-66)이 회차 0개 엔트리를 드롭할 수 있어(V-15) 도메인으로 판정하면 <b>행은 있는데 소실로
      * 보이는</b> 갈래가 생긴다 — 고칠 대상이 무엇인지는 행이 답한다.
      *
-     * <p><b>수정은 지우고 다시 넣는 것이 아니라 고치는 것이다.</b> 노트 본문과 엔트리를 관리되는 엔티티로
-     * 꺼내 필드를 바꾸면 flush가 UPDATE로 내보낸다 — 재기록({@code upsertEntry})이 엔트리를 통째 교체하는
-     * 것과 갈리는 지점이고, 그래서 {@code entry.created_at}이 보존되고 {@code modified_at}이 실제 수정
-     * 시각으로 움직인다. 논리 FK({@code note_id})로 찾을 뿐 연관 매핑은 여전히 없다(TΔ3a).
+     * <p>엔트리 행을 살려 두고 그 아래만 갈아끼우므로 {@code entry.created_at}이 보존된다 —
+     * 재기록({@code upsertEntry})이 엔트리를 통째 교체하는 것과 갈리는 지점이다. 논리 FK({@code note_id})로
+     * 찾을 뿐 연관 매핑은 여전히 없다(TΔ3a).
      */
     @Override
     @Transactional
-    public Note applyEdit(long noteId, LocalDate targetDate, Note draft) {
-        NoteEntity row = notes.findById(noteId)
-                .orElseThrow(() -> new IllegalStateException("수정 대상 노트 소실: " + noteId));
-        // POLICY: coffee_name은 노트 생성 후 불변 — 수정 세션에서도 변경 불가, 다른 값이면 커밋 거부
-        //         (ref: specs/coffee-note-agent/data-model.md#V-9).
-        if (!Objects.equals(row.getCoffeeName().value(), Sourced.valueOrNull(draft.coffeeName()))) {
-            throw new IllegalArgumentException("coffee_name은 노트 생성 후 불변(V-9): " + noteId);
-        }
-        if (draft.entries().size() != 1) {
-            throw new IllegalArgumentException(
-                    "edit draft는 대상 엔트리 1건만 담는다(data-model §2.3): " + draft.entries().size() + "건");
+    public Note replaceEntry(long noteId, LocalDate targetDate, Entry entry) {
+        if (notes.findById(noteId).isEmpty()) {
+            throw new IllegalStateException("수정 대상 노트 소실: " + noteId);
         }
         EntryEntity target = notes.findEntry(noteId, targetDate)
                 .orElseThrow(() -> new IllegalStateException("수정 대상 엔트리 소실: " + noteId + " " + targetDate));
 
-        Entry edited = draft.entries().getFirst();
-        moveEntry(noteId, target, targetDate, edited.date());
-        replaceBrews(target.getId(), edited.brews());
-        updateNoteFields(noteId, row, draft);
+        moveEntry(noteId, target, targetDate, entry.date());
+        replaceBrews(target.getId(), entry.brews());
         return findById(noteId).orElseThrow(() -> new IllegalStateException("방금 저장한 노트 조회 실패: " + noteId));
     }
 
@@ -260,7 +249,7 @@ public class JpaNoteRepository implements NoteRepository {
 
     /**
      * 노트 단위 필드 갱신 — <b>커피명을 제외한 전부</b>가 수정 범위다(FR-21). 배열 3종은 통째 교체하고,
-     * <b>별칭은 건드리지 않는다</b> — 수정 세션에 별칭 갱신이라는 개념이 없다(V-13, 원본 존치).
+     * <b>별칭은 건드리지 않는다</b> — 메타 수정에 별칭 갱신이라는 개념이 없다(V-13, 원본 존치).
      *
      * <p>노트 본문은 관리되는 엔티티의 필드 갱신이라 dirty checking이 UPDATE를 내보내고, 그때
      * {@code modified_at}을 감사 리스너가 채운다(TΔ4). <b>flush를 손으로 걸지 않는다</b> — 뒤따르는 조립
@@ -268,12 +257,12 @@ public class JpaNoteRepository implements NoteRepository {
      * 대상으로 하므로 노트 UPDATE도 함께 나간다. 영속성 관리는 JPA에 맡기고 이 클래스는 <b>무엇을
      * 고칠지</b>만 정한다.
      */
-    private void updateNoteFields(long noteId, NoteEntity row, Note draft) {
-        NoteEntityMapper.updateNoteEntity(row, draft);
+    private void updateNoteFields(long noteId, NoteEntity row, NoteMeta meta) {
+        NoteEntityMapper.updateNoteEntity(row, meta);
         notes.deleteNoteArraysExceptAliases(noteId);
-        notes.insertAll(NoteEntityMapper.toBeanEntities(noteId, draft.beans()));
-        notes.insertAll(NoteEntityMapper.toOfficialNoteEntities(noteId, draft.officialNotes()));
-        notes.insertAll(NoteEntityMapper.toSourceEntities(noteId, draft.sources()));
+        notes.insertAll(NoteEntityMapper.toBeanEntities(noteId, meta.beans()));
+        notes.insertAll(NoteEntityMapper.toOfficialNoteEntities(noteId, meta.officialNotes()));
+        notes.insertAll(NoteEntityMapper.toSourceEntities(noteId, meta.sources()));
     }
 
     /**

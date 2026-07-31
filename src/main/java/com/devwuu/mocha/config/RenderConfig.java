@@ -4,7 +4,7 @@ import com.devwuu.mocha.render.CardImageRenderer;
 import com.devwuu.mocha.render.NoteRenderer;
 import com.devwuu.mocha.render.Theme;
 import com.devwuu.mocha.render.ThymeleafNoteRenderer;
-import com.devwuu.mocha.repository.NoteRepository;
+import com.devwuu.mocha.service.NoteService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -52,13 +52,13 @@ public class RenderConfig {
 
     @Bean
     public NoteRenderer noteRenderer(
-            NoteRepository noteRepository,
+            NoteService noteService,
             SpringTemplateEngine noteTemplateEngine,
             CardImageRenderer cardImageRenderer,
             @Value(DEFAULT_ARTIFACT_DIR) String artifactDir,
             // 기본 테마는 type-a 세리프 (ref: plan.md#ADR-54, changes/0021 TΔ5a 사용자 확정).
             @Value("${mocha.artifact.theme:type-a}") String theme) {
         return new ThymeleafNoteRenderer(
-                noteRepository, noteTemplateEngine, Path.of(artifactDir), Theme.from(theme), cardImageRenderer);
+                noteService, noteTemplateEngine, Path.of(artifactDir), Theme.from(theme), cardImageRenderer);
     }
 }

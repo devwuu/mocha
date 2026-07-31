@@ -7,7 +7,7 @@ import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.domain.Tasting;
-import com.devwuu.mocha.repository.NoteRepository;
+import com.devwuu.mocha.service.NoteService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.thymeleaf.ITemplateEngine;
@@ -43,7 +43,7 @@ import java.util.stream.Stream;
  * <p>카드 HTML은 <b>파일로 남기지 않는다</b> — 카드를 굽는 순간의 중간 입력일 뿐이다(ADR-10).
  * <p>디자인은 {@link Theme}(type-a 세리프 / type-b 귀여운)로 고르며 {@code templates/<theme>/} 폴더를 탄다.
  * 카드 디자인 원본은 {@code design/} 시안 — 변경은 시안 갱신 → 템플릿 재이식, 이식 편차는 델타 명시분만(ADR-54 POLICY).
- * <p>POLICY: 렌더러는 JSON 외 어떤 상태도 읽지 않는다 — {@link NoteRepository} 조회만이 입력이고
+ * <p>POLICY: 렌더러는 DB 외 어떤 상태도 읽지 않는다 — {@link NoteService} 조회만이 입력이고
  * 산출물은 언제든 전체 재생성 가능한 파생물이다(ref: plan.md#ADR-1, AC-6/AC-Δ7).
  * <p>POLICY: HTML의 모든 링크·이미지는 상대 경로만 쓴다 — {@code file://} 직접 열람 보장(ref: plan.md, AC-Δ5).
  * <p>POLICY: 렌더 엔진(Playwright/Chromium) 타입은 {@link CardImageRenderer} 경계 뒤에만 존재한다 — 렌더러는
@@ -58,7 +58,7 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
     private static final String FONT_RESOURCE_PREFIX = "/assets/fonts/";
     private static final String FONTS_DIR = "fonts";
 
-    private final NoteRepository noteRepository;
+    private final NoteService noteService;
     private final ITemplateEngine templateEngine;
     private final Path artifactDir;
     private final Theme theme;
@@ -71,9 +71,9 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
     private final RecipeAmounts recipeAmounts = new RecipeAmounts();
 
     public ThymeleafNoteRenderer(
-            NoteRepository noteRepository, ITemplateEngine templateEngine, Path artifactDir, Theme theme,
+            NoteService noteService, ITemplateEngine templateEngine, Path artifactDir, Theme theme,
             CardImageRenderer cardImageRenderer) {
-        this.noteRepository = noteRepository;
+        this.noteService = noteService;
         this.templateEngine = templateEngine;
         this.artifactDir = artifactDir;
         this.theme = theme;
@@ -82,7 +82,7 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
 
     @Override
     public void renderAll() {
-        List<EntryRef> ordered = orderedEntries(noteRepository.findAll());
+        List<EntryRef> ordered = orderedEntries(noteService.findAll());
 
         // 카드가 참조하는 로컬 자산을 base(artifact 루트)에 먼저 깔아야 래스터화 시 폰트·이미지가 해석된다(ADR-11).
         copyMascot();
@@ -98,7 +98,7 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
 
     @Override
     public List<Path> renderEntryCard(long noteId, LocalDate date) {
-        Note note = noteRepository.findById(noteId)
+        Note note = noteService.findById(noteId)
                 .orElseThrow(() -> new IllegalArgumentException("카드 렌더 대상 노트 없음: noteId=" + noteId));
         // entries 배열 존재는 도메인 생성자가 보장한다(V-3 — CR25-10) — null 재검증 없음(ADR-66 POLICY).
         Entry entry = note.entries().stream()
@@ -121,7 +121,7 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
     public void removeEntryCard(long noteId, LocalDate date) {
         // 수정 세션 날짜 이동의 옛 date 카드 정리(AC-39) — 그 엔트리의 회차 카드 전부.
         // 노트 부재도 정상(이미 지워진 노트의 잔존 카드는 renderAll 고아 정리가 맡는다) — 멱등.
-        noteRepository.findById(noteId).ifPresent(note -> pruneEntryCards(note, date, Set.of()));
+        noteService.findById(noteId).ifPresent(note -> pruneEntryCards(note, date, Set.of()));
     }
 
     // 그 엔트리(노트,date)의 카드 파일 중 keep에 없는 것을 지운다 — removeEntryCard(전부)와

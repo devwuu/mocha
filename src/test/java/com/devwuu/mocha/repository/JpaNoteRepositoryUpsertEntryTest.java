@@ -217,43 +217,46 @@ class JpaNoteRepositoryUpsertEntryTest extends PostgresIntegrationTest {
     // ─────────────────────── 별칭 축적 (V-13, AC-Δ4 of 0016) ───────────────────────
 
     @Test
-    @DisplayName("0016-TΔ3/V-13: 다른 표기는 별칭에 축적되고, 표시값·정규화 중복 표기는 미추가")
-    void reRecordAccumulatesObservedAliases() {
-        // 표시값 Ethiopia Chelbesa / FroB, 초기 별칭 {에티오피아 첼베사}/{프롭}.
+    @DisplayName("V-13/TΔ3a: 기존 노트에 더해진 별칭은 뒤에 붙고 첫 등장 순서가 보존된다")
+    void addedAliasesKeepFirstSeenOrder() {
+        // 0029 TΔ4a: 무엇을 더할지의 판정(정규화 중복 제거·표시값 미추가)은 NoteService가 지고,
+        // 여기서 남은 계약은 "받은 표기를 기존 뒤에 심고 순서를 지킨다"다 — 별칭에는 seq가 없고
+        // id가 첫 등장 순서를 지므로, 기존 행을 지우고 다시 넣으면 이 단언이 깨진다.
         Note seeded = repo.upsertEntry(null,
                 metaWithNames("Ethiopia Chelbesa", "FroB"), entry(day(9), "1일차"),
                 new Aliases(List.of("에티오피아 첼베사"), List.of("프롭")));
         long noteId = seeded.id();
 
-        // 다른 표기로 재기록 → 신규 표기가 별칭 뒤에 축적된다(첫 등장 순서 보존).
         Note r1 = repo.upsertEntry(noteId, metaWithNames("이디오피아 첼베사", "프로브"), entry(day(10), "2일차"),
-                Aliases.empty());
+                new Aliases(List.of("이디오피아 첼베사"), List.of("프로브")));
         assertThat(r1.aliases().coffeeName()).containsExactly("에티오피아 첼베사", "이디오피아 첼베사");
         assertThat(r1.aliases().roastery()).containsExactly("프롭", "프로브");
 
-        // 공백만 다른 표기 → 정규화 중복이라 미추가. 표시값(FroB)과 같은 관측 표기 → 미추가.
+        // 더할 것이 없는 재기록은 별칭을 그대로 둔다 — 빈 인자가 곧 "축적할 신규 표기 없음"이다.
         Note r2 = repo.upsertEntry(noteId, metaWithNames("이디오피아  첼베사", "FROB"), entry(day(11), "3일차"),
                 Aliases.empty());
         assertThat(r2.aliases().coffeeName()).containsExactly("에티오피아 첼베사", "이디오피아 첼베사");
         assertThat(r2.aliases().roastery()).containsExactly("프롭", "프로브");
 
-        // DB 왕복에도 축적분과 순서가 그대로다 — 별칭에는 seq가 없고 id가 첫 등장 순서를 진다(TΔ3a).
+        // DB 왕복에도 축적분과 순서가 그대로다.
         em.clear();
         assertThat(repo.findById(noteId).orElseThrow().aliases().coffeeName())
                 .containsExactly("에티오피아 첼베사", "이디오피아 첼베사");
     }
 
     @Test
-    @DisplayName("V-13: 기존 노트 재기록에서 인자 aliases는 무시된다 — 별칭 생성은 노트당 평생 1회")
-    void aliasArgumentIsIgnoredForExistingNote() {
+    @DisplayName("TΔ4a: 기존 노트 재기록에서도 인자 aliases는 심긴다 — 무엇을 심을지는 호출부가 정한다")
+    void aliasArgumentIsPlantedForExistingNote() {
+        // 구 계약은 "기존 노트면 인자를 무시하고 저장소가 meta에서 축적한다"였다. 판정이 service로
+        // 올라가며 뒤집혔다 — 저장소는 받은 것을 심을 뿐이고, 중복 방지 책임도 호출부로 옮겨갔다.
         Note seeded = repo.upsertEntry(null, fullMeta(), entry(day(10), "1일차"),
                 new Aliases(List.of("예가체프 G1"), List.of()));
 
         Note re = repo.upsertEntry(seeded.id(), fullMeta(), entry(day(11), "2일차"),
                 new Aliases(List.of("두 번째로 들어온 별칭"), List.of("두 번째 로스터리")));
 
-        assertThat(re.aliases().coffeeName()).containsExactly("예가체프 G1");
-        assertThat(re.aliases().roastery()).isEmpty();
+        assertThat(re.aliases().coffeeName()).containsExactly("예가체프 G1", "두 번째로 들어온 별칭");
+        assertThat(re.aliases().roastery()).containsExactly("두 번째 로스터리");
     }
 
     // ─────────────────────── 회차 순서는 seq가 소유 (AC-Δ4) ───────────────────────

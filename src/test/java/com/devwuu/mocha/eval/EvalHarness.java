@@ -9,6 +9,7 @@ import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.llm.OpenAiUtteranceSegmenter;
 import com.devwuu.mocha.repository.JpaNoteRepository;
+import com.devwuu.mocha.service.NoteService;
 import com.devwuu.mocha.slack.AgentConversationRouter;
 import com.devwuu.mocha.slack.inbound.IncomingMessage;
 import com.devwuu.mocha.slack.inbound.SlackPhotoIntake;
@@ -142,7 +143,9 @@ final class EvalHarness {
         EvalFakes.CapturingResponder responder = new EvalFakes.CapturingResponder();
 
         ToolCallbackProvider toolkit = toolkit()
-                .noteRepository(noteRepository)
+                // 0029 TΔ4a: tool이 잡는 타입이 NoteService다 — 실 저장소를 그 뒤에 세운다.
+                // 별칭 생성기는 null이다: 제안 tool은 커밋을 지나지 않으므로 닿을 일이 없다.
+                .noteService(new NoteService(noteRepository, null))
                 .mapper(mapper)
                 .clock(clock)  // 검증기는 프로덕션(RouterConfig)과 같은 조합으로 파생된다
                 .build();

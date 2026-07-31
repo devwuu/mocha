@@ -15,6 +15,7 @@ import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.domain.Tasting;
 import com.devwuu.mocha.repository.JpaNoteRepository;
+import com.devwuu.mocha.service.NoteService;
 import com.devwuu.mocha.repository.NoteFolderName;
 import com.devwuu.mocha.repository.jpa.NoteEntityRepository;
 import com.devwuu.mocha.support.PostgresIntegrationTest;
@@ -84,7 +85,7 @@ class RerenderFromDatabaseTest extends PostgresIntegrationTest {
         em.clear();
 
         FakeCardImageRenderer firstCards = new FakeCardImageRenderer();
-        new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_B, firstCards).renderAll();
+        new ThymeleafNoteRenderer(serviceOver(repo), engine, artifactDir, Theme.TYPE_B, firstCards).renderAll();
         Set<String> firstFiles = artifactFiles(artifactDir);
         List<String> firstOrder = bakeOrder(artifactDir, firstCards);
         Map<String, String> firstHtml = capturedHtmlByCard(artifactDir, firstCards);
@@ -99,7 +100,7 @@ class RerenderFromDatabaseTest extends PostgresIntegrationTest {
         // 비우지 않으면 identity map이 첫 렌더가 올린 객체를 되돌려줘 DB를 지나지 않은 채 그린이 된다.
         em.clear();
         FakeCardImageRenderer secondCards = new FakeCardImageRenderer();
-        new ThymeleafNoteRenderer(new JpaNoteRepository(notes), engine, artifactDir, Theme.TYPE_B, secondCards)
+        new ThymeleafNoteRenderer(serviceOver(new JpaNoteRepository(notes)), engine, artifactDir, Theme.TYPE_B, secondCards)
                 .renderAll();
 
         // 파일 집합에는 카드뿐 아니라 마스코트·폰트도 들어간다 — artifact/ 전체가 복원돼야 한다.
@@ -120,7 +121,7 @@ class RerenderFromDatabaseTest extends PostgresIntegrationTest {
         Note removed = seeded.getLast();
         em.clear();
 
-        new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_B, new FakeCardImageRenderer()).renderAll();
+        new ThymeleafNoteRenderer(serviceOver(repo), engine, artifactDir, Theme.TYPE_B, new FakeCardImageRenderer()).renderAll();
         assertThat(cardFiles(artifactDir)).contains(
                 cardPath(kept, "2026-07-10-taste-1.jpg"),
                 cardPath(removed, "2026-07-04-taste-1.jpg"));
@@ -133,7 +134,7 @@ class RerenderFromDatabaseTest extends PostgresIntegrationTest {
         repo.delete(removed.id());
         em.clear();
 
-        new ThymeleafNoteRenderer(new JpaNoteRepository(notes), engine, artifactDir, Theme.TYPE_B,
+        new ThymeleafNoteRenderer(serviceOver(new JpaNoteRepository(notes)), engine, artifactDir, Theme.TYPE_B,
                 new FakeCardImageRenderer()).renderAll();
 
         assertThat(cardFiles(artifactDir))
@@ -150,6 +151,14 @@ class RerenderFromDatabaseTest extends PostgresIntegrationTest {
      * 노트 2건을 <b>운영 쓰기 경로</b>({@code upsertEntry})로 심는다 — 실제 커밋이 남기는 것과 같은 행 모양이어야
      * 렌더 입력으로서의 DB가 재현된다. 한쪽은 레시피 있는 회차를 둬 카드 2종(감상·레시피)이 모두 산출되게 한다.
      */
+    /**
+     * 렌더러가 잡는 타입은 0029 TΔ4a부터 {@link NoteService}다 — 실 저장소를 그 뒤에 그대로 세운다.
+     * 별칭 생성기는 null이다: 렌더 경로는 커밋을 지나지 않아 닿을 일이 없고, 닿으면 NPE로 드러나야 한다.
+     */
+    private static NoteService serviceOver(JpaNoteRepository repo) {
+        return new NoteService(repo, null);
+    }
+
     private List<Note> seedTwoNotes(JpaNoteRepository repo) {
         NoteMeta yirgacheffe = new NoteMeta(
                 new Sourced<>("예가체프 G1 워시드", Source.USER),

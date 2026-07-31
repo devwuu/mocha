@@ -8,7 +8,7 @@ import com.devwuu.mocha.agent.turn.TurnUserMessage;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
-import com.devwuu.mocha.repository.NoteRepository;
+import com.devwuu.mocha.service.NoteService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.databind.ObjectMapper;
@@ -100,14 +100,14 @@ class ProposalTools {
                     sourcedNotesSchema("로스터리 전시 테이스팅 노트 — 로스터리 공식 출처 한정(FR-3)"),
                     BREW_SCHEMA);
 
-    private final NoteRepository noteRepository;
+    private final NoteService noteService;
     private final RecordProposalValidator recordValidator;
     private final ObjectMapper mapper;
     private final Clock clock;
 
-    ProposalTools(NoteRepository noteRepository, RecordProposalValidator recordValidator,
+    ProposalTools(NoteService noteService, RecordProposalValidator recordValidator,
                   ObjectMapper mapper, Clock clock) {
-        this.noteRepository = noteRepository;
+        this.noteService = noteService;
         this.recordValidator = recordValidator;
         this.mapper = mapper;
         this.clock = clock;
@@ -165,7 +165,7 @@ class ProposalTools {
         // 환각 필터(get_note 미존재 오류와 같은 정신): match=existing의 대상 노트가 실존해야 커밋(upsertEntry)이
         // 유령 id로 새 노트를 만들지 않는다. 여기까지 온 note_id는 검증이 Long으로 정규화한 값이다.
         boolean existing = proposal.match().type() == MatchInfo.MatchType.EXISTING;
-        if (existing && noteRepository.findById(proposal.match().noteId()).isEmpty()) {
+        if (existing && noteService.findById(proposal.match().noteId()).isEmpty()) {
             log.info("propose_record 검증 거부: user={} reason=미존재 match.note_id {}",
                     userId, proposal.match().noteId());
             return ToolSupport.errorOutput(mapper, ToolSupport.missingNoteReason(proposal.match().noteId()));

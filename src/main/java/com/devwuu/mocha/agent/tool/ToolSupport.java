@@ -1,7 +1,7 @@
 package com.devwuu.mocha.agent.tool;
 
 import com.devwuu.mocha.domain.Note;
-import com.devwuu.mocha.repository.NoteRepository;
+import com.devwuu.mocha.service.NoteService;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.Map;
@@ -37,12 +37,12 @@ public final class ToolSupport {
     //         id와 같은 부류의 오류 결과로 수렴시킨다. slug 폐기로 새로 생긴 실패 경로인데, 예외로 새면
     //         에이전트가 루프 안에서 list_notes로 정정할 근거를 못 받는다
     //         (ref: plan.md#ADR-45 환각 필터, changes/0028 TΔ0b §4 E-6).
-    static Optional<Note> resolveNote(NoteRepository noteRepository, String rawNoteId) {
+    static Optional<Note> resolveNote(NoteService noteService, String rawNoteId) {
         if (rawNoteId == null || rawNoteId.isBlank()) {
             return Optional.empty();
         }
         try {
-            return noteRepository.findById(Long.parseLong(rawNoteId.strip()));
+            return noteService.findById(Long.parseLong(rawNoteId.strip()));
         } catch (NumberFormatException notAnId) {
             return Optional.empty();
         }

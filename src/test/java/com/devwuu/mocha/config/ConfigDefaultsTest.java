@@ -7,6 +7,7 @@ import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
 import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
 import com.devwuu.mocha.json.MochaObjectMapper;
+import com.devwuu.mocha.llm.AliasGenerator;
 import com.devwuu.mocha.llm.OpenAiAliasGenerator;
 import com.devwuu.mocha.llm.OpenAiUtteranceSegmenter;
 import com.devwuu.mocha.llm.PhotoInfoExtractor;
@@ -19,6 +20,7 @@ import com.devwuu.mocha.repository.JpaNoteRepository;
 import com.devwuu.mocha.repository.JsonFilePhotoBufferStore;
 import com.devwuu.mocha.repository.LocalPhotoStore;
 import com.devwuu.mocha.repository.NoteRepository;
+import com.devwuu.mocha.service.NoteService;
 import com.devwuu.mocha.repository.PhotoBufferStore;
 import com.devwuu.mocha.repository.PhotoStore;
 import com.devwuu.mocha.repository.jpa.NoteEntityRepository;
@@ -209,6 +211,22 @@ class ConfigDefaultsTest {
     }
 
     @Test
+    @DisplayName("0029 TΔ4a: ServiceConfig가 NoteService를 조립한다 — AliasGenerator 배선이 살아난다")
+    void serviceBeanWiresAliasGenerator() {
+        // TΔ4에서 SlackCommitHandler가 사라지며 AliasGenerator는 빈만 등록되고 호출부가 0곳이 됐다.
+        // 이 배선이 그 협력자를 다시 유스케이스에 붙이는 자리라, 주입 누락을 기동 시점에 잡는다.
+        isolatedRunner()
+                .withUserConfiguration(ServiceConfig.class)
+                .withBean(NoteRepository.class, () -> stub(NoteRepository.class))
+                .withBean(AliasGenerator.class, () -> stub(AliasGenerator.class))
+                .run(context -> {
+                    NoteService service = context.getBean(NoteService.class);
+                    assertThat(ReflectionTestUtils.getField(service, "aliasGenerator")).isNotNull();
+                    assertThat(ReflectionTestUtils.getField(service, "noteRepository")).isNotNull();
+                });
+    }
+
+    @Test
     @DisplayName("AC-Δ4(changes/0025 TΔ4a): RouterConfig가 협력자 스텁만으로 턴 배선 4종을 조립한다")
     void routerBeansAssembleFromCollaborators() {
         // R-1: 0024 TΔ1b가 라우터 생성자 안 조립을 이 config로 이관했다(ADR-63) — 주입 지점이 늘어난 만큼
@@ -229,7 +247,9 @@ class ConfigDefaultsTest {
     private static ApplicationContextRunner renderRunner() {
         return isolatedRunner()
                 .withUserConfiguration(RenderConfig.class)
-                .withBean(NoteRepository.class, () -> stub(NoteRepository.class))
+                // 0029 TΔ4a: 렌더러가 잡는 타입이 저장소 포트에서 NoteService로 바뀌었다. 구체 클래스라
+                // Proxy 스텁을 만들 수 없고, 배선 단언은 어떤 메서드도 부르지 않아 협력자 null로 충분하다.
+                .withBean(NoteService.class, () -> new NoteService(null, null))
                 .withBean(CardImageRenderer.class, () -> (html, baseDir, out) -> {
                 });
     }
@@ -247,7 +267,7 @@ class ConfigDefaultsTest {
     private static ApplicationContextRunner routerRunner() {
         return isolatedRunner()
                 .withUserConfiguration(RouterConfig.class)
-                .withBean(NoteRepository.class, () -> stub(NoteRepository.class))
+                .withBean(NoteService.class, () -> new NoteService(null, null))
                 .withBean(SlackResponder.class, () -> stub(SlackResponder.class))
                 .withBean(PhotoDownloader.class, () -> stub(PhotoDownloader.class))
                 .withBean(PhotoStore.class, () -> stub(PhotoStore.class))

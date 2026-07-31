@@ -12,7 +12,7 @@ import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
 import com.devwuu.mocha.json.MochaObjectMapper;
-import com.devwuu.mocha.repository.NoteRepository;
+import com.devwuu.mocha.service.NoteService;
 import com.openai.client.OpenAIClient;
 import com.openai.client.okhttp.OpenAIOkHttpClient;
 import org.junit.jupiter.api.Tag;
@@ -97,7 +97,7 @@ class BrewRulesSmokeTest {
 
         TurnProposalSink proposals = new TurnProposalSink();
         ToolCallbackProvider toolkit = toolkit()
-                .noteRepository(new EmptyNoteRepository())
+                .noteService(new EmptyNoteService())
                 .mapper(mapper)
                 .clock(clock)
                 .build();
@@ -152,8 +152,12 @@ class BrewRulesSmokeTest {
         return Files.readString(sample);
     }
 
-    /** 저장 노트 없음 — 커밋 경로(upsert/applyEdit)는 제안 tool이 부르지 않는다(ADR-45). */
-    private static final class EmptyNoteRepository implements NoteRepository {
+    /** 저장 노트 없음 — 커밋 경로는 제안 tool이 부르지 않는다(ADR-45). 조회만 답하고 나머지는 상속분이다. */
+    private static final class EmptyNoteService extends NoteService {
+        EmptyNoteService() {
+            super(null, null);
+        }
+
         @Override
         public List<Note> findAll() {
             return List.of();
@@ -162,21 +166,6 @@ class BrewRulesSmokeTest {
         @Override
         public Optional<Note> findById(long id) {
             return Optional.empty();
-        }
-
-        @Override
-        public Note upsertEntry(Long noteId, NoteMeta meta, Entry entry, Aliases aliases) {
-            throw new UnsupportedOperationException("스모크는 커밋하지 않는다");
-        }
-
-        @Override
-        public Note applyEdit(long noteId, LocalDate targetDate, Note draft) {
-            throw new UnsupportedOperationException("스모크는 커밋하지 않는다");
-        }
-
-        @Override
-        public void delete(long id) {
-            throw new UnsupportedOperationException("스모크는 커밋하지 않는다");
         }
     }
 

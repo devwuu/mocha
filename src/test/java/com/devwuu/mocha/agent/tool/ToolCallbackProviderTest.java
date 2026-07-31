@@ -18,7 +18,7 @@ import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.domain.Tasting;
 import com.devwuu.mocha.json.MochaObjectMapper;
-import com.devwuu.mocha.repository.NoteRepository;
+import com.devwuu.mocha.service.NoteService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -62,7 +62,7 @@ class ToolCallbackProviderTest {
     Path artifactDir;
 
     private final ObjectMapper mapper = MochaObjectMapper.create();
-    private final StubNoteRepository noteRepository = new StubNoteRepository();
+    private final StubNoteService noteService = new StubNoteService();
     private final MutableClock clock = new MutableClock();
     private TurnProposalSink proposals;
     private FoldingChatMemory transcript;
@@ -75,7 +75,7 @@ class ToolCallbackProviderTest {
         // R-7 명시 예외: 실 협력자 조립 자체가 검증 대상이라 픽스처(ToolCallbackProviderFixture)를 경유하지
         // 않는다 — 위치 인자 배선이 어긋나면 픽스처 경유 테스트는 함께 눈이 멀기 때문에 원 생성자를 그대로
         // 통과시키는 지점을 하나 남긴다(TΔ4b, changes/0025).
-        toolCallbackProvider = new ToolCallbackProvider(noteRepository, mapper,
+        toolCallbackProvider = new ToolCallbackProvider(noteService, mapper,
                 new RecordProposalValidator(clock), clock);
     }
 
@@ -183,7 +183,7 @@ class ToolCallbackProviderTest {
     @Test
     @DisplayName("data-model §3.1/FR-14·20: list_notes 페이로드 — 메타 필드 + 통합 별칭 + 최근 시음일(snake_case)")
     void listNotesPayloadCarriesMetaAliasesAndLastTasted() {
-        noteRepository.put(note(12L, "Ethiopia Chelbesa", "FroB",
+        noteService.put(note(12L, "Ethiopia Chelbesa", "FroB",
                 new Aliases(List.of("에티오피아 첼베사"), List.of("프롭")),
                 LocalDate.of(2026, 7, 13), LocalDate.of(2026, 7, 14)));
 
@@ -206,7 +206,7 @@ class ToolCallbackProviderTest {
     @Test
     @DisplayName("data-model §3.2: get_note는 노트 전체(엔트리 포함)를 돌려준다")
     void getNoteReturnsWholeNote() {
-        noteRepository.put(note(12L, "Ethiopia Chelbesa", "FroB",
+        noteService.put(note(12L, "Ethiopia Chelbesa", "FroB",
                 Aliases.empty(), LocalDate.of(2026, 7, 13)));
 
         JsonNode result = mapper.readTree(execute("get_note", "{\"note_id\":12}"));
@@ -292,8 +292,15 @@ class ToolCallbackProviderTest {
 
     // ---- fakes (모듈 CLAUDE.md §5.2 — 외부 의존은 인터페이스 stub/fake) ----
 
-    private static final class StubNoteRepository implements NoteRepository {
+    // 0029 TΔ4a: tool 계층이 저장소 포트 대신 NoteService를 잡게 되며 seam도 여기로 옮겼다. 쓰기 경로를
+    // 오버라이드해 막는 것이 이 fake의 본체다 — "제안 tool은 아무것도 쓰지 않는다"(AC-Δ4)가 검증 대상이라,
+    // 상속된 구현이 null 저장소로 NPE를 내는 것에 기대지 않고 의도를 사유로 남긴다.
+    private static final class StubNoteService extends NoteService {
         private final Map<Long, Note> notes = new LinkedHashMap<>();
+
+        StubNoteService() {
+            super(null, null);
+        }
 
         void put(Note note) {
             notes.put(note.id(), note);
@@ -310,18 +317,23 @@ class ToolCallbackProviderTest {
         }
 
         @Override
-        public Note upsertEntry(Long noteId, NoteMeta meta, Entry entry, Aliases aliases) {
+        public Note commit(Note draft, MatchInfo match) {
             throw new UnsupportedOperationException("제안 tool은 노트를 쓰지 않는다 — 커밋은 사용자 확정만(AC-Δ4)");
         }
 
         @Override
-        public Note applyEdit(long noteId, LocalDate targetDate, Note draft) {
-            throw new UnsupportedOperationException("제안 tool은 노트를 쓰지 않는다 — 커밋은 사용자 확정만(AC-Δ4)");
+        public Note updateMeta(long noteId, NoteMeta meta) {
+            throw new UnsupportedOperationException("제안 tool은 노트를 쓰지 않는다 — 수정은 UI 전용(D-1)");
+        }
+
+        @Override
+        public Note replaceEntry(long noteId, LocalDate targetDate, Entry entry) {
+            throw new UnsupportedOperationException("제안 tool은 노트를 쓰지 않는다 — 수정은 UI 전용(D-1)");
         }
 
         @Override
         public void delete(long id) {
-            throw new UnsupportedOperationException("제안 tool은 노트를 쓰지 않는다 — 삭제는 A2 범위다");
+            throw new UnsupportedOperationException("제안 tool은 노트를 쓰지 않는다 — 삭제는 UI 전용이다");
         }
     }
 

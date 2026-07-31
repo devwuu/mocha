@@ -5,7 +5,7 @@ import com.devwuu.mocha.domain.Bean;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.Sourced;
-import com.devwuu.mocha.repository.NoteRepository;
+import com.devwuu.mocha.service.NoteService;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.ArrayList;
@@ -35,11 +35,11 @@ class NoteLookupTools {
               "note_id":{"type":"integer","description":"대상 노트 id — list_notes 응답의 id"}
             },"required":["note_id"],"additionalProperties":false}""";
 
-    private final NoteRepository noteRepository;
+    private final NoteService noteService;
     private final ObjectMapper mapper;
 
-    NoteLookupTools(NoteRepository noteRepository, ObjectMapper mapper) {
-        this.noteRepository = noteRepository;
+    NoteLookupTools(NoteService noteService, ObjectMapper mapper) {
+        this.noteService = noteService;
         this.mapper = mapper;
     }
 
@@ -56,7 +56,7 @@ class NoteLookupTools {
     }
 
     private String executeListNotes() {
-        List<NoteSummary> notes = noteRepository.findAll().stream().map(NoteLookupTools::toSummary).toList();
+        List<NoteSummary> notes = noteService.findAll().stream().map(NoteLookupTools::toSummary).toList();
         return mapper.writeValueAsString(Map.of("notes", notes));
     }
 
@@ -96,7 +96,7 @@ class NoteLookupTools {
 
     private String executeGetNote(String argumentsJson) {
         GetNoteArgs args = mapper.readValue(argumentsJson, GetNoteArgs.class);
-        Optional<Note> note = ToolSupport.resolveNote(noteRepository, args.noteId());
+        Optional<Note> note = ToolSupport.resolveNote(noteService, args.noteId());
         // POLICY: 미존재 note_id는 오류 반환 — 실존하지 않는 노트를 대상으로 제안이 진행되지 않게 하는
         //         환각 필터 (ref: specs/coffee-note-agent/data-model.md#3.2).
         if (note.isEmpty()) {
