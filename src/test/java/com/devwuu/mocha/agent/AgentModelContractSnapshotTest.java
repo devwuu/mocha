@@ -27,8 +27,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 배치·배선만 바뀌고 <b>이 가드의 범위(tool 정의 + 시스템 프롬프트)</b>는 안 바뀌었음의 증거다.
  * <p>스냅샷은 changes/0029 TΔ1에서 재캡처됐다 — tool 5종 → 3종({@code propose_edit}·
  * {@code send_entry_card} 폐기)과 시스템 프롬프트 개정이 delta 0029 D-1·D-5로 결정된 계약 변경이다.
- * 모델 대면 표면의 나머지 — 드라이버가 장착하는 내장 web_search(OpenAiChatClient)와 턴 컨텍스트
- * 조립(TurnPromptAssembler) — 는 이 스냅샷 밖이며 각자의 테스트가 가드한다.
+ * 모델 대면 표면의 나머지 — 턴 컨텍스트 조립(TurnPromptAssembler) — 은 이 스냅샷 밖이며 각자의 테스트가
+ * 가드한다. 구 판본이 여기 함께 적던 «드라이버가 장착하는 내장 web_search»는 changes/0029 TΔ24c에서
+ * 소멸했다(장착 도구 = function tool 3종뿐 — OpenAiChatClientTest가 가드).
+ * <p>TΔ24c 재캡처: 시스템 프롬프트의 검색 보강 절이 걷히고 출처 규칙이 개정됐다(delta 0029 D-16 ③) —
+ * tool 정의는 무변경이다.
  * <p>의도된 계약 변경(spec 델타로 결정된 프롬프트·스키마 수정)이 생기면 {@link #recaptureSnapshot()}을
  * {@code -Dmocha.contract.recapture=true}로 1회 실행해 재캡처한다 — 그 커밋에서 스냅샷 diff 자체가
  * 계약 변경의 리뷰 대상이 된다.

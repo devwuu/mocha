@@ -132,18 +132,26 @@ class AgentSystemPromptTest {
     }
 
     @Test
-    @DisplayName("ADR-49·53/AC-16·58·64: 보강 정책 — 공식 우선·블렌드 원두별 beans·official_notes 한정·동일성 가드·추측 금지")
-    void encodesEnrichmentPolicy() {
-        assertThat(PROMPT).contains("로스터리 공식 페이지를 우선");
-        assertThat(PROMPT).contains("대상 원두의 것인지 스스로 확인한 뒤 아니면 재검색한다");
-        // ADR-53: 블렌드는 원두별 beans 요소 — 구 "origin 쉼표 나열"은 폐기됐다.
+    @DisplayName("ADR-53/AC-64: 블렌드는 원두별 beans 요소 — 구 'origin 쉼표 나열'은 폐기됐다")
+    void encodesBeansComposition() {
         assertThat(PROMPT).contains("블렌드는 구성 원두마다 요소를 만들어");
         assertThat(PROMPT).contains("원산지를 한 문자열에 쉼표로 나열하지 않는다");
-        assertThat(PROMPT).contains("품종은 필수 보강 대상이 아니다");
-        assertThat(PROMPT).contains("official_notes는 로스터리 출처 한정이다");
-        assertThat(PROMPT).contains("로스터리와 원두명이 함께 확인된 출처만 쓴다");
+    }
+
+    @Test
+    @DisplayName("D-16 ③ (TΔ24c): 프롬프트가 검색을 지시하지 않는다 — search 출처의 소유자는 서버 보강 단계다")
+    void doesNotInstructModelToSearch() {
+        // 종전 이 자리는 «보강 정책»(공식 출처 우선·동일성 가드·official_notes 한정)을 단언했다. 보강 주체가
+        // 모델 재량 tool에서 결정론 단계로 되돌아가며(D-16 ①·②) 그 정책의 소유자가 검색 지침으로 옮겨졌고,
+        // OpenAiSearchClientTest가 그쪽을 가드한다 — 두 벌로 두면 한쪽만 고쳐도 그린이 된다.
+        assertThat(PROMPT).doesNotContain("web_search");
+        assertThat(PROMPT).contains("너는 웹을 검색하지 않는다");
+        assertThat(PROMPT).contains("search는 서버의 보강 단계가 붙이는 출처");
+        // 되싣기 규칙 — draft의 search 값을 모델이 떨어뜨리면 보강 결과가 다음 턴에 유실된다(V-6 짝).
+        assertThat(PROMPT).contains("draft에 이미 실려 온 search 값은 그 값과 출처를 그대로 다시 실어 보낸다");
+        // 추측 금지는 여기 남는다 — 검색이 사라져도 «모델이 지어내지 않는다»는 이 프롬프트의 규칙이다.
         assertThat(PROMPT).contains("추측 금지");
-        assertThat(PROMPT).contains("사용자 입력만으로 제안을 진행한다");
+        assertThat(PROMPT).contains("지어내 채우지 마라");
     }
 
     @Test

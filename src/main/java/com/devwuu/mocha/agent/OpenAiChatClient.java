@@ -15,7 +15,6 @@ import com.openai.models.responses.ResponseInputItem;
 import com.openai.models.responses.ResponseOutputItem;
 import com.openai.models.responses.ResponseOutputMessage;
 import com.openai.models.responses.ResponseStatus;
-import com.openai.models.responses.WebSearchTool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.databind.ObjectMapper;
@@ -33,8 +32,10 @@ import java.util.Optional;
  * OpenAI Responses API 기반 {@link ChatClient} 구현 — 모델 호출↔tool 실행 루프 드라이버
  * (ref: specs/coffee-note-agent/plan.md#ADR-44, changes/0018 findings-TΔ0.md §SDK).
  * <p>루프 계약(TΔ0a 실측): 이터레이션 상태는 {@code previous_response_id} + function_call_output만 싣고,
- * tool 정의는 매 요청 재전송한다. 내장 web_search는 서버측에서 실행 완료된 채 도착하므로
- * 클라이언트 왕복·상한 대상이 아니다(관측 로그만). 종료 = function_call 없는 응답.
+ * tool 정의는 매 요청 재전송한다. 종료 = function_call 없는 응답.
+ * <p><b>이 드라이버는 내장 도구를 장착하지 않는다</b> — 구 판본이 붙이던 web_search는 changes/0029 TΔ24c에서
+ * 걷혔다. 보강을 모델 재량으로 둔 것이 조용한 회귀의 원인이었고(delta 0029 D-16 ①·②), 주체가
+ * {@code TurnProposalEnricher}(결정론 후처리) 하나로 옮겨졌다 — 둘을 남기면 이중 보강·출처 혼선이 된다.
  * <p>OpenAI SDK 타입은 이 클래스 안에만 존재한다(plan §4 POLICY, NFR-4).
  */
 public class OpenAiChatClient implements ChatClient {
@@ -60,7 +61,7 @@ public class OpenAiChatClient implements ChatClient {
     private final Clock clock;
 
     /**
-     * @param model           에이전트 루프 모델(mocha.agent.model — web_search·다중 tool 호출 품질 필요, ADR-50)
+     * @param model           에이전트 루프 모델(mocha.agent.model — 다중 tool 호출 품질 필요, ADR-50)
      * @param maxToolCalls    function tool 실행 횟수 상한(mocha.agent.max-tool-calls, ADR-44)
      * @param maxTurnTokens   턴 누적 토큰 상한 — 이터레이션별 usage(in+out) 합산(mocha.agent.max-turn-tokens,
      *                        ADR-62)
@@ -138,23 +139,15 @@ public class OpenAiChatClient implements ChatClient {
                 cumulativeOutputTokens += response.usage().get().outputTokens();
             }
 
-            // 관측은 판정보다 먼저 — web_search는 서버측에서 이미 실행 완료된 채 도착하므로(왕복·상한 비대상,
-            // findings-TΔ0 §SDK) 응답이 아래에서 절단·실패로 수렴하더라도 이 턴에 검색이 있었다는 사실은
-            // 남아야 한다. 종전에는 판정이 이 순회 위에 있어 절단된 응답의 web_search가 toolSequence에서
-            // 사라졌고, 그 결과 "출력을 부풀린 것이 검색인가"(= 상한 상향 vs 프롬프트 수정, plan §6)를
-            // 로그로 가릴 수 없었다 — 상한 사유 구분(AC-Δ9)이 있어도 시퀀스가 비면 판별이 반쪽이다
-            // (0027 TΔ7 리뷰 2차, 사용자 확정 2026-07-30).
-            for (ResponseOutputItem item : response.output()) {
-                if (item.isWebSearchCall()) {
-                    toolSequence.add("web_search");
-                    log.info("에이전트 web_search: {}", item.asWebSearchCall().action());
-                }
-            }
+            // 종전에는 여기에 내장 web_search 관측 순회가 있었다 — 절단된 응답에서도 검색 사실이 시퀀스에
+            // 남게 하려고 판정보다 위에 뒀던 자리다(0027 TΔ7 리뷰 2차). tool을 장착하지 않는 지금은 모델이
+            // 그것을 실행할 경로 자체가 없어 도달 불가 코드였고, 검색 관측의 소유자는 보강 단계로 옮겨졌다
+            // (OpenAiSearchClient·TurnProposalEnricher의 발동·무결과·실패 로그 — changes/0029 TΔ24c).
+            // toolSequence에는 이제 function tool만 실린다.
 
             // AC-Δ8: 완료되지 않은 응답(잘림·실패·취소)은 최종 텍스트로 내보내지 않는다 — 불완전한 답변보다
             // 폴백 안내가 낫다(ADR-70 ② / plan §7). 판정이 아래 순회(function_call 디스패치·텍스트 수집) 전에
-            // 있어 잘린 function_call 인자로 tool을 실행하는 것도 함께 막힌다 — 위 관측 순회는 부작용이
-            // 없으므로 판정 위에 둬도 이 보호가 유지된다.
+            // 있어 잘린 function_call 인자로 tool을 실행하는 것도 함께 막힌다.
             // status는 Optional이라 **값이 있고 COMPLETED가 아닐 때만** 걸린다 — status 없는 응답을 실패로
             // 오판하지 않는 조건이다(findings-TΔ4 §1.5).
             if (response.status().filter(status -> !ResponseStatus.COMPLETED.equals(status)).isPresent()) {
@@ -170,7 +163,7 @@ public class OpenAiChatClient implements ChatClient {
                 } else if (item.isMessage()) {
                     appendMessageText(item.asMessage(), finalText);
                 }
-                // web_search(위에서 관측)·reasoning 등은 디스패치·응답 텍스트와 무관 — 무시
+                // reasoning 등 나머지 출력 항목은 디스패치·응답 텍스트와 무관 — 무시
             }
 
             if (calls.isEmpty()) {
@@ -312,7 +305,7 @@ public class OpenAiChatClient implements ChatClient {
         }
     }
 
-    // 요청 조립 — tool 정의(function 5종 + 내장 web_search)는 매 요청 재전송(findings-TΔ0 §SDK).
+    // 요청 조립 — tool 정의(function tool만)는 매 요청 재전송(findings-TΔ0 §SDK).
     ResponseCreateParams buildParams(String instructions, List<ToolCallback> tools,
                                      List<ResponseInputItem> input, String previousResponseId) {
         // POLICY: 응답 1건의 출력 토큰 상한을 요청에 싣는다 — 상한 없는 루프 모델 호출 금지
@@ -332,8 +325,9 @@ public class OpenAiChatClient implements ChatClient {
                 .maxOutputTokens(maxOutputTokens)
                 .store(true)
                 .inputOfResponse(List.copyOf(input));
+        // POLICY: 이 루프에 내장 도구를 장착하지 않는다 — 검색 보강의 주체는 결정론 후처리 하나뿐이다
+        //         (ref: specs/coffee-note-agent/changes/0029-app-interface/delta.md#D-16 ③, TΔ24c).
         tools.forEach(tool -> builder.addTool(toFunctionTool(tool)));
-        builder.addTool(webSearchTool());
         if (previousResponseId != null) {
             builder.previousResponseId(previousResponseId);
         }
@@ -357,18 +351,6 @@ public class OpenAiChatClient implements ChatClient {
                 .description(tool.description())
                 .parameters(parameters.build())
                 .strict(true)
-                .build();
-    }
-
-    // 내장 web_search는 GA 타입 + KR 지역화 — 영어권 기본 착지 방지(ADR-16 승계, findings-TΔ0 §SDK).
-    private static WebSearchTool webSearchTool() {
-        return WebSearchTool.builder()
-                .type(WebSearchTool.Type.WEB_SEARCH)
-                .userLocation(WebSearchTool.UserLocation.builder()
-                        .type(WebSearchTool.UserLocation.Type.APPROXIMATE)
-                        .country("KR")
-                        .timezone("Asia/Seoul")
-                        .build())
                 .build();
     }
 

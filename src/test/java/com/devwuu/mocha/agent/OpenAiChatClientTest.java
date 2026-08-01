@@ -12,7 +12,6 @@ import com.openai.models.responses.Response;
 import com.openai.models.responses.ResponseCreateParams;
 import com.openai.models.responses.ResponseError;
 import com.openai.models.responses.ResponseFunctionToolCall;
-import com.openai.models.responses.ResponseFunctionWebSearch;
 import com.openai.models.responses.ResponseInputItem;
 import com.openai.models.responses.ResponseOutputItem;
 import com.openai.models.responses.ResponseOutputMessage;
@@ -21,7 +20,6 @@ import com.openai.models.responses.ResponseStatus;
 import com.openai.models.responses.ResponseUsage;
 import com.openai.models.responses.Tool;
 import com.openai.models.responses.ToolChoiceOptions;
-import com.openai.models.responses.WebSearchTool;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -137,8 +135,7 @@ class OpenAiChatClientTest {
         assertThat(input.get(0).asFunctionCallOutput().output().asString())
                 .isEqualTo("{\"coffee_name\":\"와이키키\"}");
         assertThat(second.tools().orElseThrow())
-                .anySatisfy(t -> assertThat(t.isFunction()).isTrue())
-                .anySatisfy(t -> assertThat(t.isWebSearch()).isTrue());
+                .allSatisfy(t -> assertThat(t.isFunction()).isTrue());
     }
 
     @Test
@@ -367,8 +364,8 @@ class OpenAiChatClientTest {
     }
 
     @Test
-    @DisplayName("buildParams: strict function tool + 내장 web_search(GA·KR 지역화) + instructions·메시지 매핑 (ADR-44, findings-TΔ0 §SDK)")
-    void buildsParamsWithStrictToolsAndGaWebSearch() {
+    @DisplayName("buildParams: strict function tool만 장착(내장 도구 없음) + instructions·메시지 매핑 (ADR-44, delta 0029 D-16 ③)")
+    void buildsParamsWithStrictFunctionToolsOnly() {
         ScriptedChatClient client = new ScriptedChatClient(8, List.of(
                 response("resp_1", message("안녕하다멍"))));
 
@@ -395,12 +392,10 @@ class OpenAiChatClientTest {
         assertThat(function.parameters().orElseThrow()._additionalProperties())
                 .containsKeys("type", "properties", "required", "additionalProperties");
 
-        // GA web_search(구 web_search_preview 아님) + KR 지역화(ADR-16 승계).
-        WebSearchTool webSearch = tools.stream().filter(Tool::isWebSearch).map(Tool::asWebSearch)
-                .findFirst().orElseThrow();
-        assertThat(webSearch.type()).isEqualTo(WebSearchTool.Type.WEB_SEARCH);
-        assertThat(webSearch.userLocation().orElseThrow().country()).contains("KR");
-        assertThat(webSearch.userLocation().orElseThrow().timezone()).contains("Asia/Seoul");
+        // 내장 도구는 장착하지 않는다 — 보강 주체는 TurnProposalEnricher 하나다(D-16 ③, TΔ24c).
+        // 종전에는 여기서 GA web_search + KR 지역화를 단언했다. 모델이 검색을 부를 경로가 없어야
+        // "이중 보강·출처 혼선 없음"이 구조로 성립하므로, 이 단언은 그 성질의 가드다.
+        assertThat(tools).allSatisfy(t -> assertThat(t.isFunction()).isTrue());
     }
 
     @Test
@@ -532,23 +527,9 @@ class OpenAiChatClientTest {
                 assertThat(event.getFormattedMessage()).contains("outcome=완료"));
     }
 
-    @Test
-    @DisplayName("AC-Δ9 (0027 TΔ7 리뷰): 절단된 응답의 web_search도 tool 시퀀스에 남는다 — 조정 신호 유실 금지")
-    void observesWebSearchOfAbortedResponse() {
-        // 검색 후 긴 답변을 쓰다 상한에 걸린 턴. toolSequence가 비면 로그만으로 "출력을 부풀린 것이 검색인가"를
-        // 가릴 수 없어 plan §6의 조정 판단(상한 상향 vs 프롬프트 수정)이 막힌다.
-        ScriptedChatClient client = new ScriptedChatClient(8, List.of(
-                incompleteResponse("resp_1", Response.IncompleteDetails.Reason.MAX_OUTPUT_TOKENS,
-                        webSearchCall("ws_1"), message("와이키키는 부산 모모스커피의"))));
-
-        assertThatThrownBy(() -> client.runTurn(context("와이키키 알려줘"), List.of()))
-                .isInstanceOf(AgentException.class);
-
-        assertThat(logs.list).anySatisfy(event -> assertThat(event.getFormattedMessage())
-                .contains("에이전트 턴 관측")
-                .contains("outcome=출력 상한 절단")
-                .contains("toolSequence=[web_search]"));
-    }
+    // 종전 이 자리에 «절단된 응답의 web_search도 tool 시퀀스에 남는다»(0027 TΔ7 리뷰)가 있었다 —
+    // 루프가 내장 도구를 장착하지 않게 되며(TΔ24c) 관측 대상이 소멸했다. 절단 사유 구분 자체(AC-Δ9)는
+    // 위 abortsIncompleteResponseWithOutputCap 계열이 그대로 가드한다.
 
     @Test
     @DisplayName("AC-Δ8 (findings-TΔ4 §1.5): status 없는 응답은 실패로 오판되지 않고 정상 완료된다")
@@ -565,18 +546,19 @@ class OpenAiChatClientTest {
     }
 
     @Test
-    @DisplayName("AC-Δ9: 턴 관측 로그에 tool 시퀀스(web_search 포함)·호출 수가 남는다 (plan §6)")
+    @DisplayName("AC-Δ9: 턴 관측 로그에 tool 시퀀스·호출 수가 남는다 (plan §6)")
     void logsTurnObservationWithToolSequence() {
+        // 시퀀스에 실리는 것은 function tool뿐이다 — 내장 도구를 장착하지 않으므로(TΔ24c) 그 밖의
+        // 출력 항목은 관측 대상이 아니다.
         ScriptedChatClient client = new ScriptedChatClient(8, List.of(
                 response("resp_1", functionCall("call_1", "get_note", "{\"note_id\":7}")),
-                response("resp_2", webSearchCall("ws_1"), message("찾았다멍"))));
+                response("resp_2", message("찾았다멍"))));
 
-        client.runTurn(context("와이키키 공식 페이지 찾아줘"), List.of(getNoteTool(args -> "{}")));
+        client.runTurn(context("와이키키 보여줘"), List.of(getNoteTool(args -> "{}")));
 
         assertThat(logs.list).anySatisfy(event -> assertThat(event.getFormattedMessage())
                 .contains("에이전트 턴 관측")
-                .contains("get_note")
-                .contains("web_search")
+                .contains("toolSequence=[get_note]")
                 .contains("functionCalls=1"));
     }
 
@@ -734,16 +716,6 @@ class OpenAiChatClientTest {
                         .annotations(List.of())
                         .build())
                 .status(ResponseOutputMessage.Status.COMPLETED)
-                .build());
-    }
-
-    private static ResponseOutputItem webSearchCall(String id) {
-        return ResponseOutputItem.ofWebSearchCall(ResponseFunctionWebSearch.builder()
-                .id(id)
-                .action(ResponseFunctionWebSearch.Action.Search.builder()
-                        .addQuery("모모스커피 와이키키")
-                        .build())
-                .status(ResponseFunctionWebSearch.Status.COMPLETED)
                 .build());
     }
 }

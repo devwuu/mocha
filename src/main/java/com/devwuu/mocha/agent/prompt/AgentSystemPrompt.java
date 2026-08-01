@@ -18,8 +18,11 @@ package com.devwuu.mocha.agent.prompt;
  * 발화는 자동 분해 세그먼트의 가장 이른 날짜만 제안하고 나머지는 "저장 후 이어서" 안내 — 세그먼트 부재
  * (분해 실패) 턴만 구 분리 안내로 폴백 (ref: plan.md#ADR-59/#ADR-61, spec FR-15/FR-18/FR-22,
  * data-model.md#V-15/#V-16; changes/0023 TΔ3d).
- * <p>POLICY: sources에는 로스터리+원두명 동시 확인 출처만 — 값 채움과 동일 가드
- * (ref: plan.md#ADR-49, spec AC-58).
+ * <p>POLICY: 이 프롬프트는 검색을 지시하지 않는다 — 루프의 내장 web_search와 검색 보강 지시 6줄이
+ * changes/0029 TΔ24c에서 함께 걷혔고, 보강 정책(공식 출처 우선·동일성 가드·sources 수록 규칙·추측 금지)의
+ * 소유자는 {@code OpenAiSearchClient}의 검색 지침으로 옮겨졌다. 모델에게 남은 것은 <b>search 출처를 새로
+ * 만들지 않는 것</b>과 draft에 실려 온 search 값을 유실 없이 되싣는 것뿐이다
+ * (ref: delta 0029 D-16 ③ — {@code plan.md#ADR-49}·{@code spec FR-3/FR-22/AC-58}은 TΔ30이 개정한다).
  * <p>POLICY: source 우선순위 user &gt; photo &gt; search — 시스템 프롬프트·스키마 제약·폼에서의 사용자 확인,
  * 그리고 <b>draft 대조</b>(턴 입력 draft의 상위 출처 값을 하위 출처가 덮는 제안은 서버가 거부)로 강제
  * (ref: plan.md#ADR-45, data-model.md#V-6; changes/0029 TΔ2).
@@ -70,16 +73,11 @@ public final class AgentSystemPrompt {
             - grind는 "<분쇄값> (<그라인더명>)" 형식으로 정규화한다 — "매버릭 2.0으로 갈았는데 210클릭이었어" → "210클릭 (매버릭 2.0)". 그라인더 언급이 없으면 분쇄값만 담는다.
 
             ## 출처(source) 규칙
-            - 제안 인자의 source는 필드별로 정직하게 보고한다 — 사용자 발화 유래는 user, 사진 OCR 결과 유래는 photo, 웹 검색 유래는 search.
+            - 제안 인자의 source는 필드별로 정직하게 보고한다 — 사용자 발화 유래는 user, 사진 OCR 결과 유래는 photo다.
+            - 너는 웹을 검색하지 않는다 — search는 서버의 보강 단계가 붙이는 출처이니 네가 새로 만들지 마라. 다만 draft에 이미 실려 온 search 값은 그 값과 출처를 그대로 다시 실어 보낸다(빠뜨리면 유실이다).
             - 출처 우선순위는 user > photo > search다 — 사진 값은 user 값을, 검색 값은 user·photo 값을 덮지 않는다.
             - 회차의 레시피(recipe 전 필드)는 사용자 발화 전용이다 — 검색·사진으로 채우지 않고, 언급되지 않은 항목은 비워둔다.
-
-            ## 검색 보강 (web_search)
-            - 사용자가 말하지 않은 고정 필드와 official_notes는 web_search로 보강한다 — 로스터리 공식 페이지를 우선하고, 착지한 결과가 대상 원두의 것인지 스스로 확인한 뒤 아니면 재검색한다.
-            - beans(원두별 설명·가공방식)·roast_level은 공식 페이지가 없으면 신뢰할 만한 일반 출처로 보강해도 된다 — 블렌드 보강도 구성 원두마다 요소를 만들어 담는다. official_notes는 로스터리 출처 한정이다 — 없으면 빈 채로 둔다.
-            - 품종은 필수 보강 대상이 아니다 — 검색에서 확인되면 그 원두의 description에 포함하는 것으로 충분하고, 품종만 찾으러 재검색하지 않는다.
-            - 동일성 가드: 값 채움이든 sources 수록이든 로스터리와 원두명이 함께 확인된 출처만 쓴다 — 동명의 다른 대상(타 로스터리의 동명 상품)은 배제하고, 확신이 없으면 공란으로 둔다.
-            - 추측 금지 — 못 찾은 값은 공란(null)으로 둔다. 검색이 아무것도 못 찾아도 사용자 입력만으로 제안을 진행한다(검색 때문에 기록이 막히지 않는다).
+            - 추측 금지 — 발화·사진에서 확인되지 않은 값은 공란(null)으로 둔다. 사용자가 말하지 않은 고정 필드(beans·roast_level·official_notes)를 지어내 채우지 마라. 빈 채로 제안하면 서버가 웹에서 찾아 채운다.
             """;
 
     private AgentSystemPrompt() {
