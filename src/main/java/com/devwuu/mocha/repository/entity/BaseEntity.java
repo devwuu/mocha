@@ -12,11 +12,15 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 import java.time.OffsetDateTime;
 
 /**
- * 감사 컬럼 4종의 공통 상위 타입 (ref: changes/0028-rdb-storage/delta.md#감사-컬럼, Q-5).
+ * 감사 컬럼 4종의 공통 상위 타입
+ * (ref: changes/0028-rdb-storage/delta.md#감사-컬럼, changes/0029-app-interface/delta.md#D-13).
  *
- * <p>POLICY: {@code _by}는 사용자 ID가 아니라 <b>변경 주체</b>({@code agent} / {@code user})다 —
- * A2에서 "에이전트가 채운 값 vs UI로 고친 값"을 가르는 데 쓴다. 값의 출처를 뜻하는 도메인
- * {@code Source}(user/photo/search)와는 다른 축이고, 사용자 ID 컬럼은 A3에서 별도로 추가한다.
+ * <p>POLICY: {@code _by}는 <b>이 행을 쓴 사용자</b>다 — 1인용이라 지금은 {@code SingleUser.ID} 한 값이고
+ * A3에서 인증 주체가 그 자리를 대체한다. <b>구 정의(«변경 주체» {@code agent}/{@code user})는 A2에서
+ * 폐기됐다</b>(D-13): 그 축이 답하려던 물음을 값의 출처인 {@code Source}(user/photo/search)가 필드
+ * 단위로 이미 답하고, 모든 쓰기가 사용자 확정을 거쳐(ADR-3) 행 단위 판정이 성립하지 않았다.
+ * <b>기존 행의 {@code agent} 값은 그대로 둔다</b>(사용자 확정 2026-08-01) — 축이 바뀌기 전에 쓰인
+ * 행이라는 이력으로 읽는다.
  *
  * <p>POLICY: 감사 컬럼 4종이 <b>도메인의 {@code createdAt}/{@code updatedAt}을 겸한다</b> —
  * delta §감사 컬럼이 4종만 규정하므로 같은 의미의 타임스탬프를 두 벌 두지 않는다. 역방향 변환에서

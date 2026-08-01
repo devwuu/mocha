@@ -1,6 +1,6 @@
 package com.devwuu.mocha.config;
 
-import com.devwuu.mocha.repository.AuditActorContext;
+import com.devwuu.mocha.SingleUser;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.auditing.DateTimeProvider;
@@ -14,24 +14,35 @@ import java.util.Optional;
 
 /**
  * 감사 컬럼(created_at/created_by/modified_at/modified_by) 주입 배선
- * (ref: changes/0028-rdb-storage/delta.md#감사-컬럼, Q-5 / tasks.md TΔ4).
+ * (ref: changes/0028-rdb-storage/delta.md#감사-컬럼 / changes/0029-app-interface/delta.md#D-13).
  *
  * <p>POLICY: 내부 협력자 조립·전역 인스턴스 생성은 config/가 소유 (ref: plan.md#ADR-63).
  * 필드를 채우는 주체는 {@code AuditingEntityListener}이고, <b>무엇을 채울지</b>는 여기 두 공급자가
  * 소유한다 — 저장소 구현체·변환기는 감사 필드를 건드리지 않는다.
  */
 @Configuration
-@EnableJpaAuditing(auditorAwareRef = "auditActorProvider", dateTimeProviderRef = "auditingDateTimeProvider")
+@EnableJpaAuditing(auditorAwareRef = "auditorProvider", dateTimeProviderRef = "auditingDateTimeProvider")
 public class JpaAuditingConfig {
 
     /**
-     * 변경 주체 공급자. 판별은 {@link AuditActorContext}가 소유하고 여기서는 컬럼 표기로만 옮긴다.
+     * 감사 주체 공급자 — <b>이 행을 쓴 사용자</b>다 (ref: changes/0029 delta.md#D-13).
+     *
+     * <p><b>구 정의는 «변경 주체»({@code agent}/{@code user})였고 A2에서 폐기됐다.</b> 그 축이 답하려던
+     * 물음(<i>"에이전트가 채운 값인가 UI로 고친 값인가"</i>)은 도메인 {@code Source}(user/photo/search)가
+     * <b>필드 단위로</b> 이미 답한다 — 수정 화면이 고친 값은 {@code source: user}로 나가고 에이전트가 채운
+     * 값은 photo/search로 남는다. 게다가 <b>모든 쓰기가 사용자 확정을 거치므로</b>(ADR-3) 행 하나를
+     * 둘 중 하나로 가르는 판정 자체가 성립하지 않았다.
+     *
+     * <p>지금은 단일 사용자라 {@link SingleUser#ID} 한 값이다. A3(멀티테넌시·인증)에서 인증 주체가
+     * 이 자리를 대체한다 — {@code SingleUser}가 이미 <i>"그때 지워야 할 곳이 여기 하나"</i>로 예고한
+     * 자리이고, 감사 축이 그 목록에 하나 더 얹힌 것이 아니라 <b>같은 자리를 가리키게 됐다.</b>
+     *
      * <p>빈 Optional을 반환하지 않는다 — 컬럼이 NOT NULL이라 주체를 모르는 상태가 INSERT 실패로만
-     * 드러나면 원인 추적이 어렵다. 컨텍스트가 언제나 기본값(agent)을 갖는 것이 이 계약이다.
+     * 드러나면 원인 추적이 어렵다.
      */
     @Bean
-    public AuditorAware<String> auditActorProvider() {
-        return () -> Optional.of(AuditActorContext.current().columnValue());
+    public AuditorAware<String> auditorProvider() {
+        return () -> Optional.of(SingleUser.ID);
     }
 
     /**
