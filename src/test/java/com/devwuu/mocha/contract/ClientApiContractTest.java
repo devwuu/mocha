@@ -24,6 +24,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 상대로 돌고, mock과 실제 API가 갈라지면 "화면 먼저"가 계약 도출이 아니라 재작업이 된다. 여기서 고정한
  * 본문을 TΔ6({@code POST /api/agent/turn}·{@code POST /api/notes})이 그대로 구현한다.
  *
+ * <p>TΔ11이 같은 규율로 {@code note-candidates.contract.json}을 보탰다 — 매칭 변경 시트가 도출한
+ * {@code GET /api/notes/candidates?q=}의 응답 형태이고, 구현은 TΔ7이다.
+ *
  * <p><b>{@code aliases} 절단은 이 테스트가 소유한다</b>(TΔ2 이월 (b)의 판단 지점, tasks.md TΔ10). draft가
  * {@code Note} 그대로라서 내부 전용 별칭(V-13)이 계약에 실려 나가고 있었는데, <b>폼이 그 값을 쓰지 않는</b>
  * 것이 이 task에서 확인됐다 — 표시도 편집도 하지 않고, 커밋의 별칭 축적은 저장된 값을 읽어 서버가 계산한다
@@ -40,6 +43,7 @@ class ClientApiContractTest {
     private static final String TURN_DRAFT_SNAPSHOT = "/contract/turn-draft.contract.json";
     private static final String AGENT_TURN_CONTRACT = "/contract/agent-turn.contract.json";
     private static final String NOTE_COMMIT_CONTRACT = "/contract/note-commit.contract.json";
+    private static final String NOTE_CANDIDATES_CONTRACT = "/contract/note-candidates.contract.json";
 
     private final JsonMapper mapper = MochaObjectMapper.create();
 
@@ -104,6 +108,50 @@ class ClientApiContractTest {
 
         assertThat(fieldNames(response)).containsExactly("note_id");
         assertThat(response.get("note_id").isIntegralNumber()).isTrue();
+    }
+
+    @Test
+    @DisplayName("TΔ11: 후보 1건 = {note_id, coffee_name, roastery, latest_date} — 로스터리가 동명 후보를 가른다")
+    void candidateCarriesTheFieldsThatDistinguishSameNamedCoffees() throws IOException {
+        JsonNode candidates = load(NOTE_CANDIDATES_CONTRACT).get("response").get("candidates");
+
+        assertThat(candidates).isNotEmpty();
+        candidates.forEach(candidate ->
+                assertThat(fieldNames(candidate)).containsExactly("note_id", "coffee_name", "roastery", "latest_date"));
+        // POLICY: 로스터리는 선택 필드가 아니다 — 싱글 오리진은 커피명이 산지·농장·품종에서 오므로
+        //         이름이 같은 다른 커피가 흔하고, 그것을 가를 축이 로스터리뿐이다(사용자 확정 2026-08-01).
+        assertThat(candidates)
+                .as("동명 다른 로스터리가 계약 예시에 있어야 한다 — 시트가 실제로 마주하는 형태다")
+                .anySatisfy(candidate -> assertThat(candidate.get("roastery").isString()).isTrue());
+    }
+
+    @Test
+    @DisplayName("TΔ11: 로스터리·최근 시음일은 nullable — 모르는 노트, 엔트리 없는 노트가 있다")
+    void candidateAllowsMissingRoasteryAndDate() throws IOException {
+        JsonNode candidates = load(NOTE_CANDIDATES_CONTRACT).get("response").get("candidates");
+
+        assertThat(candidates)
+                .as("nullable 지점을 예시로 박지 않으면 클라이언트가 non-null을 가정한다")
+                .anySatisfy(candidate -> {
+                    assertThat(candidate.get("roastery").isNull()).isTrue();
+                    assertThat(candidate.get("latest_date").isNull()).isTrue();
+                });
+        candidates.forEach(candidate -> {
+            assertThat(candidate.get("note_id").isIntegralNumber()).isTrue();
+            assertThat(candidate.get("coffee_name").isString()).isTrue();
+        });
+    }
+
+    @Test
+    @DisplayName("TΔ11: 빈 q도 유효한 요청이다 — 커피명이 아직 없어도 시트가 전체를 보여준다")
+    void candidateQueryMayBeBlank() throws IOException {
+        JsonNode contract = load(NOTE_CANDIDATES_CONTRACT);
+
+        assertThat(fieldNames(contract.get("request_query"))).containsExactly("q");
+        assertThat(fieldNames(contract.get("request_query_blank"))).containsExactly("q");
+        assertThat(contract.get("request_query_blank").get("q").stringValue()).isEmpty();
+        // 후보 없음은 오류가 아니라 빈 목록이다 — 그때 사용자의 다음 행동이 [새 노트로 등록]이다.
+        assertThat(contract.get("response_empty").get("candidates")).isEmpty();
     }
 
     /** TΔ2 캡처본에서 {@code note.aliases}만 제거한 draft — 이 델타가 확정한 클라이언트 계약형이다. */

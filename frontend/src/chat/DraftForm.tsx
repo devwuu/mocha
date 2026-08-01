@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import type { Draft, Rating, Sourced } from '../api/contract'
 import { RATINGS } from '../api/contract'
+import { MatchBadge } from './MatchBadge'
 import {
   numberValue,
   patchBean,
@@ -35,10 +36,8 @@ export function DraftForm({ draft, busy, onChange, onSave, onCancel }: DraftForm
 
   return (
     <section className="draft" aria-label="작성 중인 노트">
-      {/* 매칭 배지 — 여기서는 판정 결과를 보여주기만 한다. 탭해서 후보를 고르는 시트는 TΔ11이다. */}
-      <div className="draft__badge">
-        {draft.match.type === 'new' ? '새 노트' : `기존 노트 · #${draft.match.note_id}`}
-      </div>
+      {/* 매칭 배지 — 탭하면 후보 시트가 열리고 판정을 양방향으로 바꿀 수 있다(TΔ11). */}
+      <MatchBadge draft={draft} busy={busy} onChange={onChange} />
 
       <div className="draft__grid">
         <SourcedText

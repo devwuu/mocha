@@ -2,6 +2,8 @@ import type {
   AgentTurnRequest,
   AgentTurnResponse,
   Draft,
+  NoteCandidate,
+  NoteCandidatesResponse,
   NoteCommitRequest,
   NoteCommitResponse,
 } from './contract'
@@ -82,6 +84,33 @@ export async function postAgentTurn(request: AgentTurnRequest): Promise<AgentTur
     reply: '폼 내용 그대로 두고 반영할 게 없었어요. 더 알려주실 게 있나요?',
     draft: request.draft,
   }
+}
+
+/**
+ * 매칭 후보 픽스처 — **동명 다른 로스터리가 셋 들어 있는 것이 의도다**(TΔ11). 싱글 오리진에서 흔한
+ * 형태이고, 시트가 그것을 구분해 보여주지 못하면 사용자가 고를 수 없다는 것이 이 화면의 검증 대상이다.
+ */
+const CANDIDATES: NoteCandidate[] = [
+  { note_id: 12, coffee_name: '에티오피아 게뎁', roastery: '모모스커피', latest_date: '2026-07-28' },
+  { note_id: 7, coffee_name: '에티오피아 게뎁 G1', roastery: '프릳츠', latest_date: '2026-06-14' },
+  { note_id: 3, coffee_name: '게뎁 워시드', roastery: null, latest_date: null },
+  { note_id: 9, coffee_name: '봄맞이 블렌드', roastery: '커피베라', latest_date: '2026-07-19' },
+  { note_id: 5, coffee_name: '콜롬비아 엘 파라이소', roastery: '모모스커피', latest_date: '2026-05-02' },
+]
+
+export async function getNoteCandidates(query: string): Promise<NoteCandidatesResponse> {
+  await delay(MOCK_LATENCY_MS / 2)
+  // 부분일치는 시트가 "좁혀지는지"를 확인하기 위한 최소 동작이다 — 실제 서버는 정규화 컬럼과 별칭
+  // 인덱스(changes/0028)로 대조하므로 한/영 교차·표기 흔들림까지 잡는다(TΔ7).
+  const needle = query.trim().toLowerCase()
+  const matched = needle === ''
+    ? CANDIDATES
+    : CANDIDATES.filter(
+        (candidate) =>
+          candidate.coffee_name.toLowerCase().includes(needle) ||
+          (candidate.roastery?.toLowerCase().includes(needle) ?? false),
+      )
+  return { candidates: matched }
 }
 
 export async function postNoteCommit(request: NoteCommitRequest): Promise<NoteCommitResponse> {

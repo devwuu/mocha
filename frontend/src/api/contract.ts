@@ -2,8 +2,8 @@
  * 서버와 공유하는 REST 계약의 TypeScript 판본 (changes/0029 TΔ10).
  *
  * 정본은 `src/test/resources/contract/`의 JSON 파일이고 — `turn-draft.contract.json`(TΔ2 캡처본),
- * `agent-turn.contract.json`, `note-commit.contract.json` — 자바 쪽에서 `ClientApiContractTest`가
- * 서로의 정합을 단언한다. 이 파일은 그 형태를 타입으로 옮긴 것이다.
+ * `agent-turn.contract.json`, `note-commit.contract.json`, `note-candidates.contract.json`(TΔ11) —
+ * 자바 쪽에서 `ClientApiContractTest`가 서로의 정합을 단언한다. 이 파일은 그 형태를 타입으로 옮긴 것이다.
  *
  * 계약을 바꾸려면 JSON 파일과 이 파일을 함께 고친다. 필드명이 어긋나면 컴파일러가 아니라
  * **런타임에 값이 조용히 사라지는** 방식으로 실패한다 — 사용자가 폼에서 고친 값이 되돌아가는
@@ -86,6 +86,30 @@ export interface DraftNote {
 export type MatchInfo =
   | { type: 'new' }
   | { type: 'existing'; note_id: number; date?: string }
+
+/**
+ * 매칭 후보 1건 — 변경 시트의 한 줄 (changes/0029 TΔ11).
+ *
+ * **로스터리가 필드에 들어간 이유가 도메인이다**: 싱글 오리진은 커피명이 산지·농장·품종에서 오므로
+ * 로스터리가 다르면 같은 이름의 다른 커피인 것이 정상이다. 커피명만 보여주면 동명 후보를 구분할 축이
+ * 없다(사용자 확정 2026-08-01).
+ *
+ * 둘 다 nullable이다 — 로스터리를 모르는 노트가 있을 수 있고, `latest_date`는 엔트리가 없는 노트에서 빈다.
+ */
+export interface NoteCandidate {
+  note_id: number
+  coffee_name: string
+  roastery: string | null
+  latest_date: string | null
+}
+
+/**
+ * `GET /api/notes/candidates?q=` — 정렬은 서버가 소유한다(관련도 → 최근 시음일 내림차순).
+ * `q`가 비면 전체를 최근순으로 돌려준다 — 커피명이 아직 안 뽑힌 상태에서도 시트가 쓸모 있어야 한다.
+ */
+export interface NoteCandidatesResponse {
+  candidates: NoteCandidate[]
+}
 
 /** 폼 상태 전체 = 다음 턴의 draft = 저장 본문. 방향만 다른 같은 값이다. */
 export interface Draft {
