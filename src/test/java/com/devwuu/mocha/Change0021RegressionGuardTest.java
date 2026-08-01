@@ -45,10 +45,10 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 class Change0021RegressionGuardTest {
 
     /**
-     * design/ 시안 8종의 SHA-256. 시안은 디자인 source of truth(ADR-54)로 수정 금지 — 이모티콘 제거 등
+     * design/ 시안 9종의 SHA-256. 시안은 디자인 source of truth(ADR-54)로 수정 금지 — 이모티콘 제거 등
      * 편차는 이식 템플릿에만 허용된다. 파일명 대신 체크섬 집합으로 대조한다(macOS 유니코드 정규화 차이로
      * 인한 한글 파일명 오탐 방지).
-     * <p>카드 6종이 2026-07-22 확정본이고, <b>앱 화면 2종은 changes/0029에서 편입됐다</b>(2026-08-01,
+     * <p>카드 6종이 2026-07-22 확정본이고, <b>앱 화면 3종은 changes/0029에서 편입됐다</b>(2026-08-01,
      * 사용자 확정) — 앱이 인터페이스를 가져가며 카드 밖 화면에도 시안이 생겼고, 같은 규율("시안은 수정
      * 금지")을 적용한다. 집합 <b>동등성</b> 단언이라 추가도 레드가 되는데, 그것이 의도다: 시안 추가는
      * 디자인 source of truth가 늘어나는 일이므로 이 목록을 함께 고치는 것이 정상 경로다.
@@ -61,11 +61,12 @@ class Change0021RegressionGuardTest {
             "7c9abc2d33d8777a0e320a01a25231a2f42ffd82402c53d0c0ff35de9661cb6b", // 세리프 - 2 레시피 에스프레소
             "9be63b0b842019ed10c2cb5599421d741546b74c76f38fe48457045db2490b59", // 세리프 - 2 레시피 핸드드립
             "f235e2186b7dfd6a7cedabb12131c65b2e3f027ae637c600d18525c2fff829cf", // 리스트 - 갤러리 (0029 S2)
-            "9895f4492386faafd77d613054e85bfe2b08406f338ff27a488570b641b78947"  // 채팅 - 말풍선 (0029 S1)
+            "9895f4492386faafd77d613054e85bfe2b08406f338ff27a488570b641b78947", // 채팅 - 말풍선 (0029 S1)
+            "f5304f6128403fc695af6c89d3db6ebbadf4ca88f6043c2df0572db0efe8a961"  // 노트 상세 (0029 S2, TΔ13a)
     );
 
     @Test
-    @DisplayName("AC-Δ10: design/ 시안 원본 8종이 확정본에서 변경되지 않았다(체크섬 대조)")
+    @DisplayName("AC-Δ10: design/ 시안 원본 9종이 확정본에서 변경되지 않았다(체크섬 대조)")
     void designMockupsUnchanged() throws IOException {
         Path designDir = Path.of("design");
         // design/은 gitignore된 로컬 전용 자산 — 없는 환경(fresh clone)에서는 대조 불가라 건너뛴다.

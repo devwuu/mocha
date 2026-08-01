@@ -14,10 +14,10 @@ import { GALLERY } from '../routes'
  * 보여주는 것만 계약에 실린 결과가 `NoteDetail`의 세 절단이다 — `aliases`·`created_at`/`updated_at`·
  * `my_taste_original`.
  *
- * 시안에 상세 화면은 없다. 그래서 팔레트·서체·액자는 다른 화면과 공유하고, 형태는 **카드 시안**
- * (`design/노트 세리프 - 1 감상.dc.html`·`- 2 레시피 …`)의 어휘를 빌렸다 — 라벨을 오른쪽 정렬한 2열
- * 그리드, 평가 pill, 큰 숫자로 세우는 레시피 스탯. 상세와 카드는 같은 내용의 두 표면이라 서로 닮는 것이
- * 맞고, 카드 시안이 정본인 범위(ADR-54)를 넘지 않는다.
+ * 시안은 `design/노트 상세.dc.html`이다(ADR-54: 시안이 디자인 source of truth). 형태를 그대로 이식했다 —
+ * 한 줄 헤더(‹ 목록 / COFFEE NOTE) + 가운데 정렬 커피명·로스터리 · 250px 히어로 · 52px 라벨의 메타
+ * 그리드 · 날짜 rule · **회차 카드**(머리 + 3열 스탯 격자 + 문장 블록 + 감상). 시안과 갈린 것은 셋이고
+ * 각각 그 자리 주석이 근거를 소유한다: ① 출처 배지 ② 추출량(`yield_ml`) 슬롯 ③ 참조 링크.
  */
 interface DetailScreenProps {
   noteId: number
@@ -59,10 +59,14 @@ export function DetailScreen({ noteId, onNavigate }: DetailScreenProps) {
     <div className="shell">
       <div className="panel">
         <header className="detail__header">
-          <button type="button" className="gallery__back" onClick={() => onNavigate(GALLERY)}>
-            ‹ 목록
-          </button>
-          <div className="gallery__eyebrow">COFFEE NOTE</div>
+          <div className="detail__bar">
+            <button type="button" className="detail__back" onClick={() => onNavigate(GALLERY)}>
+              ‹ 목록
+            </button>
+            <div className="detail__eyebrow">COFFEE NOTE</div>
+            {/* 시안의 오른쪽 32px 스페이서 — 가운데 정렬을 유지하는 것이 이 헤더의 인상이다. */}
+            <div className="detail__bar-pad" />
+          </div>
           <h1 className="detail__title">{note?.coffee_name.value ?? ' '}</h1>
           {note !== null && (
             <div className="detail__roastery">
@@ -76,29 +80,35 @@ export function DetailScreen({ noteId, onNavigate }: DetailScreenProps) {
           <div className="detail__notice">{failed ? '노트를 불러오지 못했어요.' : '불러오는 중…'}</div>
         ) : (
           <div className="detail__body">
-            {hero !== null && <img className="detail__hero" src={hero.url} alt="" />}
+            {/* 사진이 없어도 자리는 남는다 — 시안의 사선 패턴이 그대로 채우고, 갤러리 카드가 빈 칸을
+                다루는 방식과 같은 답이다. 시안의 "봉투 사진" 글자는 목업 라벨이라 이식하지 않았다. */}
+            <div className="detail__hero">{hero !== null && <img src={hero.url} alt="" />}</div>
 
             <Meta note={note} />
 
-            {note.entries.length === 0 && (
-              // 엔트리 없는 노트는 정상 상태다(계약 예시가 박는다) — 빈 화면 대신 그렇다고 말한다.
-              <div className="detail__empty">아직 시음 기록이 없어요.</div>
-            )}
-            {note.entries.map((entry) => (
-              <EntrySection key={entry.date} entry={entry} />
-            ))}
+            <div className="detail__entries">
+              {note.entries.length === 0 && (
+                // 엔트리 없는 노트는 정상 상태다(계약 예시가 박는다) — 빈 화면 대신 그렇다고 말한다.
+                <div className="detail__empty">아직 시음 기록이 없어요.</div>
+              )}
+              {note.entries.map((entry) => (
+                <EntrySection key={entry.date} entry={entry} />
+              ))}
 
-            {note.sources.length > 0 && (
-              <ul className="detail__sources">
-                {note.sources.map((source) => (
-                  <li key={source}>
-                    <a href={source} target="_blank" rel="noreferrer">
-                      {source}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            )}
+              {/* 시안과 갈린 것 ③ — 참조 링크는 시안에 없다. FR-12가 저장하는 값이고 캡처 폼도 보여주므로
+                  같은 어휘로 맨 아래에 둔다. 없으면 그리지 않으니 시안 형태를 해치지 않는다. */}
+              {note.sources.length > 0 && (
+                <ul className="detail__sources">
+                  {note.sources.map((source) => (
+                    <li key={source}>
+                      <a href={source} target="_blank" rel="noreferrer">
+                        {source}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -118,10 +128,11 @@ function heroPhoto(entries: NoteDetailEntry[]): NotePhoto | null {
 }
 
 /**
- * 노트 메타 — 원두·로스팅·공식 노트. 카드 시안의 2열 그리드(라벨 오른쪽 정렬) 그대로다.
+ * 노트 메타 — 원두·로스팅·공식 노트. 시안의 2열 그리드(52px 라벨, 오른쪽 정렬) 그대로다.
  *
  * 값이 없는 줄은 그리지 않는다 — 저장된 노트는 대부분의 메타가 비어 있을 수 있고(계약의 최소형 예시),
- * 빈 라벨만 늘어놓으면 없는 것이 결손처럼 보인다.
+ * 빈 라벨만 늘어놓으면 없는 것이 결손처럼 보인다. 회차 스탯이 없는 값을 `—`로 남기는 것과 반대인데,
+ * 저쪽은 **격자가 무너지지 않아야** 하고 이쪽은 줄 수가 자유롭다.
  */
 function Meta({ note }: { note: NoteDetail }) {
   const rows = [
@@ -167,11 +178,18 @@ function Meta({ note }: { note: NoteDetail }) {
   )
 }
 
-/** 날짜 하나 = 그 날의 사진 + 회차들. `date`가 엔트리의 유일 키다(V-3). */
+/**
+ * 날짜 하나 = 날짜 rule + 그 날의 사진 + 회차 카드들. `date`가 엔트리의 유일 키다(V-3).
+ *
+ * 사진이 회차 위에 오는 것이 시안의 순서다 — 그 날의 장면이 먼저고 기록이 뒤다.
+ */
 function EntrySection({ entry }: { entry: NoteDetailEntry }) {
   return (
     <section className="entry">
-      <h2 className="entry__date">{formatDate(entry.date)}</h2>
+      <div className="entry__rule">
+        <span className="entry__date">{formatDate(entry.date)}</span>
+        <i />
+      </div>
 
       {entry.photos.length > 0 && (
         <div className="entry__photos">
@@ -182,23 +200,41 @@ function EntrySection({ entry }: { entry: NoteDetailEntry }) {
       )}
 
       {entry.brews.map((brew, index) => (
-        <BrewBlock key={index} brew={brew} no={index + 1} />
+        <BrewCard key={index} brew={brew} no={index + 1} />
       ))}
     </section>
   )
 }
 
-/** 회차 1개 — 레시피·감상 중 있는 것만 그린다(둘 다 null인 회차는 저장되지 않는다, V-15). */
-function BrewBlock({ brew, no }: { brew: NoteDetailBrew; no: number }) {
+/**
+ * 회차 1개 = 카드 하나 — 머리(회차·방식) · 스탯 격자 · 문장 블록 · 감상.
+ *
+ * 레시피·감상 중 있는 것만 그린다(둘 다 null인 회차는 저장되지 않는다, V-15). 감상만 있는 회차는 머리와
+ * 감상만 남고, 그것도 시안 카드의 정상 형태다.
+ */
+function BrewCard({ brew, no }: { brew: NoteDetailBrew; no: number }) {
+  const recipe = brew.recipe
+  const notes = recipe === null ? [] : sentenceRows(recipe)
+
   return (
     <div className="brew">
-      <div className="brew__no">
-        {no}회차
-        {/* 방식은 회차의 성격이라 번호 옆에 붙는다 — 시안 레시피 카드의 제목 옆 pill과 같은 자리다. */}
-        {brew.recipe?.method != null && <span className="brew__method">{brew.recipe.method}</span>}
+      <div className="brew__head">
+        <span className="brew__no">{no}회차</span>
+        {recipe?.method != null && <span className="brew__method">{recipe.method}</span>}
       </div>
 
-      {brew.recipe !== null && <RecipeBlock recipe={brew.recipe} />}
+      {recipe !== null && <Stats recipe={recipe} />}
+
+      {notes.length > 0 && (
+        <div className="brew__notes">
+          {notes.map((row) => (
+            <div key={row.label}>
+              <div className="brew__label">{row.label}</div>
+              <div className="brew__sentence">{row.value}</div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {brew.tasting !== null && (
         <div className="brew__tasting">
@@ -214,59 +250,92 @@ function BrewBlock({ brew, no }: { brew: NoteDetailBrew; no: number }) {
 }
 
 /**
- * 레시피 — 수치는 큰 글자로 세우고(시안의 3열 스탯), 문장류는 아래 2열 그리드로 내린다.
+ * 레시피 수치 — 시안의 3열 격자. **없는 값은 자리를 비우지 않고 `—`로 남긴다**(시안 2회차의 `시간`).
  *
- * 전 필드가 nullable이라(V-8) 있는 것만 그린다. 방식별 분기가 없는 flat 스키마이므로 화면도 분기하지
- * 않는다 — 에스프레소면 추출량·시간이 차고 핸드드립이면 물·푸어링이 차는 식으로 **데이터가 형태를 정한다.**
+ * 슬롯은 고정이다: 원두 · 물(또는 추출) · 시간 · 물온도 · 분쇄도·기구. 방식별 분기가 없는 flat
+ * 스키마(V-8)라 화면도 분기하지 않는다.
+ *
+ * **시안과 갈린 것 ②**: 시안에 `추출`(`yield_ml`) 슬롯이 없다 — 핸드드립 예시만 그려서 생긴 공백이고,
+ * 같은 스키마로 에스프레소도 기록된다(그쪽은 추출량이 핵심 수치다). 그래서 **값이 있을 때만 슬롯을
+ * 보탠다** — 핸드드립 노트에서는 시안과 정확히 같은 6칸(4 + span 2)이 나오고, 에스프레소는 `추출`이
+ * 한 칸 늘어 격자가 3의 배수로 다시 맞는다.
+ *
+ * 마지막 `분쇄도 · 기구` 칸이 남은 열을 채운다 — 앞의 칸들은 전부 1칸이라 순서가 곧 열 위치이고,
+ * 그래서 테두리 규칙(3n번째의 오른쪽 선 제거)이 span이 있어도 성립한다.
  */
-function RecipeBlock({ recipe }: { recipe: Recipe }) {
-  const stats = [
-    recipe.dose_g !== null && { label: '원두', value: `${recipe.dose_g}g` },
-    recipe.water_ml !== null && { label: '물', value: `${recipe.water_ml}ml` },
-    recipe.yield_ml !== null && { label: '추출', value: `${recipe.yield_ml}ml` },
-    recipe.time_sec !== null && { label: '시간', value: formatSeconds(recipe.time_sec) },
-    recipe.temp_c !== null && { label: '물온도', value: `${recipe.temp_c}℃` },
-    recipe.grind !== null && { label: '분쇄도', value: recipe.grind },
-  ].filter((stat) => stat !== false)
+function Stats({ recipe }: { recipe: Recipe }) {
+  const cells: { label: string; value: string | null }[] = [{ label: '원두', value: unit(recipe.dose_g, 'g') }]
+  if (recipe.water_ml !== null || recipe.yield_ml === null) {
+    cells.push({ label: '물', value: unit(recipe.water_ml, 'ml') })
+  }
+  if (recipe.yield_ml !== null) {
+    cells.push({ label: '추출', value: unit(recipe.yield_ml, 'ml') })
+  }
+  cells.push({ label: '시간', value: recipe.time_sec === null ? null : formatSeconds(recipe.time_sec) })
+  cells.push({ label: '물온도', value: unit(recipe.temp_c, '℃') })
 
-  const rows = [
-    recipe.machine !== null && { label: '기구', value: recipe.machine },
+  // 수치가 하나도 없는 레시피(문장만 남긴 기록)는 격자를 통째로 접는다 — `—`만 다섯 칸 세우지 않는다.
+  if (cells.every((cell) => cell.value === null) && recipe.grind === null && recipe.machine === null) {
+    return null
+  }
+
+  const rest = cells.length % 3
+  return (
+    <div className="brew__stats">
+      {cells.map((cell) => (
+        <div className="stat" key={cell.label}>
+          <div className="stat__label">{cell.label}</div>
+          <div className={cell.value === null ? 'stat__value stat__value--absent' : 'stat__value'}>
+            {cell.value ?? '—'}
+          </div>
+        </div>
+      ))}
+      <div className="stat" style={{ gridColumn: `span ${rest === 0 ? 3 : 3 - rest}` }}>
+        <div className="stat__label">{grindLabel(recipe)}</div>
+        <div className="stat__pair">
+          {recipe.grind === null && recipe.machine === null ? (
+            <div className="stat__value stat__value--absent">—</div>
+          ) : (
+            <>
+              {/* 기구만 있으면 그것이 이 칸의 값이다 — 라벨도 함께 바뀐다(grindLabel). */}
+              <div className="stat__value">{recipe.grind ?? recipe.machine}</div>
+              {recipe.grind !== null && recipe.machine !== null && (
+                <div className="stat__machine">{recipe.machine}</div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function grindLabel(recipe: Recipe): string {
+  if (recipe.grind === null && recipe.machine !== null) {
+    return '기구'
+  }
+  return recipe.machine === null ? '분쇄도' : '분쇄도 · 기구'
+}
+
+/** 문장류는 격자에 넣지 않는다 — 길이가 제각각이라 칸에 갇히면 읽히지 않는다(시안의 별도 블록). */
+function sentenceRows(recipe: Recipe): { label: string; value: string }[] {
+  return [
     recipe.pouring !== null && { label: '푸어링', value: recipe.pouring },
     recipe.feedback !== null && { label: '관찰', value: recipe.feedback },
   ].filter((row) => row !== false)
+}
 
-  return (
-    <>
-      {stats.length > 0 && (
-        <div className="brew__stats">
-          {stats.map((stat) => (
-            <div className="stat" key={stat.label}>
-              <div className="stat__label">{stat.label}</div>
-              <div className="stat__value">{stat.value}</div>
-            </div>
-          ))}
-        </div>
-      )}
-      {rows.length > 0 && (
-        <div className="detail__meta">
-          {rows.map((row) => (
-            <div className="detail__row" key={row.label}>
-              <div className="detail__label">{row.label}</div>
-              <div className="detail__value">{row.value}</div>
-            </div>
-          ))}
-        </div>
-      )}
-    </>
-  )
+function unit(value: number | null, suffix: string): string | null {
+  return value === null ? null : `${value}${suffix}`
 }
 
 /**
  * 출처는 `user`가 아닐 때만 보여준다 — 캡처 폼(`DraftForm`)과 같은 규칙·같은 어휘다.
  *
- * 저장된 뒤에도 값을 남긴 것은 *"이 로스팅 표기는 내가 적은 게 아니라 봉투 사진에서 읽은 것"*이 신뢰를
- * 가르는 정보이기 때문이다(사용자 확정 2026-08-01). 사용자 자신이 넣은 값에 배지를 다는 것은 소음이라
- * 하지 않는다.
+ * **시안과 갈린 것 ①**: 시안에는 출처 표시가 없다. 그래도 두는 것은 *"이 로스팅 표기는 내가 적은 게
+ * 아니라 봉투 사진에서 읽은 것"*이 신뢰를 가르는 정보이기 때문이고(사용자 확정 2026-08-01, TΔ13a),
+ * 시안이 정본인 범위와 부딪히지 않게 **값보다 작고 약하게** 붙인다 — TΔ12에서 필터 바가 시안보다
+ * 나중의 델타 확정을 따른 것과 같은 판단이다.
  */
 function SourceMark({ source }: { source?: Source }) {
   if (source === undefined || source === 'user') {
@@ -277,18 +346,14 @@ function SourceMark({ source }: { source?: Source }) {
 
 const SOURCE_LABELS: Record<string, string> = { photo: '사진', search: '검색' }
 
-/** `2026-07-02` → `2026. 7. 2` — 카드 시안의 날짜 표기다. 형식이 아니면 받은 값을 그대로 쓴다. */
+/** `2026-07-02` → `2026. 7. 2` — 시안의 날짜 표기다. 형식이 아니면 받은 값을 그대로 쓴다. */
 function formatDate(date: string): string {
   const matched = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date)
   return matched === null ? date : `${matched[1]}. ${Number(matched[2])}. ${Number(matched[3])}`
 }
 
-/** 160 → `2분 40초`. 분이 없으면 초만 쓴다 — 에스프레소의 27초를 `0분 27초`로 읽게 하지 않는다. */
+/** 160 → `2:40` — 시안의 콜론 표기다. 에스프레소의 27초도 같은 형태로 `0:27`이 된다. */
 function formatSeconds(seconds: number): string {
   const minutes = Math.floor(seconds / 60)
-  const rest = seconds % 60
-  if (minutes === 0) {
-    return `${rest}초`
-  }
-  return rest === 0 ? `${minutes}분` : `${minutes}분 ${rest}초`
+  return `${minutes}:${String(seconds % 60).padStart(2, '0')}`
 }
