@@ -266,9 +266,15 @@ public class NoteTxService {
     }
 
     private void insertBrews(long entryId, List<Brew> brews) {
-        for (int seq = 0; seq < brews.size(); seq++) {
+        appendBrews(entryId, brews, 0);
+    }
+
+    // 시작 seq를 받는 것은 날짜 이동 병합 하나 때문이다 — 그때만 이동처의 기존 회차 뒤로 이어 붙는다(D-12).
+    private void appendBrews(long entryId, List<Brew> brews, int startSeq) {
+        for (int i = 0; i < brews.size(); i++) {
+            int seq = startSeq + i;
             long brewId = notes.insertAndFlush(new BrewEntity(entryId, seq)).getId();
-            Brew brew = brews.get(seq);
+            Brew brew = brews.get(i);
             // 레시피·감상이 없는 회차는 행을 만들지 않는다 — 1:1 짝은 brew_id PK 공유로만 표현된다(V-15).
             RecipeEntity recipe = NoteEntityMapper.toRecipeEntity(brewId, brew.recipe());
             TastingEntity tasting = NoteEntityMapper.toTastingEntity(brewId, brew.tasting());
@@ -380,21 +386,24 @@ public class NoteTxService {
 
     /**
      * 엔트리 교체 — {@code targetDate} 엔트리의 회차를 {@code entry}의 것으로 갈아끼우고, 필요하면 날짜를
-     * 옮긴다 (ref: plan.md#ADR-27·ADR-59, V-10, changes/0012).
+     * 옮긴다 (ref: plan.md#ADR-27·ADR-59, V-10 개정본, changes/0029 delta.md#D-12).
      * <ul>
-     *   <li>{@code entry.date()}가 {@code targetDate}와 다르면 날짜 이동 — 이동처 date에 기존 엔트리가
-     *       있으면 그 엔트리를 덮어쓰고 원본 {@code targetDate} 엔트리는 제거한다(엔트리 총수 1 감소, V-10).
+     *   <li>{@code entry.date()}가 {@code targetDate}와 다르면 날짜 이동 — 이동처 date가 <b>비어 있으면</b>
+     *       {@code tasted_on} 갱신이고, <b>이미 기록이 있으면</b> 그날의 회차 뒤로 합친다(엔트리 총수 1 감소).
      *       날짜 오름차순 정렬은 유지된다.</li>
-     *   <li>엔트리 <b>행은 살아남는다</b> — 이동은 삭제 후 재삽입이 아니라 {@code tasted_on} 갱신이라
-     *       {@code created_at}이 보존된다(재기록 경로 {@link #commit}과 갈리는 지점).</li>
+     *   <li>이동처가 빈 경우 엔트리 <b>행은 살아남는다</b> — 삭제 후 재삽입이 아니라 {@code tasted_on}
+     *       갱신이라 {@code created_at}이 보존된다(재기록 경로 {@link #commit}과 갈리는 지점).</li>
      * </ul>
      *
      * <p><b>검증 셋을 먼저 통과시킨다</b>(노트 존재 → 대상 엔트리 존재). 어느 하나라도 걸리면 <b>쓰기를
      * 시작하기 전에</b> 던지므로 부분 반영이 남지 않는다.
      *
-     * <p>대상 엔트리 존재는 조회한 도메인이 아니라 <b>행으로</b> 확인한다({@code findEntry}). 로드 경계
-     * 위생(ADR-66)이 회차 0개 엔트리를 드롭할 수 있어(V-15) 도메인으로 판정하면 <b>행은 있는데 소실로
-     * 보이는</b> 갈래가 생긴다 — 고칠 대상이 무엇인지는 행이 답한다.
+     * <p>대상 엔트리 존재는 조회한 도메인이 아니라 <b>행으로</b> 확인한다. 로드 경계 위생(ADR-66)이 회차
+     * 0개 엔트리를 드롭할 수 있어(V-15) 도메인으로 판정하면 <b>행은 있는데 소실로 보이는</b> 갈래가 생긴다
+     * — 고칠 대상이 무엇인지는 행이 답한다.
+     *
+     * <p>갈래에 따라 대상 엔트리를 <b>다른 접근자로</b> 집는 것은 {@code findEntryId}·{@code findEntry}의
+     * 계약 그대로다: 병합에서 원본은 <b>지울 것</b>이고(id만), 그 밖에서는 <b>고칠 것</b>이다(관리되는 엔티티).
      *
      * @throws IllegalStateException 대상 노트 또는 {@code targetDate} 엔트리 소실 시
      *                               (호출부가 안내로 수렴, plan §7).
@@ -404,28 +413,44 @@ public class NoteTxService {
         if (notes.findById(noteId).isEmpty()) {
             throw new IllegalStateException("수정 대상 노트 소실: " + noteId);
         }
-        EntryEntity target = notes.findEntry(noteId, targetDate)
-                .orElseThrow(() -> new IllegalStateException("수정 대상 엔트리 소실: " + noteId + " " + targetDate));
+        LocalDate movedTo = entry.date();
+        Optional<Long> collision = movedTo.equals(targetDate)
+                ? Optional.empty()
+                : notes.findEntryId(noteId, movedTo);
 
-        moveEntry(noteId, target, targetDate, entry.date());
-        replaceBrews(target.getId(), entry.brews());
+        if (collision.isPresent()) {
+            mergeIntoExisting(collision.get(), requireEntryId(noteId, targetDate), entry.brews());
+        } else {
+            EntryEntity target = notes.findEntry(noteId, targetDate)
+                    .orElseThrow(() -> missingEntry(noteId, targetDate));
+            target.updateTastedOn(movedTo);
+            replaceBrews(target.getId(), entry.brews());
+        }
         return reload(noteId);
     }
 
-    // POLICY: 날짜 이동으로 이동처 date에 기존 엔트리가 있으면 그 엔트리를 덮어쓰고 원본 date는 제거한다 —
-    //         엔트리 총수 1 감소. 경고 표기는 미리보기(V-10 전반부)의 몫
-    //         (ref: specs/coffee-note-agent/data-model.md#V-10).
-    // 이동은 행 교체가 아니라 tasted_on UPDATE다 — 같은 기록이 다른 날짜에 놓이는 것이므로 행이 살아남아야
-    // created_at이 보존된다(교체였다면 매번 새로 발급된다 — 재기록 경로가 치르는 대가).
-    // 이동처를 먼저 비우는 순서는 파일 구현과 갈리는 지점이다: 파일은 목록을 메모리에서 재조립해 한 번에
-    // 썼지만 DB는 중간 상태에서 UNIQUE(note_id, tasted_on)를 검사하고, Hibernate의 flush 순서가
-    // INSERT → UPDATE → DELETE라 em.remove()에 맡기면 이동 UPDATE가 아직 살아 있는 행과 부딪힌다.
-    private void moveEntry(long noteId, EntryEntity target, LocalDate targetDate, LocalDate movedTo) {
-        if (movedTo.equals(targetDate)) {
-            return;
-        }
-        notes.findEntryId(noteId, movedTo).ifPresent(notes::deleteEntry);
-        target.updateTastedOn(movedTo);
+    // POLICY: 날짜 이동으로 이동처 date에 기존 엔트리가 있으면 덮어쓰지 않고 그날의 회차 뒤로 합친다 —
+    //         기존이 앞, 옮겨 온 것이 뒤이고 seq는 이어서 발급된다. 엔트리 총수는 1 감소하고,
+    //         화면은 경고가 아니라 안내를 띄운다(잃는 것이 없다)
+    //         (ref: specs/coffee-note-agent/changes/0029-app-interface/delta.md#D-12, data-model.md#V-10).
+    // 구 규칙(이동처를 통째로 대체)은 회차 도입(ADR-59) 이전에 쓰인 것이고 그 재편에서 갱신되지 않았다 —
+    // 회차 배열 위에서는 "그날의 N회차를 전부 지운다"는 뜻이 돼 있었다. 캡처 경로가 같은 상황("이 날짜에
+    // 이미 기록이 있다")에 append로 답하는 것과 갈릴 이유가 없다(ADR-4·59).
+    // 살아남는 행은 이동처 엔트리다 — 합쳐지는 자리는 그날의 기록이고, 그 created_at이 그날 첫 기록이
+    // 만들어진 시각이다. 옮겨 온 쪽은 회차로 흡수되므로 엔트리 행으로 남을 자리가 없다.
+    // UNIQUE(note_id, tasted_on)를 지나지 않는다는 점도 갈린다: 병합에는 tasted_on UPDATE가 없어
+    // 중간 상태 자체가 생기지 않는다(무충돌 이동만이 그 순서를 지는 갈래다).
+    private void mergeIntoExisting(long destinationId, long sourceId, List<Brew> brews) {
+        notes.deleteEntry(sourceId);
+        appendBrews(destinationId, brews, (int) notes.countBrews(destinationId));
+    }
+
+    private long requireEntryId(long noteId, LocalDate targetDate) {
+        return notes.findEntryId(noteId, targetDate).orElseThrow(() -> missingEntry(noteId, targetDate));
+    }
+
+    private static IllegalStateException missingEntry(long noteId, LocalDate targetDate) {
+        return new IllegalStateException("수정 대상 엔트리 소실: " + noteId + " " + targetDate);
     }
 
     /**

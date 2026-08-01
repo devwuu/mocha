@@ -329,6 +329,14 @@ class NoteEntityRepositoryCustomImpl implements NoteEntityRepositoryCustom {
     }
 
     @Override
+    public long countBrews(long entryId) {
+        Long count = query.select(brewEntity.count()).from(brewEntity)
+                .where(brewEntity.entryId.eq(entryId))
+                .fetchOne();
+        return count == null ? 0L : count;
+    }
+
+    @Override
     public List<String> findPhotoPaths(long noteId) {
         return query.select(notePhotoEntity.path).from(notePhotoEntity)
                 .where(notePhotoEntity.noteId.eq(noteId))

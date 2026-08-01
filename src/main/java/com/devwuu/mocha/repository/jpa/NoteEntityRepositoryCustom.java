@@ -167,6 +167,18 @@ public interface NoteEntityRepositoryCustom {
     void deleteEntry(long entryId);
 
     /**
+     * 그 엔트리에 이미 붙어 있는 회차 수 — <b>이어붙일 다음 {@code seq}의 시작점</b>
+     * (ref: changes/0029 tasks.md TΔ5b-1, delta.md#D-12).
+     *
+     * <p>회차를 <b>더하는</b> 경로는 날짜 이동 병합 하나뿐이다 — 재기록(ADR-4·59)도 수정({@code
+     * replaceEntry})도 모델이 구성한 배열로 통째 교체하므로 시작점이 언제나 0이다. 이동만은 이동처의 회차를
+     * 남긴 채 뒤로 잇기 때문에({@code UNIQUE(entry_id, seq)}) 그 수를 물어야 한다.
+     *
+     * <p>{@code seq}가 0부터 빈 칸 없이 발급되므로 개수가 곧 다음 번호다({@link #countPhotos}와 같은 성질).
+     */
+    long countBrews(long entryId);
+
+    /**
      * 그 노트에 딸린 사진 경로 전부 — {@code (tasted_on, seq)} 오름차순, 없으면 빈 목록
      * (ref: changes/0029 tasks.md TΔ8b).
      *
