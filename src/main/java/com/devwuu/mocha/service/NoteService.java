@@ -4,6 +4,7 @@ import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
+import com.devwuu.mocha.domain.NoteCandidate;
 import com.devwuu.mocha.domain.NoteMeta;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.llm.AliasGenerator;
@@ -59,6 +60,21 @@ public class NoteService {
     /** id로 노트 조회. 없으면 빈 Optional. */
     public Optional<Note> findById(long id) {
         return noteTxService.findById(id);
+    }
+
+    /**
+     * 매칭 후보 검색 — 변경 시트가 쓰는 조회 (ref: changes/0029 tasks.md TΔ7).
+     *
+     * <p>외부 IO가 없어 위임 한 줄이다(delta D-9 — 상위 계층이 잡는 타입을 하나로 유지하는 대가).
+     *
+     * <p><b>이 검색은 모델을 지나지 않는다</b>(사용자 확정 2026-08-01). 사용자가 시트를 연 시점은
+     * <i>에이전트의 매칭 판정이 틀렸다</i>는 신호이므로, 거기서 다시 모델을 부르면 방금 틀린 판정기를
+     * 되부르는 셈이다. 이 델타가 하네스를 확률적 영역에서 결정론적 영역으로 옮기는 것이기도 하다
+     * (delta.md §6). 에이전트 쪽 매칭 경로는 {@code list_notes} tool이 따로 소유하고 — 그쪽은 검색어 없이
+     * 전건을 모델에 넘긴다 — <b>둘은 같은 질의가 아니다.</b>
+     */
+    public List<NoteCandidate> findCandidates(String query) {
+        return noteTxService.findCandidates(query);
     }
 
     // ────────────────────────────── 커밋 ──────────────────────────────

@@ -5,8 +5,15 @@
   "request_query_blank": {
     "q": ""
   },
+  "sort_axes": ["coffee_name", "roastery", "latest_date desc"],
   "response": {
     "candidates": [
+      {
+        "note_id": 3,
+        "coffee_name": "게뎁 워시드",
+        "roastery": null,
+        "latest_date": null
+      },
       {
         "note_id": 12,
         "coffee_name": "에티오피아 게뎁",
@@ -14,16 +21,16 @@
         "latest_date": "2026-07-28"
       },
       {
+        "note_id": 21,
+        "coffee_name": "에티오피아 게뎁",
+        "roastery": "프릳츠",
+        "latest_date": "2026-07-02"
+      },
+      {
         "note_id": 7,
         "coffee_name": "에티오피아 게뎁 G1",
         "roastery": "프릳츠",
         "latest_date": "2026-06-14"
-      },
-      {
-        "note_id": 3,
-        "coffee_name": "게뎁 워시드",
-        "roastery": null,
-        "latest_date": null
       }
     ]
   },

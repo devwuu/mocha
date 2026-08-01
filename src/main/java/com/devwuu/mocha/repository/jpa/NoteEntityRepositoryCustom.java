@@ -1,9 +1,11 @@
 package com.devwuu.mocha.repository.jpa;
 
+import com.devwuu.mocha.domain.NoteCandidate;
 import com.devwuu.mocha.repository.entity.EntryEntity;
 
 import java.time.LocalDate;
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -24,6 +26,37 @@ public interface NoteEntityRepositoryCustom {
      * ({@code noteIds → entryIds → brewIds})은 질의 배관이라 여기서 닫는다.
      */
     NoteChildRows findChildRows(Collection<Long> noteIds);
+
+    /**
+     * 매칭 후보 검색 — 변경 시트가 부르는 유일한 질의 (ref: changes/0029 tasks.md TΔ7).
+     *
+     * <p><b>대조 축은 셋이고 전부 정규화 기준이다</b>: 커피명·로스터리·별칭. 별칭이 축인 것이 이 질의의
+     * 값이다 — {@code 예가체프 G1}·{@code 예가체프 지1}·{@code 예가체프 G-1}이 한 노트에 심겨 있으므로
+     * (V-13, ADR-37) 사용자가 어느 표기로 치든 같은 노트가 잡혀야 한다. 커피명 원문만 보면 못 잡는다.
+     *
+     * <p>정렬은 <b>커피명 → 로스터리 → 최근 시음일 내림차순</b>이다(사용자 확정 2026-08-01). 관련도
+     * 순위(완전일치 → prefix → 부분일치)는 <b>의도적으로 두지 않았다</b> — 이 스키마에는 그것을 표현할
+     * 수단이 없고(임베딩·{@code pg_trgm}·{@code tsvector} 전부 부재, 인덱스는 B-tree 둘뿐), SQL로 흉내 내면
+     * 이름만 관련도이고 실질은 문자열 매칭인 코드가 남아 임베딩 도입 시 걷어내야 한다.
+     * <b>재론 트리거</b>: 관련도가 실제로 필요해지면 단계를 늘리지 말고 임베딩으로 간다(루트 CLAUDE.md §4).
+     *
+     * <p>앞 두 축이 <b>정규화 컬럼</b>인 것은 표기 흔들림(대소문자·공백)으로 목록 순서가 갈리지 않게 하기
+     * 위해서다. 인덱스 이득은 아니다 — 실측하면 집계 뒤에 Sort 노드가 서고, 부분일치({@code like %…%})는
+     * 선행 와일드카드라 B-tree가 애초에 못 탄다. <b>0028의 인덱스 둘이 여기서 하는 일은 대조 기준을
+     * 제공하는 것까지</b>이고({@code note_alias}의 UNIQUE가 상관 서브쿼리의 {@code note_id} 조회는 받는다),
+     * 전건 스캔이 문제가 되는 규모가 아니다(1인용·노트 수십 건). 그 규모가 바뀌면 그때 답은 인덱스가
+     * 아니라 위에 적은 임베딩이다.
+     *
+     * <p>3축(최근 시음일)이 실제로 발동하는 경우는 드물다 — 노트 정체성이 {@code coffee_name + roastery}라
+     * 앞 두 축이 대개 유일하게 결정하고, 남는 것은 <b>로스터리가 없는 동명 노트가 여럿</b>일 때다.
+     *
+     * <p><b>{@code Note}가 아니라 사영을 돌려주는 이유</b>: 자식 8질의(={@link #findChildRows})가 통째로
+     * 빠진다. 시트는 노트를 고르는 화면이라 3단 중첩을 한 줄도 쓰지 않는다.
+     *
+     * @param normalizedQuery {@code Aliases.normalize()}를 지난 검색어. <b>빈 문자열이면 필터 없이 전건</b>
+     *                        — 커피명이 아직 안 뽑힌 상태에서도 시트가 쓸모 있어야 한다(TΔ11 계약).
+     */
+    List<NoteCandidate> findCandidates(String normalizedQuery);
 
     /**
      * 생성 id가 <b>즉시 필요한</b> 행 하나를 넣는다 — {@code entry}·{@code brew}처럼 자식이 그 id를 컬럼으로

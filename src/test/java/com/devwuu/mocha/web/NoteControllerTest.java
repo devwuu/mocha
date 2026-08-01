@@ -6,6 +6,7 @@ import com.devwuu.mocha.config.CommonConfig;
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
+import com.devwuu.mocha.domain.NoteCandidate;
 import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.json.MochaObjectMapper;
@@ -30,9 +31,12 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -64,6 +68,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class NoteControllerTest {
 
     private static final String CONTRACT = "/contract/note-commit.contract.json";
+    private static final String CANDIDATES_CONTRACT = "/contract/note-candidates.contract.json";
 
     private final JsonMapper mapper = MochaObjectMapper.create();
 
@@ -164,6 +169,67 @@ class NoteControllerTest {
         perform(contract.get("request"), status().isConflict());
     }
 
+    // ────────────────────────────── GET /api/notes/candidates (TΔ7) ──────────────────────────────
+
+    @Test
+    @DisplayName("TΔ7: 후보 응답이 계약 파일과 바이트 단위로 같다 — 시트가 읽는 필드명이 여기서 정해진다")
+    void candidateResponseMatchesTheContract() throws Exception {
+        JsonNode candidates = load(CANDIDATES_CONTRACT).get("response").get("candidates");
+        noteService.candidates = candidates.valueStream().map(NoteControllerTest::toCandidate).toList();
+
+        String body = mockMvc.perform(get("/api/notes/candidates").param("q", "게뎁"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+
+        // note_id·coffee_name·roastery·latest_date의 snake_case와 null 표현이 한 번에 대조된다 —
+        // LocalDate가 배열([2026,7,28])로 나가는 흔한 사고도 여기서 걸린다.
+        assertThat(mapper.readTree(body)).isEqualTo(load(CANDIDATES_CONTRACT).get("response"));
+    }
+
+    @Test
+    @DisplayName("TΔ7: q가 그대로 서비스에 닿는다 — 좁히는 일의 소유자는 서버다")
+    void queryReachesTheService() throws Exception {
+        mockMvc.perform(get("/api/notes/candidates").param("q", "예가체프 지1"))
+                .andExpect(status().isOk());
+
+        // 정규화도 대조도 전부 아래에서 일어난다 — 컨트롤러가 손대면 별칭 축이 그만큼 좁아진다.
+        assertThat(noteService.lastQuery).isEqualTo("예가체프 지1");
+    }
+
+    @Test
+    @DisplayName("TΔ7: q 없는 요청도 200 — 커피명이 아직 안 뽑힌 상태에서 시트가 열린다")
+    void missingQueryIsAValidRequest() throws Exception {
+        String body = mockMvc.perform(get("/api/notes/candidates"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+
+        assertThat(noteService.lastQuery).isNull();
+        assertThat(mapper.readTree(body).get("candidates")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("TΔ7: 후보 없음은 404가 아니라 빈 목록이다 — 그 자리에 [새 노트로 등록]이 있어야 한다")
+    void noCandidatesIsAnEmptyListNotAnError() throws Exception {
+        noteService.candidates = List.of();
+
+        String body = mockMvc.perform(get("/api/notes/candidates").param("q", "케냐"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+
+        assertThat(mapper.readTree(body)).isEqualTo(load(CANDIDATES_CONTRACT).get("response_empty"));
+    }
+
+    /** 계약 파일의 후보 1건을 도메인으로 되돌린다 — fake가 값을 지어내지 않게 하는 규율(왕복의 거울). */
+    private static NoteCandidate toCandidate(JsonNode node) {
+        JsonNode roastery = node.get("roastery");
+        JsonNode latestDate = node.get("latest_date");
+        return new NoteCandidate(
+                node.get("note_id").asLong(),
+                node.get("coffee_name").stringValue(),
+                roastery.isNull() ? null : roastery.stringValue(),
+                latestDate.isNull() ? null : LocalDate.parse(latestDate.stringValue()));
+    }
+
     private String perform(JsonNode request, ResultMatcher expected) throws Exception {
         return mockMvc.perform(post("/api/notes")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -204,6 +270,8 @@ class NoteControllerTest {
         int calls;
         Note lastDraft;
         MatchInfo lastMatch;
+        String lastQuery;
+        List<NoteCandidate> candidates = List.of();
 
         RecordingNoteService() {
             super(null, null);
@@ -215,6 +283,14 @@ class NoteControllerTest {
             calls = 0;
             lastDraft = null;
             lastMatch = null;
+            lastQuery = null;
+            candidates = List.of();
+        }
+
+        @Override
+        public List<NoteCandidate> findCandidates(String query) {
+            lastQuery = query;
+            return candidates;
         }
 
         @Override

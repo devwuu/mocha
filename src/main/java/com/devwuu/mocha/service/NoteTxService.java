@@ -4,6 +4,7 @@ import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Brew;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
+import com.devwuu.mocha.domain.NoteCandidate;
 import com.devwuu.mocha.domain.NoteMeta;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.repository.NoteEntityMapper;
@@ -78,6 +79,28 @@ public class NoteTxService {
     @Transactional(readOnly = true)
     public Optional<Note> findById(long id) {
         return notes.findById(id).map(row -> assemble(List.of(row)).getFirst());
+    }
+
+    /**
+     * 매칭 후보 검색 — 변경 시트가 쓰는 조회 (ref: changes/0029 tasks.md TΔ7·TΔ11).
+     *
+     * <p><b>검색어를 여기서 정규화하는 것이 이 메서드의 실질이다</b>: 대조 대상인
+     * {@code coffee_name_normalized}·{@code note_alias.normalized} 컬럼은 {@link Aliases#normalize}가
+     * 만든 값이므로, 검색어도 <b>같은 함수</b>를 지나야 같은 기준에서 만난다. 다른 데서 소문자화·공백
+     * 제거를 다시 짜면 그 순간 두 기준이 갈린다 — 규칙의 소유자를 하나로 두는 자리다.
+     *
+     * <p>정규화가 곧 표기 흔들림 흡수다: {@code "예가체프 G1"}·{@code "예가체프g1"}·{@code "예가체프 g1"}이
+     * 전부 같은 키({@code 예가체프g1})로 수렴한다.
+     *
+     * <p>결과는 {@link Note}가 아니라 납작한 사영이라 자식 8질의를 지나지 않는다 — 근거는
+     * {@link NoteCandidate} javadoc이 소유한다. 정렬 규칙과 그 근거는
+     * {@code NoteEntityRepositoryCustom#findCandidates}가 소유한다.
+     *
+     * @param query 사용자가 친 검색어 원문. null·공백이면 전건을 계약 정렬로 돌려준다.
+     */
+    @Transactional(readOnly = true)
+    public List<NoteCandidate> findCandidates(String query) {
+        return notes.findCandidates(Aliases.normalize(query));
     }
 
     // ────────────────────────────── 커밋 ──────────────────────────────

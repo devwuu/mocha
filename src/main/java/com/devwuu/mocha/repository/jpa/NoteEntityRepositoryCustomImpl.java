@@ -10,10 +10,15 @@ import static com.devwuu.mocha.repository.entity.QNoteSourceEntity.noteSourceEnt
 import static com.devwuu.mocha.repository.entity.QRecipeEntity.recipeEntity;
 import static com.devwuu.mocha.repository.entity.QTastingEntity.tastingEntity;
 
+import com.devwuu.mocha.domain.NoteCandidate;
 import com.devwuu.mocha.repository.entity.BrewEntity;
 import com.devwuu.mocha.repository.entity.EntryEntity;
 import com.devwuu.mocha.repository.entity.RecipeEntity;
 import com.devwuu.mocha.repository.entity.TastingEntity;
+import com.querydsl.core.types.Predicate;
+import com.querydsl.core.types.Projections;
+import com.querydsl.core.types.dsl.BooleanExpression;
+import com.querydsl.jpa.JPAExpressions;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import jakarta.persistence.EntityManager;
 
@@ -84,6 +89,57 @@ class NoteEntityRepositoryCustomImpl implements NoteEntityRepositoryCustom {
                         : query.selectFrom(recipeEntity).where(recipeEntity.brewId.in(brewIds)).fetch(),
                 brewIds.isEmpty() ? List.<TastingEntity>of()
                         : query.selectFrom(tastingEntity).where(tastingEntity.brewId.in(brewIds)).fetch());
+    }
+
+    @Override
+    public List<NoteCandidate> findCandidates(String normalizedQuery) {
+        return query
+                .select(Projections.constructor(NoteCandidate.class,
+                        noteEntity.id,
+                        noteEntity.coffeeName.value,
+                        noteEntity.roastery.value,
+                        // 엔트리가 없는 노트는 여기가 null이다 — 그래서 join이 left다(inner면 그 노트가
+                        // 후보에서 통째로 빠지는데, 삭제 직후가 정확히 그 상태다).
+                        entryEntity.tastedOn.max()))
+                .from(noteEntity)
+                .leftJoin(entryEntity).on(entryEntity.noteId.eq(noteEntity.id))
+                .where(matches(normalizedQuery))
+                // 노트마다 엔트리 수만큼 행이 불어난 것을 다시 접는다. 별칭 축을 join이 아니라 exists로
+                // 둔 것도 같은 이유고(아래), 그쪽은 접을 필요조차 없게 만든 것이다.
+                .groupBy(noteEntity.id, noteEntity.coffeeName.value, noteEntity.roastery.value,
+                        noteEntity.coffeeNameNormalized, noteEntity.roasteryNormalized)
+                // 표시값이 아니라 정규화 컬럼으로 정렬한다 — 같은 커피의 표기 흔들림(대소문자·공백)으로
+                // 목록 순서가 갈리지 않는다. 인덱스 이득은 아니다(실측: 집계 뒤 Sort 노드가 선다).
+                .orderBy(noteEntity.coffeeNameNormalized.asc(),
+                        // NULLS LAST를 명시한다 — 로스터리 미상·시음 기록 없음을 뒤로 보낸다. Postgres
+                        // 기본값은 ASC에서 LAST, DESC에서 FIRST라 아래 줄은 안 적으면 뒤집힌다.
+                        noteEntity.roasteryNormalized.asc().nullsLast(),
+                        entryEntity.tastedOn.max().desc().nullsLast())
+                .fetch();
+    }
+
+    /**
+     * 검색 대조 — 커피명·로스터리·별칭 셋 중 하나라도 걸리면 후보다. 빈 검색어는 필터 없음(전건).
+     *
+     * <p>별칭만 {@code exists} 서브쿼리인 것은 <b>행이 불어나는 축이라서</b>다: 노트 하나에 별칭이 여럿
+     * 걸리므로 join하면 같은 노트가 여러 줄이 된다. 위 {@code groupBy}가 접어 주긴 하지만, 걸리는지만
+     * 알면 되는 축을 굳이 실어 왔다 접을 이유가 없다.
+     *
+     * <p>{@code contains}는 Querydsl이 {@code like %…%}로 옮기며 {@code %}·{@code _}를 이스케이프한다 —
+     * 사용자가 친 {@code %}가 와일드카드로 새지 않는다({@code NoteTxServiceCandidatesTest}가 박는다).
+     */
+    private static Predicate matches(String normalizedQuery) {
+        if (normalizedQuery == null || normalizedQuery.isEmpty()) {
+            return null;
+        }
+        BooleanExpression aliasHit = JPAExpressions.selectOne().from(noteAliasEntity)
+                .where(noteAliasEntity.noteId.eq(noteEntity.id),
+                        noteAliasEntity.normalized.contains(normalizedQuery))
+                .exists();
+        return noteEntity.coffeeNameNormalized.contains(normalizedQuery)
+                // 로스터리 정규화는 nullable — SQL에서 null LIKE는 null(=거짓)이라 별도 가드가 필요 없다.
+                .or(noteEntity.roasteryNormalized.contains(normalizedQuery))
+                .or(aliasHit);
     }
 
     @Override

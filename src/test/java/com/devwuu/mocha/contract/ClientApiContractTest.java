@@ -156,6 +156,52 @@ class ClientApiContractTest {
     }
 
     @Test
+    @DisplayName("TΔ7: 정렬 축은 커피명 → 로스터리 → 최근 시음일 내림차순이고, 예시가 그 순서로 있다")
+    void candidatesAreSortedByTheDeclaredAxes() throws IOException {
+        JsonNode contract = load(NOTE_CANDIDATES_CONTRACT);
+
+        // POLICY: 관련도 순위를 두지 않는다(사용자 확정 2026-08-01, TΔ7) — 이 스키마에 그것을 표현할
+        //         수단이 없고(임베딩·pg_trgm·tsvector 부재), SQL로 흉내 내면 이름만 관련도이고 실질은
+        //         문자열 매칭인 코드가 남아 임베딩 도입 시 걷어내야 한다.
+        //         재론 트리거: 관련도가 실제로 필요해지면 단계를 늘리지 말고 임베딩으로 간다(루트 §4).
+        assertThat(contract.get("sort_axes").valueStream().map(JsonNode::stringValue))
+                .containsExactly("coffee_name", "roastery", "latest_date desc");
+
+        // 예시가 규칙을 어기면 계약이 두 가지를 말하게 된다 — 시트를 만드는 쪽은 예시를 먼저 본다.
+        List<JsonNode> candidates = contract.get("response").get("candidates").valueStream().toList();
+        for (int i = 1; i < candidates.size(); i++) {
+            assertThat(sortKey(candidates.get(i - 1)))
+                    .as("계약 예시 %d번이 선언한 정렬 축을 어긴다", i)
+                    .isLessThan(sortKey(candidates.get(i)));
+        }
+        // 축 ②·③이 실물로 박혀 있어야 한다 — 동명 다른 로스터리는 싱글 오리진에서 흔한 형태이고(TΔ11),
+        // 그 쌍이 예시에 없으면 로스터리 축은 문장으로만 존재한다.
+        List<String> names = candidates.stream().map(node -> node.get("coffee_name").stringValue()).toList();
+        assertThat(names.stream().distinct().count())
+                .as("동명 후보 쌍이 예시에 있어야 축 ②가 실물로 드러난다 — 이름들: %s", names)
+                .isLessThan(names.size());
+    }
+
+    /**
+     * 계약 예시의 정렬 키 — {@code Aliases.normalize}(소문자 + 공백 제거)를 흉내 내고 날짜는 내림차순이라
+     * 보수를 취한다. 표본이 한글로만 돼 있어 Java 문자열 순서와 Postgres collation이 갈리지 않는다.
+     */
+    private static String sortKey(JsonNode candidate) {
+        String coffeeName = normalize(candidate.get("coffee_name").stringValue());
+        String roastery = candidate.get("roastery").isNull() ? "￿"
+                : normalize(candidate.get("roastery").stringValue());
+        // null latest_date도 뒤로(NULLS LAST) — 내림차순이라 "작을수록 뒤"의 방향이 뒤집힌다.
+        String date = candidate.get("latest_date").isNull() ? ""
+                : String.valueOf(99999999 - Integer.parseInt(
+                        candidate.get("latest_date").stringValue().replace("-", "")));
+        return coffeeName + ' ' + roastery + ' ' + date;
+    }
+
+    private static String normalize(String value) {
+        return value.toLowerCase().replaceAll("\\s+", "");
+    }
+
+    @Test
     @DisplayName("TΔ6b: 취소 통지는 본문이 없다 — 무엇을 취소하는지는 서버가 안다(사용자당 트랜스크립트 1건)")
     void cancelCarriesNoBodyInEitherDirection() throws IOException {
         JsonNode contract = load(AGENT_CANCEL_CONTRACT);

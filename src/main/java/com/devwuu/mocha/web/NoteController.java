@@ -2,20 +2,27 @@ package com.devwuu.mocha.web;
 
 import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
 import com.devwuu.mocha.domain.Note;
+import com.devwuu.mocha.domain.NoteCandidate;
 import com.devwuu.mocha.service.NoteService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 /**
- * {@code POST /api/notes} — 폼 확정 저장(= 구 Slack [저장] 버튼)
- * (ref: changes/0029 tasks.md TΔ6b, plan.md#ADR-3·#ADR-4;
- * 계약 정본 {@code src/test/resources/contract/note-commit.contract.json}).
+ * 노트 REST 표면 — {@code POST /api/notes}(폼 확정 저장, TΔ6b)와
+ * {@code GET /api/notes/candidates}(매칭 후보 검색, TΔ7)
+ * (ref: changes/0029 tasks.md, plan.md#ADR-3·#ADR-4;
+ * 계약 정본 {@code src/test/resources/contract/note-commit.contract.json}·
+ * {@code note-candidates.contract.json}).
  *
  * <p><b>TΔ4에서 열린 기록 공백이 여기서 닫힌다.</b> pending이 사라지며 Slack [저장]이 성립하지 않게 됐고,
  * 그 뒤로 저장 경로가 아예 없었다. 이 컨트롤러가 그 자리를 대신한다.
@@ -85,6 +92,34 @@ public class NoteController {
             log.warn("저장 실패(폼 유지): coffeeName={}", coffeeNameOf(request), e);
             return ResponseEntity.internalServerError().build();
         }
+    }
+
+    /**
+     * 매칭 후보 검색 — 변경 시트가 열릴 때와 검색어가 바뀔 때 부른다(TΔ7, 계약 TΔ11).
+     *
+     * <p><b>후보 없음은 오류가 아니라 빈 목록이다</b> — 그때 사용자의 다음 행동이 [새 노트로 등록]이고,
+     * 그 버튼은 시트 안에 있다. 404로 답하면 화면이 그 자리를 그리지 못한다.
+     *
+     * <p>{@code q}는 선택이다. 빈 값이면 전건을 계약 정렬로 돌려준다 — 커피명이 아직 안 뽑힌 상태에서도
+     * 시트가 쓸모 있어야 한다는 것이 화면이 정한 계약이다(TΔ11).
+     *
+     * <p>정렬·대조 규칙을 여기서 짜지 않는다(백엔드 CLAUDE.md §2): 무엇을 어떤 순서로 돌려줄지는
+     * {@code NoteEntityRepositoryCustom#findCandidates}가 소유하고, 이 메서드가 하는 일은 파싱·위임·
+     * 응답 변환뿐이다.
+     */
+    @GetMapping("/candidates")
+    public Candidates candidates(@RequestParam(name = "q", required = false) String q) {
+        return new Candidates(noteService.findCandidates(q));
+    }
+
+    /**
+     * 후보 응답 — 배열을 벌거벗겨 내보내지 않고 객체로 감싼다.
+     *
+     * <p>최상위 JSON 배열은 나중에 필드(페이징 커서·총계)를 더할 자리가 없어 그때 <b>깨는 변경</b>이 된다.
+     * 갤러리(TΔ12)가 페이징을 요구할지는 아직 화면이 답하지 않았고, 감싸는 쪽은 그 답이 무엇이든 가산
+     * 변경으로 흡수한다.
+     */
+    public record Candidates(List<NoteCandidate> candidates) {
     }
 
     /** 실패 로그의 식별 단서 — 커피명은 draft 안에서 불변이라(V-9) 재시도 요청과 짝지을 수 있다. */
