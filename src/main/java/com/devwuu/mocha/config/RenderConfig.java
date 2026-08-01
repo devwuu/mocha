@@ -27,9 +27,11 @@ public class RenderConfig {
 
     // POLICY: mocha.* 키는 코드 default를 갖는다 — 설정 부재로 기동이 막히지 않는다
     // (ref: specs/coffee-note-agent/plan.md#ADR-50 POLICY). 값은 plan §5 문서값(./artifact)과 일치시킨다.
-    // 산출 루트를 읽는 두 빈(여기 noteRenderer · RouterConfig의 toolCallbackProvider)이 이 상수 하나를 공유한다 —
-    // 리터럴 2벌이면 한쪽만 바뀌었을 때 렌더러가 쓴 카드를 조회 tool이 다른 디렉터리에서 찾아 "카드 없음"이 되고
-    // 전 테스트는 그린으로 남는다(changes/0025 CR25-9, RepositoryConfig.DEFAULT_DATA_DIR 선례).
+    // 종전에는 두 빈(여기 noteRenderer · 구 RouterConfig의 toolCallbackProvider)이 이 상수를 공유했다 —
+    // 리터럴 2벌이면 한쪽만 바뀌었을 때 렌더러가 쓴 카드를 조회 tool이 다른 디렉터리에서 찾아 "카드 없음"이
+    // 되고 전 테스트는 그린으로 남기 때문이다(changes/0025 CR25-9). 0029 TΔ1에서 조회 tool의 카드 송신
+    // (send_entry_card)이 폐기되며 산출 디렉터리 주입이 끊겨 **지금 읽는 곳은 렌더러 하나**다. 상수는
+    // 유지한다 — TΔ9가 카드를 온디맨드로 되돌리면 두 번째 소비자가 다시 생긴다.
     static final String DEFAULT_ARTIFACT_DIR = "${mocha.artifact.dir:./artifact}";
 
     /** 오프라인 실행용 Thymeleaf 엔진. 테스트도 이 팩토리를 재사용해 프로덕션과 같은 해석 규칙을 쓴다. */

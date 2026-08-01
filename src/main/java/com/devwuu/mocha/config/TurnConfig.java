@@ -6,32 +6,27 @@ import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
 import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
 import com.devwuu.mocha.agent.turn.TurnRunner;
-import com.devwuu.mocha.llm.PhotoInfoExtractor;
 import com.devwuu.mocha.llm.UtteranceSegmenter;
 import com.devwuu.mocha.service.NoteService;
-import com.devwuu.mocha.repository.PhotoBufferStore;
-import com.devwuu.mocha.repository.PhotoStore;
-import com.devwuu.mocha.slack.inbound.PhotoDownloader;
-import com.devwuu.mocha.slack.inbound.SlackPhotoIntake;
-import com.devwuu.mocha.slack.outbound.SlackResponder;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.Clock;
-import java.time.Duration;
 
 /**
- * 에이전트 턴 협력자 빈 배선 — 라우터({@code AgentConversationRouter}) 생성자 안 조립을 config로
- * 이관해, 라우터는 조립된 협력자를 주입만 받는다 (ref: plan.md#ADR-63, changes/0024 TΔ1b1·TΔ1b2).
+ * 에이전트 턴 협력자 빈 배선 — 구 라우터({@code AgentConversationRouter}) 생성자 안 조립을 config로
+ * 이관해, 호출부는 조립된 협력자를 주입만 받는다 (ref: plan.md#ADR-63, changes/0024 TΔ1b1·TΔ1b2).
  * <p>{@code AgentConfig}(루프 드라이버·트랜스크립트 — 설정 키 default 가드 대상)와 분리해, 도메인
  * 협력자 조립이 이 한 클래스에서 읽히게 한다.
+ * <p><b>이름은 0029 TΔ16에서 {@code RouterConfig}에서 바뀌었다</b> — 라우터가 사라져서가 아니라, 이미
+ * TΔ6a부터 라우터 전용이 아니었기 때문이다(그때 {@link TurnRunner}가 REST 컨트롤러와 공용이 됐고, 개명
+ * 시점을 여기로 미뤄 뒀다). 이 config가 조립하는 것은 <b>전송 계층이 아니라 턴</b>이다.
  * <p>POLICY: 내부 협력자 조립·전역 인스턴스(Clock·ObjectMapper) 생성은 config/가 소유 —
- * 수신·라우터·tool 계층에서 협력자 new·전역 인스턴스 자체 생성 금지 (ref: plan.md#ADR-63).
+ * 전송·tool 계층에서 협력자 new·전역 인스턴스 자체 생성 금지 (ref: plan.md#ADR-63).
  */
 @Configuration
-public class RouterConfig {
+public class TurnConfig {
 
     // 제안 검증 진입점 — 0029 TΔ1 이후 record 하나뿐이다(수정은 UI 전용, delta 0029 D-1). V-16 연도 없는
     // 표기 해석 기준 시계만 주입받는 순수 협력자다.
@@ -60,9 +55,9 @@ public class RouterConfig {
         return new ToolCallbackProvider(noteService, mapper, recordProposalValidator, clock);
     }
 
-    // 에이전트 턴 실행부(ADR-44·61·64) — 0029 TΔ6a에서 라우터 안에서 뽑혀 나왔다. 전송 계층이 둘이
-    // 되면서(Slack 라우터·REST 컨트롤러) 턴의 정의를 한 곳에 두어야 했다. 협력자는 종전 라우터가 받던
-    // 것 그대로이고, 라우터에는 Slack이라서 있는 것(수신·응답·사진 버퍼)만 남았다.
+    // 에이전트 턴 실행부(ADR-44·61·64) — 0029 TΔ6a에서 구 Slack 라우터 안에서 뽑혀 나왔다. 전송 계층이
+    // 둘이 되면서(Slack 라우터·REST 컨트롤러) 턴의 정의를 한 곳에 두어야 했고, TΔ16에서 Slack이 걷힌
+    // 뒤로는 REST 컨트롤러가 유일한 호출부다. 뽑아 둔 값은 그대로다 — 턴은 여전히 전송 계층 밖에 있다.
     @Bean
     public TurnRunner turnRunner(
             FoldingChatMemory transcript,
@@ -75,18 +70,7 @@ public class RouterConfig {
                 segmenter, clock);
     }
 
-    // 사진 수신 배관(FR-10·ADR-29·31) — 라우터(버퍼 그룹핑·OCR)가 쓴다. TΔ4에서 pending 주입이 빠졌다:
-    // "진행 중 노트가 있으면 스테이징, 없으면 버퍼" 분기의 판정 입력이 서버에서 사라졌다(아래 intake 주석).
-    @Bean
-    public SlackPhotoIntake slackPhotoIntake(
-            SlackResponder responder,
-            PhotoDownloader photoDownloader,
-            PhotoStore photoStore,
-            PhotoBufferStore photoBufferStore,
-            PhotoInfoExtractor photoInfoExtractor,
-            @Value("${mocha.photo.buffer-window:10m}") Duration bufferWindow,
-            Clock clock) {
-        return new SlackPhotoIntake(responder, photoDownloader, photoStore, photoBufferStore,
-                photoInfoExtractor, bufferWindow, clock);
-    }
+    // 0029 TΔ16: 사진 수신 배관(SlackPhotoIntake) 빈이 사라졌다 — 다운로드·버퍼 그룹핑(FR-10)·HEIC 썸네일
+    // 대체가 전부 Slack 파일 메타에 기대던 것이라 REST에 존재할 수 없다. 포맷 게이트(ADR-29)·스테이징·
+    // OCR 전처리는 TΔ8a가 업로드 API 자리에서 다시 세운다(delta D-11).
 }

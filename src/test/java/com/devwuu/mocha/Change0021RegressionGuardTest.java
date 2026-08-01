@@ -28,8 +28,9 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  *   <li>카드 4:5(1080×1350) JPG 산출 — {@link com.devwuu.mocha.render.PlaywrightCardImageRendererTest},
  *       {@link com.devwuu.mocha.render.ThymeleafNoteRendererTest}(템플릿 뷰포트),
  *       Chromium 실렌더 스모크 2종(Taste/RecipeCardChromiumSmokeTest)</li>
- *   <li>[저장] 배달 경로(AC-17) — {@link com.devwuu.mocha.slack.SlackCommitHandlerTest}
- *       (커밋 → 증분 렌더 → 카드 배달, 부분 폴백 포함)</li>
+ *   <li>~~[저장] 배달 경로(AC-17)~~ — 버튼 커밋 체인이 changes/0029 TΔ4에서 폐기됐고 Slack 계층은
+ *       TΔ16에서 삭제됐다. 저장 확정은 {@link com.devwuu.mocha.web.NoteControllerTest}가 가드하고,
+ *       카드 배달은 온디맨드 공유로 형태가 바뀌어 TΔ9가 그 자리를 다시 세운다.</li>
  *   <li>~~send_entry_card 재전송~~ — tool이 changes/0029 TΔ1에서 폐기됐다(갤러리·상세 화면이 대체).</li>
  *   <li>하루 엔트리 2개 금지(AC-14) — {@link com.devwuu.mocha.repository.JsonFileNoteRepositoryTest}
  *       (같은 날 재기록 시 엔트리 수 불변)</li>

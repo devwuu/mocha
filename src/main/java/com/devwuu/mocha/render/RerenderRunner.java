@@ -13,8 +13,9 @@ import org.springframework.stereotype.Component;
  * CLI 진입점 — {@code --rerender}로 실행하면 JSON에서 전체 리렌더만 하고 종료한다 (ref: tasks T5-1, plan.md §7).
  * <p>렌더 실패로 데이터가 상하는 일은 없으므로(ADR-1), artifact/를 지운 뒤나 스키마/디자인을 바꾼 뒤 수동 복구용으로 쓴다.
  * <p>{@code rerender} 프로파일에서만 활성화된다({@code MochaApplication}이 {@code --rerender}를 보고 프로파일을 켠다).
- * 이 프로파일에서는 {@code SlackGateway}가 배제되어({@code @Profile("!rerender")}) 소켓을 열지 않는다 —
- * 상주 인스턴스와 별개로 안전하게 리렌더만 돌릴 수 있다.
+ * 이 프로파일에서는 웹 서버가 뜨지 않아({@code spring.main.web-application-type: none}) 포트를 물지 않는다 —
+ * 상주 인스턴스와 별개로 안전하게 리렌더만 돌릴 수 있다. 구 배제 대상은 Slack 소켓이었고, TΔ16에서
+ * 그쪽이 사라진 뒤로 상주 자원은 웹 서버 하나다.
  */
 @Component
 @Profile("rerender")

@@ -17,16 +17,11 @@ import com.devwuu.mocha.llm.VisionClient;
 import com.devwuu.mocha.render.CardImageRenderer;
 import com.devwuu.mocha.render.NoteRenderer;
 import com.devwuu.mocha.render.Theme;
-import com.devwuu.mocha.repository.JsonFilePhotoBufferStore;
 import com.devwuu.mocha.repository.LocalPhotoStore;
 import com.devwuu.mocha.service.NoteService;
 import com.devwuu.mocha.service.NoteTxService;
-import com.devwuu.mocha.repository.PhotoBufferStore;
 import com.devwuu.mocha.repository.PhotoStore;
 import com.devwuu.mocha.repository.jpa.NoteEntityRepository;
-import com.devwuu.mocha.slack.inbound.PhotoDownloader;
-import com.devwuu.mocha.slack.inbound.SlackPhotoIntake;
-import com.devwuu.mocha.slack.outbound.SlackResponder;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -179,16 +174,16 @@ class ConfigDefaultsTest {
     }
 
     @Test
-    @DisplayName("AC-Δ4(changes/0025 TΔ4a): RepositoryConfig가 mocha.data.dir로 저장소 3종을 띄운다")
+    @DisplayName("AC-Δ4(changes/0025 TΔ4a): RepositoryConfig가 mocha.data.dir로 사진 저장소를 띄운다")
     void repositoryBeansWireFromDataDir() {
         // R-1: 저장소 배선은 `mocha.data.dir` 하나에서 경로가 파생된다(plan §5·CLAUDE.md §3) — 어긋나면
         // 앱 기동 시점에야 드러났다. 생성자는 파일 I/O를 하지 않아 실제 디렉터리는 생기지 않는다.
         // 0029 TΔ4: pending 저장소 빈과 mocha.pending.ttl 변환 단언이 함께 사라졌다(대상 폐기).
+        // 0029 TΔ16: photo buffer 빈도 사라졌다 — 남은 파일 매체 저장소는 사진 하나다(3종 → 1종).
         repositoryRunner()
                 .withPropertyValues("mocha.data.dir=build/test-data")
                 .run(context -> {
                     assertThat(context.getBean(PhotoStore.class)).isInstanceOf(LocalPhotoStore.class);
-                    assertThat(context.getBean(PhotoBufferStore.class)).isInstanceOf(JsonFilePhotoBufferStore.class);
                     // 사진 경로는 여전히 설정 키에서만 파생된다(CLAUDE.md §3) — 하드코딩 회귀를 여기서 잡는다.
                     assertThat(ReflectionTestUtils.getField(context.getBean(PhotoStore.class), "photosDir"))
                             .isEqualTo(Path.of("build/test-data/photos"));
@@ -230,22 +225,19 @@ class ConfigDefaultsTest {
     }
 
     @Test
-    @DisplayName("AC-Δ4(changes/0025 TΔ4a): RouterConfig가 협력자 스텁만으로 턴 배선 5종을 조립한다")
-    void routerBeansAssembleFromCollaborators() {
+    @DisplayName("AC-Δ4(changes/0025 TΔ4a): TurnConfig가 협력자 스텁만으로 턴 배선 4종을 조립한다")
+    void turnBeansAssembleFromCollaborators() {
         // R-1: 0024 TΔ1b가 라우터 생성자 안 조립을 이 config로 이관했다(ADR-63) — 주입 지점이 늘어난 만큼
         // 배선 누락이 기동 실패로만 드러난다. 협력자는 전부 스텁이라 이 테스트는 "조립되는가"만 본다.
         // 0029 TΔ4: 커밋 핸들러 빈이 pending과 함께 사라져 5종 → 4종이다(저장 확정은 TΔ6b REST가 가져간다).
-        // 0029 TΔ6a: 턴 실행부(TurnRunner)가 라우터에서 빠져 빈이 됐다 — 다시 5종이고, 전송 계층 둘이
-        //            (Slack 라우터·REST 컨트롤러) 이 하나를 주입받는다.
-        routerRunner().run(context -> {
+        // 0029 TΔ6a: 턴 실행부(TurnRunner)가 라우터에서 빠져 빈이 됐다 — 다시 5종.
+        // 0029 TΔ16: 사진 수신 배관(SlackPhotoIntake) 빈이 Slack과 함께 사라져 4종이고, 남은 넷은 전부
+        //            전송 계층에 무관한 턴 협력자다(config 이름이 TurnConfig로 바뀐 이유이기도 하다).
+        turnRunner().run(context -> {
             assertThat(context.getBean(RecordProposalValidator.class)).isNotNull();
             assertThat(context.getBean(TurnPromptAssembler.class)).isNotNull();
             assertThat(context.getBean(ToolCallbackProvider.class)).isNotNull();
             assertThat(context.getBean(TurnRunner.class)).isNotNull();
-
-            SlackPhotoIntake photoIntake = context.getBean(SlackPhotoIntake.class);
-            // 버퍼 창(FR-10·ADR-31)은 이 config만 default를 선언한다 — 미설정 기동을 함께 박는다.
-            assertThat(ReflectionTestUtils.getField(photoIntake, "bufferWindow")).isEqualTo(Duration.ofMinutes(10));
         });
     }
 
@@ -270,15 +262,12 @@ class ConfigDefaultsTest {
     }
 
     // 턴 협력자 배선 러너 — 의존 빈을 스텁으로 채운다(인터페이스는 Proxy, 구체 클래스는 무해한 실인스턴스).
-    private static ApplicationContextRunner routerRunner() {
+    // 0029 TΔ16: 사진 협력자 4종(responder·downloader·store·buffer·extractor)이 함께 빠졌다 —
+    // 그것들을 받던 빈이 Slack과 같이 사라졌고, 남은 넷은 사진을 모른다.
+    private static ApplicationContextRunner turnRunner() {
         return isolatedRunner()
-                .withUserConfiguration(RouterConfig.class)
+                .withUserConfiguration(TurnConfig.class)
                 .withBean(NoteService.class, () -> new NoteService(null, null))
-                .withBean(SlackResponder.class, () -> stub(SlackResponder.class))
-                .withBean(PhotoDownloader.class, () -> stub(PhotoDownloader.class))
-                .withBean(PhotoStore.class, () -> stub(PhotoStore.class))
-                .withBean(PhotoBufferStore.class, () -> stub(PhotoBufferStore.class))
-                .withBean(PhotoInfoExtractor.class, () -> new PhotoInfoExtractor(null, 4))
                 .withBean(FoldingChatMemory.class, () -> new FoldingChatMemory(20, Duration.ofHours(1),
                         Clock.systemUTC()))
                 // 0029 TΔ6a: 턴 실행부가 빈이 되며 루프 드라이버·세그먼터가 이 러너의 협력자로 올라왔다

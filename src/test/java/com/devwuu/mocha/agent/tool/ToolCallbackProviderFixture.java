@@ -14,7 +14,7 @@ import java.time.Clock;
  * 한 줄로 끝나고, 지정하지 않은 협력자를 실행 경로가 건드리면 NPE로 즉시 드러난다(fake를 조용히 끼워
  * 넣어 미접촉 전제를 가리지 않는다).
  * <p>예외는 기록 검증기다 — 제안 tool을 쓰는 테스트가 전부 같은 줄을 반복하던 자리라 프로덕션
- * 배선(RouterConfig)과 같은 조합을 기본값으로 만든다: {@link #clock(Clock)} 지정 시 파생된다. 다른
+ * 배선(TurnConfig)과 같은 조합을 기본값으로 만든다: {@link #clock(Clock)} 지정 시 파생된다. 다른
  * 검증기가 필요하면 {@link #recordValidator(RecordProposalValidator)}로 덮는다. 수정 검증기는
  * {@code propose_edit}과 함께 폐기됐고(0029 TΔ1), pending 저장소·미리보기 송신은 제안이 서버 상태를
  * 쓰지 않게 되며 협력자 목록에서 빠졌다(0029 TΔ4).

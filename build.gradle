@@ -54,11 +54,8 @@ dependencies {
 	annotationProcessor 'jakarta.annotation:jakarta.annotation-api'
 	annotationProcessor 'jakarta.persistence:jakarta.persistence-api'
 
-	// Slack Socket Mode 수신 (ref: plan.md#ADR-2). bolt-socket-mode가 bolt·slack-api-client 추이 포함
-	implementation 'com.slack.api:bolt-socket-mode:1.49.0'
-	// Socket Mode WebSocket 백엔드. bolt-socket-mode는 WS 클라이언트 구현을 포함하지 않아 별도 필요(기본 Tyrus는 javax.websocket 의존).
-	// 단일 jar·무추이인 Java-WebSocket을 골라 Backend.JavaWebSocket으로 구동한다(SlackGateway). ADR-2 필수 런타임.
-	implementation 'org.java-websocket:Java-WebSocket:1.6.0'
+	// Slack SDK 2종(bolt-socket-mode·Java-WebSocket)은 changes/0029 TΔ16에서 제거됐다 — 앱이 입구를
+	// 가져가며 ADR-2(Socket Mode 수신)의 전제가 만료됐고, 지속 연결 비용도 함께 사라졌다(delta D-3·D-10 ①).
 
 	// OpenAI 클라이언트 — LlmClient/SearchClient 구현체 뒤에만 존재 (ref: plan.md#ADR-5)
 	// raw SDK로 시작. Spring AI 2.0 GA + web search production 지원 시 구현체 내부 교체 재검토 (ADR-5 재검토 트리거)

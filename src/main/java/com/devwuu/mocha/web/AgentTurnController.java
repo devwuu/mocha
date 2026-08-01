@@ -86,7 +86,8 @@ public class AgentTurnController {
      * (단일 사용자 전제, {@link SingleUser}) 서버에는 취소할 draft가 애초에 없다.
      *
      * <p>버린 사진 스테이징 정리는 아직 여기 없다 — 구 {@code SlackCommitHandler.cancel}이 함께 하던 일인데
-     * 스테이징이 아직 Slack 배관이다. TΔ8a에서 업로드가 REST로 오면 그때 이 자리에 붙는다.
+     * TΔ16에서 사진 입구 자체가 사라져 <b>지금은 취소할 스테이징이 생기지 않는다</b>. TΔ8a에서 업로드가
+     * REST로 서는 그때 이 자리에 붙는다.
      */
     @PostMapping("/cancel")
     public ResponseEntity<Void> cancel() {

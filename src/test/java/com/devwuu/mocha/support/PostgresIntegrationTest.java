@@ -30,9 +30,8 @@ import org.springframework.test.context.TestPropertySource;
 @SpringBootTest
 @ActiveProfiles("test")
 @Import(PostgresIntegrationTest.FreshTestSchema.class)
-// 실 Slack 소켓에 연결하지 않도록 토큰을 빈 값으로 덮는다 — .env.local의 실토큰이 주입되면
-// SmartLifecycle 시작 시 Socket Mode 연결을 시도한다.
-@TestPropertySource(properties = {"mocha.slack.bot-token=", "mocha.slack.app-token="})
+// 0029 TΔ16: Slack 토큰 오버라이드가 사라졌다 — 컨텍스트 기동이 실 소켓을 여는 경로 자체가 없다.
+// (구 주석: .env.local의 실토큰이 주입되면 SmartLifecycle 시작 시 Socket Mode 연결을 시도했다.)
 public abstract class PostgresIntegrationTest {
 
     /**

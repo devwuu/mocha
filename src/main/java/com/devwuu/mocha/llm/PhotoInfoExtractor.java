@@ -16,9 +16,10 @@ import java.util.List;
  * {@code mocha.vision.max-images}를 넘는 초과분은 호출에 넣지 않는다 — 초과분도 저장(첨부)은 상위
  * 오케스트레이션이 그대로 유지한다(AC-Δ6). 빈 필드 채움·출처 마킹(source=photo)·검색 보강 순서는 상위가 맡고,
  * 여기서는 <b>읽기</b>만 한다.
- * <p>Slack {@code url_private}는 봇 토큰 인증이 필요해 OpenAI가 직접 못 읽으므로, 로컬 스테이징 바이트를
- * {@code data:<mime>;base64,...} URI로 인코딩해 {@link VisionClient#read} 계약({@code imageUrls})에 실어
- * 보낸다(findings-TΔ0 ①, 시그니처 불변).
+ * <p>모델에 URL을 주지 않는다 — 로컬 스테이징 바이트를 {@code data:<mime>;base64,...} URI로 인코딩해
+ * {@link VisionClient#read} 계약({@code imageUrls})에 실어 보낸다(findings-TΔ0 ①, 시그니처 불변).
+ * 구 근거는 Slack {@code url_private}의 봇 토큰 인증이었고, 앱 업로드로 바뀐 뒤로는 사진에 외부 접근
+ * 가능한 URL 자체가 없다는 것이 근거다.
  * <p>POLICY: 수신 사진 OCR은 1콜 멀티이미지·실패 허용 — 실패·무정보 시 빈 결과, 상위는 첨부로만 진행(흐름 불변)
  * (ref: plan.md#ADR-23, AC-Δ5). {@link VisionClient} 구현이 이미 실패를 {@link VisionExtraction#empty()}로
  * 수렴시키지만, 여기서도 방어적으로 감싸 어떤 예외도 파이프라인으로 새지 않게 한다.

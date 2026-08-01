@@ -15,14 +15,14 @@
 구현 클래스는 **무엇에 의존하는지 이름만 보고 알 수 있어야 한다.**
 
 - 외부 서비스·기술에 의존하는 구현체는 그 대상을 접두어로 명명한다.
-  - 예: `OpenAiChatClient`, `ThymeleafNoteRenderer`, `PlaywrightCardImageRenderer`, `LocalPhotoStore`, `JsonFilePhotoBufferStore`
+  - 예: `OpenAiChatClient`, `ThymeleafNoteRenderer`, `PlaywrightCardImageRenderer`, `LocalPhotoStore`
   - 나쁜 예: `ChatClientImpl`, `DefaultNoteRepository`, `NoteRepositoryImpl` — `Impl`/`Default` 접두·접미어는 의존 정보를 숨기므로 금지.
   - **예외: 프레임워크가 이름을 강제하는 자리.** Spring Data의 custom fragment 구현체는 `<FragmentInterface>Impl`이어야 인식된다(`NoteEntityRepositoryCustomImpl`) — 이름을 바꾸면 배선이 끊긴다. 규칙의 목적이 "의존을 숨기지 말 것"인데 여기서는 프레임워크 규약이 곧 의존 정보다. 같은 부류가 아닌 자리에서 `Impl`을 쓰면 그대로 금지다.
 - 클래스 내부에서도 외부 의존(HTTP 클라이언트, 파일 시스템, 프로세스 실행 등)은 필드·생성자 시그니처에 드러나야 한다. 메서드 깊숙한 곳에서 몰래 `new`로 외부 자원을 만들지 않는다.
 - **표준·프레임워크에 대응 개념이 있으면 그 용어를 따른다.** 우리가 만드는 타입이 Spring AI(또는 Spring, JDK)의 기존 개념과 같은 역할이면 자체 조어를 만들지 말고 대응되는 이름을 쓴다.
   - 예: LLM 대화 호출 경계는 `ChatClient`, 툴 정의 공급은 `ToolCallback`/`ToolCallbackProvider`, 모델 호출은 `ChatModel` — Spring AI 용어와 1:1로 읽히게 한다.
   - 나쁜 예: 같은 역할에 `LlmCaller`, `PromptExecutor`, `FunctionSpecHolder` 같은 자체 조어를 붙이는 것. 프레임워크 문서·스택트레이스와 어휘가 어긋나 대응 관계를 매번 추론해야 한다.
-  - 단, 역할이 실제로 다르면 표준 이름을 억지로 빌려 오지 않는다(같은 이름 다른 의미가 더 나쁘다). 우리 도메인 고유 개념(`PhotoBufferStore`, `NoteFolderName` 등)은 도메인 어휘를 쓴다.
+  - 단, 역할이 실제로 다르면 표준 이름을 억지로 빌려 오지 않는다(같은 이름 다른 의미가 더 나쁘다). 우리 도메인 고유 개념(`NoteFolderName`, `TurnProposalSink` 등)은 도메인 어휘를 쓴다.
 
 **리뷰 질문**: 이 클래스 이름만 보고 뭘 쓰는지 알 수 있는가? 숨은 외부 의존이 있는가? 표준(Spring AI 등)에 이미 같은 역할의 이름이 있는데 자체 조어를 쓰고 있지는 않은가?
 
@@ -34,14 +34,15 @@
 |---|---|---|
 | LLM 호출 | `ChatClient`, `VisionClient`, `AliasGenerator` | 모델/프로바이더 교체 가능성, 테스트 격리 |
 | LLM 호출 (세그먼터) | `UtteranceSegmenter` | 다중 날짜 발화의 날짜별 분리 전용 전처리(plan ADR-61, changes/0023) — 모델/프로바이더 교체 가능성, 테스트 격리 |
-| 저장 (사진) | `PhotoBufferStore`, `PhotoStore` | 저장 방식 교체 가능성(NFR-4), 테스트 격리 |
-| 메시지 송수신 (Slack) | `SlackResponder`, `PhotoDownloader`, `ConversationRouter` | 외부 서비스 경계, 테스트 격리 |
+| 저장 (사진) | `PhotoStore` | 저장 방식 교체 가능성(NFR-4), 테스트 격리 |
 | 렌더링 | `NoteRenderer`, `CardImageRenderer` | 템플릿/렌더링 엔진 경계 |
 
 이 표 밖의 새 인터페이스는 **기본적으로 반려**한다. 정말 필요하면 이 표에 행을 추가하는 변경(사유 포함)과 함께 온다.
 
 **단, 경계 *안쪽*의 인터페이스는 이 표의 대상이 아니다.** 판별 기준은 개수가 아니라 **"상위 계층이 이 인터페이스를 아는가"**다. `NoteEntityRepository`·`NoteEntityRepositoryCustom`(changes/0028 ADR-73)은 Spring Data가 프록시를 만들기 위해 요구하는 선언이고 `NoteTxService` 안쪽에만 있다 — 교체 가능성을 위한 추상화가 아니므로 행을 늘리지 않는다. 반대로 상위 계층이 타입을 직접 잡는 순간 그것은 새 경계이고 이 표를 통과해야 한다.
 
+> **전송 계층 경계가 표에서 사라졌다** (changes/0029 TΔ16). 구 *"메시지 송수신 (Slack)"* 행(`SlackResponder`·`PhotoDownloader`·`ConversationRouter`)은 Slack 계층과 함께 삭제됐다. 앱은 REST 컨트롤러(`web/`)로 말을 받고 HTTP로 답하므로 **송수신을 감쌀 인터페이스 자체가 없다** — Spring MVC가 그 경계이고, 그 위에 우리 추상을 한 겹 더 얹는 것은 §2가 반려하는 부류다. `PhotoBufferStore`도 같은 델타에서 소멸했다(사진 버퍼는 Slack 배관이었다 — delta D-3).
+>
 > **노트 저장에는 인터페이스가 없다** (changes/0029 TΔ4b·TΔ4c, plan ADR-76·77). `NoteRepository` 포트는 제거됐고 상위 계층은 `NoteService`(외부 IO 오케스트레이션)를 잡는다 — 그 아래는 `NoteTxService`(한 트랜잭션 단위) → `NoteEntityRepository`(행)이고, 변환·조립은 층이 아니라 `NoteEntityMapper`(순수 함수)다. 이 표가 답하는 질문(*"이 인터페이스를 지우고 구현 클래스를 직접 쓰면 뭐가 나빠지는가"*)에 그 포트는 **"없다"**로 답했다: 매체 교체 근거는 changes/0028에서 실현돼 소진됐고(AC-Δ1 — 파일→DB 전면 교체에 상위 계층 테스트 무변경), 테스트 격리 근거는 `NoteService` seam으로 옮겨갔다. **저장 축에 새 인터페이스를 되살리려면 ADR-76의 재론 트리거를 통과해야 한다.**
 
 이 표가 허용 경계 목록의 **단일 소유 지점**이다 — 다른 문서(`src/main/java/CLAUDE.md` §2 등)는 이 표를 참조만 하고 인터페이스 이름을 중복 나열하지 않는다(문서 간 드리프트 방지).
@@ -64,9 +65,9 @@
 
 - **헥사고날·클린 아키텍처식 계층 분리를 도입하지 않는다.** port/adapter, usecase/interactor, application/infrastructure 같은 계층 패키지·명명을 만들지 않는다. §2의 인터페이스 경계면 충분하다.
   - **`NoteService`/`NoteTxService` 2단은 확정된 예외**다(changes/0029 ADR-77). 이것은 계층 패턴 도입이 아니라 **이미 존재하던 `@Transactional` 경계에 이름을 붙인 것**이고, 분할 축이 *"이 로직이 한 트랜잭션 안에 있어야 하는가"*라는 예/아니오 질문이라 검증 가능하다. 덕분에 *"트랜잭션 안에서 외부 호출 금지"*(백엔드 `CLAUDE.md` §3)가 규칙이 아니라 구조로 지켜진다 — 외부 콜은 위층에만 있다. **같은 논리로 다른 축(읽기/쓰기, 도메인/응용 등)의 계층을 늘리는 것은 여전히 지적 대상이다.**
-- **일반 도메인 모델링(엔티티-VO-애그리게잇-도메인서비스 구분, 리치 도메인 모델)을 하지 않는다.** `domain/` 패키지는 노트 구조를 그대로 반영하는 record 중심의 데이터 홀더로 유지한다. 로직은 그 데이터를 쓰는 쪽(agent, render, slack)에 둔다.
+- **일반 도메인 모델링(엔티티-VO-애그리게잇-도메인서비스 구분, 리치 도메인 모델)을 하지 않는다.** `domain/` 패키지는 노트 구조를 그대로 반영하는 record 중심의 데이터 홀더로 유지한다. 로직은 그 데이터를 쓰는 쪽(agent, render, service, web)에 둔다.
 - 매퍼 계층·DTO 변환 계층을 습관적으로 추가하지 않는다. 같은 데이터를 표현하는 클래스가 두 벌 생기면 그 자체가 리뷰 지적 대상이다(뷰 전용 가공이 실제로 필요한 `NoteView` 같은 경우만 예외).
-  - **JPA 엔티티(`repository/entity/`)와 `NoteEntityMapper`는 확정된 예외**다(changes/0028 TΔ3a·TΔ3c). 도메인 record를 엔티티로 바꾸지 않기로 한 결과이고 — 그랬다면 영속 관심사(`@Entity`·getter·기본 생성자·가변성)가 `domain/`으로 새고 §7 "불변 우선"이 깨진다 — 두 벌이 생긴 대가로 변환기가 왕복 동치성 테스트를 진다. **엔티티 추가는 스키마 변경과 함께 오는 것이 정상**이니 중복이라고 flag하지 않는다. 이 예외는 도메인↔영속에 한정된다: tool 인자·Slack 블록·뷰에 같은 논리로 계층을 늘리는 것은 여전히 지적 대상이다.
+  - **JPA 엔티티(`repository/entity/`)와 `NoteEntityMapper`는 확정된 예외**다(changes/0028 TΔ3a·TΔ3c). 도메인 record를 엔티티로 바꾸지 않기로 한 결과이고 — 그랬다면 영속 관심사(`@Entity`·getter·기본 생성자·가변성)가 `domain/`으로 새고 §7 "불변 우선"이 깨진다 — 두 벌이 생긴 대가로 변환기가 왕복 동치성 테스트를 진다. **엔티티 추가는 스키마 변경과 함께 오는 것이 정상**이니 중복이라고 flag하지 않는다. 이 예외는 도메인↔영속에 한정된다: tool 인자·API 요청/응답 DTO·뷰에 같은 논리로 계층을 늘리는 것은 여전히 지적 대상이다.
 - 새 인프라(캐시, 큐, 웹서버, 검색엔진)는 코드 리뷰가 아니라 spec 논의 단계의 문제다. 코드에 먼저 나타나면 반려. DB는 changes/0028이 그 절차를 거쳐 들였으므로 **Postgres·JPA·Flyway 자체는 반려 사유가 아니다** — 다만 스키마 변경이 Flyway 마이그레이션 없이 엔티티만 고쳐 들어오면 그것은 flag 대상이다(`ddl-auto: validate`가 기동에서 깨진다).
 
 **리뷰 질문**: 이 구조가 "1인용 로컬 앱"에서 실제로 관측된 문제를 푸는가, 아니면 관성적인 패턴 적용인가?
@@ -74,7 +75,7 @@
 ## 5. 패키지는 응집 단위로 작게
 
 - 한 패키지가 **대략 10개 파일을 넘으면 분리 신호**로 본다. 숫자 자체보다 "서로 다른 관심사가 섞여 있는가"가 기준이다.
-  - 좋은 선례: `slack/` → `slack/inbound/`, `slack/outbound/` 분리, `agent/` → `agent/prompt/`, `agent/tool/`, `agent/conversation/` 분리, `agent/tool/` → 검증은 `agent/tool/validation/`·턴 하네스는 `agent/turn/` 분리(ADR-64).
+  - 좋은 선례: `agent/` → `agent/prompt/`, `agent/tool/`, `agent/conversation/` 분리, `agent/tool/` → 검증은 `agent/tool/validation/`·턴 하네스는 `agent/turn/` 분리(ADR-64). (구 `slack/` → `inbound/`/`outbound/` 분리도 같은 부류였고, 패키지째 삭제됐다 — changes/0029 TΔ16.)
   - 허용 예외: 단일 관심사의 데이터 홀더 군집은 파일 수 초과를 허용한다 — `domain/`(노트 구조 record), `repository/entity/`(테이블 1:1 엔티티 — 스키마가 소유자이므로 쪼개는 기준이 따로 없다, changes/0028), `agent/tool/` 루트(툴 정의 + 인자 record — 검증은 `agent/tool/validation/`, 턴 전처리·컨텍스트 운반체는 `agent/turn/`이 담당하므로 루트에 유입시키지 않는다, ADR-64). 쪼개면 오히려 응집이 깨지는 곳이니 개수만으로 flag하지 마라.
 - 분리할 때는 계층(예: `service/`, `impl/`)이 아니라 **기능·관심사**로 자른다.
 - 반대로, 파일 1~2개짜리 패키지를 예비로 미리 만들지도 않는다. 분리는 커졌을 때 한다.
@@ -148,7 +149,7 @@ LLM 응답을 파싱·검증 없이 그대로 사용하는 경로는 flag:
 
 **§6.5와의 관계 — 대체가 아니라 보완이다.** §6.5는 *검증*을 본다(테스트가 이 로직을 붙잡고 있는가), 이 절은 *진단*을 본다(실사용에서 터졌을 때 원인에 도달할 수 있는가). 테스트가 있어도 관측이 없으면 테스트가 재현하지 못한 실패는 영구 미해결로 남고, 관측이 있어도 테스트가 없으면 회귀를 막지 못한다. 둘 중 하나로 다른 하나를 면제하지 마라.
 
-**적용 범위**: 이 절만은 LLM 경로에 한정되지 않는다 — 외부 경계(LLM·Slack·DB·파일·프로세스) 어디든 같은 질문을 받는다. 이 프로젝트에서 관측은 부수 기능이 아니라 **자산**이다: plan §6이 관측 항목을 정의하고, ADR-69 ①의 "실사용 로그 → eval 케이스 박제" 루프가 그 로그를 입력으로 쓴다. 관측이 비면 그 루프가 끊긴다.
+**적용 범위**: 이 절만은 LLM 경로에 한정되지 않는다 — 외부 경계(LLM·HTTP·DB·파일·프로세스) 어디든 같은 질문을 받는다. 이 프로젝트에서 관측은 부수 기능이 아니라 **자산**이다: plan §6이 관측 항목을 정의하고, ADR-69 ①의 "실사용 로그 → eval 케이스 박제" 루프가 그 로그를 입력으로 쓴다. 관측이 비면 그 루프가 끊긴다.
 
 최소 다음을 확인한다.
 
@@ -200,7 +201,7 @@ LLM 응답을 파싱·검증 없이 그대로 사용하는 경로는 flag:
 - **불변 우선**: 데이터 홀더는 record, 컬렉션은 방어적 복사 또는 불변 컬렉션.
 - **생성자 주입**: 의존은 생성자로 받는다. 필드 주입·세터 주입 금지.
 - **실패는 숨기지 않는다**: 예외를 삼키고 빈 값을 돌려주는 코드 금지. 복구할 수 없으면 전파하고, 사용자에게 알려야 하면 spec의 오류 처리 흐름을 따른다.
-- **테스트 용이성은 §2 경계로 확보한다**: 테스트를 위해 새 인터페이스를 만들지 말고, 이미 있는 경계(저장·LLM·Slack)에서 격리한다.
+- **테스트 용이성은 §2 경계로 확보한다**: 테스트를 위해 새 인터페이스를 만들지 말고, 이미 있는 경계(저장·LLM·렌더)에서 격리한다.
 
 ---
 

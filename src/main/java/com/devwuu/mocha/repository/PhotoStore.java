@@ -20,7 +20,7 @@ public interface PhotoStore {
      * pending 단계: 수신한 사진 원본을 사용자별 임시 스테이징에 저장한다(노트 폴더 미확정).
      *
      * @param userId   보낸 사용자 id (단일 사용자 전제, 스테이징 격리 키).
-     * @param filename Slack 원본 파일명 — 안전 문자로 정규화해 확장자를 보존한다.
+     * @param filename 업로드 원본 파일명 — 안전 문자로 정규화해 확장자를 보존한다.
      * @param bytes    원본 바이트.
      * @return 스테이징된 파일의 최종 파일명(스테이징 내 충돌 시 {@code -N} 접미 부여됨).
      */
@@ -64,8 +64,9 @@ public interface PhotoStore {
 
     /**
      * 스테이징에 원본이 남아 있는 사용자 키 목록(스테이징 하위 디렉토리명). 없으면 빈 목록.
-     * <p>앱 시작 시 고아 청소(ADR-29)가 이 목록을 pending·buffer 참조와 대조해 미참조 스테이징을 걸러낸다.
-     * 반환값은 {@code stage} 시 정규화된 안전 키(단일 사용자 Slack id 전제상 {@code userId}와 동치)다.
+     * <p>앱 시작 시 고아 청소({@code service/StagingSweeper}, ADR-29)가 이 목록을 쓴다 — 대조할 참조
+     * (pending·buffer)가 0029에서 차례로 사라져 <b>시작 시 남아 있으면 곧 고아</b>다.
+     * 반환값은 {@code stage} 시 정규화된 안전 키(단일 사용자 전제상 {@code userId}와 동치 — {@code web/SingleUser}).
      *
      * @return 스테이징 사용자 키, 오름차순.
      */

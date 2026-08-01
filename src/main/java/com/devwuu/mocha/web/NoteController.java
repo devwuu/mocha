@@ -32,8 +32,9 @@ import org.springframework.web.bind.annotation.RestController;
  * <p>POLICY: 저장이 실패하면 접지 않는다 — 폼도 문맥도 사용자 쪽에 남아 재시도가 성립해야 한다
  * (ref: plan.md#ADR-3 <i>"저장은 확인 이후에만"</i>의 대칭).
  *
- * <p><b>사진 확정·버퍼 정리는 아직 여기 없다</b> — 구 {@code SlackCommitHandler}가 커밋 뒤에 하던 일인데
- * 스테이징이 아직 Slack 배관이다. TΔ8b가 {@code NoteService.commit} 안에 붙인다(시그니처 무변화).
+ * <p><b>사진 확정은 아직 여기 없다</b> — 구 {@code SlackCommitHandler}가 커밋 뒤에 하던 일인데 TΔ16에서
+ * 사진 입구가 사라져 확정할 스테이징이 생기지 않는다(버퍼 정리는 버퍼와 함께 소멸했다). TΔ8b가
+ * {@code NoteService.commit} 안에 붙인다(시그니처 무변화 — 이 컨트롤러는 그때도 안 바뀐다).
  */
 @RestController
 @RequestMapping("/api/notes")

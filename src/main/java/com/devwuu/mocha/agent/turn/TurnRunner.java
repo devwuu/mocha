@@ -24,7 +24,8 @@ import java.util.NavigableSet;
  * <p><b>왜 여기 있는가</b>: 이 오케스트레이션은 changes/0018 이래 {@code slack/AgentConversationRouter}
  * 안에 살았고, 그 안에서 실제로 Slack인 것은 <i>수신 형식·응답 배달·사진 버퍼</i>뿐이었다. 앱이 같은 턴을
  * 돌려야 하는 순간({@code POST /api/agent/turn}) 전송 계층 밑에 깔린 채로는 부를 수 없어 여기로 뽑았다.
- * 이제 전송 계층은 <b>둘</b>이고(Slack 라우터·REST 컨트롤러) 턴의 정의는 <b>하나</b>다.
+ * <b>TΔ16에서 Slack이 걷히며 전송 계층은 다시 하나가 됐지만 이 분리는 그대로다</b> — 뽑아 둔 덕분에
+ * 라우터 삭제가 턴 로직을 한 줄도 건드리지 않았고, 그 자체가 경계가 옳았다는 사후 확인이다.
  *
  * <p>{@code agent/turn/}에 두는 이유는 ADR-64다 — 턴 전처리·컨텍스트 운반체({@link TurnUserMessage}·
  * {@link TurnDraft}·{@link TurnProposalSink})가 이미 여기 살고, 이 클래스는 그것들을 엮는 자리다.
@@ -32,8 +33,8 @@ import java.util.NavigableSet;
  * 일어나지 않고(TΔ4 이후 제안은 값이다), 저장은 별도 확정 API의 몫이다(TΔ6b).
  *
  * <p>POLICY: 턴 실패(모델 오류·tool 상한·검증 반복)는 <b>노트 무변화 + 원문 로그 보존</b>으로 수렴하고
- * 예외를 그대로 올린다 — <i>재요청 안내</i>는 전송 계층마다 형태가 달라 여기서 정하지 않는다(Slack은 메시지,
- * REST는 실패 응답) (ref: plan.md#ADR-48, spec FR-25/AC-63).
+ * 예외를 그대로 올린다 — <i>재요청 안내</i>는 전송 계층이 정한다(REST는 실패 응답, 문구의 소유자는 화면이다)
+ * (ref: plan.md#ADR-48, spec FR-25/AC-63).
  *
  * <p>테스트 seam이기도 하다 — 컨트롤러 단위 테스트가 이 타입을 상속한 손 fake로 턴을 대체한다
  * ({@code org.mockito} 미도입 방침 유지). 그래서 {@code final}이 아니고 {@link #run}이 오버라이드 가능하다.
@@ -50,7 +51,7 @@ public class TurnRunner {
     // 시계(Asia/Seoul — V-3, 트랜스크립트와 동일)는 config 공통 빈 주입(ADR-63).
     private final Clock clock;
 
-    // 협력자 조립은 config가 소유(ADR-63, RouterConfig) — 이 클래스는 주입만 받는다.
+    // 협력자 조립은 config가 소유(ADR-63, TurnConfig) — 이 클래스는 주입만 받는다.
     public TurnRunner(
             FoldingChatMemory transcript,
             ChatClient chatClient,
@@ -92,8 +93,9 @@ public class TurnRunner {
         //         남아 outcome=완료로 끝난 행동 실패의 원문이 회수되지 않았고, 그 결과 박제 루프(ADR-69 ①)의
         //         회수 경로가 성립하지 않았다. 원문은 개인 데이터이므로 logs/ 비커밋 규칙이 그대로 적용된다
         //         (ref: specs/coffee-note-agent/plan.md §6 ADR-44 관측·#ADR-69, NFR-7/ADR-21, 루트 CLAUDE.md §5).
-        // 구 라우터 판본의 buffered=<개수>가 ocr=<유무>로 바뀌었다 — 버퍼는 Slack 배관이라 여기 오지 않고,
-        // 턴이 실제로 아는 것은 "사진에서 읽은 것이 있는가"까지다(사진 수 관측은 SlackPhotoIntake가 남긴다).
+        // 구 라우터 판본의 buffered=<개수>가 ocr=<유무>로 바뀌었다 — 버퍼는 Slack 배관이었고 TΔ16에서
+        // 소멸했다. 턴이 실제로 아는 것은 "사진에서 읽은 것이 있는가"까지다. 사진 수 관측은 TΔ8a에서
+        // photos가 턴 요청에 실리는 자리에서 다시 선다.
         log.info("에이전트 턴 진입: user={} draft={} ocr={} segments={} 원문={}",
                 userId, draft != null, !VisionExtraction.empty().equals(ocr),
                 segments == null ? "-" : segments.size(), utterance);

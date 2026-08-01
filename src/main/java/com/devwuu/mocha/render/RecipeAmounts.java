@@ -5,7 +5,8 @@ import java.util.regex.Pattern;
 
 /**
  * 레시피 수량·파생 표기 헬퍼 — 템플릿 컨텍스트에 {@code amt}로 주입한다(TΔ6 도입 · TΔ4b 확장).
- * 시간·수치 표기의 단일 소스로, Slack 미리보기({@code PreviewBlocks})도 이 계산에 위임한다(changes/0025 ADR-67).
+ * 시간·수치 표기의 단일 소스다(changes/0025 ADR-67). 두 번째 소비자였던 Slack 미리보기
+ * ({@code PreviewBlocks})는 0029 TΔ4에서 폐기됐고, 지금 읽는 곳은 카드 템플릿 하나다.
  * <p>레시피 수량은 {@link com.devwuu.mocha.domain.Recipe}에서 {@code Double}이라 {@code 15.0} 그대로 찍으면
  * "15.0"이 된다. 정수면 소수점을 떼어 "15", 소수가 있으면 "15.5"로 보이게 다듬는다(단위는 템플릿이 붙인다).
  * <p>비율·시간 표기는 저장하지 않는 파생값이다 — 렌더 시에만 계산한다(ADR-1, changes/0021 ADR-54 POLICY).

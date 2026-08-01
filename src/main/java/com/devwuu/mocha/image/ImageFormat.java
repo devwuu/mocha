@@ -9,14 +9,18 @@ import java.nio.charset.StandardCharsets;
  * ({@code PhotoInfoExtractor.mimeOf})을 통과해 그대로 OpenAI vision에 전달돼 400을 유발한 실사용
  * 관측(delta #2) 때문이다. vision 지원 포맷(JPEG/PNG/GIF/WebP)만 스테이징을 통과시키는 입구 게이트가
  * 이 판별을 근거로 삼는다(V-12). HEIC는 vision 미지원으로 표시되지만 조용히 버리지 않는다 — 상위가
- * Slack 썸네일 대체(TΔ3) 또는 "지원하지 않는 포맷" 안내로 수렴시킨다.
+ * "지원하지 않는 포맷" 안내로 수렴시킨다.
+ * <p><b>0029 TΔ16에서 HEIC 우회(Slack 썸네일 대체, changes/0013 TΔ3)가 소멸했다</b> — 그 경로는 Slack 파일
+ * 메타(mimetype·썸네일 URL)에 기대어 REST에 존재할 수 없고, iOS 이미지 피커가 업로드 시 JPEG로 변환한다.
+ * 판별 자체(이 enum)는 남는다 — 입구 게이트는 그대로다(ADR-29). 수용 포맷을 JPEG/PNG로 좁히는 것은
+ * TΔ8a의 몫이라 여기서 선점하지 않는다.
  */
 public enum ImageFormat {
     JPEG("image/jpeg", "jpg", true),
     PNG("image/png", "png", true),
     GIF("image/gif", "gif", true),
     WEBP("image/webp", "webp", true),
-    // vision 미지원 — 원본은 스테이징하지 않고, HEIC는 Slack 썸네일(실측 PNG)로 대체한다(ADR-29, TΔ3).
+    // vision 미지원 — 원본을 스테이징하지 않는다(ADR-29). 구 Slack 썸네일 대체는 TΔ16에서 사라졌다.
     HEIC("image/heic", "heic", false),
     // 판별 불가 — 스테이징 금지, 안내로 수렴.
     UNKNOWN(null, null, false);
