@@ -1,5 +1,6 @@
 package com.devwuu.mocha.web;
 
+import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
 import com.devwuu.mocha.agent.turn.TurnResult;
 import com.devwuu.mocha.agent.turn.TurnRunner;
 import org.slf4j.Logger;
@@ -20,8 +21,10 @@ import org.springframework.web.bind.annotation.RestController;
  * 대로 <b>파싱·위임·응답 변환</b>뿐이다 — 전처리·조립·루프·트랜스크립트는 {@link TurnRunner}가 소유하고
  * 여기서 다시 짜지 않는다.
  *
- * <p><b>서버 상태를 바꾸지 않는다</b> — 제안은 응답으로만 돌아간다(TΔ4에서 pending이 사라진 결과). 저장은
- * {@code POST /api/notes}(TΔ6b)이고, 그래서 <i>"저장은 확인 이후에만"</i>(ADR-3)이 이 경계와 겹친다.
+ * <p><b>턴은 서버 상태를 바꾸지 않는다</b> — 제안은 응답으로만 돌아간다(TΔ4에서 pending이 사라진 결과).
+ * 저장은 {@link NoteController}({@code POST /api/notes}, TΔ6b)이고, 그래서 <i>"저장은 확인 이후에만"</i>
+ * (ADR-3)이 이 경계와 겹친다. 같은 {@code /api/agent} 아래 {@link #cancel()}만이 예외인데, 그것이 바꾸는
+ * 것도 노트가 아니라 대화 문맥뿐이다.
  *
  * <p>여기서 <b>V-6(draft 대조)이 살아난다</b>: Slack 경로는 폼이 없어 draft를 항상 null로 넘겼고 게이트가
  * 무발동이었다(TΔ4 이월). 요청 본문이 draft를 싣는 순간 하위 출처의 덮어쓰기 거부가 실제로 작동한다.
@@ -39,9 +42,11 @@ public class AgentTurnController {
     private static final Logger log = LoggerFactory.getLogger(AgentTurnController.class);
 
     private final TurnRunner turnRunner;
+    private final FoldingChatMemory transcript;
 
-    public AgentTurnController(TurnRunner turnRunner) {
+    public AgentTurnController(TurnRunner turnRunner, FoldingChatMemory transcript) {
         this.turnRunner = turnRunner;
+        this.transcript = transcript;
     }
 
     @PostMapping("/turn")
@@ -62,6 +67,31 @@ public class AgentTurnController {
             log.warn("에이전트 턴 폴백(노트 무변화, 원문 보존): user={} 원문={}", SingleUser.ID, utterance, e);
             return ResponseEntity.internalServerError().build();
         }
+    }
+
+    /**
+     * {@code POST /api/agent/cancel} — 작성 중이던 노트를 버렸다는 통지
+     * (ref: changes/0029 tasks.md TΔ6b, plan.md#ADR-46 접힘 커밋 규칙;
+     * 계약 정본 {@code contract/agent-cancel.contract.json}).
+     *
+     * <p><b>왜 통지가 필요한가</b>: 폼은 클라이언트 상태라 버리면 끝이지만(OQ-1 ㉡, TΔ4) 트랜스크립트 접힘은
+     * 서버 상태다. 알리지 않으면 버린 작업의 대화 문맥이 TTL까지 살아남아 <b>다음 커피의 첫 발화에 섞인다</b>.
+     *
+     * <p><b>{@code /api/notes} 계열에 두지 않은 이유</b>(사용자 확정 2026-08-01): 취소로 서버에서 바뀌는
+     * 것은 대화 문맥뿐이고 노트는 생기지도 사라지지도 않는다. 노트 경로에 두면 없는 리소스 변화를 가리킨다.
+     * 저장 쪽 접힘이 {@code POST /api/notes}의 부수효과인 것과 <b>비대칭이지만 정직하다</b> — 저장은 노트를
+     * 만드는 일이고 접힘은 곁가지인 반면, 취소는 접힘이 전부다.
+     *
+     * <p>본문도 응답도 없다(204). 무엇을 취소하는지는 서버가 이미 안다 — 사용자당 트랜스크립트는 1건이고
+     * (단일 사용자 전제, {@link SingleUser}) 서버에는 취소할 draft가 애초에 없다.
+     *
+     * <p>버린 사진 스테이징 정리는 아직 여기 없다 — 구 {@code SlackCommitHandler.cancel}이 함께 하던 일인데
+     * 스테이징이 아직 Slack 배관이다. TΔ8a에서 업로드가 REST로 오면 그때 이 자리에 붙는다.
+     */
+    @PostMapping("/cancel")
+    public ResponseEntity<Void> cancel() {
+        transcript.clear(SingleUser.ID, FoldingChatMemory.FoldTrigger.CANCEL_COMMIT);
+        return ResponseEntity.noContent().build();
     }
 
     /**

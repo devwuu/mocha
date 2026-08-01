@@ -44,6 +44,7 @@ class ClientApiContractTest {
     private static final String AGENT_TURN_CONTRACT = "/contract/agent-turn.contract.json";
     private static final String NOTE_COMMIT_CONTRACT = "/contract/note-commit.contract.json";
     private static final String NOTE_CANDIDATES_CONTRACT = "/contract/note-candidates.contract.json";
+    private static final String AGENT_CANCEL_CONTRACT = "/contract/agent-cancel.contract.json";
 
     private final JsonMapper mapper = MochaObjectMapper.create();
 
@@ -152,6 +153,17 @@ class ClientApiContractTest {
         assertThat(contract.get("request_query_blank").get("q").stringValue()).isEmpty();
         // 후보 없음은 오류가 아니라 빈 목록이다 — 그때 사용자의 다음 행동이 [새 노트로 등록]이다.
         assertThat(contract.get("response_empty").get("candidates")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("TΔ6b: 취소 통지는 본문이 없다 — 무엇을 취소하는지는 서버가 안다(사용자당 트랜스크립트 1건)")
+    void cancelCarriesNoBodyInEitherDirection() throws IOException {
+        JsonNode contract = load(AGENT_CANCEL_CONTRACT);
+
+        // '본문 없음'이 곧 계약이다 — 본문이 생기면 이 단언이 레드가 되어 계약 파일부터 고치게 한다.
+        assertThat(contract.get("request").isNull()).isTrue();
+        assertThat(contract.get("response").isNull()).isTrue();
+        assertThat(contract.get("response_status").intValue()).isEqualTo(204);
     }
 
     /** TΔ2 캡처본에서 {@code note.aliases}만 제거한 draft — 이 델타가 확정한 클라이언트 계약형이다. */

@@ -2,16 +2,39 @@
  * 실제 서버를 부르는 API 구현 (changes/0029 TΔ6a).
  *
  * 계약(`contract.ts`)과 화면은 그대로 두고 여기가 mock을 대체한다 — `index.ts`의 재수출 한 줄만 옮기면
- * 되는 것이 TΔ10이 세운 규율이었고, 이 파일이 그 자리다. 아직 서 있지 않은 엔드포인트
- * (`POST /api/notes` TΔ6b · `GET /api/notes/candidates` TΔ7)는 계속 mock이다.
+ * 되는 것이 TΔ10이 세운 규율이었고, 이 파일이 그 자리다. TΔ6b가 저장·취소를 가져왔고, 아직 서 있지 않은
+ * 것은 후보(`GET /api/notes/candidates`, TΔ7)뿐이다.
  *
  * 오리진은 하나다(ADR-78) — 서버가 이 번들을 정적 서빙하므로 base URL도 CORS도 없다. 개발 중에는
  * Vite dev server가 `/api`를 프록시한다(TΔ23 POLICY: 프록시 대상은 `/api` 단일 접두).
  */
-import type { AgentTurnRequest, AgentTurnResponse } from './contract'
+import type {
+  AgentTurnRequest,
+  AgentTurnResponse,
+  NoteCommitRequest,
+  NoteCommitResponse,
+} from './contract'
 
 export async function postAgentTurn(request: AgentTurnRequest): Promise<AgentTurnResponse> {
   return postJson<AgentTurnResponse>('/api/agent/turn', request)
+}
+
+/** 폼 확정 저장 — 본문은 턴 응답으로 받은 draft 그대로다(방향만 다른 같은 값). */
+export async function postNoteCommit(request: NoteCommitRequest): Promise<NoteCommitResponse> {
+  return postJson<NoteCommitResponse>('/api/notes', request)
+}
+
+/**
+ * [취소] 통지 — 본문도 응답도 없다(204).
+ *
+ * 폼은 클라이언트 상태라 버리면 끝이지만 대화 문맥 접힘은 서버 상태다(TΔ6b). 알리지 않으면 버린 작업의
+ * 문맥이 TTL까지 살아남아 다음 커피의 첫 발화에 섞인다.
+ */
+export async function postAgentCancel(): Promise<void> {
+  const response = await fetch('/api/agent/cancel', { method: 'POST' })
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`)
+  }
 }
 
 /**

@@ -1,6 +1,8 @@
 package com.devwuu.mocha.web;
 
 import com.devwuu.mocha.agent.AgentException;
+import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
+import com.devwuu.mocha.agent.conversation.TranscriptTurn;
 import com.devwuu.mocha.agent.turn.TurnDraft;
 import com.devwuu.mocha.agent.turn.TurnResult;
 import com.devwuu.mocha.agent.turn.TurnRunner;
@@ -23,6 +25,8 @@ import tools.jackson.databind.json.JsonMapper;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -46,6 +50,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>러너는 손 fake다({@code org.mockito} 미도입 방침 유지) — 이 테스트의 대상은 <b>HTTP 표면</b>이고,
  * 턴 내부는 {@code AgentConversationRouterTest}가 실물로 검증한다.
  *
+ * <p>TΔ6b가 같은 컨트롤러에 {@code POST /api/agent/cancel}을 보탰다 — 계약이 <i>"본문 없음 → 204"</i>라
+ * 왕복으로 볼 것이 없고, 검증 대상은 <b>부수효과</b>다: 버린 작업의 대화 문맥이 실제로 접혔는가
+ * ({@code contract/agent-cancel.contract.json}).
+ *
  * <p>{@link CommonConfig}를 함께 들이는 것이 필수다 — 도메인 JSON 규칙(snake_case)의 소유자가 그 빈이고,
  * 슬라이스가 그것 없이 뜨면 부트 기본 매퍼(camelCase)로 통과해 <b>계약과 다른 것을 검증</b>하게 된다.
  */
@@ -63,12 +71,17 @@ class AgentTurnControllerTest {
     @Autowired
     EchoTurnRunner turnRunner;
 
+    @Autowired
+    FoldingChatMemory transcript;
+
     private JsonNode contract;
 
     @BeforeEach
     void setUp() throws IOException {
         contract = load(CONTRACT);
         turnRunner.reset();
+        // 컨텍스트가 테스트 메서드 간 공유되므로 문맥도 함께 되돌린다(접힘 단언이 앞 테스트에 물들지 않게).
+        transcript.clear(SingleUser.ID, FoldingChatMemory.FoldTrigger.CANCEL_COMMIT);
     }
 
     @Test
@@ -144,6 +157,36 @@ class AgentTurnControllerTest {
         assertThat(turnRunner.calls).isZero();
     }
 
+    @Test
+    @DisplayName("TΔ6b: [취소] 통지가 대화 문맥을 접는다 — 버린 작업의 문맥이 다음 커피의 첫 발화에 섞이지 않는다")
+    void cancelFoldsTheTranscript() throws Exception {
+        transcript.append(SingleUser.ID, new TranscriptTurn("게뎁 마셨어", "폼에 담아 뒀어요."));
+
+        mockMvc.perform(post("/api/agent/cancel"))
+                .andExpect(status().isNoContent());
+
+        assertThat(transcript.view(SingleUser.ID)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("TΔ6b: 접을 문맥이 없어도 취소는 성공한다 — 폼만 있고 대화가 만료된 상태가 실재한다(TTL)")
+    void cancelWithoutTranscriptStillSucceeds() throws Exception {
+        mockMvc.perform(post("/api/agent/cancel"))
+                .andExpect(status().isNoContent());
+
+        assertThat(transcript.view(SingleUser.ID)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("TΔ6b: 취소는 본문을 받지 않는다 — 무엇을 취소하는지는 서버가 안다(계약의 '본문 없음')")
+    void cancelTakesNoRequestBody() throws Exception {
+        String body = mockMvc.perform(post("/api/agent/cancel"))
+                .andExpect(status().isNoContent())
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+
+        assertThat(body).isEmpty();
+    }
+
     private String perform(JsonNode request) throws Exception {
         return mockMvc.perform(post("/api/agent/turn")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -185,6 +228,15 @@ class AgentTurnControllerTest {
         @Bean
         EchoTurnRunner turnRunner() {
             return new EchoTurnRunner();
+        }
+
+        /**
+         * 실물이다 — 접힘은 값 없는 부수효과라 스텁으로 바꾸면 <i>"clear를 불렀다"</i>까지만 확인하게 된다.
+         * 확인하고 싶은 것은 그 다음, <b>문맥이 실제로 비었는가</b>다.
+         */
+        @Bean
+        FoldingChatMemory transcript() {
+            return new FoldingChatMemory(10, Duration.ofMinutes(30), Clock.systemDefaultZone());
         }
     }
 

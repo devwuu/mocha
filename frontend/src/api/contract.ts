@@ -2,8 +2,9 @@
  * 서버와 공유하는 REST 계약의 TypeScript 판본 (changes/0029 TΔ10).
  *
  * 정본은 `src/test/resources/contract/`의 JSON 파일이고 — `turn-draft.contract.json`(TΔ2 캡처본),
- * `agent-turn.contract.json`, `note-commit.contract.json`, `note-candidates.contract.json`(TΔ11) —
- * 자바 쪽에서 `ClientApiContractTest`가 서로의 정합을 단언한다. 이 파일은 그 형태를 타입으로 옮긴 것이다.
+ * `agent-turn.contract.json`, `note-commit.contract.json`, `note-candidates.contract.json`(TΔ11),
+ * `agent-cancel.contract.json`(TΔ6b) — 자바 쪽에서 `ClientApiContractTest`가 서로의 정합을 단언한다.
+ * 이 파일은 그 형태를 타입으로 옮긴 것이다.
  *
  * 계약을 바꾸려면 JSON 파일과 이 파일을 함께 고친다. 필드명이 어긋나면 컴파일러가 아니라
  * **런타임에 값이 조용히 사라지는** 방식으로 실패한다 — 사용자가 폼에서 고친 값이 되돌아가는
@@ -132,6 +133,22 @@ export interface AgentTurnResponse {
 /** `POST /api/notes` — 폼 확정 저장(= 구 [저장] 버튼). 본문이 곧 확정된 draft다. */
 export type NoteCommitRequest = Draft
 
+/**
+ * 커밋 응답은 식별자뿐이다(TΔ6b 확정).
+ *
+ * 저장된 노트 전체를 싣지 않는다 — 기존 노트에 병합하면 폼의 메타 수정(로스터리·원두·로스팅·공식 노트)은
+ * ADR-4에 따라 저장되지 않는데, 그 사실을 알리는 자리는 응답 본문이 아니라 **저장 완료 문구**다
+ * (`ChatScreen`이 신규/병합으로 갈라 쓴다). 사실을 고치는 경로는 상세 수정 화면(TΔ13)이다.
+ */
 export interface NoteCommitResponse {
   note_id: number
 }
+
+/**
+ * `POST /api/agent/cancel` — 작성 중이던 노트를 버렸다는 통지 (TΔ6b).
+ *
+ * 요청·응답 모두 **본문이 없다**(204). 무엇을 취소하는지는 서버가 안다 — 사용자당 트랜스크립트가 1건이고,
+ * 서버에는 취소할 draft가 애초에 없다(pending 소멸, TΔ4). 정본은
+ * `src/test/resources/contract/agent-cancel.contract.json`이라 타입으로 옮길 것이 없고, 이 주석이
+ * 계약 파일과 짝이다.
+ */

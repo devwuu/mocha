@@ -1,0 +1,6 @@
+{
+  "_note": "POST /api/agent/cancel — 작성 중이던 노트를 버렸다는 통지(changes/0029 TΔ6b). 요청·응답 모두 본문이 없고, 그 '없음'이 이 계약의 내용이다: 무엇을 취소하는지는 서버가 안다(사용자당 트랜스크립트 1건). 본문이 생기는 순간 이 파일이 함께 바뀌어야 한다.",
+  "request": null,
+  "response": null,
+  "response_status": 204
+}

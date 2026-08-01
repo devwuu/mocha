@@ -1,9 +1,4 @@
-import type {
-  NoteCandidate,
-  NoteCandidatesResponse,
-  NoteCommitRequest,
-  NoteCommitResponse,
-} from './contract'
+import type { NoteCandidate, NoteCandidatesResponse } from './contract'
 
 /**
  * 아직 서지 않은 API의 mock 구현 (changes/0029 TΔ10).
@@ -12,14 +7,12 @@ import type {
  * 돈다 — **에이전트 흉내가 목적이 아니라, 계약이 화면을 실제로 굴릴 수 있는 모양인지 확인하는 것이
  * 목적이다**. 그래서 응답은 고정 픽스처이고 발화 내용을 해석하지 않는다.
  *
- * **턴 mock은 TΔ6a에서 빠졌다** — `POST /api/agent/turn`이 실물로 섰고(`http.ts`), 같은 계약의 구현을
- * 두 벌 남겨 두면 그것부터 갈라진다. 남은 둘은 저장(TΔ6b)·후보(TΔ7)가 같은 방식으로 가져간다.
+ * **턴 mock은 TΔ6a에서, 저장 mock은 TΔ6b에서 빠졌다** — 실물이 섰고(`http.ts`), 같은 계약의 구현을
+ * 두 벌 남겨 두면 그것부터 갈라진다. 남은 후보 mock은 TΔ7이 같은 방식으로 가져간다.
  */
 
-// 실제 호출은 모델·DB를 지나 즉답이 아니다 — 타이핑·로딩 표시가 실제로 보이는지 확인하려면 지연이 필요하다.
+// 실제 호출은 DB를 지나 즉답이 아니다 — 로딩 표시가 실제로 보이는지 확인하려면 지연이 필요하다.
 const MOCK_LATENCY_MS = 700
-
-let nextNoteId = 12
 
 /**
  * 매칭 후보 픽스처 — **동명 다른 로스터리가 셋 들어 있는 것이 의도다**(TΔ11). 싱글 오리진에서 흔한
@@ -46,11 +39,6 @@ export async function getNoteCandidates(query: string): Promise<NoteCandidatesRe
           (candidate.roastery?.toLowerCase().includes(needle) ?? false),
       )
   return { candidates: matched }
-}
-
-export async function postNoteCommit(request: NoteCommitRequest): Promise<NoteCommitResponse> {
-  await delay(MOCK_LATENCY_MS)
-  return { note_id: request.note.id ?? nextNoteId++ }
 }
 
 function delay(ms: number): Promise<void> {

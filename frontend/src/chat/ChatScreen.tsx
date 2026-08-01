@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Draft } from '../api'
-import { postAgentTurn, postNoteCommit } from '../api'
+import { postAgentCancel, postAgentTurn, postNoteCommit } from '../api'
 import { DraftForm } from './DraftForm'
 
 /**
@@ -55,11 +55,12 @@ export function ChatScreen() {
     if (draft === null || busy) {
       return
     }
+    const merged = draft.match.type === 'existing'
     setBusy(true)
     try {
       const saved = await postNoteCommit(draft)
       setDraft(null)
-      setMessages((prev) => [...prev, { role: 'system', text: `저장했어요. (노트 #${saved.note_id})` }])
+      setMessages((prev) => [...prev, { role: 'system', text: savedNotice(saved.note_id, merged) }])
     } catch (error) {
       setMessages((prev) => [...prev, { role: 'system', text: describe(error, '저장하지 못했어요. 폼은 그대로 두었어요.') }])
     } finally {
@@ -67,12 +68,19 @@ export function ChatScreen() {
     }
   }
 
-  function cancel() {
-    // 폼은 클라이언트 상태라 버리는 것으로 끝난다. 서버 트랜스크립트 접힘(FoldTrigger.CANCEL_COMMIT)의
-    // 배선은 TΔ4에서 버튼과 함께 끊긴 채이고 확정 API를 세우는 TΔ6이 다시 잇는다 — 그때 이 자리에서
-    // 취소도 서버에 알린다.
+  async function cancel() {
+    // 폼은 클라이언트 상태라 버리는 것으로 끝나지만 서버 대화 문맥의 접힘은 통지가 필요하다(TΔ6b) —
+    // 알리지 않으면 버린 작업의 문맥이 TTL까지 남아 다음 커피의 첫 발화에 섞인다.
+    // 폼은 응답을 기다리지 않고 즉시 버린다: 사용자가 [취소]를 누른 순간 그것이 의도이고, 통지 실패가
+    // 취소 자체를 되돌릴 이유는 없다.
     setDraft(null)
     setMessages((prev) => [...prev, { role: 'system', text: '작성 중이던 노트를 지웠어요.' }])
+    try {
+      await postAgentCancel()
+    } catch (error) {
+      // 사용자가 할 수 있는 일은 없지만 조용히 삼키지 않는다 — 다음 대화가 이상하면 이 줄이 단서다.
+      setMessages((prev) => [...prev, { role: 'system', text: describe(error, '이전 대화 내용은 정리하지 못했어요.') }])
+    }
   }
 
   return (
@@ -158,6 +166,21 @@ function Bubble({ message }: { message: Message }) {
       <div className="bubble bubble--agent">{message.text}</div>
     </div>
   )
+}
+
+/**
+ * 저장 완료 문구 — 신규/병합으로 갈린다 (TΔ6b, 사용자 확정 2026-08-01).
+ *
+ * 기존 노트에 병합하면 폼에서 고친 커피 사실(로스터리·원두·로스팅·공식 노트)은 저장되지 않는다 —
+ * "재기록은 그날의 엔트리를 쌓는 일이지 커피의 사실을 다시 쓰는 일이 아니다"(ADR-4). 그것을 알리지 않으면
+ * 사용자가 고친 값이 화면에 남은 채 조용히 무시되고, 그 형태가 이 델타가 없애려는 실패와 닮는다
+ * (delta.md §1.2 — 다만 이번 것은 버그가 아니라 정책이다). 사실을 고치는 경로는 상세 수정 화면(TΔ13)이고,
+ * 필드 잠금·수정 안내는 그 화면이 설 때 판단한다.
+ */
+function savedNotice(noteId: number, merged: boolean): string {
+  return merged
+    ? `기존 노트 #${noteId}에 오늘 기록을 더했어요. 커피 정보는 기존 노트의 값을 그대로 뒀어요.`
+    : `저장했어요. (노트 #${noteId})`
 }
 
 function describe(error: unknown, fallback: string): string {
