@@ -1,0 +1,108 @@
+{
+  "request": {
+    "utterance": "로스터리는 프로브가 아니라 커피베라야",
+    "draft": {
+      "note": {
+        "id": null,
+        "coffee_name": { "value": "Ethiopia Chelbesa", "source": "user" },
+        "roastery": { "value": "FroB", "source": "photo" },
+        "beans": [
+          {
+            "description": { "value": "에티오피아 게데오 헤어룸", "source": "search" },
+            "process": { "value": "워시드", "source": "search" }
+          }
+        ],
+        "roast_level": { "value": "라이트", "source": "search" },
+        "official_notes": { "value": [ "자스민", "베르가못" ], "source": "search" },
+        "sources": [ "https://example.test/chelbesa" ],
+        "entries": [
+          {
+            "date": "2026-07-16",
+            "brews": [
+              {
+                "recipe": {
+                  "method": "핸드드립",
+                  "dose_g": 15.0,
+                  "water_ml": 240.0,
+                  "yield_ml": 220.0,
+                  "time_sec": 160.0,
+                  "temp_c": 92.0,
+                  "grind": "210클릭 (매버릭 2.0)",
+                  "machine": "V60",
+                  "pouring": "40초 뜸 후 3회 분할",
+                  "feedback": "퍽이 물퍽이었음"
+                },
+                "tasting": {
+                  "my_taste": "새콤하고 좋았음",
+                  "my_taste_original": "새콤하고 좋았다",
+                  "rating": "맛있다"
+                }
+              }
+            ],
+            "updated_at": "2026-07-16T10:00:00+09:00"
+          }
+        ],
+        "created_at": "2026-07-16T10:00:00+09:00",
+        "updated_at": "2026-07-16T10:00:00+09:00"
+      },
+      "match": { "type": "new" }
+    }
+  },
+  "request_first_turn": {
+    "utterance": "오늘 이거 마셨어",
+    "draft": null
+  },
+  "response": {
+    "reply": "커피베라 · 봄맞이 블렌드로 고쳤어요. 폼에서 확인해 주세요.",
+    "draft": {
+      "note": {
+        "id": null,
+        "coffee_name": { "value": "Ethiopia Chelbesa", "source": "user" },
+        "roastery": { "value": "커피베라", "source": "user" },
+        "beans": [
+          {
+            "description": { "value": "에티오피아 게데오 헤어룸", "source": "search" },
+            "process": { "value": "워시드", "source": "search" }
+          }
+        ],
+        "roast_level": { "value": "라이트", "source": "search" },
+        "official_notes": { "value": [ "자스민", "베르가못" ], "source": "search" },
+        "sources": [ "https://example.test/chelbesa" ],
+        "entries": [
+          {
+            "date": "2026-07-16",
+            "brews": [
+              {
+                "recipe": {
+                  "method": "핸드드립",
+                  "dose_g": 15.0,
+                  "water_ml": 240.0,
+                  "yield_ml": 220.0,
+                  "time_sec": 160.0,
+                  "temp_c": 92.0,
+                  "grind": "210클릭 (매버릭 2.0)",
+                  "machine": "V60",
+                  "pouring": "40초 뜸 후 3회 분할",
+                  "feedback": "퍽이 물퍽이었음"
+                },
+                "tasting": {
+                  "my_taste": "새콤하고 좋았음",
+                  "my_taste_original": "새콤하고 좋았다",
+                  "rating": "맛있다"
+                }
+              }
+            ],
+            "updated_at": "2026-07-16T10:00:00+09:00"
+          }
+        ],
+        "created_at": "2026-07-16T10:00:00+09:00",
+        "updated_at": "2026-07-16T10:00:00+09:00"
+      },
+      "match": { "type": "new" }
+    }
+  },
+  "response_no_proposal": {
+    "reply": "그 원두는 워시드 가공이에요. 어떻게 내려 드셨나요?",
+    "draft": null
+  }
+}

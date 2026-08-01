@@ -3,7 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#d9cfc4" />
     <title>모카</title>
+    <!--
+      시안(design/채팅 - 말풍선.dc.html)이 지정한 본문 서체 (ADR-54: 시안이 디자인 source of truth).
+      카드 렌더가 쓰는 로컬 ttf(assets/fonts/)는 8MB짜리 전체 자족이라 화면 로드에 맞지 않는다 —
+      카드는 오프라인 렌더(ADR-7)여서 번들 폰트가 필요했고, 앱 화면은 서버에 붙어야 도는 물건이다.
+      네트워크가 없으면 시스템 serif로 떨어지고 레이아웃은 그대로다.
+    -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
   </head>
   <body>
     <div id="root"></div>

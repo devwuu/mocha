@@ -127,6 +127,8 @@ tasks.register('frontendBuild', Exec) {
 	workingDir frontendDir
 	commandLine npmExecutable, 'run', 'build'
 	inputs.dir(frontendDir.dir('src'))
+	// public/은 Vite가 산출물 루트로 그대로 복사하는 정적 자산(마스코트 등, TΔ10) — 바뀌면 다시 빌드해야 한다.
+	inputs.dir(frontendDir.dir('public'))
 	inputs.file(frontendDir.file('index.html'))
 	inputs.file(frontendDir.file('vite.config.ts'))
 	inputs.files(frontendDir.file('tsconfig.json'), frontendDir.file('tsconfig.app.json'), frontendDir.file('tsconfig.node.json'))
