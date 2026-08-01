@@ -5,6 +5,31 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#d9cfc4" />
     <title>모카</title>
+    <meta name="description" content="커피 감상을 기록하는 개인 노트" />
+    <!--
+      홈 화면 추가(changes/0029 TΔ14). 오프라인 셸은 범위 밖이다 — 데이터가 서버에 있어
+      service worker로 캐시할 껍데기만 남기면 "열리는데 비어 있는" 상태를 만든다.
+      아이콘은 `design/mascot-face.png`(디자인 자산)에서 파생했고, maskable 판본만 시안 팔레트의
+      `--shell` 위에 원형으로 앉는다 — 앱이 마스코트를 원형 아바타로 그리는 것(.avatar)과 같은 형태다.
+
+      확장자가 `.webmanifest`가 아니라 `.json`인 것은 서빙 때문이다: Spring의 정적 리소스 핸들러가 쓰는
+      MIME 표에 `webmanifest`가 없어 그 이름으로는 `application/octet-stream`으로 나간다(실측).
+      `.json`이면 `application/json`이고, 규격이 권하는 `application/manifest+json`을 굳이 맞추려면
+      리소스 핸들러에 미디어 타입을 손으로 심어야 한다 — 얻는 것에 비해 비싸다(루트 §4 right-sizing).
+    -->
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" href="/icon-192.png" sizes="192x192" type="image/png" />
+    <!-- iOS는 manifest의 아이콘을 홈 화면에 쓰지 않는다 — 이 링크가 없으면 화면 캡처가 아이콘이 된다. -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!--
+      standalone 지시는 두 벌이다: iOS 16.4 미만은 apple- 접두만 읽고, 그 위와 Chrome은 manifest의
+      display를 읽는다. 표준 이름을 함께 두는 것은 apple- 단독일 때 나는 콘솔 경고를 없애기 위해서다.
+    -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <!-- black-translucent는 상태바 글자를 흰색으로 만든다 — 시안이 밝은 종이 톤 하나뿐이라 읽히지 않는다. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="모카" />
     <!--
       시안(design/채팅 - 말풍선.dc.html)이 지정한 본문 서체 (ADR-54: 시안이 디자인 source of truth).
       카드 렌더가 쓰는 로컬 ttf(assets/fonts/)는 8MB짜리 전체 자족이라 화면 로드에 맞지 않는다 —
