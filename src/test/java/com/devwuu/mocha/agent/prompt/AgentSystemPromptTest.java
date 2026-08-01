@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * 시스템 프롬프트의 정책 문구 포함 단언 — 프롬프트가 단일 소유하는 결정(페르소나·대화 경계·보강 정책·
+ * 시스템 프롬프트의 정책 문구 포함 단언 — 프롬프트가 단일 소유하는 결정(페르소나·말투·대화 경계·보강 정책·
  * 출처 우선순위·my_taste 정규화·대기 중 수정 우선·즉시 propose·회차 분리/병합·수치 정규화·다중 날짜
  * 순차 제안)이 빠지지 않았는지 가드한다 (ref: changes/0018 tasks.md TΔ7a, changes/0021 TΔ3b,
  * changes/0023 TΔ3d; plan.md#ADR-47/#ADR-49/#ADR-30/#ADR-59/#ADR-61, data-model.md#V-6,
@@ -21,11 +21,45 @@ class AgentSystemPromptTest {
     @DisplayName("ADR-47/AC-20: 모카 페르소나와 대화 경계 — 잡담 tool 금지·무관 주제 선긋기·피벗 전환")
     void encodesPersonaAndConversationBoundary() {
         assertThat(PROMPT).contains("모카");
-        assertThat(PROMPT).contains("~멍");
         assertThat(PROMPT).contains("커피 관련 잡담은 모카 톤으로 받아주되 tool을 호출하지 않는다");
         assertThat(PROMPT).contains("잡담 턴은 제안·노트를 만들지 않는다");
         assertThat(PROMPT).contains("커피와 무관한 주제는 짧게 선을 긋는다");
         assertThat(PROMPT).contains("즉시 tool 흐름으로 전환한다");
+    }
+
+    @Test
+    @DisplayName("D-15/AC-11 (TΔ27): 말투 = 반말 고정 + 어미 말버릇 없음 — 구 \"~멍\" 강제는 걷혔다")
+    void encodesConsistentSpeechRegisterWithoutVerbalTic() {
+        // 어미 강제를 걷는 것만으로는 «통일»이 아니다 — 축을 비워 두면 흔들림이 어미에서 종결어미로
+        // 옮겨갈 뿐이라, 반말 고정이 이 개정의 나머지 절반이다(사용자 확정 2026-08-02).
+        assertThat(PROMPT).contains("한국어 반말로 답한다");
+        assertThat(PROMPT).contains("존댓말과 섞지 말고 어느 턴에서나 반말로 일관한다");
+        // 톤(발랄함·다정함·짧음)은 남는다 — 걷은 것은 어미 규칙뿐이다(D-15).
+        assertThat(PROMPT).contains("강아지처럼 발랄하고 다정한 톤이다");
+        assertThat(PROMPT).contains("말끝에 붙이는 말버릇 어미는 쓰지 않는다");
+        assertThat(PROMPT).contains("한두 문장이 기본이고");
+        // 부재 단언이 이 개정의 본체다 — 문구를 되살리면 여기가 잡는다. 금지를 «"~멍"을 쓰지 마라»로
+        // 적지 않은 것도 의도다: 부정문에 예시를 실으면 그 어미가 프롬프트에 남아 오히려 도드라진다.
+        assertThat(PROMPT).doesNotContain("~멍").doesNotContain("멍");
+    }
+
+    @Test
+    @DisplayName("D-15/AC-11 (TΔ27): 응답은 서식 없는 평문 — 말풍선이 마크다운을 렌더하지 않는다")
+    void forbidsMarkdownEmphasis() {
+        assertThat(PROMPT).contains("서식 기호를 쓰지 않는다");
+        // 근거를 함께 싣는다(ADR-60 사유 정보량 원칙의 프롬프트 측 적용) — «금지»만 적으면 모델이
+        // 서식이 유용해 보이는 자리에서 되살린다.
+        assertThat(PROMPT).contains("채팅 말풍선이 렌더하지 않아 기호가 글자 그대로 보인다");
+        assertThat(PROMPT).contains("강조는 서식이 아니라 낱말 선택으로 한다");
+    }
+
+    @Test
+    @DisplayName("TΔ24c 이월 (b) 정리: 매체 표기가 Slack이 아니라 앱 채팅이다")
+    void describesAppChatAsTheMedium() {
+        // 0029에서 입구가 Slack → 앱으로 바뀌었는데(ADR-78) 첫 줄만 잔재로 남아 있었다. 모델이 보는
+        // 유일한 매체 서술이라, 틀린 채로 두면 «채널·스레드» 류의 존재하지 않는 맥락을 가정한다.
+        assertThat(PROMPT).contains("앱 채팅에서 사용자의 커피 시음 기록을 돕는다");
+        assertThat(PROMPT).doesNotContain("Slack");
     }
 
     @Test

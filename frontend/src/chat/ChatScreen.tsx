@@ -101,7 +101,7 @@ export function ChatScreen({ onNavigate }: ChatScreenProps) {
     } catch (error) {
       setMessages((prev) => [
         ...prev,
-        { role: 'system', text: describe(error, '사진을 올리지 못했어요. JPEG·PNG만 받을 수 있어요.') },
+        { role: 'system', text: describe(error, '사진을 올리지 못했어. JPEG·PNG만 받을 수 있어.') },
       ])
     } finally {
       setUploading(false)
@@ -169,7 +169,7 @@ export function ChatScreen({ onNavigate }: ChatScreenProps) {
       // 실패하면 첨부는 그대로 둔다 — 사진은 스테이징에 서 있고, 재시도가 이름만 다시 실으면 된다.
       // POLICY: 턴 실패는 조용히 삼키지 않는다 — 노트 무변화 + 재요청 안내가 서버 규약이고(ADR-48),
       //         화면도 같은 자리에 실패를 남긴다. 사용자가 방금 한 말은 말풍선에 그대로 있다.
-      setMessages((prev) => [...prev, { role: 'system', text: describe(error, '잘 못 들었어요. 다시 한 번 말해 주세요.') }])
+      setMessages((prev) => [...prev, { role: 'system', text: describe(error, '잘 못 들었어. 다시 한 번 말해 줘.') }])
     } finally {
       setBusy(false)
     }
@@ -198,7 +198,7 @@ export function ChatScreen({ onNavigate }: ChatScreenProps) {
         },
       ])
     } catch (error) {
-      setMessages((prev) => [...prev, { role: 'system', text: describe(error, '저장하지 못했어요. 폼은 그대로 두었어요.') }])
+      setMessages((prev) => [...prev, { role: 'system', text: describe(error, '저장하지 못했어. 폼은 그대로 뒀어.') }])
     } finally {
       setBusy(false)
     }
@@ -212,12 +212,12 @@ export function ChatScreen({ onNavigate }: ChatScreenProps) {
     setDraft(null)
     setPhotos([])
     release(photos)
-    setMessages((prev) => [...prev, { role: 'system', text: '작성 중이던 노트를 지웠어요.' }])
+    setMessages((prev) => [...prev, { role: 'system', text: '작성 중이던 노트를 지웠어.' }])
     try {
       await postAgentCancel()
     } catch (error) {
       // 사용자가 할 수 있는 일은 없지만 조용히 삼키지 않는다 — 다음 대화가 이상하면 이 줄이 단서다.
-      setMessages((prev) => [...prev, { role: 'system', text: describe(error, '이전 대화 내용은 정리하지 못했어요.') }])
+      setMessages((prev) => [...prev, { role: 'system', text: describe(error, '이전 대화 내용은 정리하지 못했어.') }])
     }
   }
 
@@ -386,7 +386,7 @@ interface Message {
   action?: { label: string; path: string }
 }
 
-const GREETING: Message = { role: 'agent', text: '오늘의 한 잔, 어땠어요? ☕' }
+const GREETING: Message = { role: 'agent', text: '오늘의 한 잔, 어땠어? ☕' }
 
 function Bubble({ message, onNavigate }: { message: Message; onNavigate: (path: string) => void }) {
   if (message.role === 'system') {
@@ -443,8 +443,8 @@ function Bubble({ message, onNavigate }: { message: Message; onNavigate: (path: 
  */
 function savedNotice(noteId: number, merged: boolean): string {
   return merged
-    ? `기존 노트 #${noteId}에 오늘 기록을 더했어요. 커피 정보는 기존 노트의 값을 그대로 뒀어요.`
-    : `저장했어요. (노트 #${noteId})`
+    ? `기존 노트 #${noteId}에 오늘 기록을 더했어. 커피 정보는 기존 노트의 값을 그대로 뒀어.`
+    : `저장했어. (노트 #${noteId})`
 }
 
 function describe(error: unknown, fallback: string): string {
