@@ -507,6 +507,102 @@ select:focus {
   outline-offset: -2px;
 }
 
+/* ── 탭 영역 ─────────────────────────────────────────────────────── */
+
+/*
+ * **보이는 크기와 누를 수 있는 크기를 분리한다** (2026-08-01 실사용 지적 → 전 화면 실측).
+ *
+ * 발단은 수정 화면의 날짜 입력칸이 *"아예 클릭이 안 된다"*는 지적이었고, 원인은 시안 이식의 공통
+ * 부작용이었다: 시안의 인상(테두리 없는 글자, 가는 칩)을 지키려고 `padding: 0`을 두면 **글자 높이가 곧
+ * 히트 영역**이 된다. 390px 폭 실측에서 40px 미만이 네 화면 전부에 있었고 최악은 `.edit__chip-x`의
+ * **8 × 16px**였다 — 손가락으로는 사실상 못 누르는 과녁이다(iOS 권장 최소 44×44).
+ *
+ * **시안은 디자인 정본이다**(ADR-54). 그래서 보이는 모양은 한 픽셀도 건드리지 않고 `::after`로 **투명한
+ * 히트 영역만** 덧댄다 — 버튼 자신의 자식이라 클릭이 그대로 버튼에 간다. 레이아웃에 영향이 없어(absolute)
+ * 시안 대조도 그대로 성립한다.
+ *
+ * **가로는 이웃이 있는 곳에서 늘리지 않는다** — 나란한 버튼끼리 히트 영역이 겹치면 옆 것이 눌린다.
+ * 그래서 대부분 세로만 늘리고, 주변이 빈 공간인 것(헤더 구석·칩의 ✕)만 가로도 늘린다.
+ *
+ * 입력 요소는 이 방법을 쓸 수 없다(`input::after`는 렌더되지 않는다) — 그쪽은 `min-height`로 실제 높이를
+ * 준다. 각 규칙 자리에 그 사정을 적어 뒀다.
+ */
+.detail__back,
+.detail__edit,
+.gallery__back,
+.header__link,
+.chip,
+.composer__attach,
+.composer__send,
+.edit__chip-x,
+.edit__revert,
+.edit__save,
+.edit__fold,
+.edit__danger-button {
+  position: relative;
+}
+
+.detail__back::after,
+.detail__edit::after,
+.gallery__back::after,
+.header__link::after,
+.chip::after,
+.composer__attach::after,
+.composer__send::after,
+.edit__chip-x::after,
+.edit__revert::after,
+.edit__save::after,
+.edit__fold::after,
+.edit__danger-button::after {
+  content: '';
+  position: absolute;
+}
+
+/* 세로만 — 나란히 선 것들(되돌리기·저장, 삭제 버튼)이라 가로로 늘리면 옆 것과 겹친다. */
+.edit__revert::after {
+  inset: -14px 0;
+}
+
+/*
+ * 필터 칩은 위아래로도 이웃이 있다(검색칸·원산지칸, `.filters`의 gap 6px) — 딱 그 틈만큼만 늘린다.
+ * 더 늘리면 칩의 투명 히트 영역이 입력칸 위에 얹혀 **칩이 그 칸의 탭을 가로챈다**. 28 → 40이 여기서
+ * 시안을 건드리지 않고 얻을 수 있는 최대다.
+ */
+.chip::after {
+  inset: -6px 0;
+}
+
+.edit__save::after,
+.edit__danger-button::after {
+  inset: -6px 0;
+}
+
+/* 가로도 — 헤더 구석이라 옆이 비어 있다. */
+.detail__back::after,
+.detail__edit::after,
+.edit__fold::after {
+  inset: -14px -12px;
+}
+
+.gallery__back::after,
+.header__link::after {
+  inset: -10px -12px;
+}
+
+/* 입력칸을 사이에 두고 양 끝에 선다 — 안쪽으로 늘리면 입력칸을 덮으므로 가로는 조금만. */
+.composer__attach::after,
+.composer__send::after {
+  inset: -8px -6px;
+}
+
+/*
+ * ✕는 칩 안에 있어 왼쪽으로 늘리면 **글자를 눌러도 지워진다** — 그쪽만 좁게 두고 나머지로 넓힌다.
+ * 44에 못 미치지만(27 × 40) 칩을 키우지 않고 얻을 수 있는 최대이고, 8 × 16에서 8배다.
+ */
+.edit__chip-x::after {
+  inset: -12px -11px -12px -8px;
+}
+
 .button {
   font: inherit;
   font-size: 12px;
@@ -547,6 +643,8 @@ select:focus {
 
 .composer__input {
   flex: 1;
+  /* 입력이라 ::after를 못 쓴다(§탭 영역) — 실제 높이를 준다. 37 → 40이라 눈에 띄지 않는다. */
+  min-height: 40px;
   border-radius: 999px;
   background: var(--card);
   border: 1px solid #cfc3b3;
@@ -761,6 +859,10 @@ select:focus {
   min-width: 0;
   flex: 1 1 92px;
   background: var(--panel);
+  /* 입력이라 ::after를 못 쓴다(§탭 영역) — 실제 높이를 준다. 칩과 규칙 블록을 공유하므로 여기에 둔다:
+     위에 두면 칩까지 40px이 되어 시안의 가는 칩이 굵어진다(ADR-54). 타이핑하는 칸이라 칩과 같은
+     높이일 이유도 없다. */
+  min-height: 40px;
 }
 
 .filters__origin::placeholder {
@@ -1505,6 +1607,8 @@ select:focus {
 .edit__chip-input {
   width: 108px;
   flex: none;
+  /* 입력이라 ::after를 못 쓴다(§탭 영역) — 실제 높이를 준다. 이웃 필드가 42px이라 오히려 정합적이다. */
+  min-height: 40px;
   border: 1px dashed #cfc3b3;
   background: var(--card);
   padding: 7px 11px;
@@ -1526,7 +1630,8 @@ select:focus {
 
 /* 펼친 날짜는 짙은 갈색 바다 — 지금 무엇을 고치는 중인지가 한눈에 보인다. */
 .edit__date-head {
-  padding: 10px 20px;
+  /* 세로 여백이 작은 것은 날짜 입력칸이 스스로 높이를 갖기 때문이다(아래 `.edit__date-input`). */
+  padding: 6px 20px;
   background: var(--brown);
   display: flex;
   align-items: center;
@@ -1541,9 +1646,11 @@ select:focus {
 
 .edit__date-left {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 10px;
   min-width: 0;
+  /* 접힘 여부로 바 높이가 튀지 않게 — 펼친 쪽은 입력칸이, 접힌 쪽은 이 값이 높이를 만든다. */
+  min-height: 40px;
 }
 
 .edit__date-text {
@@ -1554,12 +1661,25 @@ select:focus {
 
 /*
  * 시안의 날짜는 표시 전용인데 여기서는 입력이다 — 날짜 이동이 이 화면의 기능이라(V-10·D-12) 헤더의 그
- * 값이 곧 고칠 대상이다. 바 위에 앉으므로 테두리 없이 글자만 남겨 시안의 인상을 지킨다.
+ * 값이 곧 고칠 대상이다.
+ *
+ * **첫 구현은 여기서 `padding: 0`으로 전역 input 규칙을 지웠다가 탭이 안 되는 필드가 됐다**
+ * (2026-08-01 실사용 지적). 시안의 *"테두리 없이 글자만"* 인상을 지키려던 것인데 글자 높이가 곧
+ * 히트 영역이 되어 **168 × 17px** — 세로 여유 ±8px짜리 과녁이었다. 9px만 빗나가면 아무 반응도 없는
+ * 바 배경이 잡히니 *"클릭이 안 된다"*가 맞는 관측이다(iOS 권장 최소 44×44).
+ *
+ * 그래서 **높이는 손가락에 맞추고 인상은 다른 수단으로 지킨다**: 하드한 테두리 대신 바 위에 아주 옅게
+ * 얹힌 면으로 *"여기가 입력칸"*을 알리고, 굵기는 시안의 모노스페이스 글자가 그대로 유지한다.
  */
 .edit__date-input {
-  border: none;
-  background: transparent;
-  padding: 0;
+  /* 전역 input의 width: 100%를 되돌린다 — 날짜는 내용 폭이면 충분하고, 늘리면 과녁만 커진다. */
+  flex: none;
+  width: auto;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid rgb(246 241 233 / 26%);
+  border-radius: 4px;
+  background: rgb(246 241 233 / 10%);
   font: 13px ui-monospace, Menlo, monospace;
   letter-spacing: 1px;
   color: var(--on-brown);
@@ -1644,6 +1764,9 @@ select:focus {
 .ebrew__method {
   width: 116px;
   flex: none;
+  /* 입력이라 ::after를 못 쓴다(§탭 영역). 23px이던 것을 34px로 — 44에 못 미치는 것은 이것이 시안의
+     `핸드드립 ▾` 칩이고 더 키우면 회차 카드 머리가 칩이 아니라 버튼 줄로 읽히기 때문이다(ADR-54). */
+  min-height: 34px;
   border: 1px solid var(--brew-border);
   border-radius: 999px;
   background: transparent;
