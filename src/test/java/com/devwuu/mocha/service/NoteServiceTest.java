@@ -381,6 +381,94 @@ class NoteServiceTest {
         }
     }
 
+    @Nested
+    @DisplayName("TΔ9 카드 캐시 — 쓰기가 무효화한다")
+    class CardCache {
+
+        /** 그 노트의 카드 폴더에 캐시 1장을 세운다 — 무효화의 대상이자 전제다. */
+        private Path seedCard(Note note, String fileName) throws IOException {
+            Path cardsDir = artifactDir.resolve("cards").resolve(NoteFolderName.of(note));
+            Files.createDirectories(cardsDir);
+            Path card = cardsDir.resolve(fileName);
+            Files.writeString(card, "카드");
+            return card;
+        }
+
+        @Test
+        @DisplayName("AC-5: 메타 수정은 그 노트의 카드를 통째로 걷는다 — 메타가 모든 날짜 카드 머리에 실린다")
+        void metaUpdateInvalidatesEveryCardOfTheNote() throws IOException {
+            Note note = saved(7, "커피", "로스터리", Aliases.empty());
+            tx.put(note);
+            Path july = seedCard(note, "2026-07-10-taste-1.jpg");
+            Path june = seedCard(note, "2026-06-01-taste-1.jpg");
+
+            service.updateMeta(7, meta("커피", "새 로스터리"));
+
+            assertThat(july).doesNotExist();
+            assertThat(june).doesNotExist();
+        }
+
+        @Test
+        @DisplayName("AC-39(TΔ9 이관): 날짜 이동 후 옛 날짜 카드가 남지 않는다 — 파일명에 날짜가 박혀 있다")
+        void dateMoveInvalidatesOldDateCards() throws IOException {
+            Note note = saved(7, "커피", "로스터리", Aliases.empty());
+            tx.put(note);
+            Path old = seedCard(note, "2026-07-09-taste-1.jpg");
+
+            service.replaceEntry(7, day(9), entry());
+
+            assertThat(old).doesNotExist();
+        }
+
+        @Test
+        @DisplayName("기존 노트 커밋도 무효화한다 — 회차가 붙으면 그 날짜 카드가 낡는다")
+        void mergeCommitInvalidatesCards() throws IOException {
+            Note note = saved(7, "커피", "로스터리", Aliases.empty());
+            tx.put(note);
+            Path card = seedCard(note, "2026-07-10-taste-1.jpg");
+
+            service.commit(draft(7L, "커피", "로스터리"), MatchInfo.existing(7L, day(10)));
+
+            assertThat(card).doesNotExist();
+        }
+
+        @Test
+        @DisplayName("무효화는 쓰기 전이다 — 로스터리를 고친 뒤에 지우면 옛 이름 폴더의 카드가 고아로 남는다")
+        void invalidationHappensBeforeTheWrite() throws IOException {
+            Note note = saved(7, "커피", "옛 로스터리", Aliases.empty());
+            tx.put(note);
+            Path card = seedCard(note, "2026-07-10-taste-1.jpg");
+            // 쓰기가 실패해도 무효화는 이미 일어났다 — 캐시가 비는 것은 무해하고(다음 공유가 다시 굽는다)
+            // 순서가 뒤집혀 있었다면 이 시점에 카드가 살아 있다.
+            tx.updateFailure = new IllegalStateException("대상 소실");
+
+            assertThatThrownBy(() -> service.updateMeta(7, meta("커피", "새 로스터리")))
+                    .isInstanceOf(IllegalStateException.class);
+
+            assertThat(card).doesNotExist();
+        }
+
+        @Test
+        @DisplayName("POLICY: 무효화 실패는 쓰기를 되돌리지 않는다 — 카드는 파생물이고 renderAll이 최종 회수 지점이다")
+        void invalidationFailureDoesNotBlockTheWrite() {
+            tx.put(saved(7, "커피", "로스터리", Aliases.empty()));
+            // 무효화가 지울 대상을 알아내는 조회부터 깨뜨린다 — 낡은 카드 한 장 때문에 수정이 막히면 안 된다.
+            tx.lookupFailure = new IllegalStateException("조회 실패");
+
+            service.updateMeta(7, meta("커피", "새 로스터리"));
+
+            assertThat(tx.lastMeta).isNotNull();
+        }
+
+        @Test
+        @DisplayName("신규 노트 커밋은 지울 캐시가 없다 — id가 없어 무효화에 들어가지 않는다")
+        void newNoteCommitSkipsInvalidation() {
+            service.commit(draft(null, "커피", "로스터리"), MatchInfo.newNote());
+
+            assertThat(tx.commits).isOne();
+        }
+    }
+
     // ────────────────────────────── 표본 ──────────────────────────────
 
     private static LocalDate day(int dayOfMonth) {
@@ -431,6 +519,9 @@ class NoteServiceTest {
         private int commits;
         private int deletes;
         private int replaces;
+        /** 주입 실패 — 카드 캐시 무효화(TΔ9)의 조회·쓰기 경로를 각각 깨뜨린다. */
+        private RuntimeException lookupFailure;
+        private RuntimeException updateFailure;
 
         /** 이미 색인된 사진 경로 — 폴더 접미를 되읽는 입력이자 삭제가 지울 목록이다(TΔ8b). */
         private final List<String> photos = new ArrayList<>();
@@ -453,6 +544,9 @@ class NoteServiceTest {
 
         @Override
         public Optional<Note> findById(long id) {
+            if (lookupFailure != null) {
+                throw lookupFailure;
+            }
             return Optional.ofNullable(notes.get(id));
         }
 
@@ -470,6 +564,9 @@ class NoteServiceTest {
 
         @Override
         public NoteDetail updateMeta(long noteId, NoteMeta meta) {
+            if (updateFailure != null) {
+                throw updateFailure;
+            }
             lastMeta = meta;
             return detailOf(noteId);
         }

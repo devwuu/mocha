@@ -1,0 +1,15 @@
+{
+  "path": "/api/notes/{id}/entries/{date}/card",
+  "method": "GET",
+  "params": {
+    "type": ["taste", "recipe"],
+    "n": 1
+  },
+  "example": "/api/notes/42/entries/2026-07-18/card?type=taste&n=2",
+  "response_content_type": "image/jpeg",
+  "response_status": 200,
+  "response_cache_control": "no-store",
+  "missing_status": 404,
+  "bad_type_status": 400,
+  "render_failure_status": 500
+}

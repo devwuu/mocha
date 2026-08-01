@@ -36,9 +36,10 @@ import java.util.stream.Stream;
  *
  * <p><b>경계</b>: 외부 호출(LLM·검색·파일)을 <b>쓰기 진입 전에</b> 끝내고 결과값만 {@link NoteTxService}에
  * 넘긴다. 원자적이어야 하는 규칙(V-9·V-10·V-13·ADR-4 병합 정책)은 전부 그 아래에 있다 — <b>이 클래스에
- * 비즈니스 규칙을 두지 않는다.</b> 여기 있는 판단은 둘뿐이고 <b>둘 다 외부 콜에 관한 것</b>이다:
+ * 비즈니스 규칙을 두지 않는다.</b> 여기 있는 판단은 <b>전부 외부 콜·파일에 관한 것</b>이다:
  * <i>"별칭 생성 콜을 쏠 것인가"</i>({@link #commit}) · <i>"사진 폴더를 옮길 것인가"</i>
- * ({@link #replaceEntry} — 날짜가 바뀌었는가 · 옮길 사진이 있는가).
+ * ({@link #replaceEntry} — 날짜가 바뀌었는가 · 옮길 사진이 있는가) · <i>"어느 카드가 낡았는가"</i>
+ * ({@link #invalidateCards} — TΔ9, 모든 쓰기가 지난다).
  *
  * <p>이 분리가 백엔드 CLAUDE.md §3(<i>"트랜잭션 안에서 외부 호출을 하지 않는다"</i>)을 규칙이 아니라
  * <b>계층으로</b> 지키는 방식이다 — 외부 콜이 사는 층과 트랜잭션이 열리는 층이 아예 다르다.
@@ -143,8 +144,12 @@ public class NoteService {
      *
      * <p><b>사진 확정은 저장 <i>뒤</i>다</b>(TΔ8b) — 순서가 뒤집힌 유일한 외부 IO이고, 그럴 수밖에 없다:
      * 아카이브 폴더 접미가 {@code <id>-…}라(ADR-75) 신규 노트는 INSERT가 id를 발급하기 전까지 최종 경로가
-     * 없다. 그래서 사진은 스테이징에 머물다 여기서 옮겨진다({@link #archivePhotos}). 카드 생성(TΔ9)은
-     * 아직 여기 없다.
+     * 없다. 그래서 사진은 스테이징에 머물다 여기서 옮겨진다({@link #archivePhotos}).
+     *
+     * <p><b>카드 생성 단계는 끝내 붙지 않았다</b>(TΔ9 확정, TΔ4a 이월 (c)의 답): 카드가 온디맨드로
+     * 바뀐 이상(OQ-3 ㉡) 저장이 카드를 굽는 것은 <i>아무도 보지 않을 이미지를 위해 브라우저를 띄우는
+     * 일</i>이다. 저장이 여기서 하는 카드 관련 일은 <b>지우는 것 하나</b>다({@link #invalidateCards}) —
+     * 기존 노트에 회차가 붙으면 그 날짜의 카드가 낡는다.
      *
      * <p>POLICY: 사용자 [저장] 확정 없이 이 메서드를 부르지 않는다 (ref: plan.md#ADR-3, AC-4).
      * <p>POLICY: 별칭 생성 콜 실패는 저장을 되돌리지 않는다 — 빈 별칭으로 수렴하고 저장은 유지한다.
@@ -162,6 +167,10 @@ public class NoteService {
 
         Aliases generated = isNew(match) ? generateAliases(draft) : null;
 
+        // 기존 노트에 회차가 붙거나 갈리면 그 날짜의 카드가 낡는다. 신규 노트는 지울 캐시가 없다.
+        if (draft.id() != null) {
+            invalidateCards(draft.id());
+        }
         Note saved = noteTxService.commit(draft.id(), meta, entry, generated);
         archivePhotos(saved, entry.date());
         log.info("커밋 완료: noteId={} date={} entries={}", saved.id(), entry.date(), saved.entries().size());
@@ -211,13 +220,16 @@ public class NoteService {
 
     /**
      * 노트 메타 수정 — 커피명을 제외한 전부가 대상이다(FR-21, spec AC-5).
-     * <p>외부 IO가 없어 위임 한 줄이다. V-9 검사는 {@link NoteTxService#updateMeta}가 트랜잭션 안에서 진다.
+     * <p>V-9 검사는 {@link NoteTxService#updateMeta}가 트랜잭션 안에서 진다. 이 층이 지는 것은
+     * <b>카드 캐시 무효화</b>뿐이다(TΔ9) — 메타는 감상 카드의 머리에 통째로 실리므로 로스터리 한 글자만
+     * 고쳐도 <b>그 노트의 모든 날짜 카드</b>가 낡는다.
      *
      * @return 갱신된 노트 전문 + 사진 — 응답이 곧 화면의 새 기준선이다(TΔ5b-3).
      * @throws IllegalArgumentException 커피명 변경 시도(V-9).
      * @throws IllegalStateException    대상 노트 소실 시.
      */
     public NoteDetail updateMeta(long noteId, NoteMeta meta) {
+        invalidateCards(noteId);
         return noteTxService.updateMeta(noteId, meta);
     }
 
@@ -244,6 +256,7 @@ public class NoteService {
      */
     public NoteDetail replaceEntry(long noteId, LocalDate targetDate, Entry entry) {
         Map<String, String> movedPhotos = movePhotoFiles(noteId, targetDate, entry.date());
+        invalidateCards(noteId);
         return noteTxService.replaceEntry(noteId, targetDate, entry, movedPhotos);
     }
 
@@ -306,6 +319,29 @@ public class NoteService {
             log.warn("삭제 후 파일 정리 실패(행은 이미 삭제됨): noteId={}", id, e);
         }
         return true;
+    }
+
+    /**
+     * 카드 캐시 무효화 — 그 노트의 카드를 통째로 걷는다 (ref: changes/0029 tasks.md TΔ9, OQ-3 ㉡·OQ-10).
+     *
+     * <p><b>무효화 축은 노트 하나다</b>(엔트리도 회차도 아니다). 셋으로 갈라도 되지만 그러면 규칙이
+     * 셋이 되고, 그중 하나만 틀려도 <i>낡은 카드를 공유하는</i> 형태로 조용히 새는데 — 그것을 알아채는
+     * 자리는 이미 공유한 뒤다. 하나로 두면 대가는 안 낡은 카드까지 다시 굽는 것뿐이고, 온디맨드에서
+     * 캐시는 대개 0~2장이라(공유한 것만 있다) 그 대가가 실질적으로 없다.
+     *
+     * <p><b>쓰기 <i>전에</i> 부른다.</b> 폴더 접미가 지금 이름으로 계산되므로(사진과 갈리는 지점 —
+     * 사진은 실제로 쓴 경로에서 되읽는다) 로스터리를 고친 <i>뒤에</i> 지우면 <b>새 이름의 빈 폴더</b>를
+     * 지우고 옛 이름 폴더의 카드는 고아로 남는다. 쓰기가 실패해 캐시만 비는 것은 무해하다 — 다음 공유가
+     * 다시 굽는다.
+     */
+    // POLICY: 무효화 실패는 쓰기를 되돌리지 않는다 — 카드는 파생물이고, 놓친 카드의 최종 회수 지점은
+    //         renderAll(--rerender)의 고아 정리다 (ref: specs/coffee-note-agent/plan.md §7).
+    private void invalidateCards(long noteId) {
+        try {
+            noteTxService.findById(noteId).map(NoteFolderName::of).ifPresent(this::removeCards);
+        } catch (RuntimeException e) {
+            log.warn("카드 캐시 무효화 실패(쓰기는 진행): noteId={}", noteId, e);
+        }
     }
 
     /**

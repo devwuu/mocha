@@ -11,6 +11,7 @@
 import type {
   AgentTurnRequest,
   AgentTurnResponse,
+  CardType,
   NoteCandidatesResponse,
   NoteCommitRequest,
   NoteCommitResponse,
@@ -126,6 +127,32 @@ export async function patchNoteEntry(
   body: NoteEntryUpdate,
 ): Promise<NoteDetail> {
   return patchJson<NoteDetail>(`/api/notes/${noteId}/entries/${targetDate}`, body)
+}
+
+/**
+ * 회차 카드 URL — 화면이 이미 아는 값만으로 정해진다(TΔ9).
+ *
+ * 사진 URL을 서버가 만들어 주는 것과 갈리는 이유는 `contract.ts`의 `CardType`이 소유한다. 여기 두는
+ * 것은 **조립 규칙이 한 곳이어야 하기 때문**이다 — 화면이 직접 문자열을 잇기 시작하면 `?type=`의 표기가
+ * 화면마다 갈린다.
+ */
+export function noteCardUrl(noteId: number, date: string, type: CardType, n: number): string {
+  return `/api/notes/${noteId}/entries/${date}/card?type=${type}&n=${n}`
+}
+
+/**
+ * 회차 카드 이미지 — 없으면 서버가 그때 굽는다(첫 요청은 초 단위로 느리다).
+ *
+ * 없는 파트(레시피 없는 회차의 레시피 카드)는 **404**이고 그것은 오류가 아니라 없는 자원이다. 다만
+ * 화면은 있는 파트만 요청하므로(상세 응답이 그것을 안다) 여기 404가 오면 계약이 어긋난 것이다 —
+ * 그래서 다른 실패와 같이 Error로 올린다.
+ */
+export async function getNoteCard(noteId: number, date: string, type: CardType, n: number): Promise<Blob> {
+  const response = await fetch(noteCardUrl(noteId, date, type, n))
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`)
+  }
+  return await response.blob()
 }
 
 /** 노트 삭제 — 본문 없는 204. hard delete라 되돌릴 것이 없고, 없는 id는 404다(AC-6). */

@@ -3,13 +3,14 @@ import type { NoteDetail, NoteDetailBrew, NoteDetailEntry, NotePhoto, Recipe, So
 import { getNoteDetail } from '../api'
 import { SOURCE_LABELS } from '../formValues'
 import { editPath, GALLERY } from '../routes'
+import { shareBrewCards } from './share'
 
 /**
  * 상세 보기 화면 — 노트 전문 + 회차별 레시피·감상 + 그 날의 사진 (changes/0029 TΔ13a).
  *
  * **읽는 화면이다.** 고치는 일은 여기서 하지 않고 `/notes/{id}/edit`이 진다(TΔ13b) — 헤더의 [수정]이
- * 그리로 보내는 입구뿐이다. 공유(카드 생성)는 TΔ9이고 아직 버튼이 없다: 갈 곳 없는 버튼을 먼저 다는 것은
- * TΔ12가 카드를 링크로 만들지 않은 것과 같은 이유로 하지 않는다.
+ * 그리로 보내는 입구뿐이다. **여기서 나가는 유일한 산출은 카드 이미지**이고(TΔ9) 그 입구가 회차마다 붙는
+ * [공유]다 — 카드가 Slack으로 배달되던 시절(FR-16)의 자리를 이 버튼이 대신한다.
  *
  * **이 화면이 `GET /api/notes/{id}` 계약을 정했다**(D-10 ② *"화면이 API의 모양을 정한다"*). 정본은
  * `note-detail.contract.json`이고 **TΔ5a가 그것을 구현했다** — mock에서 실 DB로 갈아 끼우는 동안 이
@@ -104,7 +105,7 @@ export function DetailScreen({ noteId, onNavigate }: DetailScreenProps) {
                 <div className="detail__empty">아직 시음 기록이 없어요.</div>
               )}
               {note.entries.map((entry) => (
-                <EntrySection key={entry.date} entry={entry} />
+                <EntrySection key={entry.date} entry={entry} noteId={note.note_id} />
               ))}
 
               {/* 시안과 갈린 것 ③ — 참조 링크는 시안에 없다. FR-12가 저장하는 값이고 캡처 폼도 보여주므로
@@ -195,7 +196,7 @@ function Meta({ note }: { note: NoteDetail }) {
  *
  * 사진이 회차 위에 오는 것이 시안의 순서다 — 그 날의 장면이 먼저고 기록이 뒤다.
  */
-function EntrySection({ entry }: { entry: NoteDetailEntry }) {
+function EntrySection({ entry, noteId }: { entry: NoteDetailEntry; noteId: number }) {
   return (
     <section className="entry">
       <div className="entry__rule">
@@ -212,19 +213,34 @@ function EntrySection({ entry }: { entry: NoteDetailEntry }) {
       )}
 
       {entry.brews.map((brew, index) => (
-        <BrewCard key={index} brew={brew} no={index + 1} />
+        <BrewCard key={index} brew={brew} no={index + 1} noteId={noteId} date={entry.date} />
       ))}
     </section>
   )
 }
 
 /**
- * 회차 1개 = 카드 하나 — 머리(회차·방식) · 스탯 격자 · 문장 블록 · 감상.
+ * 회차 1개 = 카드 하나 — 머리(회차·방식·공유) · 스탯 격자 · 문장 블록 · 감상.
  *
  * 레시피·감상 중 있는 것만 그린다(둘 다 null인 회차는 저장되지 않는다, V-15). 감상만 있는 회차는 머리와
  * 감상만 남고, 그것도 시안 카드의 정상 형태다.
+ *
+ * **시안과 갈린 것 ④(TΔ9)**: 시안에 [공유]가 없다 — 카드 이미지가 Slack으로 배달되던 시절의 시안이라
+ * 화면에 공유 입구가 있을 이유가 없었고, 그 배달처가 사라진 지금(TΔ16) 여기가 유일한 입구다. **회차마다
+ * 하나**인 것은 카드가 회차 단위로 구워지기 때문이고(ADR-59), 감상·레시피를 갈라 달지 않는 근거는
+ * `share.ts`가 소유한다.
  */
-function BrewCard({ brew, no }: { brew: NoteDetailBrew; no: number }) {
+function BrewCard({
+  brew,
+  no,
+  noteId,
+  date,
+}: {
+  brew: NoteDetailBrew
+  no: number
+  noteId: number
+  date: string
+}) {
   const recipe = brew.recipe
   const notes = recipe === null ? [] : sentenceRows(recipe)
 
@@ -232,7 +248,10 @@ function BrewCard({ brew, no }: { brew: NoteDetailBrew; no: number }) {
     <div className="brew">
       <div className="brew__head">
         <span className="brew__no">{no}회차</span>
-        {recipe?.method != null && <span className="brew__method">{recipe.method}</span>}
+        <div className="brew__head-right">
+          {recipe?.method != null && <span className="brew__method">{recipe.method}</span>}
+          <ShareButton noteId={noteId} date={date} brew={brew} no={no} />
+        </div>
       </div>
 
       {recipe !== null && <Stats recipe={recipe} />}
@@ -258,6 +277,51 @@ function BrewCard({ brew, no }: { brew: NoteDetailBrew; no: number }) {
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * [공유] — 그 회차의 카드를 만들어 공유 시트(또는 내려받기)로 보낸다 (TΔ9, AC-Δ 공유 경로).
+ *
+ * **첫 누름은 느리다**: 서버가 그때 카드를 굽고 헤드리스 브라우저 기동이 초 단위다. 그래서 진행 중에는
+ * 버튼을 잠그고 문구를 바꾼다 — 아무 반응이 없으면 사용자가 다시 누르고, 그러면 같은 카드를 두 번 굽는다.
+ *
+ * 실패는 그 자리에 남긴다. 화면 전체를 흔들 일이 아니고(저장된 기록은 멀쩡하다), 다시 누르는 것이 곧
+ * 재시도다 — 다음 누름에서 문구가 원래대로 돌아간다.
+ */
+function ShareButton({
+  noteId,
+  date,
+  brew,
+  no,
+}: {
+  noteId: number
+  date: string
+  brew: NoteDetailBrew
+  no: number
+}) {
+  const [state, setState] = useState<'idle' | 'working' | 'failed'>('idle')
+
+  async function onShare() {
+    setState('working')
+    try {
+      await shareBrewCards(noteId, date, brew, no)
+      setState('idle')
+    } catch {
+      setState('failed')
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      className="brew__share"
+      onClick={onShare}
+      disabled={state === 'working'}
+      aria-label={`${no}회차 카드 공유`}
+    >
+      {state === 'working' ? '만드는 중…' : state === 'failed' ? '다시 공유' : '공유'}
+    </button>
   )
 }
 

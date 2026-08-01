@@ -376,3 +376,17 @@ export interface NoteCommitResponse {
  * `src/test/resources/contract/agent-cancel.contract.json`이라 타입으로 옮길 것이 없고, 이 주석이
  * 계약 파일과 짝이다.
  */
+
+/**
+ * `GET /api/notes/{id}/entries/{date}/card?type=&n=` — 회차 카드 JPG 온디맨드 (TΔ9, OQ-3 ㉡).
+ *
+ * 응답이 이미지 바이트라 타입으로 옮길 본문이 없다 — 계약의 정본은
+ * `src/test/resources/contract/note-card.contract.json`이고 이 주석이 그 짝이다. 여기 사는 것은
+ * **요청의 유일한 열거 값**뿐이다.
+ *
+ * **URL은 클라이언트가 조립한다** — 사진(`NotePhoto.url`)과 갈리는 지점이다. 사진 경로는 폴더 접미가
+ * 생성 시점 스냅샷이라(ADR-75) 클라이언트가 재계산할 수 없는 서버 소유 규칙이지만, 카드 주소는
+ * 화면이 이미 들고 있는 값(`note_id` · `date` · 회차 순번)만으로 정해진다. 계약에 URL을 실으면 서버가
+ * **아직 굽지도 않은 카드**의 주소를 상세 응답마다 회차 수만큼 늘어놓게 된다.
+ */
+export type CardType = 'taste' | 'recipe'

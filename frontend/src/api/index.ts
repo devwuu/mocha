@@ -3,7 +3,8 @@
  *
  * **전부 실물이다** — `http.ts`가 `POST /api/agent/turn`(TΔ6a)·`POST /api/notes`·
  * `POST /api/agent/cancel`(TΔ6b)·`GET /api/notes/candidates`(TΔ7)·`POST /api/photos`(TΔ8a)·
- * `GET /api/notes`·`GET /api/notes/{id}`(TΔ5a)·**`PATCH`·`DELETE /api/notes/{id}`(TΔ5b-3)** 를 부른다.
+ * `GET /api/notes`·`GET /api/notes/{id}`(TΔ5a)·**`PATCH`·`DELETE /api/notes/{id}`(TΔ5b-3)**·
+ * **`GET /api/notes/{id}/entries/{date}/card`(TΔ9)** 를 부른다.
  *
  * TΔ10이 세운 규율 — *"계약(`contract.ts`)과 화면은 그대로 두고 구현만 갈아 끼운다"* — 이 세 슬라이스에서
  * 끝까지 지켜졌다: mock이 하나씩 빠지는 동안 이 파일에서 바뀐 것은 **재수출 줄의 출처뿐**이고
@@ -16,8 +17,10 @@
 export {
   deleteNote,
   getNoteCandidates,
+  getNoteCard,
   getNoteDetail,
   getNotes,
+  noteCardUrl,
   patchNoteEntry,
   patchNoteMeta,
   postAgentCancel,

@@ -25,6 +25,7 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Stream;
 
@@ -38,6 +39,10 @@ import java.util.stream.Stream;
  *   <li>{@code artifact/cards/<접미>/<date>-recipe-<n>.jpg} — 회차 n의 레시피 카드(recipe 있는 회차만, AC-78).</li>
  *   <li>{@code artifact/mascot-face.png}·{@code artifact/fonts/*.ttf} — 카드가 참조하는 로컬 자산(ADR-11).</li>
  * </ul>
+ * <p><b>{@code artifact/cards/}는 캐시다</b>(changes/0029 TΔ9, OQ-3 ㉡·OQ-10): 카드는 요청받은 때
+ * 구워지고, 노트를 고치면 쓰기 경로가 그 노트의 카드를 통째로 걷는다({@code NoteService}). 그래서 이
+ * 디렉터리에 무엇이 있는지는 <b>무엇을 공유했는지</b>의 흔적이지 저장된 기록의 완결된 사영이 아니다 —
+ * 그 사영을 만드는 것은 {@link #renderAll}이고, 그것이 NFR-3의 증거다.
  * <p>POLICY: 렌더 산출물은 cards/&lt;접미&gt;/&lt;date&gt;-taste-&lt;n&gt;.jpg·&lt;date&gt;-recipe-&lt;n&gt;.jpg뿐 —
  * artifact/ 아래 HTML 산출 금지 (ADR-55·59, AC-67). index.html은 폐기됐다(changes/0021 TΔ6).
  * <p>카드 HTML은 <b>파일로 남기지 않는다</b> — 카드를 굽는 순간의 중간 입력일 뿐이다(ADR-10).
@@ -97,35 +102,58 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
     }
 
     @Override
+    public Optional<Path> entryCard(long noteId, LocalDate date, CardType type, int brewNumber) {
+        Note note = noteService.findById(noteId).orElse(null);
+        if (note == null) {
+            return Optional.empty();
+        }
+        Entry entry = entryOf(note, date);
+        // 없는 대상은 예외가 아니라 빈 결과다 — 그 판정을 상태 코드로 옮기는 것은 전송 계층의 몫이고,
+        // 여기서 예외로 던지면 "카드가 없다"와 "굽다 실패했다"가 같은 형태로 올라간다(뜻이 다르다).
+        if (entry == null || brewNumber < 1 || brewNumber > entry.brews().size()
+                || !type.presentIn(entry.brews().get(brewNumber - 1))) {
+            return Optional.empty();
+        }
+
+        Path card = CardFiles.card(artifactDir, note, date, type, brewNumber);
+        if (Files.isRegularFile(card)) {
+            return Optional.of(card); // 캐시 히트 — 쓰기가 무효화하지 않은 카드는 최신이다(NoteService).
+        }
+        // 미스는 엔트리 단위로 채운다 — 공유가 그 회차의 감상·레시피를 함께 집으므로 두 번째 요청이 곧
+        // 이어지고, 브라우저 기동이 카드 장수보다 비싸다(NoteRenderer#entryCard).
+        return bakeEntry(note, entry).stream().filter(card::equals).findFirst();
+    }
+
+    @Override
     public List<Path> renderEntryCard(long noteId, LocalDate date) {
         Note note = noteService.findById(noteId)
                 .orElseThrow(() -> new IllegalArgumentException("카드 렌더 대상 노트 없음: noteId=" + noteId));
-        // entries 배열 존재는 도메인 생성자가 보장한다(V-3 — CR25-10) — null 재검증 없음(ADR-66 POLICY).
-        Entry entry = note.entries().stream()
-                .filter(e -> e.date().equals(date)).findFirst().orElse(null);
+        Entry entry = entryOf(note, date);
         if (entry == null) {
             throw new IllegalArgumentException("카드 렌더 대상 엔트리 없음: noteId=" + noteId + " date=" + date);
         }
+        return bakeEntry(note, entry);
+    }
 
-        // 증분 렌더라도 base 자산은 최신 상태여야 한다 — 카드가 참조하는 폰트·이미지의 해석 기준(AC-Δ7).
+    // 그 엔트리의 회차 카드를 굽고 옛 카드를 정리한다 — renderEntryCard와 온디맨드 미스의 공용 지점.
+    private List<Path> bakeEntry(Note note, Entry entry) {
+        // 한 장만 굽는 길이어도 base 자산은 최신 상태여야 한다 — 카드가 참조하는 폰트·이미지의 해석 기준(AC-Δ7).
         copyMascot();
         copyFonts();
         List<Path> cards = bakeEntryCards(new EntryRef(note, entry));
         // 회차 감소·파트 소멸 재저장의 옛 번호 카드가 남지 않게, 방금 산출 집합 외의 그 엔트리 카드를 지운다(TΔ5a).
-        pruneEntryCards(note, date, Set.copyOf(cards));
-        log.info("엔트리 카드 렌더: noteId={} date={} → {}장", noteId, date, cards.size());
+        pruneEntryCards(note, entry.date(), Set.copyOf(cards));
+        log.info("엔트리 카드 렌더: noteId={} date={} → {}장", note.id(), entry.date(), cards.size());
         return cards;
     }
 
-    @Override
-    public void removeEntryCard(long noteId, LocalDate date) {
-        // 수정 세션 날짜 이동의 옛 date 카드 정리(AC-39) — 그 엔트리의 회차 카드 전부.
-        // 노트 부재도 정상(이미 지워진 노트의 잔존 카드는 renderAll 고아 정리가 맡는다) — 멱등.
-        noteService.findById(noteId).ifPresent(note -> pruneEntryCards(note, date, Set.of()));
+    // entries 배열 존재는 도메인 생성자가 보장한다(V-3 — CR25-10) — null 재검증 없음(ADR-66 POLICY).
+    private static Entry entryOf(Note note, LocalDate date) {
+        return note.entries().stream().filter(e -> e.date().equals(date)).findFirst().orElse(null);
     }
 
-    // 그 엔트리(노트,date)의 카드 파일 중 keep에 없는 것을 지운다 — removeEntryCard(전부)와
-    // 재저장 잔존 정리(방금 산출 외)의 공용 지점.
+    // 그 엔트리(노트,date)의 카드 파일 중 keep에 없는 것을 지운다 — 회차 감소·파트 소멸로 남은
+    // 옛 번호 카드의 정리 지점이다(노트 단위 캐시 무효화는 쓰기 경로가 진다, NoteService).
     private void pruneEntryCards(Note note, LocalDate date, Set<Path> keep) {
         Path noteDir = CardFiles.noteCardsDir(artifactDir, note);
         if (!Files.isDirectory(noteDir)) {
@@ -143,7 +171,7 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
         }
     }
 
-    // POLICY: renderAll은 JSON 기준 산출 집합에 없는 카드 파일을 지운다 — removeEntryCard 실패로 남은
+    // POLICY: renderAll은 DB 기준 산출 집합에 없는 카드 파일을 지운다 — 캐시 무효화 실패로 남은
     //         옛 카드의 최종 정리 지점이자 파생물 재현 동일성의 근거
     //         (ref: specs/coffee-note-agent/plan.md §7, changes/0012 delta AC-Δ7).
     private void pruneOrphanCards(Set<Path> expected) {

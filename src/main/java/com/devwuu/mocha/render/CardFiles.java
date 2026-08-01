@@ -27,6 +27,19 @@ public final class CardFiles {
     private CardFiles() {
     }
 
+    /**
+     * 종류로 고르는 카드 경로 — 온디맨드 API가 쓴다(TΔ9).
+     *
+     * <p>{@link CardType#id()}가 곧 파일명 세그먼트라 분기가 형식적으로 보이지만, 두 메서드를 남겨 두는
+     * 것은 산출 쪽({@code bakeEntryCards})이 여전히 파트별로 부르기 때문이다 — 여기서 문자열을 이어
+     * 붙이면 규약이 <i>"이름을 만드는 규칙"</i>과 <i>"이름을 고르는 규칙"</i>으로 갈린다.
+     */
+    public static Path card(Path artifactDir, Note note, LocalDate date, CardType type, int brewNumber) {
+        return type == CardType.TASTE
+                ? tasteCard(artifactDir, note, date, brewNumber)
+                : recipeCard(artifactDir, note, date, brewNumber);
+    }
+
     /** 감상 카드 경로 — tasting 있는 회차만 산출된다(AC-78). */
     public static Path tasteCard(Path artifactDir, Note note, LocalDate date, int brewNumber) {
         return noteCardsDir(artifactDir, note).resolve(date + "-taste-" + brewNumber + ".jpg");

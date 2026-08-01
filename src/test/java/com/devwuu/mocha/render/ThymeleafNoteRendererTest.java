@@ -624,7 +624,7 @@ class ThymeleafNoteRendererTest {
         }
     }
 
-    // --- removeEntryCard + renderAll 고아 카드 정리(AC-39·AC-Δ7) ---
+    // --- 온디맨드 카드 + renderAll 고아 카드 정리(TΔ9·AC-Δ7) ---
 
     // 감상 회차 1개짜리 엔트리 1건 노트 — 정렬·고아 정리 픽스처.
     private static Note oneTasteNote(long id, String coffeeName, String roastery, LocalDate date) {
@@ -648,67 +648,72 @@ class ThymeleafNoteRendererTest {
     }
 
     @Test
-    @DisplayName("AC-39: 날짜 이동 커밋 후 옛 카드 삭제→새 카드 증분 렌더 → 옛 날짜 카드 부재·새 카드 존재")
-    void dateMoveCleansOldCards(@TempDir Path artifactDir) {
-        InMemoryNoteService repo = seedRepository();
-        ThymeleafNoteRenderer renderer =
-                new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_B, new FakeCardImageRenderer());
-        renderer.renderAll();
-        assertTrue(Files.isRegularFile(artifactDir.resolve("cards/" + N1 + "/2026-07-10-taste-1.jpg")), "이동 전 카드 존재");
-
-        // edit 커밋(07-10 → 07-11) 후 파생물 정리 순서: 옛 카드 삭제 → 새 카드 증분 렌더.
-        repo.put(movedDate(repo.findById(1).orElseThrow(), LocalDate.parse("2026-07-11")));
-        renderer.removeEntryCard(1, LocalDate.parse("2026-07-10"));
-        renderer.renderEntryCard(1, LocalDate.parse("2026-07-11"));
-
-        assertFalse(Files.exists(artifactDir.resolve("cards/" + N1 + "/2026-07-10-taste-1.jpg")), "옛 date 카드 부재");
-        assertTrue(Files.isRegularFile(artifactDir.resolve("cards/" + N1 + "/2026-07-11-taste-1.jpg")), "새 date 카드 존재");
-        assertTrue(Files.isRegularFile(artifactDir.resolve("cards/" + N2 + "/2026-07-04-taste-1.jpg")), "다른 노트 카드는 유지");
-    }
-
-    @Test
-    @DisplayName("AC-39(회차화): removeEntryCard는 그 엔트리의 회차 카드 전부를 삭제한다")
-    void removeEntryCardDeletesAllBrewCardsOfEntry(@TempDir Path artifactDir) {
+    @DisplayName("TΔ9: 캐시 미스는 그 엔트리의 카드를 전부 굽고 요청한 한 장을 돌려준다(브라우저 기동 > 카드 장수)")
+    void onDemandCacheMissBakesWholeEntry(@TempDir Path artifactDir) {
         OffsetDateTime now = OffsetDateTime.parse("2026-07-18T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
                 new Sourced<>("레인보우 블렌드", Source.USER), new Sourced<>("커피가게 동경", Source.USER),
                 List.of(new Bean(new Sourced<>("에티오피아", Source.USER), null)),
                 null, new Sourced<>(List.of(), Source.SEARCH), List.of());
         LocalDate date = LocalDate.parse("2026-07-18");
-        NoteService repo = new InMemoryNoteService()
-                .put(noteOf(3, meta, Aliases.empty(), twoBrewEntry(date, now)));
+        NoteService repo = new InMemoryNoteService().put(noteOf(3, meta, Aliases.empty(), twoBrewEntry(date, now)));
 
+        FakeCardImageRenderer cards = new FakeCardImageRenderer();
         ThymeleafNoteRenderer renderer =
-                new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_A, new FakeCardImageRenderer());
-        List<Path> baked = renderer.renderEntryCard(3, date);
-        assertEquals(4, baked.size(), "회차 2개 → 4장(전제)");
+                new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_A, cards);
 
-        renderer.removeEntryCard(3, date);
+        Optional<Path> card = renderer.entryCard(3, date, CardType.RECIPE, 2);
 
-        baked.forEach(p -> assertFalse(Files.exists(p), "회차 카드 전부 삭제: " + p));
+        assertEquals(Optional.of(artifactDir.resolve("cards/" + RAINBOW + "/2026-07-18-recipe-2.jpg")), card,
+                "요청한 종류·회차의 카드를 돌려준다");
+        assertTrue(Files.isRegularFile(card.orElseThrow()), "카드 JPG 존재");
+        assertEquals(4, cards.calls.size(), "미스는 엔트리 단위로 채운다 — 회차 2개 × (감상+레시피)");
     }
 
     @Test
-    @DisplayName("removeEntryCard: 대상 카드 파일이 없어도, 노트가 이미 사라졌어도 예외 없이 지나간다(멱등)")
-    void removeEntryCardIsHarmlessWhenAbsent(@TempDir Path artifactDir) {
-        ThymeleafNoteRenderer renderer = new ThymeleafNoteRenderer(
-                seedRepository(), engine, artifactDir, Theme.TYPE_B, new FakeCardImageRenderer());
-        // 산출 전(cards/ 자체가 없음)에도, 같은 호출을 반복해도, 미존재 노트여도 무해해야 한다.
-        renderer.removeEntryCard(1, LocalDate.parse("2026-07-10"));
-        renderer.removeEntryCard(1, LocalDate.parse("2026-07-10"));
-        renderer.removeEntryCard(999, LocalDate.parse("2026-07-10"));
-        assertFalse(Files.exists(artifactDir.resolve("cards/" + N1 + "/2026-07-10-taste-1.jpg")));
+    @DisplayName("TΔ9: 캐시 히트는 굽지 않는다 — 같은 카드를 다시 요청하면 렌더 호출이 늘지 않는다")
+    void onDemandCacheHitDoesNotBake(@TempDir Path artifactDir) {
+        NoteService repo = seedRepository();
+        FakeCardImageRenderer cards = new FakeCardImageRenderer();
+        ThymeleafNoteRenderer renderer =
+                new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_B, cards);
+        LocalDate date = LocalDate.parse("2026-07-10");
+
+        Optional<Path> first = renderer.entryCard(1, date, CardType.TASTE, 1);
+        int afterMiss = cards.calls.size();
+        Optional<Path> second = renderer.entryCard(1, date, CardType.TASTE, 1);
+
+        assertEquals(1, afterMiss, "첫 요청은 굽는다(감상 1회차뿐인 엔트리)");
+        assertEquals(first, second, "같은 경로");
+        assertEquals(afterMiss, cards.calls.size(), "두 번째 요청은 캐시에서 답한다 — 렌더 호출 무증가");
     }
 
     @Test
-    @DisplayName("AC-Δ7: 옛 카드 삭제 실패로 남은 고아 카드는 renderAll이 정리해 산출이 신규 렌더와 동일해진다")
+    @DisplayName("AC-78/TΔ9: 없는 파트·회차·엔트리·노트는 빈 결과다 — 굽지도 않는다(오류가 아니라 없는 자원)")
+    void onDemandReturnsEmptyForAbsentTargets(@TempDir Path artifactDir) {
+        NoteService repo = seedRepository(); // 노트 1 = 07-10, 감상만 있는 회차 1개
+        FakeCardImageRenderer cards = new FakeCardImageRenderer();
+        ThymeleafNoteRenderer renderer =
+                new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_B, cards);
+        LocalDate date = LocalDate.parse("2026-07-10");
+
+        assertTrue(renderer.entryCard(1, date, CardType.RECIPE, 1).isEmpty(), "레시피 없는 회차의 레시피 카드");
+        assertTrue(renderer.entryCard(1, date, CardType.TASTE, 2).isEmpty(), "없는 회차");
+        assertTrue(renderer.entryCard(1, date, CardType.TASTE, 0).isEmpty(), "회차는 1부터다");
+        assertTrue(renderer.entryCard(1, LocalDate.parse("2026-07-11"), CardType.TASTE, 1).isEmpty(), "없는 엔트리");
+        assertTrue(renderer.entryCard(999, date, CardType.TASTE, 1).isEmpty(), "없는 노트");
+        assertTrue(cards.calls.isEmpty(), "없는 대상에 브라우저를 띄우지 않는다");
+    }
+
+    @Test
+    @DisplayName("AC-Δ7: 캐시 무효화 실패로 남은 고아 카드는 renderAll이 정리해 산출이 신규 렌더와 동일해진다")
     void renderAllPrunesOrphanCardsForReproducibility(@TempDir Path artifactDir, @TempDir Path freshDir) {
         InMemoryNoteService repo = seedRepository();
         ThymeleafNoteRenderer renderer =
                 new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_B, new FakeCardImageRenderer());
         renderer.renderAll();
 
-        // 날짜 이동 커밋 후 removeEntryCard가 실패했다고 치자 — 옛 카드가 고아로 남는다(plan §7 실패 모드).
+        // 날짜 이동 후 캐시 무효화(NoteService)가 실패했다고 치자 — 옛 카드가 고아로 남는다(plan §7 실패 모드).
         repo.put(movedDate(repo.findById(1).orElseThrow(), LocalDate.parse("2026-07-11")));
         renderer.renderEntryCard(1, LocalDate.parse("2026-07-11"));
         assertTrue(Files.isRegularFile(artifactDir.resolve("cards/" + N1 + "/2026-07-10-taste-1.jpg")), "고아 카드가 남아 있다");
