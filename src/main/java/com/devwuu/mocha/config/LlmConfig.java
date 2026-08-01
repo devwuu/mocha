@@ -4,7 +4,9 @@ import com.devwuu.mocha.llm.OpenAiAliasGenerator;
 import com.devwuu.mocha.llm.OpenAiVisionClient;
 import com.devwuu.mocha.llm.VisionClient;
 import com.devwuu.mocha.llm.AliasGenerator;
+import com.devwuu.mocha.llm.OpenAiSearchClient;
 import com.devwuu.mocha.llm.PhotoInfoExtractor;
+import com.devwuu.mocha.llm.SearchClient;
 import com.openai.client.OpenAIClient;
 import com.openai.client.okhttp.OpenAIOkHttpClient;
 import org.springframework.beans.factory.annotation.Value;
@@ -13,10 +15,11 @@ import org.springframework.context.annotation.Configuration;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * 에이전트 루프 밖 보조 콜(vision OCR·별칭 생성) 어댑터 + OCR 전처리({@link PhotoInfoExtractor}) 빈 배선
- * (ref: plan.md#ADR-37·ADR-50·ADR-51, NFR-4).
+ * 에이전트 루프 밖 보조 콜(vision OCR·별칭 생성·검색 보강) 어댑터 + OCR 전처리({@link PhotoInfoExtractor})
+ * 빈 배선 (ref: plan.md#ADR-37·ADR-50·ADR-51, NFR-4).
  * 루프 드라이버({@code ChatClient})는 {@link AgentConfig}가 배선한다. OpenAI SDK 타입은 여기와
- * 구현체에만 존재한다. 구 단발 콜·검색 클라이언트 계열은 에이전트 전환으로 폐기됐다(changes/0018 TΔ8b).
+ * 구현체에만 존재한다. 구 단발 콜 계열은 에이전트 전환으로 폐기됐다(changes/0018 TΔ8b) — 함께 사라졌던
+ * {@link SearchClient}는 changes/0029 TΔ24b에서 돌아왔다(보강을 결정론 단계로 되돌린다, delta D-16).
  * <p>비밀(OPENAI_API_KEY)은 코드/설정에 하드코딩하지 않고 환경변수(.env → .env.local)로 주입한다
  * (루트 CLAUDE.md §5). 미설정 프로파일에서도 컨텍스트가 뜨도록 빈 기본값을 둔다 — 실제 호출 시에만 필요.
  */
@@ -56,6 +59,19 @@ public class LlmConfig {
             @Value("${mocha.alias.model:gpt-5.4-nano}") String model,
             ObjectMapper mapper) {
         return new OpenAiAliasGenerator(openAiClient, model, mapper);
+    }
+
+    // 검색 보강 경계(FR-3 · changes/0029 TΔ24b — 제안 수거 후 1콜) — 역할별 전용 키(mocha.search.model,
+    // ADR-50). default를 루프와 같은 값으로 두는 것은 편승이 아니라 요구 능력이 같아서다: 이 콜이 하는
+    // 일이 곧 web_search로 공식 페이지에 착지하는 것이고, 경량 모델로는 그 착지가 흔들린다(구 판본이
+    // 추출 모델과 검색 모델을 가른 근거 그대로). 관측 후 낮추려면 이 키만 내린다.
+    @Bean
+    public SearchClient searchClient(
+            OpenAIClient openAiClient,
+            @Value("${mocha.search.model:gpt-5.4}") String model,
+            @Value("${mocha.search.max-results:3}") int maxResults,
+            ObjectMapper mapper) {
+        return new OpenAiSearchClient(openAiClient, model, maxResults, mapper);
     }
 
     // 수신 사진 OCR(루프 전 전처리, FR-19/ADR-23) — VisionClient(전용 키 mocha.vision.model — ADR-50) 재사용.

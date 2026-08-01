@@ -50,6 +50,8 @@ public class TurnRunner {
     private final UtteranceSegmenter segmenter;
     // 이번 턴에 실린 사진의 OCR 전처리(ADR-23·44, TΔ8a) — 사진 없는 턴에는 발동하지 않는다.
     private final TurnPhotoOcr photoOcr;
+    // 제안 수거 후 검색 보강(D-16, TΔ24b) — 채울 것이 없는 턴에는 발동하지 않는다.
+    private final TurnProposalEnricher proposalEnricher;
     // 시계(Asia/Seoul — V-3, 트랜스크립트와 동일)는 config 공통 빈 주입(ADR-63).
     private final Clock clock;
 
@@ -61,6 +63,7 @@ public class TurnRunner {
             TurnPromptAssembler promptAssembler,
             UtteranceSegmenter segmenter,
             TurnPhotoOcr photoOcr,
+            TurnProposalEnricher proposalEnricher,
             Clock clock) {
         this.transcript = transcript;
         this.chatClient = chatClient;
@@ -68,6 +71,7 @@ public class TurnRunner {
         this.promptAssembler = promptAssembler;
         this.segmenter = segmenter;
         this.photoOcr = photoOcr;
+        this.proposalEnricher = proposalEnricher;
         this.clock = clock;
     }
 
@@ -140,7 +144,11 @@ public class TurnRunner {
         //         (ref: specs/coffee-note-agent/plan.md#ADR-46, spec FR-23, changes/0029 baseline.md §4.3).
         //         실패 턴이 쌓이지 않는 것은 예외가 여기 도달하기 전에 올라가기 때문이다(ADR-48).
         transcript.append(userId, new TranscriptTurn(utterance, reply));
-        return new TurnResult(reply, proposals.proposal().orElse(null));
+
+        // 검색 보강은 루프 «밖»의 결정론 단계다(0029 TΔ24b, delta D-16) — OCR·세그먼터와 같은 부류이고,
+        // 다만 전처리가 아니라 후처리라 제안이 선 뒤에 돈다. 여기여야 보강 값이 응답의 draft에 실려 폼에
+        // 채워진 채로 도착한다(FR-12). 제안 없는 턴(잡담·조회·검증 거부)은 그대로 통과한다.
+        return new TurnResult(reply, proposalEnricher.enrich(proposals.proposal().orElse(null)));
     }
 
     // 다중 날짜 턴의 세그먼트 분리(ADR-61) — 단일 날짜(탐지 2개 미만) 턴은 세그먼터를 부르지 않는다(무개입).

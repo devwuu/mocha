@@ -6,8 +6,10 @@ import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
 import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
 import com.devwuu.mocha.agent.turn.TurnPhotoOcr;
+import com.devwuu.mocha.agent.turn.TurnProposalEnricher;
 import com.devwuu.mocha.agent.turn.TurnRunner;
 import com.devwuu.mocha.llm.PhotoInfoExtractor;
+import com.devwuu.mocha.llm.SearchClient;
 import com.devwuu.mocha.llm.UtteranceSegmenter;
 import com.devwuu.mocha.repository.PhotoStore;
 import com.devwuu.mocha.service.NoteService;
@@ -69,9 +71,18 @@ public class TurnConfig {
             TurnPromptAssembler turnPromptAssembler,
             UtteranceSegmenter segmenter,
             TurnPhotoOcr turnPhotoOcr,
+            TurnProposalEnricher turnProposalEnricher,
             Clock clock) {
         return new TurnRunner(transcript, chatClient, toolCallbackProvider, turnPromptAssembler,
-                segmenter, turnPhotoOcr, clock);
+                segmenter, turnPhotoOcr, turnProposalEnricher, clock);
+    }
+
+    // 제안 수거 후 검색 보강(0029 TΔ24b, delta D-16) — 구 파이프라인 [4] NoteEnricher의 자리다. 사라졌던
+    // 것은 «반드시 실행된다»는 성질이었고(ADR-49가 모델 재량 tool로 옮겼다), 그것이 여기서 돌아온다.
+    // OCR 전처리와 대칭 배치다 — 둘 다 루프 밖 결정론 단계이고 외부 IO를 이 층에서 소유한다.
+    @Bean
+    public TurnProposalEnricher turnProposalEnricher(SearchClient searchClient) {
+        return new TurnProposalEnricher(searchClient);
     }
 
     // 이번 턴에 실린 사진의 OCR 전처리(0029 TΔ8a, delta D-11) — 구 SlackPhotoIntake의 자리다. 사라진 것은

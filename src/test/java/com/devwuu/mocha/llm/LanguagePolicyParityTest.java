@@ -10,10 +10,14 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * 언어 정책(ADR-38)의 인코딩 지점 2곳 — 에이전트 시스템 프롬프트와 vision 프롬프트 — 가 <b>동일 문구</b>를
- * 담는지 가드한다 (ref: plan.md#ADR-38 POLICY "한 곳만 고치는 부분 수정 금지", changes/0018 TΔ7a).
+ * 언어 정책(ADR-38)의 인코딩 지점 3곳 — 에이전트 시스템 프롬프트·vision 프롬프트·<b>검색 보강 프롬프트</b>
+ * — 가 <b>동일 문구</b>를 담는지 가드한다 (ref: plan.md#ADR-38 POLICY "한 곳만 고치는 부분 수정 금지",
+ * changes/0018 TΔ7a).
  * <p>규칙 문장에서 출처 한정어("이미지의"/"발화·사진의")만 문맥별로 다르고, 그 뒤의 규칙 본문·예시는
- * 두 프롬프트에 자구까지 동일해야 한다 — 한쪽만 고치면 이 테스트가 그쪽에서 깨진다.
+ * 세 프롬프트에 자구까지 동일해야 한다 — 한쪽만 고치면 이 테스트가 그쪽에서 깨진다.
+ * <p><b>검색 프롬프트는 changes/0029 TΔ24b에서 지점으로 합류했다</b> — 구 판본은 changes/0018 TΔ8b에서
+ * 삭제돼 이 가드가 만들어질 때 존재하지 않았고, 부활하며 그 사이 개정된 규칙(ADR-53 beans 축)을 함께
+ * 실었다. 검색 결과는 그대로 노트 필드에 들어가므로 vision과 같은 급으로 언어 정책의 소비자다.
  */
 class LanguagePolicyParityTest {
 
@@ -42,24 +46,33 @@ class LanguagePolicyParityTest {
                 .instructions().orElseThrow();
     }
 
+    private static String searchInstructions() {
+        OpenAiSearchClient client =
+                new OpenAiSearchClient(null, "test-model", 3, MochaObjectMapper.create());
+        return client.buildParams(new SearchQuery("첼베사", "FroB")).instructions().orElseThrow();
+    }
+
     @Test
-    @DisplayName("ADR-38: 고유명사 원문 유지 규칙이 에이전트·vision 프롬프트에 동일 문구로 실린다")
+    @DisplayName("ADR-38: 고유명사 원문 유지 규칙이 에이전트·vision·검색 프롬프트에 동일 문구로 실린다")
     void properNounRuleIsEncodedIdentically() {
         assertThat(AgentSystemPrompt.INSTRUCTIONS).contains(PROPER_NOUN_RULE);
         assertThat(visionInstructions()).contains(PROPER_NOUN_RULE);
+        assertThat(searchInstructions()).contains(PROPER_NOUN_RULE);
     }
 
     @Test
-    @DisplayName("ADR-38: 한국어 통일 규칙(지명·관용 표기 예시 포함)이 에이전트·vision 프롬프트에 동일 문구로 실린다")
+    @DisplayName("ADR-38: 한국어 통일 규칙(지명·관용 표기 예시 포함)이 에이전트·vision·검색 프롬프트에 동일 문구로 실린다")
     void koreanFieldRuleIsEncodedIdentically() {
         assertThat(AgentSystemPrompt.INSTRUCTIONS).contains(KOREAN_FIELD_RULE);
         assertThat(visionInstructions()).contains(KOREAN_FIELD_RULE);
+        assertThat(searchInstructions()).contains(KOREAN_FIELD_RULE);
     }
 
     @Test
-    @DisplayName("ADR-53/AC-64: beans 원두별 구성 규칙(블렌드 원두별 요소·품종 포함)이 에이전트·vision 프롬프트에 동일 문구로 실린다")
+    @DisplayName("ADR-53/AC-64: beans 원두별 구성 규칙(블렌드 원두별 요소·품종 포함)이 에이전트·vision·검색 프롬프트에 동일 문구로 실린다")
     void beansRuleIsEncodedIdentically() {
         assertThat(AgentSystemPrompt.INSTRUCTIONS).contains(BEANS_RULE);
         assertThat(visionInstructions()).contains(BEANS_RULE);
+        assertThat(searchInstructions()).contains(BEANS_RULE);
     }
 }

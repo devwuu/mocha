@@ -314,7 +314,7 @@ class AgentTurnControllerTest {
         List<String> lastPhotos;
 
         EchoTurnRunner() {
-            super(null, null, null, null, null, null, null);
+            super(null, null, null, null, null, null, null, null);
         }
 
         void reset() {

@@ -34,6 +34,7 @@
 |---|---|---|
 | LLM 호출 | `ChatClient`, `VisionClient`, `AliasGenerator` | 모델/프로바이더 교체 가능성, 테스트 격리 |
 | LLM 호출 (세그먼터) | `UtteranceSegmenter` | 다중 날짜 발화의 날짜별 분리 전용 전처리(plan ADR-61, changes/0023) — 모델/프로바이더 교체 가능성, 테스트 격리 |
+| 웹 검색 보강 | `SearchClient` | 제안 draft의 빈 고정 필드·공식 노트 보강(FR-3) — **검색 벤더 교체 가능성**, 테스트 격리. changes/0018이 지웠다가 **changes/0029 TΔ24b에서 부활**했다: 보강을 «모델 재량 tool»로 옮긴 것이 «반드시 실행된다»는 성질을 잃어 조용한 회귀를 낳았고(delta 0029 D-16), 결정론 단계로 되돌리며 이 경계가 다시 선다 |
 | 저장 (사진) | `PhotoStore` | 저장 방식 교체 가능성(NFR-4), 테스트 격리 |
 | 렌더링 | `NoteRenderer`, `CardImageRenderer` | 템플릿/렌더링 엔진 경계 |
 

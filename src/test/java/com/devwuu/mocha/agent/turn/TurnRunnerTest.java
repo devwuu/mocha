@@ -11,7 +11,13 @@ import com.devwuu.mocha.agent.prompt.TurnPrompt;
 import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
 import com.devwuu.mocha.agent.tool.ToolCallback;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
+import com.devwuu.mocha.domain.Note;
+import com.devwuu.mocha.domain.Source;
+import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.json.MochaObjectMapper;
+import com.devwuu.mocha.llm.SearchClient;
+import com.devwuu.mocha.llm.SearchQuery;
+import com.devwuu.mocha.llm.SearchResult;
 import com.devwuu.mocha.llm.UtteranceSegmenter;
 import com.devwuu.mocha.llm.VisionExtraction;
 import org.junit.jupiter.api.AfterEach;
@@ -59,6 +65,7 @@ class TurnRunnerTest {
     private final FakeChatClient chatClient = new FakeChatClient();
     private final FoldingChatMemory transcript = new FoldingChatMemory(20, Duration.ofHours(1), clock);
     private final FakeSegmenter segmenter = new FakeSegmenter();
+    private final FakeSearchClient searchClient = new FakeSearchClient();
     private TurnRunner runner;
     private ListAppender<ILoggingEvent> logs;
 
@@ -77,7 +84,10 @@ class TurnRunnerTest {
                 new TurnPromptAssembler(MochaObjectMapper.create(), clock), segmenter,
                 // 사진 OCR은 이 테스트의 대상이 아니다 — 사진 있는 턴은 TurnPhotoOcrTest가 소유하고,
                 // 여기서는 컨텍스트 주입만 보는 패키지-프라이빗 판본을 부른다(스테이징 파일이 필요 없다).
-                null, clock);
+                null,
+                // 검색 보강(TΔ24b)은 실물로 세운다 — 이 클래스가 보는 것은 «제안 수거 후에 실제로 도는가»라는
+                // 배선이고, 보강 정책 자체(트리거·V-6·무결과)는 TurnProposalEnricherTest가 소유한다.
+                new TurnProposalEnricher(searchClient), clock);
     }
 
     @AfterEach
@@ -156,6 +166,42 @@ class TurnRunnerTest {
         assertThat(transcript.view(USER)).containsExactly(
                 new TranscriptTurn("이 커피 뭐더라", "찾아볼게요 멍"),
                 new TranscriptTurn("어제 마신 걸로 기록해줘", chatClient.reply));
+    }
+
+    @Test
+    @DisplayName("AC-9/0029 TΔ24b: 제안 수거 «후» 검색 보강이 돌고, 채워진 값이 응답 draft에 실려 나간다")
+    void proposalIsEnrichedAfterCollection() {
+        searchClient.canned = new SearchResult(
+                null, List.of(new SearchResult.Bean("에티오피아 예가체프", "워시드")), "미디엄",
+                List.of("자몽", "홍차"), List.of("https://coffeevera.example/g1"));
+        chatClient.onRun = tools -> tools.stream()
+                .filter(tool -> tool.name().equals("propose_record")).findFirst().orElseThrow()
+                .executor().execute(PROPOSE_RECORD_ARGS);
+
+        TurnResult result = runner.run(USER, "커피베라 예가체프 G1 마셨어", null);
+
+        // 앵커는 제안의 커피명·로스터리다 — 검색은 draft가 선 뒤에야 무엇을 찾을지 안다.
+        assertThat(searchClient.calls).isEqualTo(1);
+        assertThat(searchClient.lastQuery)
+                .isEqualTo(new SearchQuery("커피베라 예가체프 G1", "커피베라"));
+        Note enriched = result.proposal().note();
+        assertThat(Sourced.valuesOrEmpty(enriched.officialNotes())).containsExactly("자몽", "홍차");
+        assertThat(enriched.officialNotes().source()).isEqualTo(Source.SEARCH);
+        assertThat(enriched.beans()).hasSize(1);
+        assertThat(enriched.beans().get(0).description().value()).isEqualTo("에티오피아 예가체프");
+        assertThat(enriched.roastLevel().value()).isEqualTo("미디엄");
+        assertThat(enriched.sources()).containsExactly("https://coffeevera.example/g1");
+        // 사용자가 말한 값(coffee_name·roastery)은 검색이 덮지 않는다(V-6).
+        assertThat(enriched.coffeeName().source()).isEqualTo(Source.USER);
+        assertThat(enriched.roastery().value()).isEqualTo("커피베라");
+    }
+
+    @Test
+    @DisplayName("0029 TΔ24b: 제안 없는 턴(잡담·조회)은 검색을 부르지 않는다 — 보강 트리거는 제안 draft다")
+    void turnWithoutProposalSkipsSearch() {
+        runner.run(USER, "요즘 커피 뭐가 맛있어?", null);
+
+        assertThat(searchClient.calls).isZero();
     }
 
     @Test
@@ -242,6 +288,20 @@ class TurnRunnerTest {
                 throw failure;
             }
             return reply;
+        }
+    }
+
+    /** 지정된 검색 결과를 돌려주는 fake 검색 경계 — 웹 미접촉, 호출 여부·앵커를 캡처한다(TΔ24b 배선 단언용). */
+    private static final class FakeSearchClient implements SearchClient {
+        SearchResult canned = SearchResult.empty();
+        int calls;
+        SearchQuery lastQuery;
+
+        @Override
+        public SearchResult search(SearchQuery query) {
+            calls++;
+            lastQuery = query;
+            return canned;
         }
     }
 

@@ -8,11 +8,14 @@ import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
 import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
 import com.devwuu.mocha.agent.turn.TurnRunner;
 import com.devwuu.mocha.agent.turn.TurnPhotoOcr;
+import com.devwuu.mocha.agent.turn.TurnProposalEnricher;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.llm.AliasGenerator;
 import com.devwuu.mocha.llm.OpenAiAliasGenerator;
 import com.devwuu.mocha.llm.OpenAiUtteranceSegmenter;
+import com.devwuu.mocha.llm.OpenAiSearchClient;
 import com.devwuu.mocha.llm.PhotoInfoExtractor;
+import com.devwuu.mocha.llm.SearchClient;
 import com.devwuu.mocha.llm.UtteranceSegmenter;
 import com.devwuu.mocha.llm.VisionClient;
 import com.devwuu.mocha.render.CardImageRenderer;
@@ -51,8 +54,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * TΔ4·TΔ8b(changes/0018) — 설정 키 재편의 default 기동 단언 (ref: plan.md#ADR-50 POLICY).
  * <p>새 키 6종({@code mocha.agent.model}·{@code max-tool-calls}·{@code transcript-max-turns}·
  * {@code transcript-ttl}·{@code mocha.vision.model}·{@code mocha.alias.model})이 전부 미설정이어도
- * 코드 default로 빈이 뜨는지 검증한다. 구 키(mocha.llm.*·mocha.search.*)는 TΔ8b에서 폐기돼
- * 어떤 프로퍼티도 채우지 않는다.
+ * 코드 default로 빈이 뜨는지 검증한다. 구 키 {@code mocha.llm.*}는 TΔ8b에서 폐기된 채다.
+ * <p><b>{@code mocha.search.*}는 changes/0029 TΔ24b에서 돌아왔다</b> — TΔ8b가 검색 보강을 모델 재량
+ * tool로 옮기며 함께 지웠던 키인데, 보강이 결정론 단계로 되돌아가며(delta D-16) 다시 값을 갖는다.
+ * 이 러너는 여전히 어떤 프로퍼티도 채우지 않으므로 그 단언은 순수 코드 default를 잰다.
  * <p>TΔ4a(changes/0025, R-1) — 배선 커버 확대: {@code RepositoryConfig}·{@code RouterConfig}도
  * 스텁 러너로 기동 단언한다(AC-Δ4). 0024가 라우터 생성자 안 조립을 config로 이관하면서(ADR-63)
  * 배선 오류가 앱 기동 시점에만 드러나게 됐고, 그 표적 가드가 없었다.
@@ -133,6 +138,21 @@ class ConfigDefaultsTest {
         runner.run(context -> {
             VisionClient visionClient = context.getBean(VisionClient.class);
             assertThat(ReflectionTestUtils.getField(visionClient, "model")).isEqualTo("gpt-5.4-mini");
+        });
+    }
+
+    @Test
+    @DisplayName("ADR-50(0029 TΔ24b): mocha.search.* 미설정 시 검색 보강 경계가 코드 default로 뜬다")
+    void searchClientDefaultsAreWired() {
+        // 구 키(mocha.search.*)는 changes/0018 TΔ8b에서 폐기됐다가 TΔ24b에서 돌아왔다 — 보강이 «모델
+        // 재량 tool»에서 «결정론 단계»로 되돌아간 결과다(delta D-16). 폐기됐던 키가 부활한 자리라
+        // default 기동을 여기서 박는다.
+        runner.run(context -> {
+            SearchClient searchClient = context.getBean(SearchClient.class);
+            assertThat(searchClient).isInstanceOf(OpenAiSearchClient.class);
+            // web_search 착지 품질이 이 콜의 전부라 경량으로 내리지 않는다 — 값은 루프와 같지만 키는 별개다.
+            assertThat(ReflectionTestUtils.getField(searchClient, "model")).isEqualTo("gpt-5.4");
+            assertThat(ReflectionTestUtils.getField(searchClient, "maxResults")).isEqualTo(3);
         });
     }
 
@@ -232,7 +252,7 @@ class ConfigDefaultsTest {
     }
 
     @Test
-    @DisplayName("AC-Δ4(changes/0025 TΔ4a): TurnConfig가 협력자 스텁만으로 턴 배선 5종을 조립한다")
+    @DisplayName("AC-Δ4(changes/0025 TΔ4a): TurnConfig가 협력자 스텁만으로 턴 배선 6종을 조립한다")
     void turnBeansAssembleFromCollaborators() {
         // R-1: 0024 TΔ1b가 라우터 생성자 안 조립을 이 config로 이관했다(ADR-63) — 주입 지점이 늘어난 만큼
         // 배선 누락이 기동 실패로만 드러난다. 협력자는 전부 스텁이라 이 테스트는 "조립되는가"만 본다.
@@ -247,6 +267,8 @@ class ConfigDefaultsTest {
             assertThat(context.getBean(ToolCallbackProvider.class)).isNotNull();
             assertThat(context.getBean(TurnRunner.class)).isNotNull();
             assertThat(context.getBean(TurnPhotoOcr.class)).isNotNull();
+            // 0029 TΔ24b: 제안 수거 후 검색 보강이 붙어 6종 — OCR 전처리와 대칭인 루프 밖 결정론 단계다.
+            assertThat(context.getBean(TurnProposalEnricher.class)).isNotNull();
         });
     }
 
@@ -287,6 +309,8 @@ class ConfigDefaultsTest {
                 // 사진은 이미 업로드로 서 있고 이 자리가 하는 일은 이름으로 골라 읽는 것뿐이다.
                 .withBean(PhotoStore.class, () -> stub(PhotoStore.class))
                 .withBean(PhotoInfoExtractor.class, () -> new PhotoInfoExtractor(null, 4))
+                // 0029 TΔ24b: 검색 보강 경계 — LlmConfig가 띄우고 이 config의 보강 단계가 받는다.
+                .withBean(SearchClient.class, () -> stub(SearchClient.class))
                 .withBean(Clock.class, () -> Clock.fixed(Instant.EPOCH, ZoneId.of("Asia/Seoul")))
                 .withBean(ObjectMapper.class, MochaObjectMapper::create);
     }

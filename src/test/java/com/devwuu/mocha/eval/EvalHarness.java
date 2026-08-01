@@ -5,10 +5,12 @@ import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
 import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
 import com.devwuu.mocha.agent.turn.TurnDraft;
+import com.devwuu.mocha.agent.turn.TurnProposalEnricher;
 import com.devwuu.mocha.agent.turn.TurnRunner;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.llm.OpenAiUtteranceSegmenter;
+import com.devwuu.mocha.llm.SearchResult;
 import com.devwuu.mocha.service.NoteTxService;
 import com.devwuu.mocha.service.NoteService;
 import com.openai.client.OpenAIClient;
@@ -180,6 +182,10 @@ final class EvalHarness {
                 new OpenAiUtteranceSegmenter(openAi, settings.segmenterModel(), mapper),
                 // 사진 OCR은 케이스 v1의 비범위다(아래 주석) — 사진 없는 턴은 이 협력자를 지나지 않는다.
                 null,
+                // 검색 보강(0029 TΔ24b)은 케이스 v1의 비범위다 — 실 검색을 붙이면 제안 diff 기대가 매 실행
+                // 흔들려(웹이 입력이다) 행동 회귀 측정 자체가 성립하지 않는다. 결정론 레이어라 단위 테스트가
+                // 잡고, 보강 케이스 신설은 TΔ21이 코퍼스와 함께 소유한다(delta D-16 ⑤).
+                new TurnProposalEnricher(query -> SearchResult.empty()),
                 clock);
 
         Map<String, String> notesBefore = snapshotNotes(noteRepository, mapper);

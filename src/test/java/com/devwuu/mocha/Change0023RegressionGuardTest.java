@@ -6,8 +6,10 @@ import com.devwuu.mocha.agent.prompt.TurnPrompt;
 import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
 import com.devwuu.mocha.agent.tool.ToolCallback;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
+import com.devwuu.mocha.agent.turn.TurnProposalEnricher;
 import com.devwuu.mocha.agent.turn.TurnRunner;
 import com.devwuu.mocha.json.MochaObjectMapper;
+import com.devwuu.mocha.llm.SearchResult;
 import com.devwuu.mocha.llm.UtteranceSegmenter;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -78,7 +80,10 @@ class Change0023RegressionGuardTest {
                 .clock(clock)
                 .build();
         TurnRunner runner = new TurnRunner(transcript, chatClient, toolCallbackProvider,
-                new TurnPromptAssembler(mapper, clock), segmenter, null, clock);
+                // 검색 보강(TΔ24b)은 제안이 선 턴에만 도는데 이 가드의 두 턴은 제안이 없다 — 어차피
+                // 지나지 않는 협력자라 검색 미접촉 스텁으로 세운다(파일 부작용 단언이 대상이다).
+                new TurnPromptAssembler(mapper, clock), segmenter, null,
+                new TurnProposalEnricher(query -> SearchResult.empty()), clock);
 
         // 턴 1: 다중 날짜 → 세그먼터 주입 성공(제안 없는 턴).
         segmenter.canned = List.of(
