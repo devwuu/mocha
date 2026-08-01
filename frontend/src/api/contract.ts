@@ -242,6 +242,73 @@ export interface NoteListResponse {
   facets: NoteFacets
 }
 
+/**
+ * 저장된 노트의 사진 1장 — 상세 화면이 보여줄 완성 URL (changes/0029 TΔ13a).
+ *
+ * 목록의 `thumbnail_url`과 **같은 접두**(`/api/photos/`)를 쓴다. 같은 자원의 두 표면이므로 접두가 갈리면
+ * 갤러리에서 보던 사진과 상세에서 보는 사진이 다른 규칙으로 만들어진다. 업로드 응답(`UploadedPhoto`)이
+ * 이름만 주는 것과 대칭이다 — 저장 전에는 이름, 저장 후에는 URL이고, 그 사이를 잇는 것이 서버다.
+ */
+export interface NotePhoto {
+  url: string
+}
+
+/**
+ * 저장된 회차의 감상 — **원문(`my_taste_original`)이 없다**.
+ *
+ * V-11이 원문을 함께 저장하게 하지만 *"렌더는 `my_taste`만 사용"*이 같은 규칙의 뒷문장이고, 상세도 렌더다.
+ * 폼의 `Tasting`과 타입을 나눈 것이 그 차이를 컴파일러가 지키게 한다(TΔ10의 `aliases` 절단과 같은 판단 —
+ * 화면이 쓰지 않는 값은 계약에서 뺀다).
+ */
+export interface NoteDetailTasting {
+  my_taste: string | null
+  rating: Rating | null
+}
+
+/** 저장된 회차 1개 — 레시피·감상 중 최소 하나는 non-null이다(V-15). */
+export interface NoteDetailBrew {
+  recipe: Recipe | null
+  tasting: NoteDetailTasting | null
+}
+
+/**
+ * 저장된 날짜별 시음 기록 + **그 날의 사진**.
+ *
+ * 사진이 노트가 아니라 엔트리에 붙는 것은 `note_photo`의 참조 축이 `(note_id, tasted_on)`이기 때문이다
+ * (TΔ8b, 사용자 확정 2026-08-01). 화면은 가장 최근 날짜의 첫 장을 상단 히어로로 쓰고 나머지를 그 날짜
+ * 섹션에 두는데, **계약 하나로 둘 다 된다** — 노트 레벨 배열을 따로 두면 같은 사진이 두 자리에 실린다.
+ */
+export interface NoteDetailEntry {
+  date: string
+  brews: NoteDetailBrew[]
+  photos: NotePhoto[]
+}
+
+/**
+ * `GET /api/notes/{id}` — 노트 전문 (changes/0029 TΔ13a, 구현은 TΔ5a). 없는 id면 **404**다.
+ *
+ * **`coffee_name`이 non-null인 것이 draft와 갈리는 지점**이다. 작성 중인 노트는 커피명이 아직 안 뽑혔을
+ * 수 있지만 저장된 노트는 그것이 정체성이라 반드시 있다(V-9 불변, `note.coffee_name NOT NULL`).
+ *
+ * **출처를 그대로 싣는다**(사용자 확정 2026-08-01). 두 가지가 걸려 있다: ① 상세가 캡처 폼과 같은 어휘로
+ * *"이 값은 사진에서 읽은 것"*을 보여준다 ② **TΔ13b 수정 폼이 이 응답을 그대로 딛는다** — 출처를 버리면
+ * 로스터리만 고쳐도 공식 노트의 출처가 `user`로 덮여, 이후 검색 보강이 덮지 못하는 값이 조용히 늘어난다
+ * (V-6이 막으려던 방향의 반대편 사고).
+ *
+ * 싣지 않는 것: `aliases`(V-13 내부 전용) · `created_at`/`updated_at`(화면이 쓰지 않는다) ·
+ * `my_taste_original`(위 참조). 노트 레벨 `id`는 `note_id`로 이름을 맞춘다 — 목록·후보와 같은 어휘다.
+ */
+export interface NoteDetail {
+  note_id: number
+  coffee_name: Sourced<string>
+  roastery: Sourced<string> | null
+  beans: Bean[]
+  roast_level: Sourced<string> | null
+  official_notes: Sourced<string[]> | null
+  sources: string[]
+  entries: NoteDetailEntry[]
+}
+
 /** `POST /api/notes` — 폼 확정 저장(= 구 [저장] 버튼). 본문이 곧 확정된 draft다. */
 export type NoteCommitRequest = Draft
 

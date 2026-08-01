@@ -1,6 +1,7 @@
 package com.devwuu.mocha.contract;
 
 import com.devwuu.mocha.domain.Rating;
+import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -33,6 +34,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 필터·정렬·페이징 형태이고, <b>구현은 TΔ5a</b>다. S2 슬라이스에서 화면이 API보다 먼저인 것도 같은
  * 규율이고, 여기 박힌 것이 그 사이 mock({@code frontend/src/api/mock.ts})과 갈리지 않게 하는 닻이다.
  *
+ * <p>TΔ13a가 {@code note-detail.contract.json}을 보탠다 — 상세 화면이 도출한 {@code GET /api/notes/&#123;id&#125;}의
+ * 응답 형태이고 구현은 같은 TΔ5a다. 목록이 <i>고르는</i> 화면의 납작한 사영이었다면 이쪽은 <i>읽는</i> 화면의
+ * 전문이라, 두 계약이 <b>같은 노트를 다른 깊이로</b> 말한다. 화면이 실제로 보여주는 것만 실린 결과가 세
+ * 절단이고({@code aliases}·감사 컬럼·{@code my_taste_original}) 아래 테스트가 그것을 박는다.
+ *
  * <p><b>{@code aliases} 절단은 이 테스트가 소유한다</b>(TΔ2 이월 (b)의 판단 지점, tasks.md TΔ10). draft가
  * {@code Note} 그대로라서 내부 전용 별칭(V-13)이 계약에 실려 나가고 있었는데, <b>폼이 그 값을 쓰지 않는</b>
  * 것이 이 task에서 확인됐다 — 표시도 편집도 하지 않고, 커밋의 별칭 축적은 저장된 값을 읽어 서버가 계산한다
@@ -53,6 +59,7 @@ class ClientApiContractTest {
     private static final String AGENT_CANCEL_CONTRACT = "/contract/agent-cancel.contract.json";
     private static final String PHOTO_UPLOAD_CONTRACT = "/contract/photo-upload.contract.json";
     private static final String NOTE_LIST_CONTRACT = "/contract/note-list.contract.json";
+    private static final String NOTE_DETAIL_CONTRACT = "/contract/note-detail.contract.json";
 
     private final JsonMapper mapper = MochaObjectMapper.create();
 
@@ -414,6 +421,151 @@ class ClientApiContractTest {
         String date = note.get("latest_date").isNull() ? "99999999"
                 : String.valueOf(99999999 - Integer.parseInt(note.get("latest_date").stringValue().replace("-", "")));
         return date + ' ' + String.format("%09d", 999999999 - note.get("note_id").intValue());
+    }
+
+    @Test
+    @DisplayName("TΔ13a: 상세 = 노트 전문 + 날짜별 사진 — 사진이 노트가 아니라 엔트리에 붙는다(참조 축 (note_id, tasted_on))")
+    void detailCarriesTheWholeNoteWithPhotosUnderEachEntry() throws IOException {
+        JsonNode contract = load(NOTE_DETAIL_CONTRACT);
+
+        for (String example : List.of("response", "response_minimal", "response_no_entries")) {
+            JsonNode detail = contract.get(example);
+            assertThat(fieldNames(detail))
+                    .as("상세 예시 %s", example)
+                    .containsExactly("note_id", "coffee_name", "roastery", "beans", "roast_level",
+                            "official_notes", "sources", "entries");
+            detail.get("entries").forEach(entry ->
+                    // POLICY: 사진은 note_photo의 참조 축을 그대로 따라 엔트리에 붙는다(TΔ8b, 사용자 확정
+                    //         2026-08-01). 노트 레벨 배열을 따로 두면 히어로와 날짜 섹션이 같은 사진을 두
+                    //         자리에서 실어 나른다 — 화면은 이 한 벌에서 둘 다 만든다.
+                    assertThat(fieldNames(entry)).containsExactly("date", "brews", "photos"));
+        }
+        assertThat(contract.get("missing_status").intValue())
+                .as("없는 id는 빈 노트가 아니라 404다 — 삭제된 노트를 텅 빈 상세로 그리지 않는다").isEqualTo(404);
+    }
+
+    @Test
+    @DisplayName("TΔ13a: 저장된 노트의 커피명은 non-null이고 출처를 달고 온다 — draft와 갈리는 지점이다(V-9·V-5)")
+    void detailKeepsSourcesAndAlwaysHasACoffeeName() throws IOException {
+        JsonNode contract = load(NOTE_DETAIL_CONTRACT);
+        List<String> sourceValues = Arrays.stream(Source.values()).map(Source::json).toList();
+
+        for (String example : List.of("response", "response_minimal", "response_no_entries")) {
+            JsonNode coffeeName = contract.get(example).get("coffee_name");
+            // 작성 중인 노트는 커피명이 아직 없을 수 있지만(draft는 nullable) 저장된 노트에는 반드시 있다.
+            assertThat(coffeeName.isNull()).as("상세 예시 %s 의 커피명이 null이다", example).isFalse();
+            assertThat(fieldNames(coffeeName)).containsExactly("value", "source");
+            // V-5: coffee_name은 검색 보강 대상이 아니다 — 정체성이자 검색 앵커라 source ∈ {user, photo}.
+            assertThat(coffeeName.get("source").stringValue()).isIn("user", "photo");
+        }
+        // POLICY: 출처를 상세에도 싣는다(사용자 확정 2026-08-01) — ① 화면이 "이 값은 사진에서 읽은 것"을
+        //         캡처 폼과 같은 어휘로 보여주고 ② TΔ13b 수정 폼이 이 응답을 그대로 딛는다. 버리면
+        //         로스터리만 고쳐도 나머지 필드의 출처가 user로 덮인다.
+        JsonNode full = contract.get("response");
+        for (String field : List.of("roastery", "roast_level", "official_notes")) {
+            assertThat(fieldNames(full.get(field)))
+                    .as("%s 이 출처 표시 필드가 아니다", field).containsExactly("value", "source");
+            assertThat(sourceValues)
+                    .as("%s 의 출처가 도메인 Source 밖이면 서버가 만들 수 없는 값이다", field)
+                    .contains(full.get(field).get("source").stringValue());
+        }
+        full.get("beans").forEach(bean -> assertThat(fieldNames(bean)).containsExactly("description", "process"));
+    }
+
+    @Test
+    @DisplayName("TΔ13a: 상세도 aliases·감사 컬럼·감상 원문을 싣지 않는다 — 화면이 쓰지 않는 값은 계약에 없다")
+    void detailDropsInternalAuditAndUnrenderedFields() throws IOException {
+        List<String> keys = keysAnywhere(load(NOTE_DETAIL_CONTRACT));
+
+        // V-13 내부 전용 별칭은 목록·턴 계약과 같은 이유로 없다.
+        assertThat(keys).doesNotContain("aliases");
+        // V-11이 원문을 함께 저장하게 하지만 같은 규칙의 뒷문장이 "렌더는 my_taste만 사용"이고, 상세도 렌더다.
+        assertThat(keys)
+                .as("감상 원문이 계약에 실려 나간다 — 화면이 보여주지 않는 값이다")
+                .doesNotContain("my_taste_original");
+        // 감사 컬럼은 화면에 자리가 없다(TΔ10의 aliases 절단과 같은 판단).
+        assertThat(keys).doesNotContain("created_at", "updated_at");
+    }
+
+    @Test
+    @DisplayName("TΔ13a: 상세 사진과 갤러리 썸네일은 같은 접두의 완성 URL이다 — 같은 자원의 두 표면이다")
+    void detailPhotosShareTheGalleryUrlPrefix() throws IOException {
+        JsonNode contract = load(NOTE_DETAIL_CONTRACT);
+        String prefix = contract.get("photo_url_prefix").stringValue();
+
+        // 접두가 갈리면 갤러리에서 보던 사진과 상세의 히어로가 다른 규칙으로 만들어진다 — 히어로는
+        // 목록의 thumbnail_url이 고르는 바로 그 사진(가장 최근 날짜의 첫 장)이다.
+        assertThat(prefix).isEqualTo(load(NOTE_LIST_CONTRACT).get("thumbnail_url_prefix").stringValue());
+
+        List<String> urls = new ArrayList<>();
+        contract.get("response").get("entries").forEach(entry -> entry.get("photos").forEach(photo -> {
+            assertThat(fieldNames(photo)).containsExactly("url");
+            urls.add(photo.get("url").stringValue());
+        }));
+        assertThat(urls).as("사진 있는 엔트리가 예시에 있어야 히어로 경로가 계약에 드러난다").isNotEmpty();
+        urls.forEach(url -> assertThat(url).startsWith(prefix));
+    }
+
+    @Test
+    @DisplayName("TΔ13a: 엔트리는 날짜 오름차순이고 날짜가 유일 키다(V-3) — 히어로는 마지막 엔트리에서 나온다")
+    void detailEntriesAreDateAscendingAndUnique() throws IOException {
+        JsonNode contract = load(NOTE_DETAIL_CONTRACT);
+
+        // POLICY: 목록은 최근순인데 상세는 오름차순이다 — 목록은 *고르는* 자리라 방금 마신 것이 위여야 하고,
+        //         상세는 *읽는* 자리라 "처음 마셨을 때 → 지금"이 노트의 독서 방향이다. 최신 회차는 상단
+        //         히어로 사진으로 이미 위에 있다(도메인의 "날짜 오름차순 유지"와도 같은 방향).
+        assertThat(contract.get("entry_order").stringValue()).isEqualTo("date asc");
+
+        List<String> dates = contract.get("response").get("entries").valueStream()
+                .map(entry -> entry.get("date").stringValue()).toList();
+        assertThat(dates).as("계약 예시가 선언한 순서를 어긴다 — 화면은 예시를 먼저 본다").isSorted();
+        assertThat(dates.stream().distinct().count()).isEqualTo(dates.size());
+        assertThat(dates).as("날짜가 둘 이상 있어야 정렬 축이 실물로 드러난다").hasSizeGreaterThan(1);
+    }
+
+    @Test
+    @DisplayName("TΔ13a: 회차는 레시피·감상 중 최소 하나가 있고 평가는 도메인 4범주다(V-15·V-1)")
+    void detailBrewsCarryAtLeastOneSideAndDomainRatings() throws IOException {
+        List<String> ratings = Arrays.stream(Rating.values()).map(Rating::label).toList();
+
+        load(NOTE_DETAIL_CONTRACT).get("response").get("entries").forEach(entry -> entry.get("brews").forEach(brew -> {
+            assertThat(fieldNames(brew)).containsExactly("recipe", "tasting");
+            assertThat(brew.get("recipe").isNull() && brew.get("tasting").isNull())
+                    .as("둘 다 null인 회차는 저장되지 않는다(V-15) — 예시에 있으면 화면이 없는 상태를 그리게 된다")
+                    .isFalse();
+            JsonNode tasting = brew.get("tasting");
+            if (!tasting.isNull()) {
+                // 원문 절단의 결과 — 저장된 감상은 {my_taste, rating} 둘뿐이다.
+                assertThat(fieldNames(tasting)).containsExactly("my_taste", "rating");
+                if (!tasting.get("rating").isNull()) {
+                    assertThat(ratings).contains(tasting.get("rating").stringValue());
+                }
+            }
+        }));
+    }
+
+    @Test
+    @DisplayName("TΔ13a: nullable 지점이 예시에 있다 — 로스터리 없는 노트, 사진 없는 날, 엔트리 없는 노트")
+    void detailNullablePointsAreInTheExamples() throws IOException {
+        JsonNode contract = load(NOTE_DETAIL_CONTRACT);
+
+        // 최소형 — 저장된 노트의 메타는 대부분 비어 있을 수 있다(발화 한 줄로 남긴 기록).
+        JsonNode minimal = contract.get("response_minimal");
+        assertThat(minimal.get("beans")).isEmpty();
+        assertThat(minimal.get("roast_level").isNull()).isTrue();
+        assertThat(minimal.get("official_notes").isNull()).isTrue();
+        assertThat(minimal.get("sources")).isEmpty();
+
+        // 엔트리 없는 노트 — 정상 상태다(저장 후 엔트리가 지워진 노트). 화면은 빈 목록을 그린다.
+        JsonNode noEntries = contract.get("response_no_entries");
+        assertThat(noEntries.get("roastery").isNull())
+                .as("로스터리를 모르는 노트가 예시에 있어야 한다").isTrue();
+        assertThat(noEntries.get("entries")).isEmpty();
+
+        // 같은 노트 안에서 사진 있는 날과 없는 날이 섞인다 — 히어로 선택이 "첫 엔트리"가 아닌 이유다.
+        assertThat(contract.get("response").get("entries"))
+                .anySatisfy(entry -> assertThat(entry.get("photos")).isEmpty())
+                .anySatisfy(entry -> assertThat(entry.get("photos")).isNotEmpty());
     }
 
     @Test

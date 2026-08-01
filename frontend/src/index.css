@@ -795,9 +795,13 @@ select:focus {
   height: 1px;
 }
 
+/* TΔ13a에서 <a>가 됐다 — 앵커의 기본 장식(밑줄·파란색)만 걷고 칸의 모양은 그대로다. */
 .note-card {
   position: relative;
+  display: block;
   overflow: hidden;
+  text-decoration: none;
+  color: inherit;
   border: 1px solid var(--bar-border);
   /* 사진이 없을 때 드러나는 시안의 사선 패턴 — 빈 칸을 남기지 않는 것이 시안의 답이다. */
   background: repeating-linear-gradient(135deg, #e5ded2 0 6px, #dbd3c5 6px 12px);
@@ -855,6 +859,256 @@ select:focus {
   font-size: 11.5px;
   color: var(--muted-soft);
   border-top: 1px solid var(--bar-border);
+}
+
+/* ── 상세 (TΔ13a) ────────────────────────────────────────────────── */
+
+/*
+ * 시안에 상세 화면은 없다. 팔레트·서체·`.shell`/`.panel` 액자는 다른 화면과 공유하고, 형태는 **카드 시안**
+ * (`design/노트 세리프 - …`)의 어휘를 빌렸다 — 라벨을 오른쪽 정렬한 2열 그리드(56px 1fr), 평가 pill,
+ * 큰 숫자로 세우는 레시피 스탯. 상세와 카드는 같은 내용의 두 표면이라 닮는 것이 맞다(ADR-54).
+ */
+
+.detail__header {
+  position: relative;
+  flex: none;
+  padding: 18px 22px 14px;
+  text-align: center;
+  border-bottom: 1px solid var(--bar-border);
+}
+
+.detail__title {
+  /* 제목은 첫 조회 전에도 높이를 차지한다 — 값이 들어오며 아래가 밀리지 않게(갤러리 카운트와 같은 처리). */
+  min-height: 1.35em;
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--ink);
+  text-wrap: pretty;
+}
+
+.detail__roastery {
+  margin-top: 5px;
+  font-size: 11.5px;
+  color: #64564a;
+}
+
+.detail__notice {
+  flex: 1;
+  padding: 32px 16px;
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--muted-soft);
+}
+
+.detail__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 22px 22px;
+  padding-bottom: max(22px, env(safe-area-inset-bottom));
+}
+
+/* 갤러리에서 보던 사진이 그대로 상단에 선다 — 액자 폭을 꽉 채워 진입 맥락을 잇는다. */
+.detail__hero {
+  display: block;
+  width: calc(100% + 44px);
+  margin: 0 -22px 4px;
+  height: 190px;
+  object-fit: cover;
+}
+
+/* 카드 시안의 2열 그리드 — 라벨은 작고 자간이 넓게, 오른쪽 정렬. */
+.detail__meta {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  align-items: baseline;
+  gap: 6px 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid #d3c9bb;
+  font-size: 12.5px;
+  color: #4a4036;
+}
+
+.detail__row {
+  display: contents;
+}
+
+.detail__label {
+  font-size: 9.5px;
+  letter-spacing: 2px;
+  color: var(--muted);
+  text-align: right;
+}
+
+.detail__value {
+  line-height: 1.7;
+  text-wrap: pretty;
+}
+
+.detail__beans {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 9px;
+  row-gap: 3px;
+  line-height: 1.7;
+}
+
+.detail__beans span {
+  white-space: nowrap;
+}
+
+.detail__process {
+  margin-left: 4px;
+  font-size: 10.5px;
+  font-style: normal;
+  color: #7c6b5b;
+}
+
+/* 출처 배지 — 캡처 폼의 `.field__source`와 같은 역할이라 같은 무게로 둔다(값보다 약하게, 읽히게). */
+.detail__source {
+  margin-left: 6px;
+  font-size: 9.5px;
+  font-style: normal;
+  letter-spacing: 1px;
+  color: var(--muted-soft);
+}
+
+.detail__empty {
+  padding: 28px 0;
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--muted-soft);
+}
+
+.detail__sources {
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 10.5px;
+  line-height: 1.8;
+  word-break: break-all;
+}
+
+.detail__sources a {
+  color: var(--brown);
+}
+
+/* ── 날짜 · 회차 ─────────────────────────────────────────────────── */
+
+.entry {
+  padding-top: 16px;
+}
+
+.entry__date {
+  margin: 0 0 10px;
+  font-size: 10.5px;
+  font-weight: 400;
+  letter-spacing: 1px;
+  color: #7c6b5b;
+}
+
+/* 그 날의 사진 — 가로 스크롤 한 줄. 세로로 쌓으면 회차가 화면 밖으로 밀린다. */
+.entry__photos {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  margin-bottom: 12px;
+}
+
+.entry__photos img {
+  flex: none;
+  width: 108px;
+  height: 108px;
+  object-fit: cover;
+  border: 1px solid var(--card-border);
+}
+
+.brew {
+  margin-bottom: 10px;
+  padding: 12px 14px;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+}
+
+.brew__no {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--muted);
+}
+
+.brew__method {
+  font-size: 10.5px;
+  letter-spacing: 1px;
+  color: #64564a;
+  border: 1px solid #b0a494;
+  border-radius: 999px;
+  padding: 1px 9px;
+}
+
+/* 수치는 큰 글자로 세운다(시안 레시피 카드) — 있는 것만 서므로 개수는 데이터가 정한다. */
+.brew__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  padding: 12px 2px 4px;
+}
+
+.stat__label {
+  font-size: 9.5px;
+  letter-spacing: 2px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.stat__value {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+/* 회차 안의 메타 그리드는 카드 경계 안이라 마지막 줄의 밑줄을 지운다. */
+.brew .detail__meta:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.brew__tasting {
+  padding-top: 12px;
+}
+
+.brew__tasting-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.brew__label {
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--muted);
+}
+
+.brew__rating {
+  font-size: 10.5px;
+  color: #64564a;
+  border: 1px solid #b0a494;
+  border-radius: 999px;
+  padding: 2px 11px;
+  white-space: nowrap;
+}
+
+.brew__taste {
+  margin: 8px 0 0;
+  font-size: 14px;
+  line-height: 1.8;
+  color: var(--ink);
+  text-wrap: pretty;
 }
 
 /* 대화 화면 헤더의 갤러리 입구(편차 ③) — 마스코트·제목 다음 오른쪽 끝. */

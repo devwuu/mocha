@@ -1,0 +1,112 @@
+{
+  "request_path": "/api/notes/{id}",
+  "missing_status": 404,
+  "photo_url_prefix": "/api/photos/",
+  "entry_order": "date asc",
+  "response": {
+    "note_id": 21,
+    "coffee_name": { "value": "에티오피아 게뎁", "source": "photo" },
+    "roastery": { "value": "프릳츠", "source": "photo" },
+    "beans": [
+      {
+        "description": { "value": "에티오피아 게뎁 헤어룸", "source": "search" },
+        "process": { "value": "워시드", "source": "search" }
+      },
+      {
+        "description": { "value": "콜롬비아 우일라 카투라", "source": "user" },
+        "process": null
+      }
+    ],
+    "roast_level": { "value": "라이트", "source": "photo" },
+    "official_notes": { "value": ["자몽", "베르가못", "홍차"], "source": "search" },
+    "sources": ["https://fritz.co.kr/products/ethiopia-gedeb"],
+    "entries": [
+      {
+        "date": "2026-06-28",
+        "brews": [
+          {
+            "recipe": {
+              "method": "핸드드립",
+              "dose_g": 15,
+              "water_ml": 240,
+              "yield_ml": null,
+              "time_sec": 160,
+              "temp_c": 92,
+              "grind": "210클릭",
+              "machine": "매버릭 2.0",
+              "pouring": "뜸 40ml 30초 → 100ml → 100ml",
+              "feedback": "다음엔 한 단계 굵게"
+            },
+            "tasting": {
+              "my_taste": "새콤하고 좋았다. 식으니까 자몽 같은 신맛이 올라온다.",
+              "rating": "맛있다"
+            }
+          }
+        ],
+        "photos": []
+      },
+      {
+        "date": "2026-07-02",
+        "brews": [
+          {
+            "recipe": {
+              "method": "핸드드립",
+              "dose_g": 15,
+              "water_ml": 240,
+              "yield_ml": null,
+              "time_sec": null,
+              "temp_c": 90,
+              "grind": "220클릭",
+              "machine": "매버릭 2.0",
+              "pouring": null,
+              "feedback": null
+            },
+            "tasting": null
+          },
+          {
+            "recipe": null,
+            "tasting": {
+              "my_taste": "온도 낮추니 떫은 맛이 사라졌다.",
+              "rating": "완전 내스타일"
+            }
+          }
+        ],
+        "photos": [
+          { "url": "/api/photos/21-프릳츠-에티오피아-게뎁/2026-07-02/IMG_4402.jpg" },
+          { "url": "/api/photos/21-프릳츠-에티오피아-게뎁/2026-07-02/IMG_4403.jpg" }
+        ]
+      }
+    ]
+  },
+  "response_minimal": {
+    "note_id": 12,
+    "coffee_name": { "value": "에티오피아 게뎁", "source": "user" },
+    "roastery": { "value": "모모스커피", "source": "user" },
+    "beans": [],
+    "roast_level": null,
+    "official_notes": null,
+    "sources": [],
+    "entries": [
+      {
+        "date": "2026-07-02",
+        "brews": [
+          {
+            "recipe": null,
+            "tasting": { "my_taste": "그냥 무난했다.", "rating": null }
+          }
+        ],
+        "photos": []
+      }
+    ]
+  },
+  "response_no_entries": {
+    "note_id": 3,
+    "coffee_name": { "value": "게뎁 워시드", "source": "user" },
+    "roastery": null,
+    "beans": [],
+    "roast_level": null,
+    "official_notes": null,
+    "sources": [],
+    "entries": []
+  }
+}

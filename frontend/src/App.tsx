@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { ChatScreen } from './chat/ChatScreen'
+import { DetailScreen } from './detail/DetailScreen'
 import { GalleryScreen } from './gallery/GalleryScreen'
-import { GALLERY } from './routes'
+import { GALLERY, matchNote } from './routes'
 
 /**
  * 앱 진입점 + 라우팅 (changes/0029, TΔ12에서 화면이 둘이 됐다).
@@ -13,7 +14,7 @@ import { GALLERY } from './routes'
  * SPA fallback은 이미 서 있으므로(TΔ23 `WebConfig`) 경로가 늘어도 서버는 손대지 않는다 — `/notes`를
  * 새로고침해도 index.html이 오고 여기서 다시 갈린다.
  *
- * TΔ13a가 `/notes/{id}`(상세)를 여기에 보탠다.
+ * TΔ13a가 `/notes/{id}`(상세)를 보탰다 — 화면이 셋이 됐지만 고르는 방식은 그대로다.
  */
 function App() {
   const [path, setPath] = useState(() => window.location.pathname)
@@ -33,8 +34,17 @@ function App() {
     setPath(next)
   }
 
+  if (path === GALLERY) {
+    return <GalleryScreen onNavigate={navigate} />
+  }
+  // 상세는 경로가 값을 담는 유일한 화면이라 id가 곧 조회 키다. key로도 쓴다 — 상세에서 상세로 옮겨가면
+  // (아직 그런 경로는 없지만) 컴포넌트가 새로 서야 이전 노트의 내용이 잠깐 비치지 않는다.
+  const noteId = matchNote(path)
+  if (noteId !== null) {
+    return <DetailScreen key={noteId} noteId={noteId} onNavigate={navigate} />
+  }
   // 모르는 경로는 대화로 떨어진다 — 캡처가 이 앱의 기본 화면이다(델타가 S1을 최우선으로 둔 것과 같은 이유).
-  return path === GALLERY ? <GalleryScreen onNavigate={navigate} /> : <ChatScreen onNavigate={navigate} />
+  return <ChatScreen onNavigate={navigate} />
 }
 
 export default App

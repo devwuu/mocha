@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { NoteFacets, NoteQuery, NoteSummary } from '../api'
 import { getNotes } from '../api'
-import { CHAT } from '../routes'
+import { CHAT, notePath } from '../routes'
 import { FilterBar } from './FilterBar'
 import { EMPTY_QUERY, isFiltered, toSearchParams } from './noteQuery'
 
@@ -185,7 +185,7 @@ export function GalleryScreen({ onNavigate }: GalleryScreenProps) {
 
         <div className="gallery__grid">
           {notes?.map((note) => (
-            <NoteCard key={note.note_id} note={note} />
+            <NoteCard key={note.note_id} note={note} onNavigate={onNavigate} />
           ))}
 
           {/* 감시자는 그리드 안에 두되 칸을 차지하지 않는다 — 마지막 카드 바로 뒤가 "끝"이다. */}
@@ -224,12 +224,24 @@ const EMPTY_FACETS: NoteFacets = { roastery: [], process: [] }
  * 최근 시음일을 로스터리 줄에 붙인 것은 시안과 갈린 자리다. 목록이 최근순으로만 정렬되는데(정렬 선택기
  * 없음) 그 축이 화면에 하나도 안 보이면 순서가 임의로 읽힌다.
  *
- * ⚠️ **아직 링크가 아니다** — 상세 화면이 TΔ13a이고, 갈 곳이 없는 링크를 먼저 달면 눌렀을 때 아무 일도
- * 일어나지 않는 경로가 생긴다. TΔ13a가 `/notes/{id}`를 세우며 이 요소가 `<a>`가 된다.
+ * **TΔ13a에서 `<a>`가 됐다** — 상세(`/notes/{id}`)가 서면서 갈 곳이 생겼다. 라우팅은 자체 구현이지만
+ * 앵커를 쓰는 것은 접근성·새 탭 때문이다: 수식 키를 누른 클릭과 가운데 버튼은 **막지 않고 브라우저에
+ * 넘긴다**(SPA fallback이 있어 새 탭으로 열어도 같은 화면이 뜬다). 평범한 클릭만 가로채 pushState로 옮긴다.
  */
-function NoteCard({ note }: { note: NoteSummary }) {
+function NoteCard({ note, onNavigate }: { note: NoteSummary; onNavigate: (path: string) => void }) {
+  const path = notePath(note.note_id)
   return (
-    <article className="note-card">
+    <a
+      className="note-card"
+      href={path}
+      onClick={(event) => {
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+          return
+        }
+        event.preventDefault()
+        onNavigate(path)
+      }}
+    >
       {note.thumbnail_url !== null && (
         <img className="note-card__photo" src={note.thumbnail_url} alt="" loading="lazy" />
       )}
@@ -241,6 +253,6 @@ function NoteCard({ note }: { note: NoteSummary }) {
         </div>
         <div className="note-card__name">{note.coffee_name}</div>
       </div>
-    </article>
+    </a>
   )
 }
