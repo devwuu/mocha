@@ -720,20 +720,64 @@ select:focus {
   gap: 6px;
 }
 
+/*
+ * 썸네일 (TΔ26). 파일명 칩이던 자리를 사진이 받는다 — 확인해야 하는 것이 "이름이 맞는가"가 아니라
+ * "이 사진이 맞는가"이고, 스테이징 이름은 사용자가 고른 이름과 같지도 않다.
+ * 56px는 붙인 것을 알아볼 수 있으면서 여러 장이 한 줄에 서는 크기다(입력 바가 화면을 먹지 않게).
+ */
 .attachment {
-  max-width: 100%;
-  border-radius: 999px;
-  background: var(--chip);
-  color: var(--brown-deep);
-  padding: 3px 10px;
-  font-size: 11px;
+  position: relative;
+  width: 56px;
+  height: 56px;
+  flex: none;
+  border-radius: 10px;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  background: var(--chip);
 }
 
+.attachment__thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/*
+ * 취소 버튼은 썸네일 위 모서리에 얹는다 — 별도 줄에 두면 장수만큼 높이가 늘고, 무엇의 취소인지도 흐려진다.
+ * 20px은 최소 탭 영역보다 작지만 오조작의 대가가 "다시 고른다"뿐이라 여기서는 정확도를 택했다.
+ */
+.attachment__remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 50%;
+  background: rgb(0 0 0 / 0.55);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.attachment__remove:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* 올라가는 중인 자리 — 같은 크기의 빈 칸으로 서야 완료 시 스트립이 흔들리지 않는다. */
 .attachment--pending {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--muted-soft);
+  font-size: 10px;
+  text-align: center;
 }
 
 /* 실제 파일 입력은 숨기고 ＋ 버튼이 대신 연다 — 브라우저 기본 위젯은 시안(ADR-54)과 어울리지 않는다. */
@@ -741,11 +785,29 @@ select:focus {
   display: none;
 }
 
+/*
+ * 보낸 사진 (TΔ26). 말풍선 안에 들어가되 좌우 여백은 그대로 둔다 — 가장자리까지 채우면 사진이 말풍선을
+ * 대신해 버려 "이 발화에 이 사진을 묶었다"는 관계가 흐려진다.
+ * 본문이 없으면(사진만 보낸 턴) 아래 여백도 없다 — `:last-child`가 그것을 판정한다.
+ */
 .bubble__photos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.bubble__photos:last-child {
+  margin-bottom: 0;
+}
+
+.bubble__photo {
+  width: 108px;
+  max-width: 100%;
+  height: 108px;
+  object-fit: cover;
+  border-radius: 8px;
   display: block;
-  margin-bottom: 3px;
-  font-size: 11px;
-  opacity: 0.75;
 }
 
 /* ── 갤러리 (TΔ12) ───────────────────────────────────────────────── */

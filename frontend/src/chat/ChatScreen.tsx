@@ -18,8 +18,11 @@ import { DraftForm } from './DraftForm'
  * 반영하라"이기 때문이다. 제안이 없던 턴은 응답의 draft가 null이고, 그때 폼은 건드리지 않는다.
  *
  * **사진은 ＋로 첨부해 발화와 한 전송으로 묶인다**(TΔ8a, D-11). 고른 순간 업로드되고(`POST /api/photos`)
- * 화면이 들고 있는 것은 스테이징 파일명뿐이며, 읽기(OCR)·검색 보강·필드 채움은 전부 서버 턴 안에서
- * 모델이 한다 — **이 파일에 병합 코드가 0줄인 것이 D-11의 결정이다.**
+ * 화면이 들고 있는 것은 스테이징 파일명 + **로컬 미리보기 URL**뿐이며, 읽기(OCR)·검색 보강·필드 채움은
+ * 전부 서버 턴 안에서 모델이 한다 — **이 파일에 병합 코드가 0줄인 것이 D-11의 결정이다.**
+ *
+ * **묶인 결과가 눈에 보인다**(TΔ26): 전송 전에는 입력창 위에 썸네일로 서고(개별 취소 가능), 전송 후에는
+ * 그 사진이 말풍선에 남는다. 사진과 발화를 *사용자가 직접* 묶는 구조라 그 묶음이 보여야 확인이 가능하다.
  */
 interface ChatScreenProps {
   onNavigate: (path: string) => void
@@ -30,12 +33,26 @@ export function ChatScreen({ onNavigate }: ChatScreenProps) {
   const [draft, setDraft] = useState<Draft | null>(null)
   const [busy, setBusy] = useState(false)
   const [input, setInput] = useState('')
-  // 업로드가 끝나 스테이징에 서 있는 사진의 파일명 — 다음 전송에 실린다.
-  const [photos, setPhotos] = useState<string[]>([])
+  // 업로드가 끝나 스테이징에 서 있는 사진 — 다음 전송에 실린다.
+  const [photos, setPhotos] = useState<Attachment[]>([])
   const [uploading, setUploading] = useState(false)
   const tail = useRef<HTMLDivElement>(null)
   const picker = useRef<HTMLInputElement>(null)
   const composer = useRef<HTMLTextAreaElement>(null)
+  // 이 화면이 만든 objectURL 전부 — 언마운트 때 남은 것을 걷는다(아래 정리 effect).
+  const objectUrls = useRef<string[]>([])
+
+  /*
+   * 대화를 떠나면 미리보기 URL을 전부 폐기한다.
+   *
+   * 이 화면을 벗어나면 대화도 폼도 사라지므로(OQ-1 ㉡ — 서버에 pending이 없다) 말풍선에 실린 사진도
+   * 함께 사라진다. 즉 **말풍선이 사라지는 시점 = 이 컴포넌트의 언마운트**이고, 여기가 그 자리다.
+   * 걷지 않으면 고른 사진의 바이트가 탭이 닫힐 때까지 메모리에 남는다.
+   */
+  useEffect(() => {
+    const urls = objectUrls.current
+    return () => urls.forEach((url) => URL.revokeObjectURL(url))
+  }, [])
 
   // 새 말풍선·폼 변화가 접히지 않게 항상 끝으로 붙인다.
   useEffect(() => {
@@ -64,6 +81,10 @@ export function ChatScreen({ onNavigate }: ChatScreenProps) {
    *
    * 한 장이라도 수용 포맷(JPEG/PNG)이 아니면 서버가 400으로 답하고 **아무것도 스테이징되지 않는다** —
    * 부분 성공이 없으므로 화면도 전부 실패로 다루고 사용자가 다시 고른다.
+   *
+   * **미리보기는 로컬 파일에서 만든다**(TΔ26) — 업로드 응답이 주는 것은 이름뿐이고, 스테이징 사진에
+   * 서빙 경로를 여는 안은 기각했다: **확인 전 사진에 URL이 생겨** 노출 면적만 늘고, 대화가 세션 수명이라
+   * 서버에서 다시 읽을 일도 없다.
    */
   async function attach(files: FileList | null) {
     const picked = files === null ? [] : Array.from(files)
@@ -73,7 +94,10 @@ export function ChatScreen({ onNavigate }: ChatScreenProps) {
     setUploading(true)
     try {
       const uploaded = await postPhotos(picked)
-      setPhotos((prev) => [...prev, ...uploaded.photos.map((photo) => photo.name)])
+      // 스테이징 이름은 올린 순서로 온다(`PhotoService.stage`) — 그 순서로 원본 파일과 짝지어 미리보기를
+      // 만든다. URL 생성은 setState **밖**이다: 상태 갱신 함수는 StrictMode에서 두 번 불려 URL이 겹친다.
+      const attached = uploaded.photos.map((photo, index) => preview(photo.name, picked[index]))
+      setPhotos((prev) => [...prev, ...attached])
     } catch (error) {
       setMessages((prev) => [
         ...prev,
@@ -88,6 +112,38 @@ export function ChatScreen({ onNavigate }: ChatScreenProps) {
     }
   }
 
+  /** 미리보기 URL을 만들고 정리 목록에 올린다 — 만드는 자리와 걷는 자리가 갈리지 않게 한 곳에 둔다. */
+  function preview(name: string, file: File): Attachment {
+    const url = URL.createObjectURL(file)
+    objectUrls.current.push(url)
+    return { name, url }
+  }
+
+  /** 전송 전 첨부 취소 — 잘못 고른 사진을 알아채는 자리가 저장 후 갤러리이던 것이 여기서 닫힌다. */
+  function detach(target: Attachment) {
+    setPhotos((prev) => prev.filter((photo) => photo !== target))
+    release([target])
+  }
+
+  /**
+   * 첨부를 화면에서 내릴 때 그 URL을 폐기한다 — **말풍선이 참조하지 않는 것만.**
+   *
+   * 전송이 실패한 턴은 첨부를 그대로 남기므로(재시도가 이름만 다시 싣는다) 같은 URL이 *이미 대화에 남은
+   * 말풍선*과 첨부 스트립 양쪽에 걸린다. 그때 폐기하면 말풍선의 사진이 깨진 이미지가 된다 — 그래서
+   * "화면에서 내린다"와 "URL을 폐기한다"가 같은 일이 아니다. 남는 것은 언마운트가 걷는다.
+   *
+   * 스테이징 파일 자체는 서버에 남는다 — 폐기는 [취소]/[저장] 통지가 겸하고(`PhotoService.discard`),
+   * 이 화면이 그 사이에 개별 삭제 API를 새로 열지 않는다(TΔ26은 서버 무변경이다).
+   */
+  function release(dropped: Attachment[]) {
+    const shown = new Set(messages.flatMap((message) => message.photos ?? []).map((photo) => photo.url))
+    dropped.forEach((photo) => {
+      if (!shown.has(photo.url)) {
+        URL.revokeObjectURL(photo.url)
+      }
+    })
+  }
+
   async function send() {
     const utterance = input.trim()
     // 사진만 첨부하고 보내는 것도 유효한 턴이다(D-11) — 그때 재료는 사진에서 나온다.
@@ -96,11 +152,13 @@ export function ChatScreen({ onNavigate }: ChatScreenProps) {
     }
     const attached = photos
     setInput('')
-    setMessages((prev) => [...prev, { role: 'user', text: utterance, photos: attached.length }])
+    // 사진은 **말풍선으로 대화에 남는다**(TΔ26) — 무엇을 이 발화에 묶었는지가 사후에도 읽혀야 한다.
+    setMessages((prev) => [...prev, { role: 'user', text: utterance, photos: attached }])
     setBusy(true)
     try {
-      const response = await postAgentTurn({ utterance, draft, photos: attached })
+      const response = await postAgentTurn({ utterance, draft, photos: attached.map((photo) => photo.name) })
       // 서버가 받아 읽은 사진은 이 메시지의 것으로 소진된다 — 다음 턴에 다시 실으면 같은 사진을 또 읽는다.
+      // URL은 폐기하지 않는다: 말풍선이 그대로 이어받았고, 여기서 걷으면 방금 보낸 사진이 깨진다.
       setPhotos([])
       setMessages((prev) => [...prev, { role: 'agent', text: response.reply }])
       // 제안 없는 턴(잡담·조회·검증 거부)은 draft가 null로 온다 — 폼을 지우지 않는다.
@@ -128,6 +186,7 @@ export function ChatScreen({ onNavigate }: ChatScreenProps) {
       setDraft(null)
       // 보내지 않고 남은 첨부는 이 노트의 것이었다 — 저장이 끝났으니 화면에서도 내린다.
       setPhotos([])
+      release(photos)
       setMessages((prev) => [
         ...prev,
         {
@@ -152,6 +211,7 @@ export function ChatScreen({ onNavigate }: ChatScreenProps) {
     // 취소 자체를 되돌릴 이유는 없다. 사진 스테이징 폐기도 같은 통지가 겸한다(TΔ8a).
     setDraft(null)
     setPhotos([])
+    release(photos)
     setMessages((prev) => [...prev, { role: 'system', text: '작성 중이던 노트를 지웠어요.' }])
     try {
       await postAgentCancel()
@@ -230,11 +290,26 @@ export function ChatScreen({ onNavigate }: ChatScreenProps) {
             void send()
           }}
         >
+          {/*
+            전송 «전»의 확인 자리(TΔ26) — 무엇을 붙였는지 보이고 한 장씩 뺄 수 있다. 이것이 없으면 잘못
+            고른 사진을 알아채는 자리가 저장 후 갤러리다.
+          */}
           {(photos.length > 0 || uploading) && (
             <div className="composer__attachments">
-              {photos.map((name) => (
-                <span key={name} className="attachment">
-                  🖼 {name}
+              {photos.map((photo, index) => (
+                <span key={photo.name} className="attachment">
+                  {/* 대체 텍스트에 순번을 넣는다 — 스테이징 이름은 사용자가 고른 이름이 아니라 알려 줄 것이
+                      "몇 번째 사진인가"뿐이고, 취소 버튼도 같은 순번으로 무엇을 지우는지 가리킨다. */}
+                  <img className="attachment__thumb" src={photo.url} alt={`첨부한 사진 ${index + 1}`} />
+                  <button
+                    type="button"
+                    className="attachment__remove"
+                    aria-label={`${index + 1}번째 사진 첨부 취소`}
+                    disabled={busy}
+                    onClick={() => detach(photo)}
+                  >
+                    ×
+                  </button>
                 </span>
               ))}
               {uploading && <span className="attachment attachment--pending">올리는 중…</span>}
@@ -289,11 +364,24 @@ export function ChatScreen({ onNavigate }: ChatScreenProps) {
   )
 }
 
+/**
+ * 첨부 사진 1장 — 스테이징 이름(서버가 아는 것)과 미리보기 URL(화면만 아는 것)의 짝이다.
+ *
+ * **전송 전 스트립과 전송 후 말풍선이 같은 객체를 공유한다**(TΔ26) — 갈라 두면 전송 시점에 목록을 옮겨
+ * 담게 되고 그 사이가 어긋난다. 그래서 URL의 수명도 이 객체 하나를 따라간다.
+ */
+interface Attachment {
+  /** `POST /api/photos`가 돌려준 스테이징 파일명 — 턴 요청에 실리는 것은 이것뿐이다. */
+  name: string
+  /** `URL.createObjectURL`로 만든 로컬 미리보기 — 서버는 사진에 URL을 주지 않는다(V-4의 정신). */
+  url: string
+}
+
 interface Message {
   role: 'user' | 'agent' | 'system'
   text: string
-  /** 이 메시지에 함께 보낸 사진 장수 — 말풍선이 "무엇을 보냈는지"를 온전히 남기기 위한 것뿐이다. */
-  photos?: number
+  /** 이 메시지에 함께 보낸 사진 — 말풍선이 "무엇을 보냈는지"를 온전히 남기기 위한 것뿐이다. */
+  photos?: Attachment[]
   /** 안내가 가리키는 다음 자리 — 지금은 병합 저장 뒤의 수정 화면 하나뿐이다(TΔ13b). */
   action?: { label: string; path: string }
 }
@@ -315,11 +403,19 @@ function Bubble({ message, onNavigate }: { message: Message; onNavigate: (path: 
     )
   }
   if (message.role === 'user') {
-    const attached = message.photos ?? 0
+    const attached = message.photos ?? []
     return (
       <div className="row row--user">
         <div className="bubble bubble--user">
-          {attached > 0 && <span className="bubble__photos">🖼 사진 {attached}장</span>}
+          {/* 전송 «후»의 확인 자리(TΔ26) — 사진과 발화를 사용자가 직접 묶는 구조라(D-11) 묶인 결과가
+              보여야 그 결정이 확인 가능해진다. 사진만 보낸 턴은 본문이 빈 말풍선이 된다. */}
+          {attached.length > 0 && (
+            <span className="bubble__photos">
+              {attached.map((photo, index) => (
+                <img key={photo.name} className="bubble__photo" src={photo.url} alt={`보낸 사진 ${index + 1}`} />
+              ))}
+            </span>
+          )}
           {message.text}
         </div>
       </div>
