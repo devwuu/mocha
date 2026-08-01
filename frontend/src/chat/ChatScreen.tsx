@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Draft } from '../api'
 import { postAgentCancel, postAgentTurn, postNoteCommit, postPhotos } from '../api'
+import { GALLERY } from '../routes'
 import { DraftForm } from './DraftForm'
 
 /**
@@ -19,7 +20,11 @@ import { DraftForm } from './DraftForm'
  * 화면이 들고 있는 것은 스테이징 파일명뿐이며, 읽기(OCR)·검색 보강·필드 채움은 전부 서버 턴 안에서
  * 모델이 한다 — **이 파일에 병합 코드가 0줄인 것이 D-11의 결정이다.**
  */
-export function ChatScreen() {
+interface ChatScreenProps {
+  onNavigate: (path: string) => void
+}
+
+export function ChatScreen({ onNavigate }: ChatScreenProps) {
   const [messages, setMessages] = useState<Message[]>([GREETING])
   const [draft, setDraft] = useState<Draft | null>(null)
   const [busy, setBusy] = useState(false)
@@ -134,6 +139,10 @@ export function ChatScreen() {
         <header className="header">
           <img className="header__mascot" src="/mascot-face.png" alt="" />
           <h1 className="header__title">모카와 대화</h1>
+          {/* 갤러리로 가는 유일한 입구(TΔ12) — 시안에 없는 편차 ③이다. */}
+          <button type="button" className="header__link" onClick={() => onNavigate(GALLERY)}>
+            노트 목록 ›
+          </button>
         </header>
 
         <div className="stream">

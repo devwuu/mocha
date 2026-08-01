@@ -1,7 +1,8 @@
 /*
- * 캡처 화면 스타일 (changes/0029 TΔ10).
+ * 화면 스타일 (changes/0029 TΔ10 캡처 · TΔ12 갤러리).
  *
- * 값은 시안 `design/채팅 - 말풍선.dc.html`에서 그대로 가져왔다 — 시안이 디자인 source of truth이고
+ * 값은 시안 `design/채팅 - 말풍선.dc.html`·`design/리스트 - 갤러리.dc.html`에서 그대로 가져왔다 —
+ * 시안이 디자인 source of truth이고
  * (ADR-54) 수정 금지 대상이라, 편차가 필요하면 여기(이식본)에만 둔다. 실제로 둔 편차는 셋이다:
  *   ① 시안은 390×780 고정 프레임이고 여기서는 뷰포트를 채운다(휴대폰 실사용이 1차 대상).
  *   ② 미리보기 폼이 시안의 제안 카드 자리에 앉는데, 입력 필드가 들어가므로 말풍선 78% 폭 제한을
@@ -615,4 +616,256 @@ select:focus {
   margin-bottom: 3px;
   font-size: 11px;
   opacity: 0.75;
+}
+
+/* ── 갤러리 (TΔ12) ───────────────────────────────────────────────── */
+
+/*
+ * 시안 `design/리스트 - 갤러리.dc.html` 이식본. 값은 시안 그대로이고 편차는 셋이다(화면 주석과 같은 목록):
+ *   ① 시안의 드롭다운 3개 자리에 검색창 + 필터 4축이 온다(델타 확정).
+ *   ② 하단 페이지네이션이 없다 — 무한 스크롤이라 그릴 것이 없다.
+ *   ③ 시안에 없는 대화 화면 이동 링크.
+ * 채팅 화면과 팔레트·서체·`.shell`/`.panel` 액자를 공유한다 — 같은 앱의 두 화면이다.
+ */
+
+.gallery__header {
+  position: relative;
+  flex: none;
+  padding: 18px 22px 12px;
+  text-align: center;
+  border-bottom: 1px solid var(--bar-border);
+}
+
+/* 헤더 가운데 정렬을 깨지 않으려고 흐름에서 빼낸다 — 시안의 대칭이 이 화면의 인상이다. */
+.gallery__back {
+  position: absolute;
+  left: 10px;
+  top: 14px;
+  padding: 4px 6px;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--brown-deep);
+  cursor: pointer;
+}
+
+.gallery__eyebrow {
+  font-size: 10.5px;
+  letter-spacing: 3px;
+  color: #7c6b5b;
+  margin-bottom: 8px;
+}
+
+.gallery__title {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.gallery__count {
+  /* 첫 조회 전에도 높이를 차지한다 — 숫자가 들어오며 아래가 밀리지 않게. */
+  min-height: 1em;
+  margin-top: 5px;
+  font-size: 11px;
+  color: #7c6b5b;
+}
+
+.gallery__search {
+  flex: none;
+  margin: 0;
+  padding: 11px 16px;
+  border: none;
+  border-bottom: 1px solid var(--bar-border);
+  background: var(--bar);
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--ink);
+}
+
+.gallery__search::placeholder {
+  color: var(--muted-soft);
+}
+
+.gallery__search:focus {
+  outline: none;
+  background: var(--panel);
+}
+
+/* ── 필터 바 ─────────────────────────────────────────────────────── */
+
+.filters {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--bar-border);
+}
+
+.chip,
+.filters__origin {
+  padding: 5px 10px;
+  border: 1px solid var(--bar-border);
+  border-radius: 999px;
+  background: var(--chip);
+  font: inherit;
+  font-size: 11px;
+  color: #6d5e4f;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  cursor: pointer;
+}
+
+/* 걸린 축은 테두리로 드러난다 — 스크롤로 필터 바가 밀려 올라가도 색이 남는다. */
+.chip--on {
+  border-color: var(--brown);
+  color: var(--ink);
+}
+
+.chip:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.chip__value {
+  color: var(--muted-soft);
+}
+
+.chip--on .chip__value {
+  color: var(--brown-deep);
+}
+
+.chip__caret {
+  font-size: 9px;
+  color: var(--muted-soft);
+}
+
+/* 열거할 값 집합이 없는 유일한 축이라 칩이 아니라 입력이다(ADR-53 — 원산지 컬럼 부재). */
+.filters__origin {
+  min-width: 0;
+  flex: 1 1 92px;
+  background: var(--panel);
+}
+
+.filters__origin::placeholder {
+  color: var(--muted-soft);
+}
+
+.filters__origin:focus {
+  outline: none;
+  border-color: var(--brown);
+}
+
+/* 선택지 시트의 한 줄 — 이름과 체크가 한 행이라 매칭 시트(세로 2줄)와 방향이 다르다. */
+.sheet__item--option {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sheet__check {
+  font-size: 12px;
+  color: var(--brown);
+}
+
+/* ── 썸네일 그리드 ───────────────────────────────────────────────── */
+
+.gallery__grid {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-auto-rows: 164px;
+  gap: 10px;
+  align-content: start;
+}
+
+/* 감시자는 칸을 차지하지 않는다 — 마지막 줄을 통째로 가로질러 그리드 끝에 붙는다. */
+.gallery__sentinel {
+  grid-column: 1 / -1;
+  height: 1px;
+}
+
+.note-card {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--bar-border);
+  /* 사진이 없을 때 드러나는 시안의 사선 패턴 — 빈 칸을 남기지 않는 것이 시안의 답이다. */
+  background: repeating-linear-gradient(135deg, #e5ded2 0 6px, #dbd3c5 6px 12px);
+}
+
+.note-card__photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* 아래로 짙어지는 그라데이션 — 사진이 밝아도 글자가 읽힌다. 사진이 없으면 사선 패턴 위에 앉는다. */
+.note-card__scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(46, 38, 31, 0.12) 0%,
+    rgba(46, 38, 31, 0.34) 42%,
+    rgba(46, 38, 31, 0.74) 100%
+  );
+}
+
+.note-card__caption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 12px 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.note-card__meta {
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  color: rgba(255, 250, 242, 0.72);
+}
+
+.note-card__name {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: #fdf9f2;
+  text-wrap: pretty;
+}
+
+.gallery__notice {
+  flex: none;
+  padding: 14px 16px;
+  padding-bottom: max(14px, env(safe-area-inset-bottom));
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--muted-soft);
+  border-top: 1px solid var(--bar-border);
+}
+
+/* 대화 화면 헤더의 갤러리 입구(편차 ③) — 마스코트·제목 다음 오른쪽 끝. */
+.header__link {
+  margin-left: auto;
+  padding: 4px 6px;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--brown-deep);
+  cursor: pointer;
 }

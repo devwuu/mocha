@@ -1,13 +1,40 @@
+import { useEffect, useState } from 'react'
 import { ChatScreen } from './chat/ChatScreen'
+import { GalleryScreen } from './gallery/GalleryScreen'
+import { GALLERY } from './routes'
 
 /**
- * 앱 진입점 (changes/0029).
+ * 앱 진입점 + 라우팅 (changes/0029, TΔ12에서 화면이 둘이 됐다).
  *
- * 지금은 화면이 하나다 — 캡처(TΔ10). 갤러리·상세(S2)가 들어오면 그때 라우터가 여기 선다.
- * SPA fallback은 이미 서 있으므로(TΔ23 `WebConfig`) 경로가 늘어도 서버는 손대지 않는다.
+ * **라우터 라이브러리를 들이지 않는다**(루트 §4 right-sizing). 지금 필요한 것은 경로 하나로 화면을 고르고
+ * 뒤로 가기를 살리는 것뿐이고, 그 전부가 아래 20줄이다. 중첩 라우트·로더·코드 스플리팅이 실제로 필요해지면
+ * 그때가 판단 지점이다 — 그때 바꿀 곳도 이 파일 하나다.
+ *
+ * SPA fallback은 이미 서 있으므로(TΔ23 `WebConfig`) 경로가 늘어도 서버는 손대지 않는다 — `/notes`를
+ * 새로고침해도 index.html이 오고 여기서 다시 갈린다.
+ *
+ * TΔ13a가 `/notes/{id}`(상세)를 여기에 보탠다.
  */
 function App() {
-  return <ChatScreen />
+  const [path, setPath] = useState(() => window.location.pathname)
+
+  // 브라우저 뒤로/앞으로 — pushState는 이 이벤트를 쏘지 않으므로 navigate가 직접 상태를 옮긴다.
+  useEffect(() => {
+    const sync = () => setPath(window.location.pathname)
+    window.addEventListener('popstate', sync)
+    return () => window.removeEventListener('popstate', sync)
+  }, [])
+
+  function navigate(next: string) {
+    if (next === window.location.pathname) {
+      return
+    }
+    window.history.pushState(null, '', next)
+    setPath(next)
+  }
+
+  // 모르는 경로는 대화로 떨어진다 — 캡처가 이 앱의 기본 화면이다(델타가 S1을 최우선으로 둔 것과 같은 이유).
+  return path === GALLERY ? <GalleryScreen onNavigate={navigate} /> : <ChatScreen onNavigate={navigate} />
 }
 
 export default App

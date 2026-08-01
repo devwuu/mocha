@@ -3,8 +3,8 @@
  *
  * 정본은 `src/test/resources/contract/`의 JSON 파일이고 — `turn-draft.contract.json`(TΔ2 캡처본),
  * `agent-turn.contract.json`, `note-commit.contract.json`, `note-candidates.contract.json`(TΔ11),
- * `agent-cancel.contract.json`(TΔ6b) — 자바 쪽에서 `ClientApiContractTest`가 서로의 정합을 단언한다.
- * 이 파일은 그 형태를 타입으로 옮긴 것이다.
+ * `agent-cancel.contract.json`(TΔ6b), `note-list.contract.json`(TΔ12) — 자바 쪽에서
+ * `ClientApiContractTest`가 서로의 정합을 단언한다. 이 파일은 그 형태를 타입으로 옮긴 것이다.
  *
  * 계약을 바꾸려면 JSON 파일과 이 파일을 함께 고친다. 필드명이 어긋나면 컴파일러가 아니라
  * **런타임에 값이 조용히 사라지는** 방식으로 실패한다 — 사용자가 폼에서 고친 값이 되돌아가는
@@ -164,6 +164,82 @@ export interface UploadedPhoto {
  */
 export interface PhotoUploadResponse {
   photos: UploadedPhoto[]
+}
+
+/**
+ * 갤러리 그리드의 한 칸 — 노트 1건의 납작한 사영 (changes/0029 TΔ12).
+ *
+ * 필드가 `NoteCandidate` + `thumbnail_url`인 것은 우연이 아니다: 두 화면 다 노트를 *고르는* 자리라
+ * 3단 중첩(entries → brews → recipe/tasting)을 한 줄도 쓰지 않는다. 상세가 무엇을 보여줄지는
+ * `GET /api/notes/{id}`가 따로 답한다(TΔ13a·TΔ5a).
+ *
+ * `thumbnail_url`은 **서버가 만든 완성된 경로**다 — 클라이언트는 `<img src>`에 그대로 꽂고 URL 규칙을
+ * 알지 않는다. 아카이브 상대 경로(`photos/…`, V-4)를 프론트가 조립하면 같은 규칙이 양쪽에 이중화되고,
+ * 폴더 접미가 생성 시점 스냅샷이라(ADR-75) 클라이언트가 재계산할 수 있는 값도 아니다.
+ *
+ * `roastery`·`latest_date`·`thumbnail_url`이 모두 nullable이다 — 로스터리를 모르는 노트, 엔트리가
+ * 없는 노트(삭제 직후), 사진 없이 발화만으로 기록한 노트가 전부 정상 상태다.
+ */
+export interface NoteSummary {
+  note_id: number
+  coffee_name: string
+  roastery: string | null
+  latest_date: string | null
+  thumbnail_url: string | null
+}
+
+/**
+ * 필터 칩이 보여줄 선택지 — **저장된 값에서 나온다**(사용자 확정 2026-08-01).
+ *
+ * 목록 응답에 동봉하는 이유는 무한 스크롤이라 클라이언트가 한 페이지에서 전체 값을 알 수 없어서다.
+ * 별도 엔드포인트로 가르면 화면 진입에 요청이 둘이 되고, 그 둘이 어긋나는 순간 **있지도 않은 로스터리를
+ * 고를 수 있는** 상태가 생긴다.
+ *
+ * **평가는 여기 없다** — 4범주 고정(V-1)이라 클라이언트 상수가 소유한다(`RATINGS`). 원산지도 없다:
+ * 자유 텍스트 부분일치라 열거할 값 집합이 애초에 없다(아래 `NoteQuery.origin` 주석).
+ */
+export interface NoteFacets {
+  roastery: string[]
+  process: string[]
+}
+
+/**
+ * 갤러리 필터 상태 = `GET /api/notes`의 쿼리 파라미터 (changes/0029 TΔ12, AC-4).
+ *
+ * **같은 축 안은 OR, 축 간은 AND**다(사용자 확정 2026-08-01) — *"프릳츠 아니면 모모스의 워시드"*가
+ * 표현된다. 다중 축은 같은 키를 반복해 싣는다(`?roastery=프릳츠&roastery=모모스`).
+ *
+ * `origin`만 단일 자유 텍스트인 것은 **데이터 모델에 원산지 컬럼이 없기 때문**이다(사용자 확정
+ * 2026-08-01). ADR-53(changes/0021)이 구 `origin`/`process` 필드를 `beans[]`로 대체하며 원산지는
+ * `note_bean.description`의 자유 텍스트(*"에티오피아 예가체프 헤어룸"*)에 녹았다. 그래서 이 축만
+ * 열거 대신 부분일치로 근사한다 — 정확도가 표기에 의존하는 대가를 지고, 실사용에서 값이 쌓이는 것을
+ * 본 뒤에 구조화를 판단한다(루트 §4 right-sizing).
+ *
+ * **날짜 범위 축은 없다** — 필요가 관측되면 확장한다(`open-questions.md` 검색 절).
+ */
+export interface NoteQuery {
+  q: string
+  roastery: string[]
+  process: string[]
+  origin: string
+  rating: Rating[]
+}
+
+/**
+ * `GET /api/notes` 응답 — 커서 기반 무한 스크롤 (사용자 확정 2026-08-01).
+ *
+ * `next_cursor`는 **불투명 문자열**이다. 클라이언트가 만들지도 해석하지도 않고 받은 값을 그대로 되싣는다
+ * — 정렬 축(최근 시음일 내림차순 → note_id 내림차순)이 바뀌어도 클라이언트가 따라 바뀌지 않게 하려는
+ * 것이다. 마지막 페이지면 null이고, 그것이 "더 없다"의 유일한 신호다.
+ *
+ * `total`은 **필터가 적용된 총 건수**다 — 헤더의 *"N편의 기록"*이 그 값이고, 필터를 걸면 함께 줄어든다.
+ * 페이지마다 같은 값이 실려 온다.
+ */
+export interface NoteListResponse {
+  notes: NoteSummary[]
+  next_cursor: string | null
+  total: number
+  facets: NoteFacets
 }
 
 /** `POST /api/notes` — 폼 확정 저장(= 구 [저장] 버튼). 본문이 곧 확정된 draft다. */

@@ -1,0 +1,113 @@
+{
+  "request_query": {
+    "q": "게뎁",
+    "roastery": ["모모스커피", "프릳츠"],
+    "process": ["워시드"],
+    "origin": "에티오피아",
+    "rating": ["완전 내스타일", "맛있다"],
+    "cursor": null
+  },
+  "request_query_blank": {
+    "q": "",
+    "roastery": [],
+    "process": [],
+    "origin": "",
+    "rating": [],
+    "cursor": null
+  },
+  "request_query_next_page": {
+    "q": "",
+    "roastery": [],
+    "process": [],
+    "origin": "",
+    "rating": [],
+    "cursor": "eyJkIjpudWxsLCJpIjozfQ"
+  },
+  "multi_value_axes": ["roastery", "process", "rating"],
+  "single_value_axes": ["q", "origin"],
+  "axis_combination": {
+    "within_axis": "or",
+    "between_axes": "and"
+  },
+  "sort_axes": ["latest_date desc nulls last", "note_id desc"],
+  "thumbnail_url_prefix": "/api/photos/",
+  "faceted_axes": ["roastery", "process"],
+  "response": {
+    "notes": [
+      {
+        "note_id": 48,
+        "coffee_name": "에티오피아 첼베사",
+        "roastery": "커피베라",
+        "latest_date": "2026-07-16",
+        "thumbnail_url": "/api/photos/48-커피베라-에티오피아-첼베사/2026-07-16/IMG_4821.jpg"
+      },
+      {
+        "note_id": 21,
+        "coffee_name": "에티오피아 게뎁",
+        "roastery": "프릳츠",
+        "latest_date": "2026-07-02",
+        "thumbnail_url": "/api/photos/21-프릳츠-에티오피아-게뎁/2026-07-02/IMG_4402.jpg"
+      },
+      {
+        "note_id": 12,
+        "coffee_name": "에티오피아 게뎁",
+        "roastery": "모모스커피",
+        "latest_date": "2026-07-02",
+        "thumbnail_url": null
+      },
+      {
+        "note_id": 7,
+        "coffee_name": "예가체프 G1",
+        "roastery": "프릳츠",
+        "latest_date": "2026-06-14",
+        "thumbnail_url": "/api/photos/7-프릳츠-예가체프-G1/2026-06-14/IMG_3910.jpg"
+      },
+      {
+        "note_id": 5,
+        "coffee_name": "케냐 AA 키리냐가",
+        "roastery": null,
+        "latest_date": "2026-06-01",
+        "thumbnail_url": "/api/photos/5-로스터리미상-케냐-AA-키리냐가/2026-06-01/IMG_3644.jpg"
+      },
+      {
+        "note_id": 3,
+        "coffee_name": "게뎁 워시드",
+        "roastery": null,
+        "latest_date": null,
+        "thumbnail_url": null
+      }
+    ],
+    "next_cursor": "eyJkIjpudWxsLCJpIjozfQ",
+    "total": 48,
+    "facets": {
+      "roastery": ["모모스커피", "커피베라", "프릳츠"],
+      "process": ["내추럴", "워시드", "허니"]
+    }
+  },
+  "response_last_page": {
+    "notes": [
+      {
+        "note_id": 3,
+        "coffee_name": "게뎁 워시드",
+        "roastery": null,
+        "latest_date": null,
+        "thumbnail_url": null
+      }
+    ],
+    "next_cursor": null,
+    "total": 48,
+    "facets": {
+      "roastery": ["모모스커피", "커피베라", "프릳츠"],
+      "process": ["내추럴", "워시드", "허니"]
+    }
+  },
+  "response_empty": {
+    "notes": [],
+    "next_cursor": null,
+    "total": 0,
+    "facets": {
+      "roastery": [],
+      "process": []
+    }
+  }
+}

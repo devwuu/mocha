@@ -1,5 +1,6 @@
 package com.devwuu.mocha.contract;
 
+import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -11,6 +12,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -26,6 +28,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>TΔ11이 같은 규율로 {@code note-candidates.contract.json}을 보탰다 — 매칭 변경 시트가 도출한
  * {@code GET /api/notes/candidates?q=}의 응답 형태이고, 구현은 TΔ7이다.
+ *
+ * <p>TΔ12가 {@code note-list.contract.json}을 보탠다 — 갤러리 화면이 도출한 {@code GET /api/notes}의
+ * 필터·정렬·페이징 형태이고, <b>구현은 TΔ5a</b>다. S2 슬라이스에서 화면이 API보다 먼저인 것도 같은
+ * 규율이고, 여기 박힌 것이 그 사이 mock({@code frontend/src/api/mock.ts})과 갈리지 않게 하는 닻이다.
  *
  * <p><b>{@code aliases} 절단은 이 테스트가 소유한다</b>(TΔ2 이월 (b)의 판단 지점, tasks.md TΔ10). draft가
  * {@code Note} 그대로라서 내부 전용 별칭(V-13)이 계약에 실려 나가고 있었는데, <b>폼이 그 값을 쓰지 않는</b>
@@ -46,6 +52,7 @@ class ClientApiContractTest {
     private static final String NOTE_CANDIDATES_CONTRACT = "/contract/note-candidates.contract.json";
     private static final String AGENT_CANCEL_CONTRACT = "/contract/agent-cancel.contract.json";
     private static final String PHOTO_UPLOAD_CONTRACT = "/contract/photo-upload.contract.json";
+    private static final String NOTE_LIST_CONTRACT = "/contract/note-list.contract.json";
 
     private final JsonMapper mapper = MochaObjectMapper.create();
 
@@ -244,6 +251,169 @@ class ClientApiContractTest {
 
     private static String normalize(String value) {
         return value.toLowerCase().replaceAll("\\s+", "");
+    }
+
+    @Test
+    @DisplayName("TΔ12: 그리드 한 칸 = {note_id, coffee_name, roastery, latest_date, thumbnail_url} — 상세의 3단 중첩을 쓰지 않는다")
+    void galleryItemIsAFlatProjection() throws IOException {
+        JsonNode notes = load(NOTE_LIST_CONTRACT).get("response").get("notes");
+
+        assertThat(notes).isNotEmpty();
+        notes.forEach(note -> {
+            assertThat(fieldNames(note))
+                    .containsExactly("note_id", "coffee_name", "roastery", "latest_date", "thumbnail_url");
+            assertThat(note.get("note_id").isIntegralNumber()).isTrue();
+            assertThat(note.get("coffee_name").isString()).isTrue();
+        });
+        // 갤러리는 노트를 *고르는* 화면이라 entries·brews를 한 줄도 쓰지 않는다 — 실으면 자식 질의가
+        // 노트마다 따라오고 결과의 대부분이 버려진다(TΔ7 NoteCandidate와 같은 판단).
+        assertThat(keysAnywhere(load(NOTE_LIST_CONTRACT)))
+                .as("목록 계약에 3단 중첩이 실려 나간다")
+                .doesNotContain("entries", "brews", "recipe", "tasting", "aliases");
+    }
+
+    @Test
+    @DisplayName("TΔ12: 로스터리·최근 시음일·썸네일은 모두 nullable — 사진 없이 발화만으로 기록한 노트가 정상이다")
+    void galleryItemAllowsMissingRoasteryDateAndPhoto() throws IOException {
+        JsonNode notes = load(NOTE_LIST_CONTRACT).get("response").get("notes");
+
+        // nullable 지점을 예시로 박지 않으면 클라이언트가 non-null을 가정하고 그리드가 통째로 깨진다.
+        assertThat(notes).anySatisfy(note -> assertThat(note.get("roastery").isNull()).isTrue());
+        assertThat(notes).anySatisfy(note -> assertThat(note.get("latest_date").isNull()).isTrue());
+        assertThat(notes)
+                .as("사진 없는 노트가 예시에 있어야 한다 — 그때 시안의 사선 패턴이 칸을 채운다")
+                .anySatisfy(note -> assertThat(note.get("thumbnail_url").isNull()).isTrue());
+    }
+
+    @Test
+    @DisplayName("TΔ12: 썸네일은 서버가 만든 완성 URL이다 — 클라이언트가 아카이브 경로 규칙을 알지 않는다")
+    void thumbnailIsAServerBuiltUrl() throws IOException {
+        JsonNode contract = load(NOTE_LIST_CONTRACT);
+        String prefix = contract.get("thumbnail_url_prefix").stringValue();
+
+        assertThat(prefix).isEqualTo("/api/photos/");
+        // POLICY: 폴더 접미는 생성 시점 스냅샷이라(ADR-75) 클라이언트가 재계산할 수 있는 값이 아니다.
+        //         V-4 상대 경로(photos/…)를 프론트가 조립하면 같은 규칙이 양쪽에 이중화된다.
+        contract.get("response").get("notes").forEach(note -> {
+            JsonNode url = note.get("thumbnail_url");
+            if (!url.isNull()) {
+                assertThat(url.stringValue()).startsWith(prefix);
+            }
+        });
+    }
+
+    @Test
+    @DisplayName("TΔ12: 필터 4축 — 로스터리·가공방식·평가는 다중(같은 축 OR), 원산지·검색어는 단일(축 간 AND)")
+    void filterAxesAreFourAndCombineOrWithinAndBetween() throws IOException {
+        JsonNode contract = load(NOTE_LIST_CONTRACT);
+
+        assertThat(contract.get("multi_value_axes").valueStream().map(JsonNode::stringValue))
+                .containsExactly("roastery", "process", "rating");
+        assertThat(contract.get("single_value_axes").valueStream().map(JsonNode::stringValue))
+                .containsExactly("q", "origin");
+        assertThat(contract.get("axis_combination").get("within_axis").stringValue()).isEqualTo("or");
+        assertThat(contract.get("axis_combination").get("between_axes").stringValue()).isEqualTo("and");
+
+        // 요청 예시가 선언한 다중성을 따라야 한다 — 계약이 두 가지를 말하면 구현하는 쪽은 예시를 먼저 본다.
+        JsonNode query = contract.get("request_query");
+        assertThat(fieldNames(query)).containsExactly("q", "roastery", "process", "origin", "rating", "cursor");
+        contract.get("multi_value_axes").forEach(axis ->
+                assertThat(query.get(axis.stringValue()).isArray())
+                        .as("다중 축 %s 가 예시에서 배열이 아니다", axis.stringValue()).isTrue());
+        contract.get("single_value_axes").forEach(axis ->
+                assertThat(query.get(axis.stringValue()).isString())
+                        .as("단일 축 %s 가 예시에서 문자열이 아니다", axis.stringValue()).isTrue());
+        // POLICY: 날짜 범위 축은 두지 않는다 — 필요가 관측되면 확장한다(open-questions.md 검색 절).
+        assertThat(fieldNames(query)).doesNotContain("from", "to", "date", "sort");
+    }
+
+    @Test
+    @DisplayName("TΔ12: 평가 축의 값은 도메인 4범주와 같다 — 칩이 만든 값이 그대로 질의가 된다(V-1)")
+    void ratingFilterUsesTheDomainCategories() throws IOException {
+        List<String> filterable = load(NOTE_LIST_CONTRACT).get("request_query").get("rating")
+                .valueStream().map(JsonNode::stringValue).toList();
+
+        assertThat(Arrays.stream(Rating.values()).map(Rating::label))
+                .as("계약의 평가 값이 도메인 enum 밖이면 서버가 거부한다")
+                .containsAll(filterable);
+    }
+
+    @Test
+    @DisplayName("TΔ12: 칩 선택지는 응답에 동봉된다 — 로스터리·가공방식만, 평가·원산지는 아니다")
+    void facetsCoverOnlyTheAxesThatMustBeEnumerated() throws IOException {
+        JsonNode contract = load(NOTE_LIST_CONTRACT);
+        JsonNode facets = contract.get("response").get("facets");
+
+        assertThat(contract.get("faceted_axes").valueStream().map(JsonNode::stringValue))
+                .containsExactly("roastery", "process");
+        // 평가는 고정 4범주(V-1)라 클라이언트 상수가 소유하고, 원산지는 자유 텍스트라 열거할 집합이 없다.
+        assertThat(fieldNames(facets)).containsExactly("roastery", "process");
+
+        // 목록에 보이는 값을 필터에서 고를 수 없으면 안 된다 — facet이 페이지가 아니라 저장분 전체를
+        // 훑는다는 것의 최소 표현이다.
+        List<String> selectable = facets.get("roastery").valueStream().map(JsonNode::stringValue).toList();
+        contract.get("response").get("notes").forEach(note -> {
+            JsonNode roastery = note.get("roastery");
+            if (!roastery.isNull()) {
+                assertThat(selectable)
+                        .as("목록에 보이는 로스터리 %s 를 필터에서 고를 수 없다", roastery.stringValue())
+                        .contains(roastery.stringValue());
+            }
+        });
+    }
+
+    @Test
+    @DisplayName("TΔ12: 페이징은 불투명 커서다 — 마지막 페이지의 next_cursor가 null이고 그것이 '더 없다'의 유일한 신호다")
+    void pagingIsAnOpaqueCursor() throws IOException {
+        JsonNode contract = load(NOTE_LIST_CONTRACT);
+
+        // 클라이언트는 커서를 만들지 않는다 — 받은 값을 그대로 되싣는다. 그래야 정렬 축이 바뀌어도
+        // 클라이언트가 따라 바뀌지 않는다(사용자 확정 2026-08-01 — 무한 스크롤).
+        String issued = contract.get("response").get("next_cursor").stringValue();
+        assertThat(contract.get("request_query_next_page").get("cursor").stringValue()).isEqualTo(issued);
+        assertThat(contract.get("request_query_blank").get("cursor").isNull())
+                .as("첫 페이지는 커서 없이 요청한다").isTrue();
+
+        assertThat(contract.get("response_last_page").get("next_cursor").isNull()).isTrue();
+        // page·total_pages·offset이 없는 것 자체가 계약이다 — 생기면 화면이 페이지네이션으로 돌아간다.
+        assertThat(fieldNames(contract.get("response")))
+                .containsExactly("notes", "next_cursor", "total", "facets");
+        // total은 필터가 적용된 총 건수다 — 헤더의 "N편의 기록"이 그 값이다.
+        assertThat(contract.get("response").get("total").isIntegralNumber()).isTrue();
+        // 결과 없음은 오류가 아니라 빈 목록이다(TΔ11 후보 시트와 같은 판단).
+        assertThat(contract.get("response_empty").get("notes")).isEmpty();
+        assertThat(contract.get("response_empty").get("total").intValue()).isZero();
+    }
+
+    @Test
+    @DisplayName("TΔ12: 정렬은 최근 시음일 내림차순(NULLS LAST) → note_id 내림차순이고, 예시가 그 순서로 있다")
+    void galleryIsSortedByRecencyThenId() throws IOException {
+        JsonNode contract = load(NOTE_LIST_CONTRACT);
+
+        // POLICY: 정렬 선택기를 두지 않는다 — 델타 확정 사항에 정렬 축이 없고, 축을 늘리는 것은
+        //         spec에 없는 동작을 더하는 일이다(루트 §3). 시안의 `최신순 ▾`는 이식하지 않았다.
+        assertThat(contract.get("sort_axes").valueStream().map(JsonNode::stringValue))
+                .containsExactly("latest_date desc nulls last", "note_id desc");
+
+        List<JsonNode> notes = contract.get("response").get("notes").valueStream().toList();
+        for (int i = 1; i < notes.size(); i++) {
+            assertThat(listSortKey(notes.get(i - 1)))
+                    .as("계약 예시 %d번이 선언한 정렬 축을 어긴다", i)
+                    .isLessThan(listSortKey(notes.get(i)));
+        }
+        // 축 ②가 실물로 박혀 있어야 한다 — 같은 날 마신 노트가 둘이면 id가 순서를 가른다.
+        List<String> dates = notes.stream()
+                .map(note -> note.get("latest_date").isNull() ? "" : note.get("latest_date").stringValue()).toList();
+        assertThat(dates.stream().distinct().count())
+                .as("같은 날짜 쌍이 예시에 있어야 축 ②가 실물로 드러난다 — 날짜들: %s", dates)
+                .isLessThan(dates.size());
+    }
+
+    /** 목록 정렬 키 — 날짜 내림차순(null은 뒤), 그다음 note_id 내림차순. 둘 다 내림이라 보수를 취한다. */
+    private static String listSortKey(JsonNode note) {
+        String date = note.get("latest_date").isNull() ? "99999999"
+                : String.valueOf(99999999 - Integer.parseInt(note.get("latest_date").stringValue().replace("-", "")));
+        return date + ' ' + String.format("%09d", 999999999 - note.get("note_id").intValue());
     }
 
     @Test
