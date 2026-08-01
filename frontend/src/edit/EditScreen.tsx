@@ -64,8 +64,24 @@ export function EditScreen({ noteId, onNavigate }: EditScreenProps) {
   const [entries, setEntries] = useState<EntryDraft[]>([])
   const [collapsed, setCollapsed] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
-  const [notice, setNotice] = useState<string | null>(null)
+  const [notice, setNotice] = useState<Notice | null>(null)
   const confirm = useRef<HTMLDialogElement>(null)
+
+  /**
+   * 성공 알림만 스스로 사라진다 — **실패는 남는다.**
+   *
+   * 성공 문구는 *방금 일어난 일*의 확인이라 읽고 나면 값이 없지만, 실패 문구는 **다음 행동의 근거**다
+   * (*"입력한 값은 그대로 두었어요"* = 다시 누르면 된다). 3초 뒤 사라지면 자리를 비운 동안 사용자가
+   * 저장됐다고 오해할 수 있고, 그것이 이 델타가 없애러 온 실패의 모양이다(§1.1 — *"성공을 보고하면서
+   * 틀린 데이터를 쓴 조용한 오작동"*). 실패 알림은 탭하거나 다음 저장이 갈아치울 때만 닫힌다.
+   */
+  useEffect(() => {
+    if (notice === null || notice.tone !== 'ok') {
+      return
+    }
+    const timer = setTimeout(() => setNotice(null), 3200)
+    return () => clearTimeout(timer)
+  }, [notice])
 
   useEffect(() => {
     let live = true
@@ -110,11 +126,11 @@ export function EditScreen({ noteId, onNavigate }: EditScreenProps) {
     setNotice(null)
     try {
       adopt(await patchNoteMeta(noteId, trimBeans(meta)))
-      setNotice('커피 정보를 고쳤어요.')
+      setNotice({ tone: 'ok', text: '커피 정보를 고쳤어요.' })
     } catch (error) {
       // POLICY: 실패해도 폼을 되돌리지 않는다 — 사용자가 방금 입력한 값이 남아 있어야 다시 누를 수 있다.
       //         캡처 폼의 저장 실패가 같은 답을 낸다(`ChatScreen.save`).
-      setNotice(describe(error, '커피 정보를 고치지 못했어요. 입력한 값은 그대로 두었어요.'))
+      setNotice({ tone: 'error', text: describe(error, '커피 정보를 고치지 못했어요. 입력한 값은 그대로 두었어요.') })
     } finally {
       setBusy(false)
     }
@@ -129,13 +145,15 @@ export function EditScreen({ noteId, onNavigate }: EditScreenProps) {
     try {
       const merged = mergeTargetOf(entries, draft)
       adopt(await patchNoteEntry(noteId, draft.targetDate, draft.value))
-      setNotice(
-        merged === null
-          ? `${draft.value.date} 기록을 고쳤어요.`
-          : `${draft.value.date} 기록에 합쳤어요. 회차가 ${merged.value.brews.length + draft.value.brews.length}개가 됐어요.`,
-      )
+      setNotice({
+        tone: 'ok',
+        text:
+          merged === null
+            ? `${draft.value.date} 기록을 고쳤어요.`
+            : `${draft.value.date} 기록에 합쳤어요. 회차가 ${merged.value.brews.length + draft.value.brews.length}개가 됐어요.`,
+      })
     } catch (error) {
-      setNotice(describe(error, '기록을 고치지 못했어요. 입력한 값은 그대로 두었어요.'))
+      setNotice({ tone: 'error', text: describe(error, '기록을 고치지 못했어요. 입력한 값은 그대로 두었어요.') })
     } finally {
       setBusy(false)
     }
@@ -149,7 +167,7 @@ export function EditScreen({ noteId, onNavigate }: EditScreenProps) {
       // 지운 노트의 상세로 되돌아갈 수는 없다 — 목록이 유일하게 말이 되는 다음 자리다.
       onNavigate(GALLERY)
     } catch (error) {
-      setNotice(describe(error, '노트를 지우지 못했어요.'))
+      setNotice({ tone: 'error', text: describe(error, '노트를 지우지 못했어요.') })
       setBusy(false)
     }
   }
@@ -165,9 +183,11 @@ export function EditScreen({ noteId, onNavigate }: EditScreenProps) {
   const baselineEntries = toEntryDrafts(note)
 
   return (
-    <Frame title={note.coffee_name.value} onBack={() => onNavigate(notePath(noteId))}>
-      {notice !== null && <div className="edit__notice">{notice}</div>}
-
+    <Frame
+      title={note.coffee_name.value}
+      onBack={() => onNavigate(notePath(noteId))}
+      toast={notice === null ? null : <Toast notice={notice} onClose={() => setNotice(null)} />}
+    >
       <MetaSection
         note={note}
         meta={meta}
@@ -239,11 +259,22 @@ export function EditScreen({ noteId, onNavigate }: EditScreenProps) {
 }
 
 /** 상세와 같은 액자·같은 3분할 헤더 — 두 화면이 한 노트의 두 면이라 틀이 갈리면 이동이 화면 전환처럼 읽힌다. */
-function Frame({ title, onBack, children }: { title: string; onBack: () => void; children: ReactNode }) {
+function Frame({
+  title,
+  onBack,
+  toast,
+  children,
+}: {
+  title: string
+  onBack: () => void
+  toast?: ReactNode
+  children: ReactNode
+}) {
   return (
     <div className="shell">
       <div className="panel">
         <header className="edit__header">
+          {toast}
           <div className="detail__bar">
             <button type="button" className="detail__back" onClick={onBack}>
               ‹ 상세
@@ -786,6 +817,35 @@ const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토']
 
 const BLANK_DESCRIPTION: Sourced<string> = { value: '', source: 'user' }
+
+/** 저장 결과 알림 — 톤이 수명을 정한다(성공은 스스로 사라지고 실패는 남는다). */
+interface Notice {
+  tone: 'ok' | 'error'
+  text: string
+}
+
+/**
+ * 저장 결과 토스트 — **패널 위에 떠서 위에서 내려왔다 사라진다**(2026-08-01 사용자 지적).
+ *
+ * 구 판본은 이 문구를 `커피 정보` 띠 **위 흐름 안에** 끼웠는데 둘이 틀어졌다: ① 알림이 뜨고 지는 순간마다
+ * 아래 전부가 ~52px씩 밀려 **읽던 자리가 움직였다** ② 이 화면의 문법은 패널 폭을 꽉 채우는 **가로 띠**인데
+ * (`.edit__section`) 좌우 여백을 가진 상자가 그 사이에 끼어 구획이 깨져 보였다.
+ *
+ * **흐름 밖이 옳은 자리다** — 저장 결과는 화면의 일부가 아니라 *방금 한 일에 대한 답*이라 문서를 밀 이유가
+ * 없다. 그래서 `position: absolute`로 패널 최상단에 앉히고 스크롤과 무관하게 같은 자리에 뜬다.
+ *
+ * 탭하면 닫힌다 — 실패 알림에는 그것이 유일한 해제 수단이고(자동으로 사라지지 않는다), 성공 알림에는
+ * 3.2초를 기다리지 않는 지름길이다. `role="status"`라 스크린리더가 낭독하되 포커스를 뺏지 않는다.
+ */
+function Toast({ notice, onClose }: { notice: Notice; onClose: () => void }) {
+  return (
+    <div className={`edit__toast edit__toast--${notice.tone}`} role="status">
+      <button type="button" className="edit__toast-body" onClick={onClose} aria-label="알림 닫기">
+        {notice.text}
+      </button>
+    </div>
+  )
+}
 
 function describe(error: unknown, fallback: string): string {
   return error instanceof Error && error.message !== '' ? `${fallback} (${error.message})` : fallback

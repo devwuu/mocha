@@ -1286,6 +1286,8 @@ select:focus {
 
 .edit__header {
   flex: none;
+  /* 저장 토스트가 이 상자의 아래 모서리에 걸린다 — 제목 줄 수와 무관하게 자리가 정해진다. */
+  position: relative;
   padding: 14px 20px 16px;
   padding-top: max(14px, env(safe-area-inset-top));
   border-bottom: 1px solid var(--bar-border);
@@ -1736,14 +1738,69 @@ select:focus {
   cursor: default;
 }
 
-.edit__notice {
-  margin: 12px 20px 0;
-  padding: 9px 11px;
-  background: var(--bar);
+/*
+ * 저장 결과 토스트 — 흐름 밖에서 패널 위에 뜬다(2026-08-01 사용자 지적).
+ *
+ * 구 판본(`.edit__notice`)은 `커피 정보` 띠 위 **흐름 안**에 앉아 뜨고 질 때마다 아래 전부를 ~52px씩
+ * 밀었고, 좌우 여백을 가진 상자라 **가로 띠 문법**(`.edit__section`)과도 어긋났다. 저장 결과는 화면의
+ * 일부가 아니라 방금 한 일에 대한 답이라 문서를 밀 이유가 없다.
+ *
+ * **헤더 아래 모서리에 건다**(`.edit__header` 기준 `top: 100%`). 패널 최상단에 두면 `‹ 상세`·`EDIT NOTE`와
+ * 같은 줄을 덮어 긴 실패 문구가 뒤로 가는 길을 가리고, `.edit__body`에 걸면 스크롤을 따라 올라가 헤더
+ * 뒤로 숨는다. 헤더 발치는 **제목이 몇 줄이든 자리가 정해지는** 유일한 지점이다.
+ */
+.edit__toast {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 5;
+  display: flex;
+  justify-content: center;
+  padding: 10px 14px;
+  pointer-events: none;
+  animation: toast-in 0.22s ease-out;
+}
+
+.edit__toast-body {
+  max-width: 100%;
+  margin: 0;
+  padding: 9px 14px;
   border: 1px solid var(--bar-border);
+  border-radius: 3px;
+  background: var(--bar);
+  box-shadow: 0 6px 18px rgb(60 44 30 / 18%);
+  font: inherit;
   font-size: 11.5px;
   line-height: 1.7;
   color: var(--brown-deep);
+  text-align: left;
+  text-wrap: pretty;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+/* 실패는 스스로 사라지지 않으므로 색으로도 갈린다 — 삭제 버튼과 같은 붉은 계열(`.edit__danger-button`). */
+.edit__toast--error .edit__toast-body {
+  border-color: #8a3f34;
+  color: #8a3f34;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .edit__toast {
+    animation: none;
+  }
 }
 
 .edit__empty {
