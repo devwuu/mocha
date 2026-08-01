@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import type { KeyboardEvent } from 'react'
 import type { Draft } from '../api'
 import { postAgentCancel, postAgentTurn, postNoteCommit, postPhotos } from '../api'
 import { editPath, GALLERY } from '../routes'
@@ -34,11 +35,29 @@ export function ChatScreen({ onNavigate }: ChatScreenProps) {
   const [uploading, setUploading] = useState(false)
   const tail = useRef<HTMLDivElement>(null)
   const picker = useRef<HTMLInputElement>(null)
+  const composer = useRef<HTMLTextAreaElement>(null)
 
   // 새 말풍선·폼 변화가 접히지 않게 항상 끝으로 붙인다.
   useEffect(() => {
     tail.current?.scrollIntoView({ block: 'end' })
   }, [messages, draft, busy, photos])
+
+  /*
+   * 입력창 높이를 내용에 맞춘다 — 상한(`max-height`)은 CSS가 소유하고 여기서는 `scrollHeight`만 옮긴다.
+   * `auto`로 한 번 되돌리는 것이 요점이다: 그러지 않으면 `scrollHeight`가 이미 늘어난 높이를 포함해
+   * 줄을 지워도 줄지 않는다. 전송으로 값이 비면 같은 경로로 한 줄 높이로 돌아온다.
+   *
+   * 테두리를 더하는 것은 `box-sizing: border-box`(전역) 때문이다 — `height`는 테두리를 포함하는데
+   * `scrollHeight`는 포함하지 않아, 그냥 옮기면 매번 2px 모자라 스크롤바가 선다.
+   */
+  useEffect(() => {
+    const box = composer.current
+    if (box === null) {
+      return
+    }
+    box.style.height = 'auto'
+    box.style.height = `${box.scrollHeight + (box.offsetHeight - box.clientHeight)}px`
+  }, [input])
 
   /**
    * ＋로 고른 사진을 즉시 올린다 — 전송 버튼을 기다리지 않는다(사용자가 발화를 쓰는 동안 겹쳐 진행된다).
@@ -142,6 +161,31 @@ export function ChatScreen({ onNavigate }: ChatScreenProps) {
     }
   }
 
+  /**
+   * Enter 배분 — 데스크톱은 전송, 폰·태블릿은 줄바꿈 (사용자 확정 2026-08-02, TΔ25).
+   *
+   * 각 매체의 관습을 따른다: 물리 키보드 앞에서 Enter는 전송이고(줄바꿈은 Shift+Enter), 폰에서는
+   * Enter가 줄바꿈이고 전송은 ↑ 버튼이다 — 소프트 키보드에는 Shift 조합이 사실상 없다.
+   *
+   * 판정은 **매번 새로 읽는다**. 마운트 시점에 굳히면 아이패드에 키보드를 붙였다 뗀 뒤로 배분이 어긋난 채
+   * 남는다. `matchMedia`는 동기 조회라 값이 싸다.
+   *
+   * ⚠️ `isComposing` 가드가 이 핸들러의 핵심이다 — 한글 조합 중의 Enter는 **조합을 확정하는 키**다.
+   *    가드가 없으면 "첼베사"를 치다 만 상태가 그대로 전송된다.
+   */
+  function handleKey(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key !== 'Enter' || event.nativeEvent.isComposing) {
+      return
+    }
+    // Cmd/Ctrl+Enter는 매체와 무관하게 전송이다 — 데스크톱 관습이고, 폰에서는 눌릴 일이 없다.
+    const shortcut = event.metaKey || event.ctrlKey
+    if (!shortcut && (event.shiftKey || event.altKey || window.matchMedia('(pointer: coarse)').matches)) {
+      return
+    }
+    event.preventDefault()
+    void send()
+  }
+
   return (
     <div className="shell">
       <div className="panel">
@@ -218,11 +262,18 @@ export function ChatScreen({ onNavigate }: ChatScreenProps) {
           >
             ＋
           </button>
-          <input
+          {/*
+            여러 줄이 들어와야 한다(TΔ25) — ADR-61(다중 날짜 자동 분해)이 상정한 "여러 날짜가 섞인 메모"는
+            줄바꿈 없이는 애초에 붙여 넣을 수 없다. 한 줄 `input`이던 시절엔 그 입력이 존재할 수 없었다.
+          */}
+          <textarea
+            ref={composer}
             className="composer__input"
             value={input}
+            rows={1}
             placeholder="메시지 쓰기…"
             onChange={(event) => setInput(event.target.value)}
+            onKeyDown={handleKey}
           />
           <button
             type="submit"

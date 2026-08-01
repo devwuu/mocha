@@ -632,7 +632,8 @@ select:focus {
 
 .composer {
   display: flex;
-  align-items: center;
+  /* 입력창이 늘면 버튼은 아래에 남는다 — center로 두면 ＋·↑가 여러 줄 한가운데로 뜬다. */
+  align-items: flex-end;
   flex-wrap: wrap;
   gap: 10px;
   padding: 11px 16px 14px;
@@ -641,15 +642,27 @@ select:focus {
   border-top: 1px solid var(--bar-border);
 }
 
+/*
+ * 여러 줄 입력 (TΔ25). 높이는 JS가 `scrollHeight`로 맞추고 여기서는 **상한과 한 줄 높이**만 정한다 —
+ * 한 줄일 때 40px(= 20 line-height + 18 padding + 2 border)이라 구 한 줄 `input`과 차이가 없고,
+ * 입력이라 `::after`를 못 쓰는 자리라(§탭 영역) 그 40px이 곧 히트 영역이다.
+ * 상한 116px는 다섯 줄 남짓이고, 넘으면 안에서 스크롤한다(입력 바가 화면을 먹지 않게).
+ */
 .composer__input {
   flex: 1;
-  /* 입력이라 ::after를 못 쓴다(§탭 영역) — 실제 높이를 준다. 37 → 40이라 눈에 띄지 않는다. */
+  min-width: 0;
   min-height: 40px;
-  border-radius: 999px;
+  max-height: 116px;
+  overflow-y: auto;
+  resize: none;
+  /* 한 줄일 땐 알약, 늘면 둥근 사각 — 999px로 두면 여러 줄에서 좌우가 과하게 부푼다. */
+  border-radius: 20px;
   background: var(--card);
   border: 1px solid #cfc3b3;
-  padding: 8px 14px;
+  padding: 9px 14px;
+  font-family: inherit;
   font-size: 12.5px;
+  line-height: 20px;
 }
 
 .composer__input::placeholder {
@@ -668,6 +681,16 @@ select:focus {
   font: inherit;
   border: none;
   cursor: pointer;
+}
+
+/*
+ * 입력창이 늘어도 버튼은 아래에 남되(`align-items: flex-end`), 6px을 띄워 **한 줄일 때는 시안과 같은
+ * 자리**에 선다 — 28px 버튼이 40px 입력의 정중앙(위 6 / 아래 6)이라 구 `align-items: center`와 픽셀이
+ * 일치한다. 시안이 정본이므로(ADR-54) 여러 줄이라는 새 상태 때문에 기존 상태가 움직이면 안 된다.
+ */
+.composer__attach,
+.composer__send {
+  margin-bottom: 6px;
 }
 
 .composer__attach {
