@@ -9,10 +9,10 @@ import { GALLERY } from '../routes'
  * **읽는 화면이다.** 수정·삭제는 TΔ13b, 공유(카드 생성)는 TΔ9이고 여기에는 그 버튼이 없다 — 갈 곳 없는
  * 버튼을 먼저 다는 것은 TΔ12가 카드를 링크로 만들지 않은 것과 같은 이유로 하지 않는다.
  *
- * **이 화면이 `GET /api/notes/{id}` 계약을 정한다**(D-10 ② *"화면이 API의 모양을 정한다"*). 지금
- * `getNoteDetail`은 mock이고 정본은 `note-detail.contract.json`이며, **구현은 TΔ5a**다. 화면이 실제로
- * 보여주는 것만 계약에 실린 결과가 `NoteDetail`의 세 절단이다 — `aliases`·`created_at`/`updated_at`·
- * `my_taste_original`.
+ * **이 화면이 `GET /api/notes/{id}` 계약을 정했다**(D-10 ② *"화면이 API의 모양을 정한다"*). 정본은
+ * `note-detail.contract.json`이고 **TΔ5a가 그것을 구현했다** — mock에서 실 DB로 갈아 끼우는 동안 이
+ * 파일은 한 줄도 바뀌지 않았다. 화면이 실제로 보여주는 것만 계약에 실린 결과가 `NoteDetail`의 세
+ * 절단이다 — `aliases`·`created_at`/`updated_at`·`my_taste_original`.
  *
  * 시안은 `design/노트 상세.dc.html`이다(ADR-54: 시안이 디자인 source of truth). 형태를 그대로 이식했다 —
  * 한 줄 헤더(‹ 목록 / COFFEE NOTE) + 가운데 정렬 커피명·로스터리 · 250px 히어로 · 52px 라벨의 메타
@@ -40,8 +40,8 @@ export function DetailScreen({ noteId, onNavigate }: DetailScreenProps) {
       })
       .catch(() => {
         // POLICY: 실패를 빈 노트로 그리지 않는다 — 없는 기록과 못 불러온 기록은 사용자의 다음 행동이 다르다.
-        //         지금은 둘을 문구로 가르지 않는다(404와 그 밖의 실패 모두 같은 안내). 서버가 실제로
-        //         404를 돌려주기 시작하는 것은 TΔ5a이고, 가를 필요가 관측되면 그때가 판단 지점이다.
+        //         지금은 둘을 문구로 가르지 않는다(404와 그 밖의 실패 모두 같은 안내). 서버는 TΔ5a부터
+        //         실제로 404를 돌려주고, 가를 필요가 관측되면 그때가 판단 지점이다.
         if (live) {
           setFailed(true)
         }

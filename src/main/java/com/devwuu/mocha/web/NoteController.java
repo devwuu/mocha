@@ -4,12 +4,16 @@ import com.devwuu.mocha.SingleUser;
 import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteCandidate;
+import com.devwuu.mocha.domain.NoteCursor;
+import com.devwuu.mocha.domain.NoteFilter;
+import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.service.NoteService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -19,11 +23,19 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 /**
- * 노트 REST 표면 — {@code POST /api/notes}(폼 확정 저장, TΔ6b)와
- * {@code GET /api/notes/candidates}(매칭 후보 검색, TΔ7)
- * (ref: changes/0029 tasks.md, plan.md#ADR-3·#ADR-4;
- * 계약 정본 {@code src/test/resources/contract/note-commit.contract.json}·
- * {@code note-candidates.contract.json}).
+ * 노트 REST 표면 — 쓰기 하나와 읽기 셋
+ * (ref: changes/0029 tasks.md, plan.md#ADR-3·#ADR-4; 계약 정본은 {@code src/test/resources/contract/}의
+ * 같은 이름 파일들이다).
+ * <ul>
+ *   <li>{@code POST /api/notes} — 폼 확정 저장(TΔ6b, {@code note-commit})</li>
+ *   <li>{@code GET /api/notes/candidates} — 매칭 후보 검색(TΔ7, {@code note-candidates})</li>
+ *   <li>{@code GET /api/notes} — 갤러리 목록(TΔ5a·TΔ12, {@code note-list})</li>
+ *   <li>{@code GET /api/notes/&#123;id&#125;} — 상세(TΔ5a·TΔ13a, {@code note-detail})</li>
+ * </ul>
+ *
+ * <p><b>읽기 셋이 같은 노트를 서로 다른 깊이로 말한다</b>: 후보와 목록은 노트를 <i>고르는</i> 자리라
+ * 납작한 사영이고(3단 중첩을 한 줄도 쓰지 않는다), 상세는 <i>읽는</i> 자리라 전문이다. 세 계약이 갈린 것이
+ * 아니라 화면이 셋이고 각자 필요한 만큼만 싣는다.
  *
  * <p><b>TΔ4에서 열린 기록 공백이 여기서 닫힌다.</b> pending이 사라지며 Slack [저장]이 성립하지 않게 됐고,
  * 그 뒤로 저장 경로가 아예 없었다. 이 컨트롤러가 그 자리를 대신한다.
@@ -112,6 +124,61 @@ public class NoteController {
     @GetMapping("/candidates")
     public Candidates candidates(@RequestParam(name = "q", required = false) String q) {
         return new Candidates(noteService.findCandidates(q));
+    }
+
+    /**
+     * 갤러리 목록 — 검색어 + 필터 4축 + 커서 페이징 (ref: TΔ5a·TΔ12, AC-4).
+     *
+     * <p>파라미터는 <b>전부 선택</b>이다. 빈 값은 클라이언트가 키째 빼고 보내므로(계약) 여기서
+     * <i>"빈 문자열로 필터"</i>와 <i>"필터 없음"</i>을 가르지 않는다 — 그 구분은 어느 쪽에도 쓸모가 없다.
+     * 다중 축은 같은 키를 반복해 실린다({@code ?roastery=프릳츠&roastery=모모스}) — 쉼표로 이으면 값 안의
+     * 쉼표(<i>"커피 리브레, 성수"</i>)와 구분자가 충돌한다.
+     *
+     * <p><b>평가는 {@link Rating}으로 받는다</b> — 4범주 밖의 값은 역직렬화가 거부하고(V-1) 그 결과가 400이다.
+     * 문자열로 받아 아래에서 대조하면 오타가 <i>"아무것도 안 걸리는 필터"</i>로 조용히 수렴한다.
+     *
+     * <p>결과 없음은 오류가 아니라 빈 목록이다 — 필터를 좁혀 0건이 되는 것은 정상 조작이고, 그때 화면이
+     * <i>"조건에 맞는 기록이 없어요"</i>를 그린다(TΔ11 후보 시트와 같은 POLICY).
+     *
+     * <p>필터·정렬·페이징 규칙을 여기서 짜지 않는다(백엔드 CLAUDE.md §2) — 파싱·위임·응답 변환뿐이고,
+     * 파싱이 실질을 갖는 유일한 자리가 <b>불투명 커서</b>다({@link NoteCursorCodec}).
+     */
+    @GetMapping
+    public ResponseEntity<NoteListBody> notes(
+            @RequestParam(name = "q", required = false) String q,
+            @RequestParam(name = "roastery", required = false) List<String> roastery,
+            @RequestParam(name = "process", required = false) List<String> process,
+            @RequestParam(name = "origin", required = false) String origin,
+            @RequestParam(name = "rating", required = false) List<Rating> rating,
+            @RequestParam(name = "cursor", required = false) String cursor) {
+        NoteCursor from;
+        try {
+            from = NoteCursorCodec.decode(cursor);
+        } catch (IllegalArgumentException e) {
+            // 서버가 발급한 값만 되돌아오는 자리라 깨진 커서는 클라이언트 오류다 — 조용히 첫 페이지로
+            // 되돌리면 무한 스크롤이 되감기며 같은 노트를 목록 뒤에 다시 쌓는다(NoteCursorCodec POLICY).
+            log.warn("목록 조회 거부(커서 해석 실패): {}", e.getMessage());
+            return ResponseEntity.badRequest().build();
+        }
+        NoteFilter filter = new NoteFilter(q, roastery, process, origin, rating);
+        return ResponseEntity.ok(NoteListBody.of(noteService.findNotes(filter, from)));
+    }
+
+    /**
+     * 노트 상세 — 전문 + 날짜별 사진 (ref: TΔ5a·TΔ13a).
+     *
+     * <p><b>없는 id는 404다</b> — 삭제된 노트를 텅 빈 상세로 그리지 않는다. 그 화면은 <i>"기록은 있는데
+     * 아무것도 안 적혔다"</i>로 읽혀서, 실제로 그런 노트(엔트리 없는 노트)와 구분되지 않는다.
+     *
+     * <p>경로 변수를 숫자로 제약하는 것은 {@code /candidates}와의 충돌 회피가 아니라(리터럴이 먼저 매칭된다)
+     * <b>{@code /notes/abc}를 상세로 보지 않기</b> 위해서다 — 클라이언트 라우터도 같은 판정을 한다
+     * ({@code routes.ts}의 {@code matchNote}).
+     */
+    @GetMapping("/{id:\\d+}")
+    public ResponseEntity<NoteDetailBody> note(@PathVariable long id) {
+        return noteService.findDetail(id)
+                .map(detail -> ResponseEntity.ok(NoteDetailBody.of(detail)))
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     /**

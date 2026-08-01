@@ -5,7 +5,12 @@ import com.devwuu.mocha.domain.Brew;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteCandidate;
+import com.devwuu.mocha.domain.NoteCursor;
+import com.devwuu.mocha.domain.NoteDetail;
+import com.devwuu.mocha.domain.NoteFilter;
+import com.devwuu.mocha.domain.NoteListItem;
 import com.devwuu.mocha.domain.NoteMeta;
+import com.devwuu.mocha.domain.NotePage;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.repository.NoteEntityMapper;
 import com.devwuu.mocha.repository.NoteFolderName;
@@ -104,6 +109,56 @@ public class NoteTxService {
     @Transactional(readOnly = true)
     public List<NoteCandidate> findCandidates(String query) {
         return notes.findCandidates(Aliases.normalize(query));
+    }
+
+    /**
+     * 갤러리 목록 한 페이지 — 필터·정렬·페이징·facet·총수를 한 트랜잭션에서
+     * (ref: changes/0029 tasks.md TΔ5a·TΔ12, 계약 {@code contract/note-list.contract.json}).
+     *
+     * <p><b>질의 넷이 한 트랜잭션인 것이 이 메서드의 실질이다</b>: 목록·총수·facet이 갈라진 시점에서 읽히면
+     * <i>"6편의 기록"</i>이라 적힌 헤더 아래에 7칸이 있거나, <b>목록에 보이는 로스터리를 필터에서 고를 수
+     * 없는</b> 상태가 나온다. 무한 스크롤이라 사용자는 그 어긋남을 한 화면에서 본다.
+     *
+     * <p><b>다음 페이지 유무는 한 건 더 읽어 판정한다</b>({@code pageSize + 1}). 총수와 견주는 방법도
+     * 있지만 그쪽은 커서 이후 남은 건수를 알려주지 못한다 — 필터가 걸리면 총수는 전체이고 커서는 위치라
+     * 뺄셈이 성립하지 않는다.
+     *
+     * <p>검색어 정규화는 {@link NoteFilter#normalized()}가 소유한다 — {@link #findCandidates}가
+     * {@link Aliases#normalize}를 직접 부르는 것과 같은 규율이고, 대조 컬럼을 만든 함수와 같은 함수를
+     * 지나야 같은 기준에서 만난다.
+     *
+     * @param filter   좁히기 조건. {@code null}이면 전건.
+     * @param cursor   이전 페이지의 마지막 지점. {@code null}이면 첫 페이지.
+     * @param pageSize 한 페이지 건수.
+     */
+    @Transactional(readOnly = true)
+    public NotePage findNotes(NoteFilter filter, NoteCursor cursor, int pageSize) {
+        NoteFilter normalized = (filter == null ? NoteFilter.none() : filter).normalized();
+
+        List<NoteListItem> rows = notes.findNoteItems(normalized, cursor, pageSize + 1);
+        boolean hasMore = rows.size() > pageSize;
+        List<NoteListItem> page = hasMore ? List.copyOf(rows.subList(0, pageSize)) : rows;
+        NoteCursor next = null;
+        if (hasMore) {
+            NoteListItem last = page.getLast();
+            next = new NoteCursor(last.latestDate(), last.noteId());
+        }
+        return new NotePage(page, next, notes.countNotes(normalized), notes.findFacets());
+    }
+
+    /**
+     * 상세 화면이 읽는 노트 전문 + 그 노트의 사진 — 없으면 빈 Optional
+     * (ref: changes/0029 tasks.md TΔ5a·TΔ13a, 계약 {@code contract/note-detail.contract.json}).
+     *
+     * <p>{@link #findById}와 갈라 두는 이유는 <b>사진이 딸려 오는가</b>다. 노트만 필요한 자리(커밋 직후
+     * 재조회·삭제 전 폴더 접미 읽기)가 사진 색인 질의를 이유 없이 지불하지 않게 한다.
+     *
+     * <p>둘을 한 트랜잭션에서 읽는 것이 이 자리의 값이다 — 나눠 부르면 그 사이의 저장이 "엔트리는 새
+     * 날짜인데 사진은 옛 목록"인 조합을 만든다.
+     */
+    @Transactional(readOnly = true)
+    public Optional<NoteDetail> findDetail(long id) {
+        return findById(id).map(note -> new NoteDetail(note, notes.findPhotos(id)));
     }
 
     // ────────────────────────────── 커밋 ──────────────────────────────

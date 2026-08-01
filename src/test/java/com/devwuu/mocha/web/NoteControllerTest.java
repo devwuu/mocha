@@ -5,11 +5,21 @@ import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
 import com.devwuu.mocha.agent.conversation.TranscriptTurn;
 import com.devwuu.mocha.config.CommonConfig;
 import com.devwuu.mocha.domain.Aliases;
+import com.devwuu.mocha.domain.Brew;
+import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteCandidate;
+import com.devwuu.mocha.domain.NoteCursor;
+import com.devwuu.mocha.domain.NoteDetail;
+import com.devwuu.mocha.domain.NoteFacets;
+import com.devwuu.mocha.domain.NoteFilter;
+import com.devwuu.mocha.domain.NoteListItem;
+import com.devwuu.mocha.domain.NotePage;
+import com.devwuu.mocha.domain.NotePhoto;
 import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Source;
+import com.devwuu.mocha.domain.Tasting;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.service.NoteService;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,7 +44,9 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -70,6 +82,11 @@ class NoteControllerTest {
 
     private static final String CONTRACT = "/contract/note-commit.contract.json";
     private static final String CANDIDATES_CONTRACT = "/contract/note-candidates.contract.json";
+    private static final String LIST_CONTRACT = "/contract/note-list.contract.json";
+    private static final String DETAIL_CONTRACT = "/contract/note-detail.contract.json";
+
+    /** 계약에 없는 값(V-11 원문)이 응답으로 새면 눈에 띄게 하는 마커 — 상세는 렌더이고 원문을 쓰지 않는다. */
+    private static final String LEAKED_ORIGINAL = "ORIGINAL_MUST_NOT_LEAK";
 
     private final JsonMapper mapper = MochaObjectMapper.create();
 
@@ -220,6 +237,235 @@ class NoteControllerTest {
         assertThat(mapper.readTree(body)).isEqualTo(load(CANDIDATES_CONTRACT).get("response_empty"));
     }
 
+    // ────────────────────────────── GET /api/notes (TΔ5a·TΔ12) ──────────────────────────────
+
+    @Test
+    @DisplayName("TΔ5a: 목록 응답이 계약 파일과 바이트 단위로 같다 — 커서·총수·facet·썸네일 URL이 한 번에 대조된다")
+    void noteListResponseMatchesTheContract() throws Exception {
+        JsonNode expected = load(LIST_CONTRACT).get("response");
+        // 커서는 값으로 넣는다 — 문자열을 그대로 되돌려주면 코덱을 코덱으로 검증하는 셈이다. 계약 예시의
+        // 커서가 마지막 노트(note_id 3, 시음일 없음)의 정렬 키라는 사실이 여기서 실물로 확인된다.
+        noteService.page = new NotePage(listItems(expected), new NoteCursor(null, 3L), 48, facets(expected));
+
+        String body = getNotes(status().isOk());
+
+        assertThat(mapper.readTree(body)).isEqualTo(expected);
+    }
+
+    @Test
+    @DisplayName("TΔ5a: 필터 4축 + 검색어가 그대로 서비스에 닿는다 — 좁히는 일의 소유자는 아래 층이다")
+    void filterAxesReachTheService() throws Exception {
+        JsonNode query = load(LIST_CONTRACT).get("request_query");
+
+        mockMvc.perform(get("/api/notes")
+                        .param("q", query.get("q").stringValue())
+                        .param("roastery", "모모스커피", "프릳츠")
+                        .param("process", "워시드")
+                        .param("origin", query.get("origin").stringValue())
+                        .param("rating", "완전 내스타일", "맛있다"))
+                .andExpect(status().isOk());
+
+        NoteFilter filter = noteService.lastFilter;
+        assertThat(filter.query()).isEqualTo("게뎁");
+        // 다중 축은 같은 키를 반복해 실린다 — 쉼표로 이으면 값 안의 쉼표와 구분자가 충돌한다.
+        assertThat(filter.roastery()).containsExactly("모모스커피", "프릳츠");
+        assertThat(filter.process()).containsExactly("워시드");
+        assertThat(filter.origin()).isEqualTo("에티오피아");
+        // 평가는 문자열이 아니라 도메인 enum으로 받는다 — 오타가 "아무것도 안 걸리는 필터"로 수렴하지 않는다.
+        assertThat(filter.rating()).containsExactly(Rating.PERFECT, Rating.GOOD);
+        assertThat(noteService.lastCursor).as("첫 페이지는 커서 없이 요청한다").isNull();
+    }
+
+    @Test
+    @DisplayName("TΔ5a: 파라미터 없는 요청도 200 — 갤러리 첫 진입은 좁히지 않는다")
+    void unfilteredRequestIsValid() throws Exception {
+        getNotes(status().isOk());
+
+        assertThat(noteService.lastFilter.roastery()).isEmpty();
+        assertThat(noteService.lastFilter.process()).isEmpty();
+        assertThat(noteService.lastFilter.rating()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("TΔ5a: 발급한 커서가 그대로 되돌아와 같은 지점을 가리킨다 — 클라이언트는 만들지도 해석하지도 않는다")
+    void issuedCursorRoundTrips() throws Exception {
+        String issued = load(LIST_CONTRACT).get("request_query_next_page").get("cursor").stringValue();
+
+        mockMvc.perform(get("/api/notes").param("cursor", issued)).andExpect(status().isOk());
+
+        // 계약 예시의 커서가 "시음일 없는 note_id 3 다음부터"라는 뜻임이 양방향으로 박힌다.
+        assertThat(noteService.lastCursor).isEqualTo(new NoteCursor(null, 3L));
+    }
+
+    @Test
+    @DisplayName("TΔ5a: 해석할 수 없는 커서는 400 — 조용히 첫 페이지로 되돌리면 목록 뒤에 같은 노트가 다시 쌓인다")
+    void brokenCursorIsRejected() throws Exception {
+        mockMvc.perform(get("/api/notes").param("cursor", "%%%not-a-cursor%%%"))
+                .andExpect(status().isBadRequest());
+
+        assertThat(noteService.listCalls).isZero();
+    }
+
+    @Test
+    @DisplayName("TΔ5a: 4범주 밖의 평가는 400 — 서버가 만들 수 없는 값으로 거르지 않는다(V-1)")
+    void ratingOutsideTheDomainCategoriesIsRejected() throws Exception {
+        mockMvc.perform(get("/api/notes").param("rating", "그럭저럭"))
+                .andExpect(status().isBadRequest());
+
+        assertThat(noteService.listCalls).isZero();
+    }
+
+    @Test
+    @DisplayName("TΔ5a: 결과 없음은 오류가 아니라 빈 목록이다 — 필터를 좁혀 0건이 되는 것은 정상 조작이다")
+    void emptyResultIsAnEmptyListNotAnError() throws Exception {
+        noteService.page = NotePage.empty();
+
+        String body = getNotes(status().isOk());
+
+        assertThat(mapper.readTree(body)).isEqualTo(load(LIST_CONTRACT).get("response_empty"));
+    }
+
+    // ────────────────────────────── GET /api/notes/{id} (TΔ5a·TΔ13a) ──────────────────────────────
+
+    @Test
+    @DisplayName("TΔ5a: 상세 응답이 계약 파일과 바이트 단위로 같다 — 출처·엔트리별 사진·회차가 한 번에 대조된다")
+    void noteDetailResponseMatchesTheContract() throws Exception {
+        JsonNode expected = load(DETAIL_CONTRACT).get("response");
+        noteService.detail = detailOf(expected);
+
+        String body = mockMvc.perform(get("/api/notes/21"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+
+        assertThat(noteService.lastDetailId).isEqualTo(21L);
+        assertThat(mapper.readTree(body)).isEqualTo(expected);
+    }
+
+    @Test
+    @DisplayName("TΔ5a: 감상 원문은 응답에 실리지 않는다 — 저장된 값이 있어도 렌더는 my_taste만 쓴다(V-11 뒷문장)")
+    void detailNeverLeaksTheOriginalTasting() throws Exception {
+        // 도메인에는 반드시 원문이 있다(V-11) — fake가 그것을 눈에 띄는 값으로 들고 있어야 새는지가 보인다.
+        noteService.detail = detailOf(load(DETAIL_CONTRACT).get("response"));
+
+        String body = mockMvc.perform(get("/api/notes/21")).andReturn().getResponse()
+                .getContentAsString(StandardCharsets.UTF_8);
+
+        assertThat(body).doesNotContain(LEAKED_ORIGINAL);
+        assertThat(keysAnywhere(mapper.readTree(body)))
+                .doesNotContain("my_taste_original", "aliases", "created_at", "updated_at");
+    }
+
+    @Test
+    @DisplayName("TΔ5a: 엔트리 없는 노트도 200 — 정상 상태이지 실패가 아니다")
+    void noteWithoutEntriesIsStillANote() throws Exception {
+        JsonNode expected = load(DETAIL_CONTRACT).get("response_no_entries");
+        noteService.detail = detailOf(expected);
+
+        String body = mockMvc.perform(get("/api/notes/3"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+
+        assertThat(mapper.readTree(body)).isEqualTo(expected);
+    }
+
+    @Test
+    @DisplayName("TΔ5a: 없는 id는 404 — 삭제된 노트를 텅 빈 상세로 그리지 않는다")
+    void missingNoteAnswersWithNotFound() throws Exception {
+        noteService.detail = null;
+
+        mockMvc.perform(get("/api/notes/999")).andExpect(status().isNotFound());
+
+        assertThat(noteService.lastDetailId).isEqualTo(999L);
+    }
+
+    @Test
+    @DisplayName("TΔ5a: 숫자가 아닌 경로는 상세로 보지 않는다 — 없는 id로 404를 받는 것보다 정확하다")
+    void nonNumericPathIsNotADetailRequest() throws Exception {
+        mockMvc.perform(get("/api/notes/abc")).andExpect(status().isNotFound());
+
+        // 서비스에 닿지 않는 것이 요점이다 — 클라이언트 라우터(matchNote)와 같은 판정이다.
+        assertThat(noteService.lastDetailId).isNull();
+    }
+
+    /** 계약 예시의 목록을 도메인으로 되돌린다 — 썸네일은 URL에서 V-4 상대 경로로 되벗긴다. */
+    private static List<NoteListItem> listItems(JsonNode response) {
+        return response.get("notes").valueStream().map(note -> new NoteListItem(
+                note.get("note_id").asLong(),
+                note.get("coffee_name").stringValue(),
+                stringOrNull(note.get("roastery")),
+                dateOrNull(note.get("latest_date")),
+                toArchivePath(stringOrNull(note.get("thumbnail_url"))))).toList();
+    }
+
+    private static NoteFacets facets(JsonNode response) {
+        JsonNode facets = response.get("facets");
+        return new NoteFacets(
+                facets.get("roastery").valueStream().map(JsonNode::stringValue).toList(),
+                facets.get("process").valueStream().map(JsonNode::stringValue).toList());
+    }
+
+    /**
+     * 계약 예시의 상세를 도메인으로 되돌린다 — <b>왕복의 거울</b>.
+     *
+     * <p>응답 타입({@link NoteDetailBody})으로 한 번 읽고 도메인으로 옮긴다: 손으로 필드를 짚어 만들면
+     * fake가 계약과 다른 값을 지어낼 수 있고, 그러면 이 테스트가 스스로 무의미해진다. 잃는 것은 계약에
+     * 없는 값 하나({@code my_taste_original})뿐이라 그 자리에 <b>새면 보이는 마커</b>를 심는다.
+     */
+    private NoteDetail detailOf(JsonNode response) {
+        NoteDetailBody body = mapper.treeToValue(response, NoteDetailBody.class);
+        List<Entry> entries = new ArrayList<>();
+        List<NotePhoto> photos = new ArrayList<>();
+        for (NoteDetailBody.DetailEntry entry : body.entries()) {
+            entries.add(new Entry(entry.date(), entry.brews().stream().map(NoteControllerTest::toBrew).toList(), null));
+            entry.photos().forEach(photo -> photos.add(new NotePhoto(entry.date(), toArchivePath(photo.url()))));
+        }
+        Note note = new Note(body.noteId(), body.coffeeName(), body.roastery(), body.beans(),
+                body.roastLevel(), body.officialNotes(), body.sources(), entries, null, null);
+        return new NoteDetail(note, photos);
+    }
+
+    private static Brew toBrew(NoteDetailBody.DetailBrew brew) {
+        NoteDetailBody.DetailTasting tasting = brew.tasting();
+        return new Brew(brew.recipe(), tasting == null ? null
+                : new Tasting(tasting.myTaste(), LEAKED_ORIGINAL, tasting.rating()));
+    }
+
+    /** {@code /api/photos/…} → V-4 상대 경로({@code photos/…}). {@code PhotoUrl}의 역방향이다. */
+    private static String toArchivePath(String url) {
+        return url == null ? null : url.replaceFirst("^/api/", "");
+    }
+
+    private static String stringOrNull(JsonNode node) {
+        return node.isNull() ? null : node.stringValue();
+    }
+
+    private static LocalDate dateOrNull(JsonNode node) {
+        return node.isNull() ? null : LocalDate.parse(node.stringValue());
+    }
+
+    private String getNotes(ResultMatcher expected) throws Exception {
+        return mockMvc.perform(get("/api/notes"))
+                .andExpect(expected)
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+    }
+
+    private static List<String> keysAnywhere(JsonNode node) {
+        List<String> keys = new ArrayList<>();
+        collectKeys(node, keys);
+        return keys;
+    }
+
+    private static void collectKeys(JsonNode node, List<String> into) {
+        if (node.isObject()) {
+            for (String name : node.propertyNames()) {
+                into.add(name);
+                collectKeys(node.get(name), into);
+            }
+        } else if (node.isArray()) {
+            node.forEach(element -> collectKeys(element, into));
+        }
+    }
+
     /** 계약 파일의 후보 1건을 도메인으로 되돌린다 — fake가 값을 지어내지 않게 하는 규율(왕복의 거울). */
     private static NoteCandidate toCandidate(JsonNode node) {
         JsonNode roastery = node.get("roastery");
@@ -274,6 +520,14 @@ class NoteControllerTest {
         String lastQuery;
         List<NoteCandidate> candidates = List.of();
 
+        // 0029 TΔ5a: 조회 두 축. page/detail은 테스트가 계약 예시에서 되돌린 값을 심는다.
+        int listCalls;
+        NoteFilter lastFilter;
+        NoteCursor lastCursor;
+        NotePage page = NotePage.empty();
+        Long lastDetailId;
+        NoteDetail detail;
+
         RecordingNoteService() {
             super(null, null, null, null);
         }
@@ -286,12 +540,32 @@ class NoteControllerTest {
             lastMatch = null;
             lastQuery = null;
             candidates = List.of();
+            listCalls = 0;
+            lastFilter = null;
+            lastCursor = null;
+            page = NotePage.empty();
+            lastDetailId = null;
+            detail = null;
         }
 
         @Override
         public List<NoteCandidate> findCandidates(String query) {
             lastQuery = query;
             return candidates;
+        }
+
+        @Override
+        public NotePage findNotes(NoteFilter filter, NoteCursor cursor) {
+            listCalls++;
+            lastFilter = filter;
+            lastCursor = cursor;
+            return page;
+        }
+
+        @Override
+        public Optional<NoteDetail> findDetail(long id) {
+            lastDetailId = id;
+            return Optional.ofNullable(detail);
         }
 
         @Override

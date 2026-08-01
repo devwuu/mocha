@@ -19,7 +19,9 @@ public class RepositoryConfig {
     // POLICY: mocha.* 키는 코드 default를 갖는다 — 설정 부재로 기동이 막히지 않는다
     // (ref: specs/coffee-note-agent/plan.md#ADR-50 POLICY). 값은 plan §5 문서값(./data)과 일치시킨다.
     // changes/0025 CR25-8: RB-B6이 mocha.artifact.dir만 고쳐 같은 부류가 이 파일에 남아 있었다.
-    private static final String DEFAULT_DATA_DIR = "${mocha.data.dir:./data}";
+    // 0029 TΔ5a: WebConfig가 사진 아카이브를 정적 서빙하며 같은 키를 읽는다 — 두 곳이 각자의 default를
+    // 들면 설정 부재 프로파일에서 저장 위치와 서빙 위치가 갈린다(RenderConfig.DEFAULT_ARTIFACT_DIR과 같은 방침).
+    public static final String DEFAULT_DATA_DIR = "${mocha.data.dir:./data}";
 
     // 노트가 DB로 옮겨졌어도 사진 원본은 계속 파일이다 — mocha.data.dir는 그 뿌리로 잔존한다.
     // 0029 TΔ4: pending 저장소 빈이 사라졌다 — 작성 중 데이터는 클라이언트 폼이 소유하고 서버는 기억하지

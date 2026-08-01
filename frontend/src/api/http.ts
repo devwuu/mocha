@@ -2,8 +2,8 @@
  * 실제 서버를 부르는 API 구현 (changes/0029 TΔ6a).
  *
  * 계약(`contract.ts`)과 화면은 그대로 두고 여기가 mock을 대체한다 — `index.ts`의 재수출 한 줄만 옮기면
- * 되는 것이 TΔ10이 세운 규율이었고, 이 파일이 그 자리다. TΔ6b가 저장·취소를, **TΔ7이 마지막으로 남았던
- * 후보 검색을** 가져오며 mock은 전부 소멸했다 — 이 델타의 API 표면이 여기 다 있다.
+ * 되는 것이 TΔ10이 세운 규율이었고, 이 파일이 그 자리다. S1(캡처) 다섯에 이어 **TΔ5a가 S2의 목록·상세를**
+ * 가져오며 `mock.ts`가 통째로 사라졌다 — 이 델타의 읽기·쓰기 표면이 여기 다 있다.
  *
  * 오리진은 하나다(ADR-78) — 서버가 이 번들을 정적 서빙하므로 base URL도 CORS도 없다. 개발 중에는
  * Vite dev server가 `/api`를 프록시한다(TΔ23 POLICY: 프록시 대상은 `/api` 단일 접두).
@@ -14,7 +14,11 @@ import type {
   NoteCandidatesResponse,
   NoteCommitRequest,
   NoteCommitResponse,
+  NoteDetail,
+  NoteListResponse,
+  NoteQuery,
   PhotoUploadResponse,
+  Rating,
 } from './contract'
 
 export async function postAgentTurn(request: AgentTurnRequest): Promise<AgentTurnResponse> {
@@ -68,6 +72,67 @@ export async function postAgentCancel(): Promise<void> {
   const response = await fetch('/api/agent/cancel', { method: 'POST' })
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`)
+  }
+}
+
+/**
+ * 갤러리 목록 — 검색어 + 필터 4축 + 커서 페이징 (TΔ12 화면 · TΔ5a 서버).
+ *
+ * **필터도 정렬도 여기서 하지 않는다**(후보 검색과 같은 규율): 서버가 최근 시음일 내림차순으로 돌려주고
+ * 검색어 대조는 정규화 컬럼과 별칭을 지난다. 클라이언트가 한 번 더 거르면 별칭으로 잡힌 노트가 화면에서
+ * 도로 사라진다.
+ *
+ * `cursor`는 서버가 준 값 그대로다 — 만들지도 해석하지도 않는다(불투명 계약).
+ */
+export async function getNotes(query: NoteQuery, cursor: string | null): Promise<NoteListResponse> {
+  return getJson<NoteListResponse>(`/api/notes?${toSearchParams(query, cursor).toString()}`)
+}
+
+/**
+ * 노트 상세 — 전문 + 날짜별 사진 (TΔ13a 화면 · TΔ5a 서버).
+ *
+ * 없는 id는 404이고 `getJson`이 Error로 올린다. 화면은 404와 그 밖의 실패를 문구로 가르지 않는다 —
+ * 둘 다 *"노트를 불러오지 못했어요"*이고, 가를 필요가 관측되면 그때가 판단 지점이다(`DetailScreen` POLICY).
+ */
+export async function getNoteDetail(noteId: number): Promise<NoteDetail> {
+  return getJson<NoteDetail>(`/api/notes/${noteId}`)
+}
+
+/**
+ * 쿼리 상태 → `GET /api/notes`의 파라미터.
+ *
+ * **빈 값은 키째 뺀다.** `?q=&origin=`처럼 빈 문자열을 실어 보내면 서버가 *"빈 문자열로 필터"*와
+ * *"필터 없음"*을 구분해야 하고, 그 구분은 어느 쪽에도 쓸모가 없다. 다중 축은 **같은 키를 반복**한다 —
+ * 쉼표로 이으면 값 안의 쉼표(`커피 리브레, 성수`)와 구분자가 충돌한다.
+ *
+ * 갤러리 화면이 이것을 `useEffect`의 의존 키로도 쓴다(`toSearchParams(query, null).toString()`): 객체
+ * 동일성이 아니라 **실제로 서버에 물어볼 내용**이 바뀌었을 때만 다시 조회한다. 그래서 이 함수가 화면이
+ * 아니라 여기 산다 — 요청을 조립하는 규칙이 두 벌이면 "같은 질의"의 정의가 둘로 갈린다(TΔ5a에서 이동).
+ */
+export function toSearchParams(query: NoteQuery, cursor: string | null): URLSearchParams {
+  const params = new URLSearchParams()
+  appendIfPresent(params, 'q', query.q)
+  appendEach(params, 'roastery', query.roastery)
+  appendEach(params, 'process', query.process)
+  appendIfPresent(params, 'origin', query.origin)
+  appendEach(params, 'rating', query.rating)
+  // 커서는 서버가 준 값 그대로다 — 만들지도 해석하지도 않는다(불투명 계약).
+  if (cursor !== null) {
+    params.set('cursor', cursor)
+  }
+  return params
+}
+
+function appendIfPresent(params: URLSearchParams, key: string, value: string) {
+  const trimmed = value.trim()
+  if (trimmed !== '') {
+    params.set(key, trimmed)
+  }
+}
+
+function appendEach(params: URLSearchParams, key: string, values: readonly (string | Rating)[]) {
+  for (const value of values) {
+    params.append(key, value)
   }
 }
 

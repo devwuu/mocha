@@ -7,6 +7,7 @@ import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Brew;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
+import com.devwuu.mocha.domain.NoteDetail;
 import com.devwuu.mocha.domain.NoteMeta;
 import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Source;
@@ -143,6 +144,45 @@ class NoteTxServicePhotoTest extends PostgresIntegrationTest {
             em.flush();
             // 제약 위반이 실제로 그 이름을 달고 올라온다 — 문법 오류가 아니라 UNIQUE가 막은 것이다.
         }).rootCause().hasMessageContaining("note_photo");
+    }
+
+    // ────────────────────────────── 상세 조회 (TΔ5a) ──────────────────────────────
+
+    @Test
+    @DisplayName("TΔ5a: 상세는 노트와 사진을 함께 준다 — 사진이 (노트, 날짜)로 붙어 엔트리에 실린다")
+    void detailCarriesPhotosKeyedByDate() {
+        Note saved = tx.commit(null, meta(), entry(day(10)), Aliases.empty());
+        tx.commit(saved.id(), meta(), entry(day(12)), null);
+        tx.attachPhotos(saved.id(), day(12),
+                List.of(folderPath(saved, 12, "bag.jpg"), folderPath(saved, 12, "brew.jpg")));
+        flushAndClear();
+
+        NoteDetail detail = tx.findDetail(saved.id()).orElseThrow();
+
+        assertThat(detail.note().entries()).extracting(Entry::date).containsExactly(day(10), day(12));
+        // 사진 없는 날과 있는 날이 같은 노트 안에 섞인다 — 히어로 선택이 "첫 엔트리"가 아닌 이유다.
+        assertThat(detail.photosOn()).containsOnlyKeys(day(12));
+        assertThat(detail.photosOn().get(day(12)))
+                .containsExactly(folderPath(saved, 12, "bag.jpg"), folderPath(saved, 12, "brew.jpg"));
+    }
+
+    @Test
+    @DisplayName("TΔ5a: 사진 없는 노트도 상세가 선다 — 발화만으로 기록한 노트가 정상 상태다")
+    void detailWithoutPhotosIsStillADetail() {
+        Note saved = seed();
+        flushAndClear();
+
+        NoteDetail detail = tx.findDetail(saved.id()).orElseThrow();
+
+        assertThat(detail.photos()).isEmpty();
+        assertThat(detail.photosOn()).isEmpty();
+        assertThat(detail.note().entries()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("TΔ5a: 없는 id는 빈 Optional — 호출부가 404로 수렴시킨다")
+    void detailOfMissingNoteIsEmpty() {
+        assertThat(tx.findDetail(999_999L)).isEmpty();
     }
 
     // ────────────────────────────── 표본·헬퍼 ──────────────────────────────

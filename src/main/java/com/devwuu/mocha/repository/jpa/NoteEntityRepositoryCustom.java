@@ -1,6 +1,11 @@
 package com.devwuu.mocha.repository.jpa;
 
 import com.devwuu.mocha.domain.NoteCandidate;
+import com.devwuu.mocha.domain.NoteCursor;
+import com.devwuu.mocha.domain.NoteFacets;
+import com.devwuu.mocha.domain.NoteFilter;
+import com.devwuu.mocha.domain.NoteListItem;
+import com.devwuu.mocha.domain.NotePhoto;
 import com.devwuu.mocha.repository.entity.EntryEntity;
 
 import java.time.LocalDate;
@@ -58,6 +63,48 @@ public interface NoteEntityRepositoryCustom {
      *                        — 커피명이 아직 안 뽑힌 상태에서도 시트가 쓸모 있어야 한다(TΔ11 계약).
      */
     List<NoteCandidate> findCandidates(String normalizedQuery);
+
+    /**
+     * 갤러리 목록 한 페이지 — 필터로 좁히고 커서 이후부터 {@code limit}건
+     * (ref: changes/0029 tasks.md TΔ5a, 계약 {@code contract/note-list.contract.json}).
+     *
+     * <p>정렬은 <b>최근 시음일 내림차순(NULLS LAST) → note_id 내림차순</b>이다. 앞 축이 갤러리가 답하는
+     * 질문(<i>"요즘 뭘 마셨나"</i>)이고, 뒤 축은 같은 날 마신 노트가 둘일 때 순서를 <b>결정론적으로</b>
+     * 만든다 — 없으면 페이지 경계에서 같은 노트가 두 번 보이거나 한 건이 사라진다.
+     *
+     * <p><b>{@link #findCandidates}와 정렬이 반대인 것은 자리의 성격 차이다</b>: 후보 시트는 이름으로
+     * 찾는 자리라 커피명 순이고, 갤러리는 훑는 자리라 최근순이다.
+     *
+     * <p>썸네일은 <b>가장 최근 날짜의 첫 장</b>이다 — 상세 화면의 히어로와 같은 사진이라 갤러리에서 들어온
+     * 맥락이 끊기지 않는다. 그 선택은 질의가 소유한다(사진 목록을 통째로 올려 조립부가 고르지 않는다).
+     *
+     * @param filter 좁히기 조건 — {@code query}는 <b>이미 정규화된 것</b>이어야 한다
+     *               ({@link com.devwuu.mocha.domain.NoteFilter#normalized()}).
+     * @param cursor 이전 페이지의 마지막 지점. {@code null}이면 첫 페이지.
+     * @param limit  최대 건수. 호출부는 <b>페이지 크기 + 1</b>을 넘겨 다음 페이지 유무를 판정한다.
+     */
+    List<NoteListItem> findNoteItems(NoteFilter filter, NoteCursor cursor, int limit);
+
+    /**
+     * 그 필터에 걸리는 노트 총수 — 헤더의 <i>"N편의 기록"</i>.
+     * <p>커서는 대상이 아니다: 페이지를 넘겨도 총수는 그대로여야 한다.
+     */
+    long countNotes(NoteFilter filter);
+
+    /**
+     * 필터 칩의 선택지 — 저장된 로스터리·가공방식 전부, 오름차순.
+     * <p>POLICY: 필터를 적용하지 않는다 — 근거는 {@link NoteFacets}가 소유한다.
+     */
+    NoteFacets findFacets();
+
+    /**
+     * 그 노트의 사진 전부 — {@code (날짜, seq)} 오름차순, 없으면 빈 목록.
+     *
+     * <p>{@link #findPhotoPaths}와 갈라 두는 이유는 <b>날짜가 필요한가</b>다. 저쪽은 파일을 지우거나 폴더
+     * 접미를 되읽는 자리라 경로만 있으면 되고, 이쪽은 상세 화면이 사진을 <b>엔트리에 붙이는</b> 자리라
+     * {@code note_photo}의 참조 축({@code (note_id, tasted_on)})이 그대로 필요하다.
+     */
+    List<NotePhoto> findPhotos(long noteId);
 
     /**
      * 생성 id가 <b>즉시 필요한</b> 행 하나를 넣는다 — {@code entry}·{@code brew}처럼 자식이 그 id를 컬럼으로

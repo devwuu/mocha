@@ -6,7 +6,11 @@ import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteCandidate;
+import com.devwuu.mocha.domain.NoteCursor;
+import com.devwuu.mocha.domain.NoteDetail;
+import com.devwuu.mocha.domain.NoteFilter;
 import com.devwuu.mocha.domain.NoteMeta;
+import com.devwuu.mocha.domain.NotePage;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.llm.AliasGenerator;
 import com.devwuu.mocha.render.CardFiles;
@@ -57,6 +61,15 @@ public class NoteService {
     private final PhotoStore photoStore;
     private final Path artifactDir;
 
+    /**
+     * 갤러리 한 페이지의 노트 수 (ref: changes/0029 tasks.md TΔ5a).
+     *
+     * <p>계약에 페이지 크기 파라미터가 없다 — 무한 스크롤이라 클라이언트가 정할 이유가 없고, 정하게 하면
+     * 그 값이 계약이 되어 나중에 서버가 못 바꾼다. 24는 <b>폰 2열 그리드에서 12행</b>으로, 첫 화면을
+     * 채우고도 한참 남아 스크롤이 커서 왕복을 기다리지 않는 크기다. 실사용에서 다시 판단할 값이다.
+     */
+    private static final int PAGE_SIZE = 24;
+
     public NoteService(NoteTxService noteTxService, AliasGenerator aliasGenerator,
                        PhotoStore photoStore, Path artifactDir) {
         this.noteTxService = noteTxService;
@@ -90,6 +103,25 @@ public class NoteService {
      */
     public List<NoteCandidate> findCandidates(String query) {
         return noteTxService.findCandidates(query);
+    }
+
+    /**
+     * 갤러리 목록 한 페이지 — 필터·정렬·페이징·facet·총수 (ref: changes/0029 tasks.md TΔ5a·TΔ12, AC-4).
+     *
+     * <p>외부 IO가 없어 위임 한 줄이다(delta D-9). <b>페이지 크기는 이 층이 정한다</b> — 클라이언트가
+     * 지정하지 않는 값이고(계약에 {@code limit} 파라미터가 없다) 아래 층은 몇 건을 읽을지만 안다.
+     */
+    public NotePage findNotes(NoteFilter filter, NoteCursor cursor) {
+        return noteTxService.findNotes(filter, cursor, PAGE_SIZE);
+    }
+
+    /**
+     * 상세 화면이 읽는 노트 전문 + 사진 — 없으면 빈 Optional (ref: changes/0029 tasks.md TΔ5a·TΔ13a).
+     * <p>외부 IO가 없어 위임 한 줄이다. 사진 <b>파일</b>은 여기서 읽지 않는다 — 응답에 실리는 것은 URL이고
+     * 바이트를 돌려주는 것은 정적 서빙({@code /api/photos/**}, {@code WebConfig})의 몫이다.
+     */
+    public Optional<NoteDetail> findDetail(long id) {
+        return noteTxService.findDetail(id);
     }
 
     // ────────────────────────────── 커밋 ──────────────────────────────

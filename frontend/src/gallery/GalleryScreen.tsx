@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { NoteFacets, NoteQuery, NoteSummary } from '../api'
-import { getNotes } from '../api'
+import { getNotes, toSearchParams } from '../api'
 import { CHAT, notePath } from '../routes'
 import { FilterBar } from './FilterBar'
-import { EMPTY_QUERY, isFiltered, toSearchParams } from './noteQuery'
+import { EMPTY_QUERY, isFiltered } from './noteQuery'
 
 /**
  * 갤러리 화면 — 사진 썸네일 그리드 + 검색 + 필터 4축 (changes/0029 TΔ12, AC-4, FR-8/US-4 부활).
@@ -17,8 +17,9 @@ import { EMPTY_QUERY, isFiltered, toSearchParams } from './noteQuery'
  * 안 됐다"*였고, 검색·필터·(이후) 수정·삭제가 붙은 이번 것은 그 사유가 해소된 형태다. 원두 봉투 사진을
  * 카드처럼 보여주는 것이 ADR-32(*"사진은 렌더링하지 않는다"*) 폐기의 실현이다.
  *
- * **API는 아직 없다** — `getNotes`가 mock이고(`api/mock.ts`) 이 화면이 도출한 계약을 TΔ5a가 구현한다
- * (D-10 ③ *"화면이 API 계약을 정한다"*). 정본은 `note-list.contract.json`이다.
+ * **API는 TΔ5a에서 실물이 됐다** — 이 화면이 도출한 계약을 `GET /api/notes`가 구현한다
+ * (D-10 ③ *"화면이 API 계약을 정한다"*). 정본은 `note-list.contract.json`이고, mock에서 실 DB로 갈아
+ * 끼우는 동안 이 파일은 import 줄 하나 말고는 바뀌지 않았다.
  */
 interface GalleryScreenProps {
   onNavigate: (path: string) => void

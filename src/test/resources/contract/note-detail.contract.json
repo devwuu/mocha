@@ -27,11 +27,11 @@
           {
             "recipe": {
               "method": "핸드드립",
-              "dose_g": 15,
-              "water_ml": 240,
+              "dose_g": 15.0,
+              "water_ml": 240.0,
               "yield_ml": null,
-              "time_sec": 160,
-              "temp_c": 92,
+              "time_sec": 160.0,
+              "temp_c": 92.0,
               "grind": "210클릭",
               "machine": "매버릭 2.0",
               "pouring": "뜸 40ml 30초 → 100ml → 100ml",
@@ -51,11 +51,11 @@
           {
             "recipe": {
               "method": "핸드드립",
-              "dose_g": 15,
-              "water_ml": 240,
+              "dose_g": 15.0,
+              "water_ml": 240.0,
               "yield_ml": null,
               "time_sec": null,
-              "temp_c": 90,
+              "temp_c": 90.0,
               "grind": "220클릭",
               "machine": "매버릭 2.0",
               "pouring": null,
