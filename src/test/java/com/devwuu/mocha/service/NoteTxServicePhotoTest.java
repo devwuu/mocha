@@ -205,6 +205,35 @@ class NoteTxServicePhotoTest extends PostgresIntegrationTest {
     }
 
     @Test
+    @DisplayName("TΔ5b-3: 이동을 끝낸 트랜잭션이 사진까지 실어 돌려준다 — 화면이 새 URL을 계산하지 않는다")
+    void dateMoveAnswersWithTheMovedPhotos() {
+        // 되읽기를 나눠 부르면 그 사이가 "엔트리는 새 날짜인데 사진은 옛 목록"인 조합을 만든다
+        // (NoteDetail의 근거가 쓰기 뒤에도 그대로 걸린다). 응답이 곧 화면의 새 기준선이다.
+        Note saved = seed();
+        tx.attachPhotos(saved.id(), day(10), List.of(folderPath(saved, 10, "bag.jpg")));
+        flushAndClear();
+
+        NoteDetail moved = tx.replaceEntry(saved.id(), day(10), entry(day(11)),
+                Map.of(folderPath(saved, 10, "bag.jpg"), folderPath(saved, 11, "bag.jpg")));
+
+        assertThat(moved.note().entries()).extracting(Entry::date).containsExactly(day(11));
+        assertThat(moved.photosOn()).containsOnlyKeys(day(11));
+        assertThat(moved.photosOn().get(day(11))).containsExactly(folderPath(saved, 11, "bag.jpg"));
+    }
+
+    @Test
+    @DisplayName("TΔ5b-3: 메타 수정 응답에도 사진이 실린다 — 두 쓰기의 반환형을 가를 이유가 없다")
+    void metaUpdateAnswersWithPhotosToo() {
+        Note saved = seed();
+        tx.attachPhotos(saved.id(), day(10), List.of(folderPath(saved, 10, "bag.jpg")));
+        flushAndClear();
+
+        NoteDetail updated = tx.updateMeta(saved.id(), meta());
+
+        assertThat(updated.photosOn().get(day(10))).containsExactly(folderPath(saved, 10, "bag.jpg"));
+    }
+
+    @Test
     @DisplayName("TΔ5b-2: 날짜가 그대로인 수정은 사진 색인을 건드리지 않는다 — seq도 경로도 그대로")
     void sameDateEditLeavesPhotoRows() {
         Note saved = seed();

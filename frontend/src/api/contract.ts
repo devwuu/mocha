@@ -310,7 +310,7 @@ export interface NoteDetail {
 }
 
 /**
- * `PATCH /api/notes/{id}` — 저장된 노트의 **사실** 수정 (changes/0029 TΔ13b, 구현은 TΔ5b, AC-5).
+ * `PATCH /api/notes/{id}` — 저장된 노트의 **사실** 수정 (changes/0029 TΔ13b, 구현은 TΔ5b-3, AC-5).
  *
  * **`coffee_name`이 없는 것이 이 계약의 핵심이다.** 커피명은 노트 생성 후 불변이고(V-9) 이름이 다르면
  * 다른 커피다 — 필드를 두지 않아 **구조로 차단**한다. 구 `propose_edit` patch 스키마가 같은 방식으로
@@ -331,7 +331,7 @@ export interface NoteMetaUpdate {
 
 /**
  * `PATCH /api/notes/{id}/entries/{date}` — 그 날짜 시음 기록의 회차 교체 + 날짜 이동
- * (changes/0029 TΔ13b, 구현은 TΔ5b, AC-5).
+ * (changes/0029 TΔ13b, 구현은 TΔ5b-3, AC-5).
  *
  * 경로의 `{date}`가 **대상**이고 본문의 `date`가 **결과**다. 둘이 다르면 날짜 이동이고, 같으면 제자리
  * 수정이다. 한 필드가 두 뜻을 지지 않게 자리를 나눈 것이라(`NoteTxService.replaceEntry(noteId,

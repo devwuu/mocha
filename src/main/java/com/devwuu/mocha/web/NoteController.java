@@ -2,6 +2,7 @@ package com.devwuu.mocha.web;
 
 import com.devwuu.mocha.SingleUser;
 import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
+import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteCandidate;
 import com.devwuu.mocha.domain.NoteCursor;
@@ -10,9 +11,12 @@ import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.service.NoteService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -20,10 +24,12 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 /**
- * 노트 REST 표면 — 쓰기 하나와 읽기 셋
+ * 노트 REST 표면 — 쓰기 넷과 읽기 셋
  * (ref: changes/0029 tasks.md, plan.md#ADR-3·#ADR-4; 계약 정본은 {@code src/test/resources/contract/}의
  * 같은 이름 파일들이다).
  * <ul>
@@ -31,7 +37,18 @@ import java.util.List;
  *   <li>{@code GET /api/notes/candidates} — 매칭 후보 검색(TΔ7, {@code note-candidates})</li>
  *   <li>{@code GET /api/notes} — 갤러리 목록(TΔ5a·TΔ12, {@code note-list})</li>
  *   <li>{@code GET /api/notes/&#123;id&#125;} — 상세(TΔ5a·TΔ13a, {@code note-detail})</li>
+ *   <li>{@code PATCH /api/notes/&#123;id&#125;} — 메타 수정(TΔ5b-3·TΔ13b, {@code note-update})</li>
+ *   <li>{@code PATCH /api/notes/&#123;id&#125;/entries/&#123;date&#125;} — 엔트리 수정·날짜 이동(같은 계약)</li>
+ *   <li>{@code DELETE /api/notes/&#123;id&#125;} — 노트 삭제(같은 계약)</li>
  * </ul>
+ *
+ * <p><b>PATCH가 둘인 것은 TΔ4a의 분리를 그대로 노출한 것이다</b> — 구 {@code applyEdit}은 "노트 메타 +
+ * 대상 엔트리 1건"을 한 번에 받아, 로스터리만 고쳐도 그 엔트리의 회차 행이 이유 없이 재발급됐다. 여기서
+ * 다시 합치면 그 계약이 되살아난다.
+ *
+ * <p><b>세 쓰기가 실패를 갈라 말한다</b>: {@code POST}의 대상 소실은 <b>409</b>(폼은 유효한데 병합할
+ * 노트가 그 사이 사라졌다 — 상태 충돌)이고, {@code PATCH}·{@code DELETE}의 그것은 <b>404</b>다(URL이
+ * 가리키는 자원이 없다). 같은 예외가 두 뜻을 지는 것이 아니라 <b>자리가 뜻을 정한다</b>.
  *
  * <p><b>읽기 셋이 같은 노트를 서로 다른 깊이로 말한다</b>: 후보와 목록은 노트를 <i>고르는</i> 자리라
  * 납작한 사영이고(3단 중첩을 한 줄도 쓰지 않는다), 상세는 <i>읽는</i> 자리라 전문이다. 세 계약이 갈린 것이
@@ -179,6 +196,91 @@ public class NoteController {
         return noteService.findDetail(id)
                 .map(detail -> ResponseEntity.ok(NoteDetailBody.of(detail)))
                 .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    /**
+     * 노트 메타 수정 — 커피명을 제외한 사실 전부 (ref: TΔ13b·TΔ5b-3, FR-21, AC-5).
+     *
+     * <p><b>커피명은 요청에 자리가 없고</b>({@link NoteMetaBody}) 서버가 저장된 값을 실어 넘긴다 — 그래서
+     * 아래 층의 V-9 대조는 이 경로에서 항상 통과한다. 그 검사를 지우지 않는 이유는 호출부가 하나 더
+     * 생기는 날의 방어선이어서다(TΔ4a).
+     *
+     * <p>그 조회가 <b>404의 근거이기도 하다</b>: 없는 노트에 실을 커피명이 없다는 것과 고칠 노트가 없다는
+     * 것이 같은 사실이라, 읽기 한 번이 두 몫을 한다.
+     *
+     * <p>응답은 <b>갱신된 노트 전문</b>이다 — 서버 정규화(V-14 빈 원두 드롭 등)를 화면이 따라 계산하면
+     * 같은 규칙이 클라이언트에 이중화된다.
+     */
+    @PatchMapping("/{id:\\d+}")
+    public ResponseEntity<NoteDetailBody> updateMeta(@PathVariable long id, @RequestBody NoteMetaBody request) {
+        if (request == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        Optional<Note> stored = noteService.findById(id);
+        if (stored.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        try {
+            return ResponseEntity.ok(
+                    NoteDetailBody.of(noteService.updateMeta(id, request.toMeta(stored.get().coffeeName()))));
+        } catch (IllegalArgumentException e) {
+            // V-9 — 이 경로에서는 닿지 않는다(위 문단). 닿았다면 계약이 깨진 것이므로 조용히 저장하지 않는다.
+            log.warn("메타 수정 거부(V-9): {}", e.getMessage());
+            return ResponseEntity.badRequest().build();
+        } catch (IllegalStateException e) {
+            // 조회와 쓰기 사이에 노트가 사라졌다 — 같은 사실이므로 같은 상태 코드로 수렴시킨다.
+            log.warn("메타 수정 거부(대상 소실): {}", e.getMessage());
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    /**
+     * 엔트리 수정 — 그 날짜의 회차를 갈아끼우고, 본문의 {@code date}가 다르면 <b>사진까지 데리고</b>
+     * 날짜를 옮긴다 (ref: TΔ13b·TΔ5b-3, V-10 개정본 delta.md#D-12, AC-5).
+     *
+     * <p>경로의 {@code date}가 <b>대상</b>이고 본문의 {@code date}가 <b>결과</b>다. 이동처에 이미 기록이
+     * 있으면 그날의 회차 뒤로 합쳐지는데(회차 병합), 그 판정도 순서도 전부 아래 층의 규칙이다 — 여기서
+     * 하는 일은 파싱·위임·응답 변환뿐이다(백엔드 CLAUDE.md §2).
+     *
+     * <p><b>회차 0개는 400이다</b>(V-15). 정규화가 빈 회차를 드롭한 결과 하나도 남지 않았다는 것은
+     * 저장할 시음이 없다는 뜻이고, 그대로 쓰면 <i>화면에 없는 엔트리 삭제 경로</i>가 생긴다 — 엔트리 삭제는
+     * spec에 없다(TΔ13b 편차 ⑤).
+     */
+    @PatchMapping("/{id:\\d+}/entries/{date}")
+    public ResponseEntity<NoteDetailBody> replaceEntry(
+            @PathVariable long id,
+            @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestBody NoteEntryBody request) {
+        if (request == null || request.date() == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        Entry entry = request.toEntry();
+        if (entry.brews().isEmpty()) {
+            log.warn("엔트리 수정 거부(회차 없음): noteId={} date={}", id, date);
+            return ResponseEntity.badRequest().build();
+        }
+        try {
+            return ResponseEntity.ok(NoteDetailBody.of(noteService.replaceEntry(id, date, entry)));
+        } catch (IllegalStateException e) {
+            // 노트도 대상 엔트리도 "고칠 것이 URL에 없다"는 같은 사실이다.
+            log.warn("엔트리 수정 거부(대상 소실): {}", e.getMessage());
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    /**
+     * 노트 삭제 — 하위 행도 사진도 남기지 않는 hard delete (ref: TΔ5b-3, 0028 AC-Δ8, AC-6).
+     *
+     * <p><b>없는 id는 404다</b>(계약). 저장소는 없는 id를 무해하게 지나가지만 — 지울 노트를 <i>읽지
+     * 않는다</i>는 규율 때문이다 — 삭제가 실제로 행을 지웠는지는 삭제 자신이 답하므로, 그 규율을 깨지 않고
+     * 갈린다. 되돌릴 자리가 없는 조작이라 <i>"지웠다"</i>와 <i>"지울 것이 없었다"</i>를 같은 응답으로
+     * 뭉개지 않는다.
+     */
+    @DeleteMapping("/{id:\\d+}")
+    public ResponseEntity<Void> delete(@PathVariable long id) {
+        return noteService.delete(id)
+                ? ResponseEntity.noContent().build()
+                : ResponseEntity.notFound().build();
     }
 
     /**

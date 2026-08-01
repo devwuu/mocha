@@ -79,7 +79,7 @@ class NoteTxServiceEditTest extends PostgresIntegrationTest {
     void updateMetaUpdatesNoteFields() {
         Note saved = seed(entry(day(10), "새콤하고 좋았다"));
 
-        Note updated = repo.updateMeta(saved.id(), metaWithRoastery("커피베라 성수점"));
+        Note updated = repo.updateMeta(saved.id(), metaWithRoastery("커피베라 성수점")).note();
 
         assertThat(updated.roastery().value()).isEqualTo("커피베라 성수점");
         // 엔트리는 메타 수정의 대상이 아니다 — 손대지 않은 채 그대로 남는다(0029 TΔ4a가 계약을 가른 지점).
@@ -133,7 +133,7 @@ class NoteTxServiceEditTest extends PostgresIntegrationTest {
                 new Sourced<>("미디엄", Source.SEARCH),
                 new Sourced<>(List.of("초콜릿"), Source.SEARCH),
                 List.of("https://example.com/other"));
-        Note updated = repo.updateMeta(saved.id(), meta);
+        Note updated = repo.updateMeta(saved.id(), meta).note();
 
         assertThat(updated.beans()).hasSize(1);
         assertThat(updated.beans().getFirst().description().value()).isEqualTo("콜롬비아 우일라");
@@ -155,7 +155,7 @@ class NoteTxServiceEditTest extends PostgresIntegrationTest {
         Note saved = repo.commit(null, fullMeta(), entry(day(10), "원본"),
                 new Aliases(List.of("예가체프 G1"), List.of("커피베라 성수")));
 
-        Note updated = repo.updateMeta(saved.id(), metaWithRoastery("커피베라 성수점"));
+        Note updated = repo.updateMeta(saved.id(), metaWithRoastery("커피베라 성수점")).note();
 
         assertThat(updated.aliases().coffeeName()).containsExactly("예가체프 G1");
         assertThat(updated.aliases().roastery()).containsExactly("커피베라 성수");
@@ -199,7 +199,7 @@ class NoteTxServiceEditTest extends PostgresIntegrationTest {
     void updateMetaAllowsSameCoffeeName() {
         Note saved = seed(entry(day(10), "원본"));
 
-        Note updated = repo.updateMeta(saved.id(), metaWithRoastery("커피베라 성수점"));
+        Note updated = repo.updateMeta(saved.id(), metaWithRoastery("커피베라 성수점")).note();
 
         assertThat(updated.roastery().value()).isEqualTo("커피베라 성수점");
         assertThat(updated.coffeeName().value()).isEqualTo("커피베라 예가체프 G1");
@@ -212,7 +212,7 @@ class NoteTxServiceEditTest extends PostgresIntegrationTest {
     void replaceEntryUpdatesBrews() {
         Note saved = seed(entry(day(10), "새콤하고 좋았다"));
 
-        Note updated = repo.replaceEntry(saved.id(), day(10), entry(day(10), "다시 보니 복숭아향"), Map.of());
+        Note updated = repo.replaceEntry(saved.id(), day(10), entry(day(10), "다시 보니 복숭아향"), Map.of()).note();
 
         assertThat(updated.entries()).hasSize(1);
         assertThat(tasteOf(updated.entries().getFirst())).isEqualTo("다시 보니 복숭아향");
@@ -230,7 +230,7 @@ class NoteTxServiceEditTest extends PostgresIntegrationTest {
         Note seeded = seed(entry(day(9), "9일"));
         Note saved = repo.commit(seeded.id(), fullMeta(), entry(day(10), "10일"), Aliases.empty());
 
-        Note updated = repo.replaceEntry(saved.id(), day(10), entry(day(11), "사실 11일에 마심"), Map.of());
+        Note updated = repo.replaceEntry(saved.id(), day(10), entry(day(11), "사실 11일에 마심"), Map.of()).note();
 
         assertThat(updated.entries()).extracting(Entry::date).containsExactly(day(9), day(11));
         assertThat(tasteOf(updated.entries().getLast())).isEqualTo("사실 11일에 마심");
@@ -249,7 +249,7 @@ class NoteTxServiceEditTest extends PostgresIntegrationTest {
         saved = repo.commit(saved.id(), fullMeta(), entry(day(10), "10일 원본"), Aliases.empty());
         assertThat(saved.entries()).hasSize(2);
 
-        Note updated = repo.replaceEntry(saved.id(), day(9), entry(day(10), "이동해 온 9일 기록"), Map.of());
+        Note updated = repo.replaceEntry(saved.id(), day(9), entry(day(10), "이동해 온 9일 기록"), Map.of()).note();
 
         // 엔트리 총수 1 감소는 구 규칙에서 유일하게 살아남는 부분이다 — 둘이 하나가 되는 것이라서다.
         assertThat(updated.entries()).hasSize(1);

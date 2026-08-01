@@ -355,11 +355,16 @@ public class NoteTxService {
      * 필드를 바꾸면 flush가 UPDATE로 내보낸다 — 그래서 {@code created_at}이 보존되고 {@code modified_at}이
      * 실제 수정 시각으로 움직인다. 배열 자식만 별도 테이블이라 통째 교체된다.
      *
+     * <p><b>돌려주는 것은 노트 전문 + 사진이다</b>(TΔ5b-3) — 쓰기 직후의 최종 상태를 <b>같은 트랜잭션
+     * 안에서</b> 읽는다. 나눠 부르면 그 사이의 저장이 "엔트리는 새 날짜인데 사진은 옛 목록"인 조합을
+     * 만든다는 {@link NoteDetail}의 근거가 쓰기 뒤에도 그대로 걸린다. 메타 수정은 사진을 옮기지 않지만
+     * {@link #replaceEntry}는 옮기므로, 두 쓰기의 반환형을 갈라 둘 이유가 없다.
+     *
      * @throws IllegalArgumentException 커피명 변경 시도(V-9).
      * @throws IllegalStateException    대상 노트 소실 시(호출부가 안내로 수렴, plan §7).
      */
     @Transactional
-    public Note updateMeta(long noteId, NoteMeta meta) {
+    public NoteDetail updateMeta(long noteId, NoteMeta meta) {
         NoteEntity row = notes.findById(noteId)
                 .orElseThrow(() -> new IllegalStateException("수정 대상 노트 소실: " + noteId));
         Sourced<String> stored = NoteEntityMapper.toSourced(row.getCoffeeName());
@@ -367,7 +372,7 @@ public class NoteTxService {
             throw new IllegalArgumentException("coffee_name은 노트 생성 후 불변(V-9): " + noteId);
         }
         updateNoteFields(noteId, row, meta);
-        return reload(noteId);
+        return reloadDetail(noteId);
     }
 
     /**
@@ -420,8 +425,8 @@ public class NoteTxService {
      *                               (호출부가 안내로 수렴, plan §7).
      */
     @Transactional
-    public Note replaceEntry(long noteId, LocalDate targetDate, Entry entry,
-                             Map<String, String> movedPhotoPaths) {
+    public NoteDetail replaceEntry(long noteId, LocalDate targetDate, Entry entry,
+                                   Map<String, String> movedPhotoPaths) {
         if (notes.findById(noteId).isEmpty()) {
             throw new IllegalStateException("수정 대상 노트 소실: " + noteId);
         }
@@ -441,7 +446,9 @@ public class NoteTxService {
         if (!movedTo.equals(targetDate)) {
             movePhotoRows(noteId, targetDate, movedTo, movedPhotoPaths);
         }
-        return reload(noteId);
+        // 사진 색인을 방금 옮긴 트랜잭션이 그 결과를 그대로 읽어 돌려준다 — 화면이 이동 후의 사진 URL을
+        // 스스로 계산하지 않게 하는 자리다(경로 규약을 클라이언트가 조립하지 않는다, ADR-75).
+        return reloadDetail(noteId);
     }
 
     /**
@@ -511,8 +518,10 @@ public class NoteTxService {
      * <p>POLICY: hard delete — {@code deleted_at} 계열 컬럼을 두지 않는다. 1인용 개인 기록이라 복구 요구가
      * 관측된 적이 없고, soft delete는 <b>모든 조회에 조건을 얹는다</b>(ref: 0028 delta#삭제-정책, Q-3·Q-12).
      *
-     * <p>없는 {@code id}는 무해하게 지나간다(멱등) — 지울 것이 없다는 것과 지웠다는 것을 여기서 가리지
-     * 않는다. 호출부의 실패 응답이 필요해지는 것은 삭제를 노출하는 TΔ5다.
+     * <p><b>지웠는지를 돌려준다</b>(TΔ5b-3) — {@code DELETE /api/notes/&#123;id&#125;}가 없는 id에 404로
+     * 답해야 하는데(계약 {@code note-update.contract.json}), 그 판정에 필요한 것은 <i>노트를 읽는 일</i>이
+     * 아니라 <b>삭제가 실제로 행을 지웠는가</b>다. 벌크 삭제의 반환 건수가 그 답이라 아래 문단의 규율을
+     * 깨지 않고 얻어진다.
      *
      * <p>사진({@code data/photos/})·카드({@code artifact/cards/})는 대상이 아니다 — 파일시스템에 남고,
      * 노트↔사진 연결({@code note_photo})은 TΔ8b가 들인다(0028 Q-13).
@@ -523,10 +532,12 @@ public class NoteTxService {
      * <p><b>지울 노트를 읽지 않는다.</b> 존재를 먼저 확인하면 그 노트가 영속성 컨텍스트에 실리고, 뒤이은
      * 벌크 삭제는 컨텍스트를 모르므로 <b>이미 지운 행의 살아 있는 사본</b>이 남는다({@code findEntryId}가
      * 엔티티가 아니라 id만 돌려주는 것과 같은 이유). 없는 id는 아무 행도 지우지 못할 뿐이다.
+     *
+     * @return 노트 행이 실제로 지워졌으면 {@code true}, 없는 id였으면 {@code false}.
      */
     @Transactional
-    public void delete(long id) {
-        notes.deleteNote(id);
+    public boolean delete(long id) {
+        return notes.deleteNote(id) > 0;
     }
 
     // ────────────────────────────── 조립 진입 ──────────────────────────────
@@ -541,6 +552,15 @@ public class NoteTxService {
         }
         List<Long> noteIds = rows.stream().map(NoteEntity::getId).toList();
         return NoteEntityMapper.assemble(rows, notes.findChildRows(noteIds));
+    }
+
+    /**
+     * 쓰기 직후의 최종 상태 + 사진 — 수정 경로가 돌려주는 값이다(TΔ5b-3).
+     * <p>{@link #findDetail}과 갈리는 것은 <b>없으면 던진다</b>는 점뿐이다: 방금 쓴 노트가 없다는 것은
+     * 빈 결과가 아니라 고장이다.
+     */
+    private NoteDetail reloadDetail(long noteId) {
+        return new NoteDetail(reload(noteId), notes.findPhotos(noteId));
     }
 
     /** 쓰기 직후의 최종 상태 — 저장이 실제로 무엇을 남겼는지가 호출부가 들고 갈 값이다. */

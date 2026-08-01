@@ -2,8 +2,8 @@
  * 실제 서버를 부르는 API 구현 (changes/0029 TΔ6a).
  *
  * 계약(`contract.ts`)과 화면은 그대로 두고 여기가 mock을 대체한다 — `index.ts`의 재수출 한 줄만 옮기면
- * 되는 것이 TΔ10이 세운 규율이었고, 이 파일이 그 자리다. S1(캡처) 다섯에 이어 **TΔ5a가 S2의 목록·상세를**
- * 가져오며 `mock.ts`가 통째로 사라졌다 — 이 델타의 읽기·쓰기 표면이 여기 다 있다.
+ * 되는 것이 TΔ10이 세운 규율이었고, 이 파일이 그 자리다. S1(캡처) 다섯 · TΔ5a의 목록·상세에 이어
+ * **TΔ5b-3이 수정·삭제 셋**을 가져오며 `mock.ts`가 다시 사라졌다 — 이 델타의 읽기·쓰기 표면이 여기 다 있다.
  *
  * 오리진은 하나다(ADR-78) — 서버가 이 번들을 정적 서빙하므로 base URL도 CORS도 없다. 개발 중에는
  * Vite dev server가 `/api`를 프록시한다(TΔ23 POLICY: 프록시 대상은 `/api` 단일 접두).
@@ -15,7 +15,9 @@ import type {
   NoteCommitRequest,
   NoteCommitResponse,
   NoteDetail,
+  NoteEntryUpdate,
   NoteListResponse,
+  NoteMetaUpdate,
   NoteQuery,
   PhotoUploadResponse,
   Rating,
@@ -99,6 +101,42 @@ export async function getNoteDetail(noteId: number): Promise<NoteDetail> {
 }
 
 /**
+ * 노트 메타 수정 — 커피명·엔트리를 뺀 사실 갱신 (TΔ13b 화면 · TΔ5b-3 서버, AC-5).
+ *
+ * **`coffee_name`을 보낼 자리가 없다**(`NoteMetaUpdate`) — 커피명은 노트 생성 후 불변이고(V-9) 그 값은
+ * 서버가 저장된 것에서 채운다. 클라이언트가 되싣지 않는 유일한 상세 필드다.
+ *
+ * 응답은 **갱신된 노트 전문**이다 — 서버 정규화(빈 원두 드롭 등)를 화면이 따라 계산하면 같은 규칙이
+ * 두 벌이 된다. 화면은 이것을 새 기준선으로 채택한다(`EditScreen`의 `adopt`).
+ */
+export async function patchNoteMeta(noteId: number, body: NoteMetaUpdate): Promise<NoteDetail> {
+  return patchJson<NoteDetail>(`/api/notes/${noteId}`, body)
+}
+
+/**
+ * 엔트리 수정 — 회차 교체 + 날짜 이동 (TΔ13b 화면 · TΔ5b-3 서버, AC-5).
+ *
+ * **경로의 날짜가 대상이고 본문의 `date`가 결과다.** 이동처에 이미 기록이 있으면 그날의 회차 뒤로
+ * 합쳐지고 사진도 함께 옮겨 오는데(D-12), **그 규칙의 소유자는 서버**다 — mock이 흉내내던 병합을 여기서는
+ * 흉내내지 않는다. 응답의 엔트리·사진 URL이 곧 결과다.
+ */
+export async function patchNoteEntry(
+  noteId: number,
+  targetDate: string,
+  body: NoteEntryUpdate,
+): Promise<NoteDetail> {
+  return patchJson<NoteDetail>(`/api/notes/${noteId}/entries/${targetDate}`, body)
+}
+
+/** 노트 삭제 — 본문 없는 204. hard delete라 되돌릴 것이 없고, 없는 id는 404다(AC-6). */
+export async function deleteNote(noteId: number): Promise<void> {
+  const response = await fetch(`/api/notes/${noteId}`, { method: 'DELETE' })
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`)
+  }
+}
+
+/**
  * 쿼리 상태 → `GET /api/notes`의 파라미터.
  *
  * **빈 값은 키째 뺀다.** `?q=&origin=`처럼 빈 문자열을 실어 보내면 서버가 *"빈 문자열로 필터"*와
@@ -151,8 +189,16 @@ async function getJson<T>(path: string): Promise<T> {
 }
 
 async function postJson<T>(path: string, body: unknown): Promise<T> {
+  return sendJson<T>('POST', path, body)
+}
+
+async function patchJson<T>(path: string, body: unknown): Promise<T> {
+  return sendJson<T>('PATCH', path, body)
+}
+
+async function sendJson<T>(method: string, path: string, body: unknown): Promise<T> {
   const response = await fetch(path, {
-    method: 'POST',
+    method,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })

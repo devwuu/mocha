@@ -390,7 +390,7 @@ class NoteEntityRepositoryCustomImpl implements NoteEntityRepositoryCustom {
     }
 
     @Override
-    public void deleteNote(long noteId) {
+    public long deleteNote(long noteId) {
         deleteEntries(noteId);
         deleteNoteArraysExceptAliases(noteId);
         // 별칭은 여기서만 지운다 — 수정 세션이 남기는 것은 원본 존치(V-13) 때문이고 노트가 사라지는
@@ -401,7 +401,7 @@ class NoteEntityRepositoryCustomImpl implements NoteEntityRepositoryCustom {
         query.delete(notePhotoEntity).where(notePhotoEntity.noteId.eq(noteId)).execute();
         // 노트 행은 마지막이다. 엔티티로 실어 와 em.remove()에 맡기지 않는 것은 deleteEntry와 같은 이유 —
         // Hibernate의 flush 순서가 삭제를 항상 마지막에 두므로, 삭제가 언제 나가는지를 코드가 쥘 수 없다.
-        query.delete(noteEntity).where(noteEntity.id.eq(noteId)).execute();
+        return query.delete(noteEntity).where(noteEntity.id.eq(noteId)).execute();
     }
 
     /**

@@ -121,17 +121,27 @@ class NoteTxServiceDeleteTest extends PostgresIntegrationTest {
     }
 
     @Test
-    @DisplayName("TΔ5d: 없는 id 삭제는 무해하다(멱등) — 다른 노트도 건드리지 않는다")
+    @DisplayName("TΔ5d: 없는 id 삭제는 무해하다(던지지 않는다) — 다른 노트도 건드리지 않는다")
     void deleteOfMissingIdIsHarmless() {
         Note saved = seedFullyPopulated();
 
         assertThatCode(() -> repo.delete(99_999_999L)).doesNotThrowAnyException();
-        // 같은 노트를 두 번 지워도 마찬가지다 — 지울 것이 없다는 것과 지웠다는 것을 A1이 가리지 않는다.
         repo.delete(saved.id());
         assertThatCode(() -> repo.delete(saved.id())).doesNotThrowAnyException();
         flushAndClear();
 
         assertThat(rowCount("note")).isZero();
+    }
+
+    @Test
+    @DisplayName("TΔ5b-3: 지웠는지를 돌려준다 — DELETE가 404를 가르는 근거이고, 판정은 삭제 자신이 한다")
+    void deleteReportsWhetherARowWasRemoved() {
+        Note saved = seedFullyPopulated();
+
+        // 지울 노트를 읽지 않는다는 규율(클래스 javadoc)을 깨지 않고 얻는 값 — 벌크 삭제의 건수가 답이다.
+        assertThat(repo.delete(saved.id())).as("지운 노트가 false로 보고됐다").isTrue();
+        assertThat(repo.delete(saved.id())).as("두 번째 삭제가 true — 없는 노트를 지웠다고 말한다").isFalse();
+        assertThat(repo.delete(99_999_999L)).isFalse();
     }
 
     // ────────────────────────────── 표본·헬퍼 ──────────────────────────────

@@ -223,6 +223,12 @@ public interface NoteEntityRepositoryCustom {
      *
      * <p>엔트리·회차를 <b>집합으로</b> 지운다 — 엔트리가 몇 건이든 질의 수가 고정된다(파생
      * {@code deleteAllBy…}는 엔티티를 로드한 뒤 한 건씩 지운다).
+     *
+     * <p><b>노트 행이 지워진 건수를 돌려준다</b>(changes/0029 TΔ5b-3) — 없는 id를 404로 가르는 데 필요한
+     * 값이고, 지울 노트를 <i>읽지 않고</i> 얻는 유일한 방법이다({@code NoteTxService#delete}의 규율).
+     * 하위 행 건수는 세지 않는다: 고아가 남아 있어도 노트가 없었다면 답은 <i>"없던 노트"</i>다.
+     *
+     * @return 지워진 {@code note} 행 수 — 0(없는 id) 또는 1.
      */
-    void deleteNote(long noteId);
+    long deleteNote(long noteId);
 }

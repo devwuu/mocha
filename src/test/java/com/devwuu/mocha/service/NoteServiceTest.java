@@ -9,6 +9,7 @@ import com.devwuu.mocha.domain.Brew;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
+import com.devwuu.mocha.domain.NoteDetail;
 import com.devwuu.mocha.domain.NoteMeta;
 import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Source;
@@ -281,6 +282,29 @@ class NoteServiceTest {
             assertThat(photoStore.deleted).isEmpty();
             assertThat(tx.deletes).isOne();
         }
+
+        @Test
+        @DisplayName("TΔ5b-3: 없는 노트 삭제는 false이고 파일 정리에 들어가지 않는다 — 컨트롤러가 404로 가른다")
+        void deletingAMissingNoteReportsFalse() {
+            assertThat(service.delete(404)).isFalse();
+            // 지운 것이 없는데 파일을 훑으면 "노트 없이 사진만 지우는" 경로가 생긴다.
+            assertThat(photoStore.deleted).isEmpty();
+        }
+
+        @Test
+        @DisplayName("TΔ5b-3: 지운 노트는 true — 파일 정리 실패가 그 답을 뒤집지 않는다(행은 이미 사라졌다)")
+        void deletingAnExistingNoteReportsTrue() {
+            tx.put(saved(7, "커피", "로스터리", Aliases.empty()));
+            tx.photos.add("photos/7-로스터리-커피/2026-07-10/bag.jpg");
+            NoteService failing = new NoteService(tx, aliasGenerator, new RecordingPhotoStore() {
+                @Override
+                public void deletePhotos(List<String> relativePaths) {
+                    throw new IllegalStateException("파일 시스템 실패");
+                }
+            }, artifactDir);
+
+            assertThat(failing.delete(7)).isTrue();
+        }
     }
 
     @Nested
@@ -445,25 +469,31 @@ class NoteServiceTest {
         }
 
         @Override
-        public Note updateMeta(long noteId, NoteMeta meta) {
+        public NoteDetail updateMeta(long noteId, NoteMeta meta) {
             lastMeta = meta;
-            return notes.get(noteId);
+            return detailOf(noteId);
         }
 
         @Override
-        public Note replaceEntry(long noteId, LocalDate targetDate, Entry entry,
-                                 Map<String, String> movedPhotoPaths) {
+        public NoteDetail replaceEntry(long noteId, LocalDate targetDate, Entry entry,
+                                       Map<String, String> movedPhotoPaths) {
             lastTargetDate = targetDate;
             lastEntry = entry;
             lastMovedPhotoPaths = movedPhotoPaths;
             replaces++;
-            return notes.get(noteId);
+            return detailOf(noteId);
+        }
+
+        /** 수정 경로가 돌려주는 값 — 노트가 없으면 null이다(소실은 이 fake의 관심사가 아니다). */
+        private NoteDetail detailOf(long noteId) {
+            Note note = notes.get(noteId);
+            return note == null ? null : new NoteDetail(note, List.of());
         }
 
         @Override
-        public void delete(long id) {
-            notes.remove(id);
+        public boolean delete(long id) {
             deletes++;
+            return notes.remove(id) != null;
         }
 
         @Override

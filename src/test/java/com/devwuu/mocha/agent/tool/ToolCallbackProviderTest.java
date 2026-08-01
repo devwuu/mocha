@@ -13,6 +13,7 @@ import com.devwuu.mocha.domain.Brew;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
+import com.devwuu.mocha.domain.NoteDetail;
 import com.devwuu.mocha.domain.NoteMeta;
 import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Sourced;
@@ -322,17 +323,17 @@ class ToolCallbackProviderTest {
         }
 
         @Override
-        public Note updateMeta(long noteId, NoteMeta meta) {
+        public NoteDetail updateMeta(long noteId, NoteMeta meta) {
             throw new UnsupportedOperationException("제안 tool은 노트를 쓰지 않는다 — 수정은 UI 전용(D-1)");
         }
 
         @Override
-        public Note replaceEntry(long noteId, LocalDate targetDate, Entry entry) {
+        public NoteDetail replaceEntry(long noteId, LocalDate targetDate, Entry entry) {
             throw new UnsupportedOperationException("제안 tool은 노트를 쓰지 않는다 — 수정은 UI 전용(D-1)");
         }
 
         @Override
-        public void delete(long id) {
+        public boolean delete(long id) {
             throw new UnsupportedOperationException("제안 tool은 노트를 쓰지 않는다 — 삭제는 UI 전용이다");
         }
     }

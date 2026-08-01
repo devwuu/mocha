@@ -213,10 +213,11 @@ public class NoteService {
      * 노트 메타 수정 — 커피명을 제외한 전부가 대상이다(FR-21, spec AC-5).
      * <p>외부 IO가 없어 위임 한 줄이다. V-9 검사는 {@link NoteTxService#updateMeta}가 트랜잭션 안에서 진다.
      *
+     * @return 갱신된 노트 전문 + 사진 — 응답이 곧 화면의 새 기준선이다(TΔ5b-3).
      * @throws IllegalArgumentException 커피명 변경 시도(V-9).
      * @throws IllegalStateException    대상 노트 소실 시.
      */
-    public Note updateMeta(long noteId, NoteMeta meta) {
+    public NoteDetail updateMeta(long noteId, NoteMeta meta) {
         return noteTxService.updateMeta(noteId, meta);
     }
 
@@ -238,9 +239,10 @@ public class NoteService {
      * 이 task가 고치러 온 바로 그 상태를 조용히 다시 만든다. 던지는 시점에 행은 하나도 바뀌지 않았고
      * 사진 바이트는 아카이브 안에 있다.
      *
+     * @return 갱신된 노트 전문 + 사진 — 이동 후의 사진 URL까지 서버가 답한다(TΔ5b-3).
      * @throws IllegalStateException 대상 노트 또는 {@code targetDate} 엔트리 소실 시.
      */
-    public Note replaceEntry(long noteId, LocalDate targetDate, Entry entry) {
+    public NoteDetail replaceEntry(long noteId, LocalDate targetDate, Entry entry) {
         Map<String, String> movedPhotos = movePhotoFiles(noteId, targetDate, entry.date());
         return noteTxService.replaceEntry(noteId, targetDate, entry, movedPhotos);
     }
@@ -278,17 +280,23 @@ public class NoteService {
      * 못한 이유는 <b>무엇을 지울지 알 수 없어서</b>였다 — 노트↔사진 연결이 폴더 규약뿐이었고 그 폴더명은
      * 재계산으로 맞출 수 없다(ADR-75). {@code note_photo}가 실제 경로를 들고 있으므로 이제 답이 있다.
      *
-     * <p>없는 id는 무해하게 지나간다(멱등). 실패 응답이 필요해지는 것은 삭제를 노출하는 TΔ5b다.
+     * <p><b>지웠는지를 돌려준다</b>(TΔ5b-3 — 구 판본은 없는 id를 멱등으로 지나갔다). 삭제가 노출되며
+     * 계약이 404를 선언했고({@code note-update.contract.json}), 그 판정은 삭제 자체가 답한다.
+     * 없던 노트면 지울 파일도 없으므로 아래 정리 구간에 들어가지 않는다.
+     *
+     * @return 지웠으면 {@code true}, 없는 id였으면 {@code false}.
      */
     // POLICY: 행 삭제가 파일 삭제보다 **먼저**다 — 뒤집으면 행 삭제 실패 시 "사진만 사라진 노트"가 남는다.
     //         이 순서에서 남는 잔여물은 참조 없는 파일뿐이고 그것은 다시 지울 수 있다
     //         (ref: specs/coffee-note-agent/plan.md#ADR-79, 백엔드 CLAUDE.md §3).
-    public void delete(long id) {
+    public boolean delete(long id) {
         // 지운 뒤에는 경로도 폴더 접미도 알 수 없다 — 파일 정리에 필요한 것을 먼저 읽는다.
         List<String> photoPaths = noteTxService.photoPaths(id);
         String cardFolder = noteTxService.findById(id).map(NoteFolderName::of).orElse(null);
 
-        noteTxService.delete(id);
+        if (!noteTxService.delete(id)) {
+            return false;
+        }
 
         // 여기서부터는 best-effort다: 실패해도 노트는 이미 사라졌고 되돌릴 대상이 없다.
         try {
@@ -297,6 +305,7 @@ public class NoteService {
         } catch (RuntimeException e) {
             log.warn("삭제 후 파일 정리 실패(행은 이미 삭제됨): noteId={}", id, e);
         }
+        return true;
     }
 
     /**

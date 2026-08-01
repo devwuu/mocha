@@ -15,6 +15,7 @@ import com.devwuu.mocha.domain.NoteDetail;
 import com.devwuu.mocha.domain.NoteFacets;
 import com.devwuu.mocha.domain.NoteFilter;
 import com.devwuu.mocha.domain.NoteListItem;
+import com.devwuu.mocha.domain.NoteMeta;
 import com.devwuu.mocha.domain.NotePage;
 import com.devwuu.mocha.domain.NotePhoto;
 import com.devwuu.mocha.domain.Rating;
@@ -33,6 +34,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultMatcher;
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
@@ -51,6 +53,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -75,6 +78,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *
  * <p>{@link CommonConfig}를 함께 들이는 것이 필수다 — 도메인 JSON 규칙(snake_case)의 소유자가 그 빈이고,
  * 슬라이스가 그것 없이 뜨면 부트 기본 매퍼(camelCase)로 통과해 <b>계약과 다른 것을 검증</b>하게 된다.
+ *
+ * <p>TΔ5a가 읽기 둘({@code note-list}·{@code note-detail})을, <b>TΔ5b-3이 수정·삭제 셋</b>
+ * ({@code note-update})을 같은 규율로 보탰다. 수정 쪽에서 축 하나가 는다 — <b>요청에 자리가 없는 값</b>:
+ * 커피명을 본문에 몰래 실어도 저장 요청에 실리는 것은 <i>저장된 값</i>이다(V-9의 1차 방어선이 검사가
+ * 아니라 구조라는 것의 실행 가능한 형태). 실패는 자리로 갈린다 — {@code POST}의 대상 소실은 409,
+ * {@code PATCH}·{@code DELETE}의 그것은 404다.
  */
 @WebMvcTest(controllers = NoteController.class)
 @Import({CommonConfig.class, NoteControllerTest.Fakes.class})
@@ -84,6 +93,7 @@ class NoteControllerTest {
     private static final String CANDIDATES_CONTRACT = "/contract/note-candidates.contract.json";
     private static final String LIST_CONTRACT = "/contract/note-list.contract.json";
     private static final String DETAIL_CONTRACT = "/contract/note-detail.contract.json";
+    private static final String UPDATE_CONTRACT = "/contract/note-update.contract.json";
 
     /** 계약에 없는 값(V-11 원문)이 응답으로 새면 눈에 띄게 하는 마커 — 상세는 렌더이고 원문을 쓰지 않는다. */
     private static final String LEAKED_ORIGINAL = "ORIGINAL_MUST_NOT_LEAK";
@@ -387,6 +397,159 @@ class NoteControllerTest {
         assertThat(noteService.lastDetailId).isNull();
     }
 
+    // ─────────────────────── 수정·삭제 (TΔ5b-3, 계약 note-update) ───────────────────────
+
+    @Test
+    @DisplayName("TΔ5b-3/AC-5: 메타 수정 본문이 그대로 유스케이스에 닿고, 커피명은 저장된 값이 채운다(V-9 구조 차단)")
+    void metaUpdateReachesTheUseCaseWithTheStoredCoffeeName() throws Exception {
+        JsonNode update = load(UPDATE_CONTRACT);
+        noteService.stored = detailOf(load(DETAIL_CONTRACT).get("response")).note();
+        noteService.updated = detailOf(update.get("response_after_meta"));
+
+        patch("/api/notes/21", update.get("meta_request"), status().isOk());
+
+        assertThat(noteService.lastMetaId).isEqualTo(21L);
+        // 폼이 고친 값이 조용히 사라지지 않는다 — 커밋 왕복(TΔ6b)과 같은 축의 단언이다.
+        assertThat(noteService.lastMeta.roastery().value()).isEqualTo("프릳츠커피");
+        assertThat(noteService.lastMeta.beans()).hasSize(2);
+        assertThat(noteService.lastMeta.officialNotes().value()).containsExactly("자몽", "베르가못", "홍차");
+        assertThat(noteService.lastMeta.sources()).containsExactly("https://fritz.co.kr/products/ethiopia-gedeb");
+        // 커피명은 요청에 자리가 없으므로 서버가 저장된 값을 싣는다 — 이것이 V-9의 1차 방어선이다.
+        assertThat(noteService.lastMeta.coffeeName()).isEqualTo(noteService.stored.coffeeName());
+    }
+
+    @Test
+    @DisplayName("TΔ5b-3: 메타 수정 응답이 계약 파일과 바이트 단위로 같다 — 갱신된 노트 전문이 새 기준선이다")
+    void metaUpdateAnswersWithTheUpdatedNote() throws Exception {
+        JsonNode update = load(UPDATE_CONTRACT);
+        JsonNode expected = update.get("response_after_meta");
+        noteService.stored = detailOf(load(DETAIL_CONTRACT).get("response")).note();
+        noteService.updated = detailOf(expected);
+
+        String body = patch("/api/notes/21", update.get("meta_request"), status().isOk());
+
+        assertThat(mapper.readTree(body)).isEqualTo(expected);
+    }
+
+    @Test
+    @DisplayName("TΔ5b-3: 본문에 커피명을 실어도 저장 요청에 실리지 않는다 — 필드가 없어 닿을 자리가 없다(V-9)")
+    void metaUpdateIgnoresACoffeeNameSmuggledIntoTheBody() throws Exception {
+        JsonNode update = load(UPDATE_CONTRACT);
+        noteService.stored = detailOf(load(DETAIL_CONTRACT).get("response")).note();
+        noteService.updated = detailOf(update.get("response_after_meta"));
+        ObjectNode smuggled = (ObjectNode) update.get("meta_request");
+        smuggled.set("coffee_name", update.get("meta_request").get("roastery"));
+
+        patch("/api/notes/21", smuggled, status().isOk());
+
+        assertThat(noteService.lastMeta.coffeeName()).isEqualTo(noteService.stored.coffeeName());
+    }
+
+    @Test
+    @DisplayName("TΔ5b-3: 없는 노트의 메타 수정은 404 — 실을 커피명이 없다는 것과 고칠 노트가 없다는 것이 같은 사실이다")
+    void metaUpdateOnMissingNoteIsNotFound() throws Exception {
+        noteService.stored = null;
+
+        patch("/api/notes/999", load(UPDATE_CONTRACT).get("meta_request"), status().isNotFound());
+
+        assertThat(noteService.lastMeta).as("소실 노트에 쓰기가 나갔다").isNull();
+    }
+
+    @Test
+    @DisplayName("TΔ5b-3/AC-5: 엔트리 수정 — 경로의 date가 대상이고 본문의 date가 결과다")
+    void entryUpdateSeparatesTargetDateFromResultDate() throws Exception {
+        JsonNode update = load(UPDATE_CONTRACT);
+        noteService.updated = detailOf(update.get("response_after_meta"));
+
+        patch("/api/notes/21/entries/2026-07-02", update.get("entry_request"), status().isOk());
+
+        assertThat(noteService.lastEntryId).isEqualTo(21L);
+        assertThat(noteService.lastTargetDate).isEqualTo(LocalDate.of(2026, 7, 2));
+        assertThat(noteService.lastEntry.date()).isEqualTo(LocalDate.of(2026, 7, 2));
+        assertThat(noteService.lastEntry.brews()).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("TΔ5b-3/D-12: 날짜 이동 요청이 그대로 닿고, 응답은 병합된 노트 전문이다")
+    void entryUpdateCarriesTheDateMoveAndAnswersWithTheMergedNote() throws Exception {
+        JsonNode update = load(UPDATE_CONTRACT);
+        JsonNode expected = update.get("response_after_move");
+        noteService.updated = detailOf(expected);
+
+        String body = patch("/api/notes/21/entries/2026-07-02", update.get("entry_request_moved"), status().isOk());
+
+        // 대상은 경로, 결과는 본문 — 둘이 다르다는 사실 자체가 "이동"이다(합치는 일은 아래 층의 규칙).
+        assertThat(noteService.lastTargetDate).isEqualTo(LocalDate.of(2026, 7, 2));
+        assertThat(noteService.lastEntry.date()).isEqualTo(LocalDate.of(2026, 6, 28));
+        // 병합 결과를 화면이 따라 계산하지 않는다 — 엔트리 총수 감소·사진 URL의 날짜까지 서버가 답한다.
+        assertThat(mapper.readTree(body)).isEqualTo(expected);
+    }
+
+    @Test
+    @DisplayName("TΔ5b-3: 요청에 감상 원문이 없으므로 정규화본이 양쪽에 담긴다 — 수정하면 '말한 그대로'가 편집본으로 수렴한다(V-11)")
+    void entryUpdateFillsTheOriginalFromTheEditedTasting() throws Exception {
+        JsonNode update = load(UPDATE_CONTRACT);
+        noteService.updated = detailOf(update.get("response_after_meta"));
+
+        patch("/api/notes/21/entries/2026-07-02", update.get("entry_request"), status().isOk());
+
+        Tasting tasting = noteService.lastEntry.brews().getLast().tasting();
+        assertThat(tasting.myTaste()).isEqualTo("온도 낮추니 떫은 맛이 사라졌다. 다음에도 90℃로.");
+        assertThat(tasting.myTasteOriginal()).isEqualTo(tasting.myTaste());
+    }
+
+    @Test
+    @DisplayName("TΔ5b-3/V-15: 회차가 하나도 남지 않는 본문은 400 — 화면에 없는 엔트리 삭제 경로를 만들지 않는다")
+    void entryUpdateWithoutBrewsIsRejected() throws Exception {
+        ObjectNode empty = (ObjectNode) load(UPDATE_CONTRACT).get("entry_request");
+        // 빈 회차(레시피도 감상도 없음)는 V-15 정규화가 드롭한다 — 그 결과가 0건이면 저장할 시음이 없다.
+        empty.set("brews", mapper.createArrayNode().add(
+                mapper.createObjectNode().putNull("recipe").putNull("tasting")));
+
+        patch("/api/notes/21/entries/2026-07-02", empty, status().isBadRequest());
+
+        assertThat(noteService.lastEntry).as("저장할 회차가 없는 요청이 쓰기까지 갔다").isNull();
+    }
+
+    @Test
+    @DisplayName("TΔ5b-3: 대상 엔트리 소실은 404 — 고칠 것이 URL에 없다는 뜻이라 노트 소실과 같은 답이다")
+    void entryUpdateOnMissingTargetIsNotFound() throws Exception {
+        noteService.editFailure = new IllegalStateException("수정 대상 엔트리 소실: 21 2026-01-01");
+
+        patch("/api/notes/21/entries/2026-01-01", load(UPDATE_CONTRACT).get("entry_request"), status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("TΔ5b-3/AC-6: 삭제는 본문 없는 204")
+    void deleteAnswersWithNoContent() throws Exception {
+        noteService.deleted = true;
+
+        mockMvc.perform(MockMvcRequestBuilders.delete("/api/notes/21"))
+                .andExpect(status().isNoContent())
+                .andExpect(content().string(""));
+
+        assertThat(noteService.lastDeleteId).isEqualTo(21L);
+    }
+
+    @Test
+    @DisplayName("TΔ5b-3: 없는 id의 삭제는 404 — hard delete라 '지웠다'와 '지울 것이 없었다'를 뭉개지 않는다")
+    void deletingAMissingNoteIsNotFound() throws Exception {
+        noteService.deleted = false;
+
+        mockMvc.perform(MockMvcRequestBuilders.delete("/api/notes/999")).andExpect(status().isNotFound());
+
+        assertThat(noteService.lastDeleteId).isEqualTo(999L);
+    }
+
+    /** PATCH 요청 한 번 — 본문은 계약 파일의 노드 그대로다(손으로 지어내지 않는 규율). */
+    private String patch(String path, JsonNode request, ResultMatcher expected) throws Exception {
+        return mockMvc.perform(MockMvcRequestBuilders.patch(path)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(request)))
+                .andExpect(expected)
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+    }
+
     /** 계약 예시의 목록을 도메인으로 되돌린다 — 썸네일은 URL에서 V-4 상대 경로로 되벗긴다. */
     private static List<NoteListItem> listItems(JsonNode response) {
         return response.get("notes").valueStream().map(note -> new NoteListItem(
@@ -528,6 +691,19 @@ class NoteControllerTest {
         Long lastDetailId;
         NoteDetail detail;
 
+        // 0029 TΔ5b-3: 수정·삭제 셋. stored는 PATCH 메타가 읽는 저장된 노트(커피명의 출처 + 404 판정)이고,
+        // updated는 두 PATCH가 돌려줄 값이다. editFailure로 아래 층의 소실 예외를 세운다.
+        Note stored;
+        NoteDetail updated;
+        RuntimeException editFailure;
+        Long lastMetaId;
+        NoteMeta lastMeta;
+        Long lastEntryId;
+        LocalDate lastTargetDate;
+        Entry lastEntry;
+        Long lastDeleteId;
+        boolean deleted = true;
+
         RecordingNoteService() {
             super(null, null, null, null);
         }
@@ -546,6 +722,48 @@ class NoteControllerTest {
             page = NotePage.empty();
             lastDetailId = null;
             detail = null;
+            stored = null;
+            updated = null;
+            editFailure = null;
+            lastMetaId = null;
+            lastMeta = null;
+            lastEntryId = null;
+            lastTargetDate = null;
+            lastEntry = null;
+            lastDeleteId = null;
+            deleted = true;
+        }
+
+        @Override
+        public Optional<Note> findById(long id) {
+            return Optional.ofNullable(stored);
+        }
+
+        @Override
+        public NoteDetail updateMeta(long noteId, NoteMeta meta) {
+            lastMetaId = noteId;
+            lastMeta = meta;
+            if (editFailure != null) {
+                throw editFailure;
+            }
+            return updated;
+        }
+
+        @Override
+        public NoteDetail replaceEntry(long noteId, LocalDate targetDate, Entry entry) {
+            lastEntryId = noteId;
+            lastTargetDate = targetDate;
+            lastEntry = entry;
+            if (editFailure != null) {
+                throw editFailure;
+            }
+            return updated;
+        }
+
+        @Override
+        public boolean delete(long id) {
+            lastDeleteId = id;
+            return deleted;
         }
 
         @Override
