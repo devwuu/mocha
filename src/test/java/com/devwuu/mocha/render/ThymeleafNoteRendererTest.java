@@ -779,7 +779,7 @@ class ThymeleafNoteRendererTest {
         private final Map<Long, Note> notes = new LinkedHashMap<>();
 
         InMemoryNoteService() {
-            super(null, null);
+            super(null, null, null, null);
         }
 
         InMemoryNoteService put(Note note) {

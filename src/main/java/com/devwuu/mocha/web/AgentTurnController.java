@@ -1,5 +1,6 @@
 package com.devwuu.mocha.web;
 
+import com.devwuu.mocha.SingleUser;
 import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
 import com.devwuu.mocha.agent.turn.TurnResult;
 import com.devwuu.mocha.agent.turn.TurnRunner;

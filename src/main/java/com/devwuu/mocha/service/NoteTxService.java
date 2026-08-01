@@ -8,15 +8,18 @@ import com.devwuu.mocha.domain.NoteCandidate;
 import com.devwuu.mocha.domain.NoteMeta;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.repository.NoteEntityMapper;
+import com.devwuu.mocha.repository.NoteFolderName;
 import com.devwuu.mocha.repository.entity.BrewEntity;
 import com.devwuu.mocha.repository.entity.EntryEntity;
 import com.devwuu.mocha.repository.entity.NoteEntity;
+import com.devwuu.mocha.repository.entity.NotePhotoEntity;
 import com.devwuu.mocha.repository.entity.RecipeEntity;
 import com.devwuu.mocha.repository.entity.TastingEntity;
 import com.devwuu.mocha.repository.jpa.NoteEntityRepository;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -223,6 +226,46 @@ public class NoteTxService {
     private void replaceEntryRows(long noteId, Entry entry) {
         notes.findEntryId(noteId, entry.date()).ifPresent(notes::deleteEntry);
         insertEntry(noteId, entry);
+    }
+
+    // ────────────────────────────── 사진 색인 ──────────────────────────────
+
+    /**
+     * 아카이브로 옮겨진 사진을 노트에 잇는다 — {@code note_photo} 행 추가
+     * (ref: changes/0029 tasks.md TΔ8b, plan.md#ADR-79).
+     *
+     * <p><b>이 메서드는 노트 커밋과 같은 트랜잭션에 들 수 없다.</b> 사진의 최종 경로는 노트 id가 발급된
+     * 뒤에야 정해지고(폴더 접미가 {@code <id>-…}, ADR-75) 그 사이에 파일 이동이라는 외부 IO가 낀다 —
+     * 트랜잭션 안에 넣으려면 §3이 금지하는 것을 해야 한다. 그래서 <b>커밋 다음 트랜잭션</b>이고, 그 사이
+     * 실패는 "파일은 아카이브에 있는데 색인이 없다"로 수렴한다(파일이 정본이라 사진 유실이 아니다).
+     *
+     * <p>{@code seq}는 그 (노트, 날짜)에 이미 붙은 수에서 이어진다 — 같은 날짜 재저장은 엔트리를 통째로
+     * 교체하지만(ADR-4·59) <b>사진은 쌓는다</b>. 파일이 아카이브에 그대로 남아 있고 그것을 지우는 것은
+     * 재기록의 뜻이 아니다.
+     *
+     * @param paths {@code photos/}로 시작하는 상대 경로(V-4 어휘), {@code PhotoStore.commit}이 준 순서.
+     */
+    @Transactional
+    public void attachPhotos(long noteId, LocalDate tastedOn, List<String> paths) {
+        if (paths == null || paths.isEmpty()) {
+            return;
+        }
+        int seq = (int) notes.countPhotos(noteId, tastedOn);
+        List<NotePhotoEntity> rows = new ArrayList<>(paths.size());
+        for (String path : paths) {
+            rows.add(new NotePhotoEntity(noteId, tastedOn, seq++, path));
+        }
+        notes.insertAll(rows);
+    }
+
+    /**
+     * 그 노트에 딸린 사진 경로 전부 — {@code (날짜, seq)} 오름차순.
+     * <p>지금 읽는 곳은 둘이다: 삭제 시 지울 파일 목록, 그리고 <b>덧붙일 때 폴더 접미를 되읽는 자리</b>
+     * ({@link NoteFolderName#from}). 화면이 사진을 읽는 모양은 TΔ5a·TΔ12가 정한다.
+     */
+    @Transactional(readOnly = true)
+    public List<String> photoPaths(long noteId) {
+        return notes.findPhotoPaths(noteId);
     }
 
     // ────────────────────────────── 수정 ──────────────────────────────

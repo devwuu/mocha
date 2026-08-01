@@ -155,7 +155,7 @@ class BrewRulesSmokeTest {
     /** 저장 노트 없음 — 커밋 경로는 제안 tool이 부르지 않는다(ADR-45). 조회만 답하고 나머지는 상속분이다. */
     private static final class EmptyNoteService extends NoteService {
         EmptyNoteService() {
-            super(null, null);
+            super(null, null, null, null);
         }
 
         @Override

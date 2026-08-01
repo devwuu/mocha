@@ -256,7 +256,7 @@ class ConfigDefaultsTest {
                 .withUserConfiguration(RenderConfig.class)
                 // 0029 TΔ4a: 렌더러가 잡는 타입이 저장소 포트에서 NoteService로 바뀌었다. 구체 클래스라
                 // Proxy 스텁을 만들 수 없고, 배선 단언은 어떤 메서드도 부르지 않아 협력자 null로 충분하다.
-                .withBean(NoteService.class, () -> new NoteService(null, null))
+                .withBean(NoteService.class, () -> new NoteService(null, null, null, null))
                 .withBean(CardImageRenderer.class, () -> (html, baseDir, out) -> {
                 });
     }
@@ -276,7 +276,7 @@ class ConfigDefaultsTest {
     private static ApplicationContextRunner turnRunner() {
         return isolatedRunner()
                 .withUserConfiguration(TurnConfig.class)
-                .withBean(NoteService.class, () -> new NoteService(null, null))
+                .withBean(NoteService.class, () -> new NoteService(null, null, null, null))
                 .withBean(FoldingChatMemory.class, () -> new FoldingChatMemory(20, Duration.ofHours(1),
                         Clock.systemUTC()))
                 // 0029 TΔ6a: 턴 실행부가 빈이 되며 루프 드라이버·세그먼터가 이 러너의 협력자로 올라왔다

@@ -6,8 +6,11 @@ import com.devwuu.mocha.repository.jpa.NoteEntityRepository;
 import com.devwuu.mocha.service.NoteService;
 import com.devwuu.mocha.service.NoteTxService;
 import com.devwuu.mocha.service.PhotoService;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+
+import java.nio.file.Path;
 
 /**
  * 유스케이스 계층 빈 배선 (ref: 백엔드 CLAUDE.md §2, changes/0029 delta#D-8·D-9, tasks TΔ4a·TΔ4c).
@@ -32,9 +35,13 @@ public class ServiceConfig {
         return new NoteTxService(notes);
     }
 
+    // 0029 TΔ8b: 파일 협력자 둘이 늘었다 — 커밋의 사진 확정(PhotoStore)과 삭제의 카드 정리(artifactDir).
+    // 둘 다 외부 IO라 이 층이고, 그래서 NoteTxService의 생성자에는 여전히 나타나지 않는다.
     @Bean
-    public NoteService noteService(NoteTxService noteTxService, AliasGenerator aliasGenerator) {
-        return new NoteService(noteTxService, aliasGenerator);
+    public NoteService noteService(NoteTxService noteTxService, AliasGenerator aliasGenerator,
+                                   PhotoStore photoStore,
+                                   @Value(RenderConfig.DEFAULT_ARTIFACT_DIR) String artifactDir) {
+        return new NoteService(noteTxService, aliasGenerator, photoStore, Path.of(artifactDir));
     }
 
     // 사진 업로드 유스케이스(0029 TΔ8a) — 포맷 게이트 → EXIF 제거 → 스테이징. 트랜잭션이 없는 것이

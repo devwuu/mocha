@@ -43,7 +43,7 @@ public class PhotoService {
      * 경로가 정상분만 처리하고 안내하던 것(AC-46)은 <b>사용자가 무엇을 보낼지 고를 수 없던</b> 매체의
      * 사정이었고, 앱 피커에는 그 사정이 없다.
      *
-     * @param userId  스테이징 격리 키 — 고정 단일 사용자({@code web/SingleUser})다(A3 비범위).
+     * @param userId  스테이징 격리 키 — 고정 단일 사용자({@code com.devwuu.mocha.SingleUser})다(A3 비범위).
      * @param uploads 업로드된 사진 원본. 빈 목록이면 빈 결과(스테이징 무변화).
      * @return 스테이징된 파일명(입력 순서). 이 값이 그대로 턴 요청의 {@code photos}가 된다.
      * @throws IllegalArgumentException 수용하지 않는 포맷이거나 메타데이터를 걷어낼 수 없는 사진이 섞였을 때.
@@ -79,7 +79,8 @@ public class PhotoService {
      * 대기 중이던 스테이징 사진을 폐기한다 — 작성 취소 경로(FR-10).
      *
      * <p>구 {@code SlackCommitHandler.cancel}이 하던 일이고, 그 자리는 [취소] 통지
-     * ({@code POST /api/agent/cancel})가 이어받았다. 저장 확정 쪽 이동은 TΔ8b가 {@code NoteService.commit}에 붙인다.
+     * ({@code POST /api/agent/cancel})가 이어받았다. 저장 확정 쪽 이동은 {@code NoteService.commit}이
+     * 가져갔다(TΔ8b) — 아카이브 경로가 저장된 노트에서 나오므로 사진 유스케이스가 아니라 저장 유스케이스다.
      */
     public void discard(String userId) {
         photoStore.discard(userId);

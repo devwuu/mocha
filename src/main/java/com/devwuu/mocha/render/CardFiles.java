@@ -21,7 +21,8 @@ import java.util.List;
  */
 public final class CardFiles {
 
-    static final String CARDS_DIR = "cards";
+    /** 카드 뿌리 디렉터리명. 노트 삭제의 카드 정리(0029 TΔ8b)가 렌더러 밖에서 같은 규약을 쓴다. */
+    public static final String CARDS_DIR = "cards";
 
     private CardFiles() {
     }

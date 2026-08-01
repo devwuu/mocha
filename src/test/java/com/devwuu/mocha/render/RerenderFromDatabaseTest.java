@@ -156,7 +156,7 @@ class RerenderFromDatabaseTest extends PostgresIntegrationTest {
      * 별칭 생성기는 null이다: 렌더 경로는 커밋을 지나지 않아 닿을 일이 없고, 닿으면 NPE로 드러나야 한다.
      */
     private static NoteService serviceOver(NoteTxService repo) {
-        return new NoteService(repo, null);
+        return new NoteService(repo, null, null, null);
     }
 
     private List<Note> seedTwoNotes(NoteTxService repo) {

@@ -1,5 +1,6 @@
 package com.devwuu.mocha.service;
 
+import com.devwuu.mocha.SingleUser;
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
@@ -8,12 +9,21 @@ import com.devwuu.mocha.domain.NoteCandidate;
 import com.devwuu.mocha.domain.NoteMeta;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.llm.AliasGenerator;
+import com.devwuu.mocha.render.CardFiles;
+import com.devwuu.mocha.repository.NoteFolderName;
+import com.devwuu.mocha.repository.PhotoStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 /**
  * 노트 유스케이스 중 <b>외부 IO가 필요한 것</b>의 오케스트레이션
@@ -32,7 +42,7 @@ import java.util.Optional;
  *
  * <p><b>외부 IO가 없는 유스케이스도 여기를 지난다</b>(사용자 확정 2026-08-01, delta D-9). 상위 계층
  * (tool·렌더러·REST 컨트롤러)이 잡는 타입을 하나로 유지하기 위해서다 — 대가로 위임 한 줄 메서드가 생기고,
- * 사진 확정(TΔ8b)·카드(TΔ9)가 붙으면 대부분 실질을 갖는다.
+ * 사진 확정(TΔ8b)이 붙으며 {@link #commit}·{@link #delete}는 실질을 가졌다(카드는 TΔ9).
  *
  * <p><b>상위 계층의 테스트 격리 seam이다</b> — 구 {@code NoteRepository} 포트가 지던 역할이고, 포트가
  * TΔ4b에서 걷히며(ADR-76) 이 자리가 유일해졌다. 손 fake가 이 타입을 상속해 만들어지므로 {@code final}이
@@ -44,10 +54,15 @@ public class NoteService {
 
     private final NoteTxService noteTxService;
     private final AliasGenerator aliasGenerator;
+    private final PhotoStore photoStore;
+    private final Path artifactDir;
 
-    public NoteService(NoteTxService noteTxService, AliasGenerator aliasGenerator) {
+    public NoteService(NoteTxService noteTxService, AliasGenerator aliasGenerator,
+                       PhotoStore photoStore, Path artifactDir) {
         this.noteTxService = noteTxService;
         this.aliasGenerator = aliasGenerator;
+        this.photoStore = photoStore;
+        this.artifactDir = artifactDir;
     }
 
     // ────────────────────────────── 조회 ──────────────────────────────
@@ -92,7 +107,10 @@ public class NoteService {
      *       행을 읽어야 알 수 있어 트랜잭션 안에서 계산된다(TΔ4c).</li>
      * </ul>
      *
-     * <p>사진 확정(TΔ8b)·카드 생성(TΔ9)은 아직 여기 없다 — 둘 다 외부 IO라 이 메서드에 붙는다.
+     * <p><b>사진 확정은 저장 <i>뒤</i>다</b>(TΔ8b) — 순서가 뒤집힌 유일한 외부 IO이고, 그럴 수밖에 없다:
+     * 아카이브 폴더 접미가 {@code <id>-…}라(ADR-75) 신규 노트는 INSERT가 id를 발급하기 전까지 최종 경로가
+     * 없다. 그래서 사진은 스테이징에 머물다 여기서 옮겨진다({@link #archivePhotos}). 카드 생성(TΔ9)은
+     * 아직 여기 없다.
      *
      * <p>POLICY: 사용자 [저장] 확정 없이 이 메서드를 부르지 않는다 (ref: plan.md#ADR-3, AC-4).
      * <p>POLICY: 별칭 생성 콜 실패는 저장을 되돌리지 않는다 — 빈 별칭으로 수렴하고 저장은 유지한다.
@@ -111,8 +129,37 @@ public class NoteService {
         Aliases generated = isNew(match) ? generateAliases(draft) : null;
 
         Note saved = noteTxService.commit(draft.id(), meta, entry, generated);
+        archivePhotos(saved, entry.date());
         log.info("커밋 완료: noteId={} date={} entries={}", saved.id(), entry.date(), saved.entries().size());
         return saved;
+    }
+
+    /**
+     * 스테이징 사진을 이 노트의 아카이브로 옮기고 색인({@code note_photo})을 남긴다
+     * (ref: changes/0029 tasks.md TΔ8b, plan.md#ADR-79). 스테이징이 비어 있으면 아무 일도 하지 않는다.
+     *
+     * <p><b>폴더 접미는 계산보다 기록이 우선이다</b>: 이미 사진이 있는 노트면 그때 실제로 쓴 경로에서
+     * 되읽고({@link NoteFolderName#from}), 없을 때만 지금 이름으로 만든다. 접미는 생성 시점 스냅샷이라
+     * (ADR-75) 로스터리가 수정된 노트에서 재계산하면 옛 폴더와 갈리는데 — 0028이 <i>"근본 해법은 A2에서
+     * {@code note_photo}와 함께"</i>로 미뤄 둔 한계가 여기서 닫힌다.
+     */
+    // POLICY: 사진 확정 실패는 저장을 되돌리지 않는다 — DB 쓰기와 파일 쓰기는 같은 원자 단위가 아니고,
+    //         남은 스테이징은 시작 시 고아 청소가 걷는다
+    //         (ref: 백엔드 CLAUDE.md §3, specs/coffee-note-agent/plan.md#ADR-29·#ADR-79).
+    private void archivePhotos(Note saved, LocalDate date) {
+        try {
+            String folder = noteTxService.photoPaths(saved.id()).stream()
+                    .map(NoteFolderName::from).flatMap(Optional::stream).findFirst()
+                    .orElseGet(() -> NoteFolderName.of(saved));
+            List<String> paths = photoStore.commit(SingleUser.ID, folder, date.toString());
+            // 색인이 먼저 서고 실패해도 파일은 아카이브에 남는다 — 사진 바이트가 정본이라 유실이 아니다.
+            noteTxService.attachPhotos(saved.id(), date, paths);
+            if (!paths.isEmpty()) {
+                log.info("사진 확정: noteId={} date={} photos={}", saved.id(), date, paths.size());
+            }
+        } catch (RuntimeException e) {
+            log.warn("사진 확정 실패(저장은 유지): noteId={} date={}", saved.id(), date, e);
+        }
     }
 
     /** 별칭 <b>생성</b>은 신규 노트에서만 — 노트당 평생 1회다(ADR-37). */
@@ -150,12 +197,60 @@ public class NoteService {
     }
 
     /**
-     * 노트 삭제 — 하위 행을 남기지 않는 hard delete (ref: changes/0028 AC-Δ8).
-     * <p>없는 id는 무해하게 지나간다(멱등). 실패 응답이 필요해지는 것은 삭제를 노출하는 TΔ5다.
-     * <p>사진·카드 파일 정리가 붙는다면 외부 IO라 이 자리다 — 지금은 대상이 아니다(0028 delta#삭제-정책).
+     * 노트 삭제 — 하위 행도 <b>파일도</b> 남기지 않는 hard delete
+     * (ref: changes/0028 AC-Δ8, spec AC-6; 파일 몫은 changes/0029 tasks.md TΔ8b).
+     *
+     * <p><b>0028이 <i>"A2가 정한다"</i>로 미룬 결정이 여기서 닫혔다</b>(사용자 확정 2026-08-01): 사진
+     * 아카이브({@code data/photos/})와 카드 파생물({@code artifact/cards/})을 함께 지운다. 종전에 지우지
+     * 못한 이유는 <b>무엇을 지울지 알 수 없어서</b>였다 — 노트↔사진 연결이 폴더 규약뿐이었고 그 폴더명은
+     * 재계산으로 맞출 수 없다(ADR-75). {@code note_photo}가 실제 경로를 들고 있으므로 이제 답이 있다.
+     *
+     * <p>없는 id는 무해하게 지나간다(멱등). 실패 응답이 필요해지는 것은 삭제를 노출하는 TΔ5b다.
      */
+    // POLICY: 행 삭제가 파일 삭제보다 **먼저**다 — 뒤집으면 행 삭제 실패 시 "사진만 사라진 노트"가 남는다.
+    //         이 순서에서 남는 잔여물은 참조 없는 파일뿐이고 그것은 다시 지울 수 있다
+    //         (ref: specs/coffee-note-agent/plan.md#ADR-79, 백엔드 CLAUDE.md §3).
     public void delete(long id) {
+        // 지운 뒤에는 경로도 폴더 접미도 알 수 없다 — 파일 정리에 필요한 것을 먼저 읽는다.
+        List<String> photoPaths = noteTxService.photoPaths(id);
+        String cardFolder = noteTxService.findById(id).map(NoteFolderName::of).orElse(null);
+
         noteTxService.delete(id);
+
+        // 여기서부터는 best-effort다: 실패해도 노트는 이미 사라졌고 되돌릴 대상이 없다.
+        try {
+            photoStore.deletePhotos(photoPaths);
+            removeCards(cardFolder);
+        } catch (RuntimeException e) {
+            log.warn("삭제 후 파일 정리 실패(행은 이미 삭제됨): noteId={}", id, e);
+        }
+    }
+
+    /**
+     * 그 노트의 카드 폴더를 통째로 지운다 — {@code artifact/cards/<접미>/}.
+     *
+     * <p>카드가 <b>렌더러를 지나지 않는</b> 이유는 의존 방향이다: {@code ThymeleafNoteRenderer}가 이
+     * 클래스를 잡고 있어({@code NoteRenderer}의 조회원) 반대 방향 주입은 순환이다. 지우는 일에는 렌더
+     * 프로바이더가 필요 없고 경로 규약만 있으면 되므로({@link CardFiles}가 단일 소유) 여기서 파일만 걷는다.
+     * 놓친 카드가 있어도 {@code renderAll}의 고아 정리가 최종 회수 지점이다(plan §7).
+     */
+    private void removeCards(String noteFolder) {
+        if (noteFolder == null || artifactDir == null) {
+            return;
+        }
+        Path cardsDir = artifactDir.resolve(CardFiles.CARDS_DIR).resolve(noteFolder);
+        if (!Files.isDirectory(cardsDir)) {
+            return;
+        }
+        try (Stream<Path> walk = Files.walk(cardsDir)) {
+            // 깊은 경로부터 — 파일을 지운 뒤라야 폴더가 빈다.
+            for (Path path : walk.sorted(Comparator.reverseOrder()).toList()) {
+                Files.deleteIfExists(path);
+            }
+            log.info("카드 폴더 삭제: {}", cardsDir);
+        } catch (IOException e) {
+            throw new UncheckedIOException("카드 폴더 삭제 실패: " + cardsDir, e);
+        }
     }
 
     // ────────────────────────────── 도메인 조각 ──────────────────────────────

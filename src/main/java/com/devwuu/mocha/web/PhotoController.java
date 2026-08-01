@@ -1,5 +1,6 @@
 package com.devwuu.mocha.web;
 
+import com.devwuu.mocha.SingleUser;
 import com.devwuu.mocha.service.PhotoService;
 import com.devwuu.mocha.service.PhotoUpload;
 import org.slf4j.Logger;

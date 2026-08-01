@@ -1,5 +1,6 @@
 package com.devwuu.mocha.web;
 
+import com.devwuu.mocha.SingleUser;
 import com.devwuu.mocha.agent.AgentException;
 import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
 import com.devwuu.mocha.agent.conversation.TranscriptTurn;

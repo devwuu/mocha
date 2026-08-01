@@ -1,5 +1,6 @@
 package com.devwuu.mocha.web;
 
+import com.devwuu.mocha.SingleUser;
 import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteCandidate;
@@ -39,9 +40,10 @@ import java.util.List;
  * <p>POLICY: 저장이 실패하면 접지 않는다 — 폼도 문맥도 사용자 쪽에 남아 재시도가 성립해야 한다
  * (ref: plan.md#ADR-3 <i>"저장은 확인 이후에만"</i>의 대칭).
  *
- * <p><b>사진 확정은 아직 여기 없다</b> — 구 {@code SlackCommitHandler}가 커밋 뒤에 하던 일인데 TΔ16에서
- * 사진 입구가 사라져 확정할 스테이징이 생기지 않는다(버퍼 정리는 버퍼와 함께 소멸했다). TΔ8b가
- * {@code NoteService.commit} 안에 붙인다(시그니처 무변화 — 이 컨트롤러는 그때도 안 바뀐다).
+ * <p><b>사진 확정은 이 컨트롤러에 없다</b>(TΔ8b) — 구 {@code SlackCommitHandler}가 커밋 뒤에 하던 일이고,
+ * 그 자리는 {@code NoteService.commit} 안이다. 예고대로 <b>시그니처가 바뀌지 않아 이 코드는 한 줄도
+ * 고쳐지지 않았다</b>: 스테이징 소유 키가 고정 단일 사용자이고 폴더 접미·날짜는 저장된 노트에서 나오므로
+ * 전송 계층이 넘길 것이 없다.
  */
 @RestController
 @RequestMapping("/api/notes")

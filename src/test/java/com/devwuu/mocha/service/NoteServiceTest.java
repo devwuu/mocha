@@ -15,10 +15,17 @@ import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.domain.Tasting;
 import com.devwuu.mocha.llm.AliasGenerator;
+import com.devwuu.mocha.repository.NoteFolderName;
+import com.devwuu.mocha.repository.RecordingPhotoStore;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -44,9 +51,18 @@ import java.util.Optional;
  */
 class NoteServiceTest {
 
+    @TempDir
+    Path artifactDir;
+
     private final RecordingTxService tx = new RecordingTxService();
     private final RecordingAliasGenerator aliasGenerator = new RecordingAliasGenerator();
-    private final NoteService service = new NoteService(tx, aliasGenerator);
+    private final RecordingPhotoStore photoStore = new RecordingPhotoStore();
+    private NoteService service;
+
+    @BeforeEach
+    void setUp() {
+        service = new NoteService(tx, aliasGenerator, photoStore, artifactDir);
+    }
 
     @Nested
     @DisplayName("커밋 — 외부 콜의 발동과 순서")
@@ -167,6 +183,105 @@ class NoteServiceTest {
         }
     }
 
+    @Nested
+    @DisplayName("TΔ8b 사진 아카이브 — 확정과 정리")
+    class Photos {
+
+        @Test
+        @DisplayName("커밋은 저장 뒤에 스테이징을 아카이브로 옮기고 색인을 남긴다 — 폴더는 저장이 발급한 id로 시작한다")
+        void commitArchivesStagedPhotos() {
+            photoStore.committedPaths = List.of("photos/1-로스터리-커피/2026-07-10/bag.jpg");
+
+            Note saved = service.commit(draft(null, "커피", "로스터리"), MatchInfo.newNote());
+
+            // 접미가 <id>-…라 신규 노트는 INSERT 뒤에야 경로가 정해진다 — 그래서 확정이 커밋 다음이다.
+            assertThat(photoStore.committedFolders).containsExactly(NoteFolderName.of(saved));
+            assertThat(photoStore.committedDates).containsExactly("2026-07-10");
+            assertThat(tx.attached).containsExactly("photos/1-로스터리-커피/2026-07-10/bag.jpg");
+            assertThat(tx.lastAttachNoteId).isEqualTo(saved.id());
+            assertThat(tx.lastAttachDate).isEqualTo(day(10));
+        }
+
+        @Test
+        @DisplayName("0028 한계 해소: 사진이 이미 있는 노트는 저장된 경로의 폴더를 되읽는다 — 재계산하지 않는다")
+        void existingNoteReusesRecordedFolder() {
+            // 폴더명은 생성 시점 스냅샷이다(ADR-75). 로스터리가 그 뒤에 수정됐으므로 지금 이름으로
+            // 재계산하면 옛 폴더와 갈리고, 같은 노트의 사진이 두 폴더로 흩어진다.
+            tx.put(saved(7, "커피", "새 로스터리", Aliases.empty()));
+            tx.photos.add("photos/7-옛로스터리-커피/2026-07-09/bag.jpg");
+            photoStore.committedPaths = List.of("photos/7-옛로스터리-커피/2026-07-10/bag.jpg");
+
+            service.commit(draft(7L, "커피", "새 로스터리"), MatchInfo.existing(7L, day(10)));
+
+            assertThat(photoStore.committedFolders).containsExactly("7-옛로스터리-커피");
+        }
+
+        @Test
+        @DisplayName("스테이징이 비면 색인 행을 만들지 않는다 — 사진 없는 저장이 정상 경로다")
+        void commitWithoutPhotosAttachesNothing() {
+            service.commit(draft(null, "커피", "로스터리"), MatchInfo.newNote());
+
+            assertThat(tx.attached).isEmpty();
+        }
+
+        @Test
+        @DisplayName("백엔드 CLAUDE.md §3: 사진 확정 실패는 저장을 되돌리지 않는다 — 노트는 남고 사진은 스테이징에 남는다")
+        void photoFailureDoesNotRollBackSave() {
+            photoStore.commitFailure = new IllegalStateException("디스크 실패");
+
+            Note saved = service.commit(draft(null, "커피", "로스터리"), MatchInfo.newNote());
+
+            assertThat(saved.id()).isNotNull();
+            assertThat(tx.commits).isOne();
+            assertThat(tx.attached).isEmpty();
+        }
+
+        @Test
+        @DisplayName("AC-6: 삭제는 사진 아카이브와 카드 파생물까지 지운다 — 0028이 A2로 미룬 결정")
+        void deleteRemovesPhotoAndCardFiles() throws IOException {
+            Note note = saved(7, "커피", "로스터리", Aliases.empty());
+            tx.put(note);
+            tx.photos.add("photos/7-로스터리-커피/2026-07-10/bag.jpg");
+            Path cardsDir = artifactDir.resolve("cards").resolve(NoteFolderName.of(note));
+            Files.createDirectories(cardsDir);
+            Files.writeString(cardsDir.resolve("2026-07-10-taste-1.jpg"), "카드");
+
+            service.delete(7);
+
+            assertThat(photoStore.deleted).containsExactly("photos/7-로스터리-커피/2026-07-10/bag.jpg");
+            assertThat(cardsDir).doesNotExist();
+        }
+
+        @Test
+        @DisplayName("POLICY: 파일 정리가 실패해도 행 삭제는 유지된다 — 순서가 행 먼저이기 때문이다")
+        void fileCleanupFailureDoesNotResurrectNote() {
+            tx.put(saved(7, "커피", "로스터리", Aliases.empty()));
+            tx.photos.add("photos/7-로스터리-커피/2026-07-10/bag.jpg");
+            NoteService failing = new NoteService(tx, aliasGenerator, new RecordingPhotoStore() {
+                @Override
+                public void deletePhotos(List<String> relativePaths) {
+                    throw new IllegalStateException("파일 시스템 실패");
+                }
+            }, artifactDir);
+
+            failing.delete(7);
+
+            assertThat(tx.deletes).isOne();
+            assertThat(tx.findById(7)).isEmpty();
+        }
+
+        @Test
+        @DisplayName("사진이 없는 노트 삭제는 파일 정리를 부르지 않는다 — 지울 것이 없다")
+        void deleteWithoutPhotosIsHarmless() {
+            tx.put(saved(7, "커피", "로스터리", Aliases.empty()));
+
+            service.delete(7);
+
+            assertThat(photoStore.deleted).isEmpty();
+            assertThat(tx.deletes).isOne();
+        }
+    }
+
     // ────────────────────────────── 표본 ──────────────────────────────
 
     private static LocalDate day(int dayOfMonth) {
@@ -214,6 +329,13 @@ class NoteServiceTest {
         private LocalDate lastTargetDate;
         private Aliases lastGenerated;
         private int commits;
+        private int deletes;
+
+        /** 이미 색인된 사진 경로 — 폴더 접미를 되읽는 입력이자 삭제가 지울 목록이다(TΔ8b). */
+        private final List<String> photos = new ArrayList<>();
+        private final List<String> attached = new ArrayList<>();
+        private Long lastAttachNoteId;
+        private LocalDate lastAttachDate;
 
         RecordingTxService() {
             super(null);
@@ -261,6 +383,20 @@ class NoteServiceTest {
         @Override
         public void delete(long id) {
             notes.remove(id);
+            deletes++;
+        }
+
+        @Override
+        public void attachPhotos(long noteId, LocalDate tastedOn, List<String> paths) {
+            lastAttachNoteId = noteId;
+            lastAttachDate = tastedOn;
+            attached.addAll(paths);
+            photos.addAll(paths);
+        }
+
+        @Override
+        public List<String> photoPaths(long noteId) {
+            return List.copyOf(photos);
         }
     }
 

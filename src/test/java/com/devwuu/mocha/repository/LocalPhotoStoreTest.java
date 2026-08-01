@@ -120,6 +120,64 @@ class LocalPhotoStoreTest {
     }
 
     @Test
+    @DisplayName("TΔ8b: deletePhotos는 지정 파일을 지우고 비게 된 날짜·노트 폴더를 접는다 (AC-6)")
+    void deletePhotosRemovesFilesAndEmptyDirs() {
+        store.stage(USER, "a.jpg", jpeg(1));
+        store.stage(USER, "b.jpg", jpeg(2));
+        List<String> relPaths = store.commit(USER, "yirga", "2026-07-08");
+
+        store.deletePhotos(relPaths);
+
+        // 파일이 빠졌으면 그 껍데기 폴더도 남기지 않는다 — 폴더=진실 불변식의 정리 몫.
+        assertThat(dataDir.resolve("photos").resolve("yirga")).doesNotExist();
+    }
+
+    @Test
+    @DisplayName("TΔ8b: 다른 날짜의 사진은 남는다 — 지울 대상은 넘긴 목록뿐이다")
+    void deletePhotosIsScopedToGivenPaths() {
+        store.stage(USER, "a.jpg", jpeg(1));
+        List<String> july8 = store.commit(USER, "yirga", "2026-07-08");
+        store.stage(USER, "b.jpg", jpeg(2));
+        store.commit(USER, "yirga", "2026-07-09");
+
+        store.deletePhotos(july8);
+
+        assertThat(dataDir.resolve("photos").resolve("yirga").resolve("2026-07-08")).doesNotExist();
+        // 노트 폴더는 아직 비지 않았으므로 접히지 않는다.
+        assertThat(dataDir.resolve("photos").resolve("yirga").resolve("2026-07-09").resolve("b.jpg")).exists();
+    }
+
+    @Test
+    @DisplayName("TΔ8b POLICY: 규약을 벗어난 경로는 지우지 않고 건너뛴다 — 경로가 곧 삭제 명령이다")
+    void deletePhotosRefusesPathsOutsideArchive() throws IOException {
+        Path outsider = dataDir.resolve("secret.txt");
+        Files.writeString(outsider, "건드리면 안 되는 파일");
+        store.stage(USER, "a.jpg", jpeg(1));
+        List<String> kept = store.commit(USER, "yirga", "2026-07-08");
+
+        store.deletePhotos(List.of("../secret.txt", "photos/../../secret.txt", "secret.txt"));
+
+        assertThat(outsider).exists();
+        // 정상 경로는 여전히 지울 수 있다 — 거부가 전체를 막는 것이 아니다.
+        store.deletePhotos(kept);
+        assertThat(dataDir.resolve("photos").resolve("yirga")).doesNotExist();
+    }
+
+    @Test
+    @DisplayName("TΔ8b: 없는 파일·빈 목록은 무해하게 지나간다(멱등) — 두 번 지워도 같다")
+    void deletePhotosIsIdempotent() {
+        store.stage(USER, "a.jpg", jpeg(1));
+        List<String> relPaths = store.commit(USER, "yirga", "2026-07-08");
+
+        store.deletePhotos(relPaths);
+        store.deletePhotos(relPaths);
+        store.deletePhotos(List.of());
+        store.deletePhotos(null);
+
+        assertThat(dataDir.resolve("photos").resolve("yirga")).doesNotExist();
+    }
+
+    @Test
     @DisplayName("TΔ3(0014): moveEntryPhotos는 옛 날짜 폴더 파일 전부를 새 날짜로 옮기고 빈 옛 폴더를 제거한다 (AC-Δ4)")
     void moveEntryPhotosMovesAllFilesAndRemovesEmptySource() {
         store.stage(USER, "a.jpg", jpeg(1));

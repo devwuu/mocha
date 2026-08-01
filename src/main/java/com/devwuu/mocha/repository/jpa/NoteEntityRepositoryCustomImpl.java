@@ -6,6 +6,7 @@ import static com.devwuu.mocha.repository.entity.QNoteAliasEntity.noteAliasEntit
 import static com.devwuu.mocha.repository.entity.QNoteBeanEntity.noteBeanEntity;
 import static com.devwuu.mocha.repository.entity.QNoteEntity.noteEntity;
 import static com.devwuu.mocha.repository.entity.QNoteOfficialNoteEntity.noteOfficialNoteEntity;
+import static com.devwuu.mocha.repository.entity.QNotePhotoEntity.notePhotoEntity;
 import static com.devwuu.mocha.repository.entity.QNoteSourceEntity.noteSourceEntity;
 import static com.devwuu.mocha.repository.entity.QRecipeEntity.recipeEntity;
 import static com.devwuu.mocha.repository.entity.QTastingEntity.tastingEntity;
@@ -169,6 +170,23 @@ class NoteEntityRepositoryCustomImpl implements NoteEntityRepositoryCustom {
     }
 
     @Override
+    public List<String> findPhotoPaths(long noteId) {
+        return query.select(notePhotoEntity.path).from(notePhotoEntity)
+                .where(notePhotoEntity.noteId.eq(noteId))
+                // 계약 순서: 날짜 → 그 안의 seq. 아카이브 폴더를 훑은 것과 같은 순서로 보인다.
+                .orderBy(notePhotoEntity.tastedOn.asc(), notePhotoEntity.seq.asc())
+                .fetch();
+    }
+
+    @Override
+    public long countPhotos(long noteId, LocalDate tastedOn) {
+        Long count = query.select(notePhotoEntity.count()).from(notePhotoEntity)
+                .where(notePhotoEntity.noteId.eq(noteId), notePhotoEntity.tastedOn.eq(tastedOn))
+                .fetchOne();
+        return count == null ? 0L : count;
+    }
+
+    @Override
     public void deleteNoteArraysExceptAliases(long noteId) {
         query.delete(noteBeanEntity).where(noteBeanEntity.noteId.eq(noteId)).execute();
         query.delete(noteOfficialNoteEntity).where(noteOfficialNoteEntity.noteId.eq(noteId)).execute();
@@ -202,6 +220,9 @@ class NoteEntityRepositoryCustomImpl implements NoteEntityRepositoryCustom {
         // 별칭은 여기서만 지운다 — 수정 세션이 남기는 것은 원본 존치(V-13) 때문이고 노트가 사라지는
         // 자리에는 그 근거가 없다.
         query.delete(noteAliasEntity).where(noteAliasEntity.noteId.eq(noteId)).execute();
+        // 사진 색인도 함께 — 파일은 이 트랜잭션이 아니라 호출부(NoteService)가 커밋 뒤에 지운다.
+        // 순서가 그쪽인 근거는 V3 마이그레이션 POLICY가 소유한다(사진 바이트를 조용히 잃지 않는다).
+        query.delete(notePhotoEntity).where(notePhotoEntity.noteId.eq(noteId)).execute();
         // 노트 행은 마지막이다. 엔티티로 실어 와 em.remove()에 맡기지 않는 것은 deleteEntry와 같은 이유 —
         // Hibernate의 flush 순서가 삭제를 항상 마지막에 두므로, 삭제가 언제 나가는지를 코드가 쥘 수 없다.
         query.delete(noteEntity).where(noteEntity.id.eq(noteId)).execute();

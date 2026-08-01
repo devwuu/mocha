@@ -1,5 +1,6 @@
 package com.devwuu.mocha.web;
 
+import com.devwuu.mocha.SingleUser;
 import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
 import com.devwuu.mocha.agent.conversation.TranscriptTurn;
 import com.devwuu.mocha.config.CommonConfig;
@@ -274,7 +275,7 @@ class NoteControllerTest {
         List<NoteCandidate> candidates = List.of();
 
         RecordingNoteService() {
-            super(null, null);
+            super(null, null, null, null);
         }
 
         void reset() {

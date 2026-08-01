@@ -48,6 +48,23 @@ public interface PhotoStore {
     void discard(String userId);
 
     /**
+     * 노트 삭제에 딸린 아카이브 정리 — 상대 경로 목록의 파일을 지우고 비게 된 날짜·노트 폴더를 접는다
+     * (ref: changes/0029 tasks.md TΔ8b, AC-6).
+     *
+     * <p>지울 대상을 <b>스캔이 아니라 목록으로</b> 받는 이유는 폴더 접미가 생성 시점 스냅샷이라(ADR-75)
+     * 지금 이름으로 재계산하면 옛 폴더와 갈릴 수 있어서다 — 무엇을 썼는지는 {@code note_photo}가 안다.
+     *
+     * <p>POLICY: {@code photos/}로 시작하지 않거나 상위 참조({@code ..})가 섞인 경로는 <b>지우지 않고
+     * 건너뛴다</b> — 경로가 곧 삭제 명령이라 저장소 트리 밖으로 새지 않게 입구에서 막는다.
+     *
+     * <p>없는 파일은 무해하게 지나간다(멱등). 호출부는 실패를 노트 삭제 롤백 사유로 삼지 않는다 —
+     * 행이 먼저 사라지고 파일 정리는 후속 best-effort다(plan.md#ADR-79).
+     *
+     * @param relativePaths {@code photos/...} 상대 경로 목록. null·빈 목록이면 아무 일도 하지 않는다.
+     */
+    void deletePhotos(List<String> relativePaths);
+
+    /**
      * 수정 세션 날짜 이동 시 그 엔트리의 아카이브 폴더를 새 날짜로 동반 이동한다(ADR-32, FR-21).
      * <p>{@code photos/<noteFolder>/<fromDate>/}의 파일 전부를 {@code photos/<noteFolder>/<toDate>/}로 옮기고
      * 빈 옛 폴더를 제거한다 — 폴더=진실 불변식을 유지하기 위함이다. 대상 폴더에 같은 이름 파일이 있으면
@@ -66,7 +83,7 @@ public interface PhotoStore {
      * 스테이징에 원본이 남아 있는 사용자 키 목록(스테이징 하위 디렉토리명). 없으면 빈 목록.
      * <p>앱 시작 시 고아 청소({@code service/StagingSweeper}, ADR-29)가 이 목록을 쓴다 — 대조할 참조
      * (pending·buffer)가 0029에서 차례로 사라져 <b>시작 시 남아 있으면 곧 고아</b>다.
-     * 반환값은 {@code stage} 시 정규화된 안전 키(단일 사용자 전제상 {@code userId}와 동치 — {@code web/SingleUser}).
+     * 반환값은 {@code stage} 시 정규화된 안전 키(단일 사용자 전제상 {@code userId}와 동치 — {@code com.devwuu.mocha.SingleUser}).
      *
      * @return 스테이징 사용자 키, 오름차순.
      */

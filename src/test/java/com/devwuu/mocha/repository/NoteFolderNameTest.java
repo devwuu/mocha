@@ -81,4 +81,22 @@ class NoteFolderNameTest {
         assertThat(NoteFolderName.of(3, "///", "예가체프")).isEqualTo("3-예가체프")
                 .doesNotContain("--");
     }
+
+    @Test
+    @DisplayName("TΔ8b: 저장된 상대 경로에서 폴더 접미를 되읽는다 — 재계산이 아니라 기록을 읽는 자리")
+    void readsFolderBackFromRecordedPath() {
+        assertThat(NoteFolderName.from("photos/12-프로토콜-예가체프/2026-07-10/bag.jpg"))
+                .contains("12-프로토콜-예가체프");
+    }
+
+    @Test
+    @DisplayName("TΔ8b: 형태가 아니면 빈 Optional — 호출부가 재계산으로 수렴한다")
+    void returnsEmptyForNonArchivePaths() {
+        // photos/ 로 시작하지 않거나(다른 트리) 날짜·파일 세그먼트가 없으면 접미를 답할 수 없다.
+        assertThat(NoteFolderName.from(null)).isEmpty();
+        assertThat(NoteFolderName.from("")).isEmpty();
+        assertThat(NoteFolderName.from("cards/12-프로토콜-예가체프/2026-07-10-taste-1.jpg")).isEmpty();
+        assertThat(NoteFolderName.from("photos/12-프로토콜-예가체프/2026-07-10")).isEmpty();
+        assertThat(NoteFolderName.from("photos//2026-07-10/bag.jpg")).isEmpty();
+    }
 }

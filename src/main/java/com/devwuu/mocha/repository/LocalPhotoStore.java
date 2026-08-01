@@ -1,6 +1,8 @@
 package com.devwuu.mocha.repository;
 
 import com.devwuu.mocha.image.ImageFormat;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -26,6 +28,8 @@ import java.util.stream.Stream;
  * 만들지 않는다.
  */
 public class LocalPhotoStore implements PhotoStore {
+
+    private static final Logger log = LoggerFactory.getLogger(LocalPhotoStore.class);
 
     // 노트 폴더와 절대 겹치지 않는 예약 디렉토리.
     // POLICY: 근거는 "접미가 항상 <id>-로 시작한다"이다 — slug 시절의 근거였던 "[a-z0-9-]+라 '.' 불가"는
@@ -108,6 +112,64 @@ public class LocalPhotoStore implements PhotoStore {
             deleteStaging(staging);
         } catch (IOException e) {
             throw new UncheckedIOException("사진 스테이징 폐기 실패: " + staging, e);
+        }
+    }
+
+    @Override
+    public void deletePhotos(List<String> relativePaths) {
+        if (relativePaths == null || relativePaths.isEmpty()) {
+            return;
+        }
+        // 지운 파일이 있던 폴더만 접기 후보다 — 전 트리를 훑지 않는다.
+        List<Path> parents = new ArrayList<>();
+        for (String relativePath : relativePaths) {
+            Path file = resolveArchived(relativePath);
+            if (file == null) {
+                log.warn("아카이브 삭제 건너뜀(경로 규약 위반): {}", relativePath);
+                continue;
+            }
+            try {
+                Files.deleteIfExists(file);
+                parents.add(file.getParent());
+            } catch (IOException e) {
+                throw new UncheckedIOException("아카이브 사진 삭제 실패: " + file, e);
+            }
+        }
+        pruneEmptyDirs(parents);
+    }
+
+    /**
+     * 상대 경로를 아카이브 안의 실제 경로로 — 규약을 어기면 {@code null}(호출부가 건너뛴다).
+     * <p>{@code photos/} 접두 요구가 곧 경로 이스케이프 방어다: 정규화한 결과가 아카이브 뿌리 밖으로
+     * 나가면 거부한다(V-4가 저장 측에서 지키는 규약을 삭제 측에서도 강제).
+     */
+    private Path resolveArchived(String relativePath) {
+        if (relativePath == null || !relativePath.startsWith("photos/")) {
+            return null;
+        }
+        Path resolved = photosDir.resolve(relativePath.substring("photos/".length())).normalize();
+        return resolved.startsWith(photosDir.normalize()) ? resolved : null;
+    }
+
+    /** 사진이 빠져 빈 껍데기가 된 날짜 폴더와 그 위 노트 폴더를 접는다 — 폴더=진실 불변식의 정리 몫. */
+    private void pruneEmptyDirs(List<Path> dateDirs) {
+        for (Path dateDir : dateDirs.stream().distinct().toList()) {
+            deleteIfEmpty(dateDir);
+            // 그 날짜가 마지막이었다면 노트 폴더도 함께 사라진다.
+            deleteIfEmpty(dateDir.getParent());
+        }
+    }
+
+    private void deleteIfEmpty(Path dir) {
+        if (dir == null || !Files.isDirectory(dir) || dir.equals(photosDir)) {
+            return;
+        }
+        try (Stream<Path> entries = Files.list(dir)) {
+            if (entries.findAny().isEmpty()) {
+                Files.delete(dir);
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException("빈 사진 폴더 정리 실패: " + dir, e);
         }
     }
 

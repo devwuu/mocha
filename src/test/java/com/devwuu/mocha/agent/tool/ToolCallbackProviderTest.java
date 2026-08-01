@@ -299,7 +299,7 @@ class ToolCallbackProviderTest {
         private final Map<Long, Note> notes = new LinkedHashMap<>();
 
         StubNoteService() {
-            super(null, null);
+            super(null, null, null, null);
         }
 
         void put(Note note) {

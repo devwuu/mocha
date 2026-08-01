@@ -9,7 +9,8 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * {@link NoteEntityRepository}의 QueryDSL 몫 — 노트의 <b>자식 9종</b> 입출력.
+ * {@link NoteEntityRepository}의 QueryDSL 몫 — 노트의 <b>자식 10종</b> 입출력
+ * (사진 {@code note_photo}이 changes/0029 TΔ8b에서 늘었다).
  *
  * <p>구현은 {@link NoteEntityRepositoryCustomImpl}(Spring Data가 이름 규약으로 찾아 붙인다).
  *
@@ -119,8 +120,26 @@ public interface NoteEntityRepositoryCustom {
     void deleteEntry(long entryId);
 
     /**
-     * 노트 한 건을 <b>하위부터</b> 통째로 지운다 — tasting·recipe → brew → entry → 배열 4종 → note
-     * (ref: changes/0028-rdb-storage/tasks.md TΔ5d, AC-Δ8).
+     * 그 노트에 딸린 사진 경로 전부 — {@code (tasted_on, seq)} 오름차순, 없으면 빈 목록
+     * (ref: changes/0029 tasks.md TΔ8b).
+     *
+     * <p>값은 {@code photos/}로 시작하는 상대 경로다(V-4 어휘). 삭제 시 지울 파일 목록이자, <b>기존 노트에
+     * 사진을 덧붙일 때 폴더 접미를 되읽는 자리</b>이기도 하다 — 접미는 생성 시점 스냅샷이라 지금 이름으로
+     * 재계산하면 로스터리가 수정된 노트에서 옛 폴더와 갈린다(0028 파생 결정 2가 남긴 한계).
+     */
+    List<String> findPhotoPaths(long noteId);
+
+    /**
+     * 그 (노트, 날짜)에 이미 붙어 있는 사진 수 — 다음 {@code seq}의 시작점.
+     *
+     * <p>같은 날짜를 다시 저장하면 엔트리는 통째로 교체되지만(ADR-4·59) <b>사진은 쌓인다</b> — 파일이
+     * 아카이브에 그대로 남아 있고, 그것을 지우는 것은 재기록의 뜻이 아니기 때문이다.
+     */
+    long countPhotos(long noteId, LocalDate tastedOn);
+
+    /**
+     * 노트 한 건을 <b>하위부터</b> 통째로 지운다 — tasting·recipe → brew → entry → 배열 4종 + 사진 → note
+     * (ref: changes/0028-rdb-storage/tasks.md TΔ5d, AC-Δ8; 사진은 changes/0029 TΔ8b).
      *
      * <p>{@code cascade}·{@code orphanRemoval}을 쓰지 않으므로(ADR-75) 이 순서를 <b>코드가 소유한다</b> —
      * {@link #deleteEntry}가 엔트리 하나에 대해 지는 책임을 애그리거트 전체로 넓힌 자리다. 부모를 먼저

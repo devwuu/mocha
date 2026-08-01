@@ -7,9 +7,10 @@ import java.util.List;
  * 사진 저장소 손 fake — <b>무엇이 스테이징에 닿았고 무엇이 폐기됐는가</b>만 붙든다
  * (changes/0029 TΔ8a, {@code org.mockito} 미도입 방침 유지).
  *
- * <p>공용으로 둔 이유는 같은 질문을 <b>세 층이 각자의 자리에서</b> 묻기 때문이다 — 업로드 유스케이스
+ * <p>공용으로 둔 이유는 같은 질문을 <b>여러 층이 각자의 자리에서</b> 묻기 때문이다 — 업로드 유스케이스
  * ({@code PhotoServiceTest}), 그 REST 표면({@code PhotoControllerTest}), 취소가 스테이징을 비우는가
- * ({@code AgentTurnControllerTest}). 층마다 fake를 다시 지으면 그 셋이 조용히 갈린다.
+ * ({@code AgentTurnControllerTest}), 그리고 저장 확정·삭제가 아카이브에 무엇을 했는가
+ * ({@code NoteServiceTest}, TΔ8b). 층마다 fake를 다시 지으면 그것들이 조용히 갈린다.
  *
  * <p>파일 I/O 자체(원자적 쓰기·경로 규칙·이름 유일화)는 여기서 흉내 내지 않는다 — 그것은
  * {@code LocalPhotoStoreTest}가 실제 디렉터리로 검증하는 몫이고, 인메모리 대체의 그린은 아무것도
@@ -25,6 +26,19 @@ public class RecordingPhotoStore implements PhotoStore {
 
     /** 스테이징 열람 횟수 — "부를 것이 없으면 파일 I/O도 없다"를 단언하는 자리가 쓴다. */
     public int reads;
+
+    /** 저장 확정이 받은 (폴더 접미, 날짜) — 폴더를 재계산했는지 되읽었는지가 여기서 갈린다(TΔ8b). */
+    public final List<String> committedFolders = new ArrayList<>();
+    public final List<String> committedDates = new ArrayList<>();
+
+    /** 확정이 돌려줄 상대 경로. 비어 있으면 "스테이징에 아무것도 없었다"와 같다. */
+    public List<String> committedPaths = List.of();
+
+    /** 삭제가 지우라고 넘긴 상대 경로(TΔ8b). */
+    public final List<String> deleted = new ArrayList<>();
+
+    /** 확정 호출에서 던질 실패 — "사진이 실패해도 저장은 유지된다"를 묻는 자리가 쓴다. */
+    public RuntimeException commitFailure;
 
     @Override
     public String stage(String userId, String filename, byte[] bytes) {
@@ -46,7 +60,20 @@ public class RecordingPhotoStore implements PhotoStore {
 
     @Override
     public List<String> commit(String userId, String noteFolder, String date) {
-        return List.of();
+        committedFolders.add(noteFolder);
+        committedDates.add(date);
+        if (commitFailure != null) {
+            throw commitFailure;
+        }
+        staged.clear();
+        return committedPaths;
+    }
+
+    @Override
+    public void deletePhotos(List<String> relativePaths) {
+        if (relativePaths != null) {
+            deleted.addAll(relativePaths);
+        }
     }
 
     @Override

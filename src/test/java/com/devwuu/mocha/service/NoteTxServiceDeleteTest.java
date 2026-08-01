@@ -48,6 +48,8 @@ import java.util.List;
 class NoteTxServiceDeleteTest extends PostgresIntegrationTest {
 
     /** 노트 아래에 행이 생기는 테이블 전부 — 하나라도 빠지면 그 단이 검증에서 새는 자리다. */
+    // 0029 TΔ8b: note_photo가 늘었다. 사진 색인은 이 테스트의 표본이 만들지 않으므로(사진은 파일 경로다)
+    // 잔존 0 판정에는 넣지 않고 NoteTxServicePhotoTest가 따로 소유한다.
     private static final List<String> CHILD_TABLES =
             List.of("entry", "brew", "recipe", "tasting", "note_bean", "note_official_note", "note_alias", "note_source");
 

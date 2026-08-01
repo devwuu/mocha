@@ -158,7 +158,7 @@ final class EvalHarness {
         ToolCallbackProvider toolkit = toolkit()
                 // 0029 TΔ4a: tool이 잡는 타입이 NoteService다 — 실 저장소를 그 뒤에 세운다.
                 // 별칭 생성기는 null이다: 제안 tool은 커밋을 지나지 않으므로 닿을 일이 없다.
-                .noteService(new NoteService(noteRepository, null))
+                .noteService(new NoteService(noteRepository, null, null, null))
                 .mapper(mapper)
                 .clock(clock)  // 검증기는 프로덕션(TurnConfig)과 같은 조합으로 파생된다
                 .build();

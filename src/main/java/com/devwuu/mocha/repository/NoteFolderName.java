@@ -4,6 +4,7 @@ import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.Sourced;
 
 import java.text.Normalizer;
+import java.util.Optional;
 import java.util.regex.Pattern;
 
 /**
@@ -69,6 +70,28 @@ public final class NoteFolderName {
                     "저장 전 노트는 폴더 접미를 가질 수 없다 — id는 INSERT가 발급한다(D-1)");
         }
         return of(note.id(), Sourced.valueOrNull(note.roastery()), Sourced.valueOrNull(note.coffeeName()));
+    }
+
+    /**
+     * 저장된 상대 경로에서 폴더 접미를 <b>되읽는다</b> — {@code photos/<접미>/<date>/<파일>}의 둘째 세그먼트
+     * (ref: changes/0029 tasks.md TΔ8b).
+     *
+     * <p>{@link #of}가 <i>"기존 폴더를 찾는 용도로 쓰면 안 된다"</i>고 못 박은 자리의 답이다. 접미는 생성
+     * 시점 스냅샷이라 로스터리가 수정된 뒤 재계산하면 옛 폴더와 갈리는데(0028 파생 결정 2가 남긴 한계),
+     * {@code note_photo}가 실제로 쓴 경로를 들고 있으므로 <b>계산 대신 읽는다</b>.
+     *
+     * @param relativePath {@code note_photo.path} 값. 형태가 아니면 빈 Optional(호출부가 재계산으로 수렴).
+     */
+    public static Optional<String> from(String relativePath) {
+        if (relativePath == null) {
+            return Optional.empty();
+        }
+        String[] segments = relativePath.split("/");
+        // photos / <접미> / <date> / <파일> — 최소 4조각이고 접미 자리가 비어 있으면 답이 아니다.
+        if (segments.length < 4 || !"photos".equals(segments[0]) || segments[1].isBlank()) {
+            return Optional.empty();
+        }
+        return Optional.of(segments[1]);
     }
 
     private static void appendSegment(StringBuilder name, String raw) {
