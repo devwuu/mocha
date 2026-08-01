@@ -7,6 +7,7 @@ import com.devwuu.mocha.domain.NoteFilter;
 import com.devwuu.mocha.domain.NoteListItem;
 import com.devwuu.mocha.domain.NotePhoto;
 import com.devwuu.mocha.repository.entity.EntryEntity;
+import com.devwuu.mocha.repository.entity.NotePhotoEntity;
 
 import java.time.LocalDate;
 import java.util.Collection;
@@ -187,6 +188,19 @@ public interface NoteEntityRepositoryCustom {
      * 재계산하면 로스터리가 수정된 노트에서 옛 폴더와 갈린다(0028 파생 결정 2가 남긴 한계).
      */
     List<String> findPhotoPaths(long noteId);
+
+    /**
+     * 그 (노트, 날짜)의 사진 행을 <b>관리되는 엔티티</b>로, {@code seq} 오름차순
+     * (ref: changes/0029 tasks.md TΔ5b-2).
+     *
+     * <p>{@link #findPhotos}·{@link #findPhotoPaths}와 갈라 두는 이유는 {@link #findEntry}가
+     * {@link #findEntryId}와 갈리는 이유와 같다 — 저 둘은 <b>보여 줄 것</b>이라 사영이고, 이쪽은
+     * <b>고칠 것</b>이라 영속성 컨텍스트에 붙어 있어야 한다(날짜 이동이 {@code tasted_on}·{@code seq}·
+     * {@code path}를 UPDATE로 내보낸다).
+     *
+     * <p>정렬이 {@code seq}인 것도 계약이다: 이동처 뒤로 이어 붙일 때 그날 안의 순서가 보존돼야 한다.
+     */
+    List<NotePhotoEntity> findPhotoRows(long noteId, LocalDate tastedOn);
 
     /**
      * 그 (노트, 날짜)에 이미 붙어 있는 사진 수 — 다음 {@code seq}의 시작점.

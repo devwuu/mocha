@@ -26,6 +26,7 @@ import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Stream;
 
@@ -35,8 +36,9 @@ import java.util.stream.Stream;
  *
  * <p><b>경계</b>: 외부 호출(LLM·검색·파일)을 <b>쓰기 진입 전에</b> 끝내고 결과값만 {@link NoteTxService}에
  * 넘긴다. 원자적이어야 하는 규칙(V-9·V-10·V-13·ADR-4 병합 정책)은 전부 그 아래에 있다 — <b>이 클래스에
- * 비즈니스 규칙을 두지 않는다.</b> 여기 있는 판단은 하나뿐이고 그것도 외부 콜에 관한 것이다:
- * <i>"별칭 생성 콜을 쏠 것인가"</i>({@link #commit}).
+ * 비즈니스 규칙을 두지 않는다.</b> 여기 있는 판단은 둘뿐이고 <b>둘 다 외부 콜에 관한 것</b>이다:
+ * <i>"별칭 생성 콜을 쏠 것인가"</i>({@link #commit}) · <i>"사진 폴더를 옮길 것인가"</i>
+ * ({@link #replaceEntry} — 날짜가 바뀌었는가 · 옮길 사진이 있는가).
  *
  * <p>이 분리가 백엔드 CLAUDE.md §3(<i>"트랜잭션 안에서 외부 호출을 하지 않는다"</i>)을 규칙이 아니라
  * <b>계층으로</b> 지키는 방식이다 — 외부 콜이 사는 층과 트랜잭션이 열리는 층이 아예 다르다.
@@ -219,13 +221,52 @@ public class NoteService {
     }
 
     /**
-     * 엔트리 수정 — 대상 회차를 갈아끼우고, {@code entry.date()}가 다르면 날짜를 옮긴다(V-10).
-     * <p>외부 IO가 없어 위임 한 줄이다. 이동처 충돌 처리·행 순서는 트랜잭션 안의 규칙이다.
+     * 엔트리 수정 — 대상 회차를 갈아끼우고, {@code entry.date()}가 다르면 <b>사진까지 데리고</b> 날짜를
+     * 옮긴다 (ref: V-10 개정본, changes/0029 delta.md#D-12 ③, spec FR-10·FR-21, tasks TΔ5b-2).
+     *
+     * <p><b>이 메서드가 지는 것은 순서다</b>: 아카이브 폴더 이동(외부 IO) → 저장. {@link #commit}이
+     * 별칭 콜에 대해 지는 것과 같은 책임이고, 그래서 위임 한 줄이던 자리가 여기서 실질을 갖는다.
+     * 이동처 충돌 처리(회차 병합)·색인 행의 순서는 트랜잭션 안의 규칙이다({@link NoteTxService}).
+     *
+     * <p><b>파일이 먼저인 것은 최종 경로가 이동 후에야 정해지기 때문이다</b> — 이동처에 같은 이름 파일이
+     * 있으면 {@code -N}으로 유일화되므로 색인이 날짜 세그먼트만 갈아 끼워 계산하면 다른 파일을 가리킨다.
+     * {@link #archivePhotos}가 파일 뒤에 색인을 세우는 것과 같은 구조적 이유이고(폴더 접미가 id를 기다린다),
+     * 방향도 같다: <b>파일이 정본, 행은 색인</b>(plan.md#ADR-79).
+     *
+     * <p>실패 처리는 그 둘과 <b>갈린다</b>: 커밋의 사진 확정은 삼키지만(저장이 본체이고 사진은 뒤따르는
+     * 색인) 여기서는 삼키지 않는다 — 삼키면 사진이 옛 날짜에 남아 어느 화면에도 보이지 않는 상태, 즉
+     * 이 task가 고치러 온 바로 그 상태를 조용히 다시 만든다. 던지는 시점에 행은 하나도 바뀌지 않았고
+     * 사진 바이트는 아카이브 안에 있다.
      *
      * @throws IllegalStateException 대상 노트 또는 {@code targetDate} 엔트리 소실 시.
      */
     public Note replaceEntry(long noteId, LocalDate targetDate, Entry entry) {
-        return noteTxService.replaceEntry(noteId, targetDate, entry);
+        Map<String, String> movedPhotos = movePhotoFiles(noteId, targetDate, entry.date());
+        return noteTxService.replaceEntry(noteId, targetDate, entry, movedPhotos);
+    }
+
+    /**
+     * 날짜가 바뀌면 그 노트의 아카이브 폴더를 새 날짜로 옮기고 <b>어디로 갔는지</b>를 돌려준다.
+     *
+     * <p>폴더 접미는 {@link #archivePhotos}와 같은 규칙으로 <b>기록에서 되읽는다</b>(ADR-75 — 생성 시점
+     * 스냅샷이라 재계산하면 로스터리가 수정된 노트에서 갈린다). 색인된 사진이 없으면 되읽을 것이 없고
+     * 옮길 것도 없다 — 파일시스템을 훑어 폴더를 찾아 나서지 않는다(그 탐색을 하지 않는 것이 TΔ8b의 답이다).
+     */
+    private Map<String, String> movePhotoFiles(long noteId, LocalDate targetDate, LocalDate movedTo) {
+        if (movedTo.equals(targetDate)) {
+            return Map.of();
+        }
+        Optional<String> folder = noteTxService.photoPaths(noteId).stream()
+                .map(NoteFolderName::from).flatMap(Optional::stream).findFirst();
+        if (folder.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, String> moved =
+                photoStore.moveEntryPhotos(folder.get(), targetDate.toString(), movedTo.toString());
+        if (!moved.isEmpty()) {
+            log.info("사진 동반 이동: noteId={} {} → {} photos={}", noteId, targetDate, movedTo, moved.size());
+        }
+        return moved;
     }
 
     /**

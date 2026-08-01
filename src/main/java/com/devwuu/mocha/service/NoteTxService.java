@@ -26,6 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -45,7 +46,8 @@ import java.util.stream.Stream;
  * <p><b>여기 사는 것</b> — 원자적이어야 하는 규칙 전부:
  * <ul>
  *   <li><b>V-9</b> 커피명 불변 — 저장된 값과 대조하고 다르면 거부({@link #updateMeta})</li>
- *   <li><b>V-10</b> 날짜 이동 시 이동처 덮어쓰기 = 엔트리 총수 1 감소({@link #replaceEntry})</li>
+ *   <li><b>V-10</b> 개정본(D-12) 날짜 이동 시 이동처와 <b>회차 병합</b> = 엔트리 총수 1 감소, 사진 색인
+ *       동반 이동({@link #replaceEntry})</li>
  *   <li><b>V-13</b> 관측 표기 축적 — 기존 별칭을 읽어 더할 것만 계산({@link #commit})</li>
  *   <li><b>ADR-4·59</b> 같은 날짜는 갱신만(하루 2엔트리 금지, AC-14), 엔트리 통째 교체</li>
  *   <li>대상 소실 검사 — 쓰기를 시작하기 전에 던져 부분 반영을 남기지 않는다</li>
@@ -321,8 +323,9 @@ public class NoteTxService {
 
     /**
      * 그 노트에 딸린 사진 경로 전부 — {@code (날짜, seq)} 오름차순.
-     * <p>지금 읽는 곳은 둘이다: 삭제 시 지울 파일 목록, 그리고 <b>덧붙일 때 폴더 접미를 되읽는 자리</b>
-     * ({@link NoteFolderName#from}). 화면이 사진을 읽는 모양은 TΔ5a·TΔ12가 정한다.
+     * <p>지금 읽는 곳은 셋이다: 삭제 시 지울 파일 목록, 그리고 <b>폴더 접미를 되읽는 자리</b> 둘
+     * ({@link NoteFolderName#from} — 사진을 덧붙일 때와 날짜 이동으로 폴더를 옮길 때, TΔ5b-2).
+     * 화면이 사진을 읽는 모양은 TΔ5a·TΔ12가 정한다.
      */
     @Transactional(readOnly = true)
     public List<String> photoPaths(long noteId) {
@@ -405,11 +408,20 @@ public class NoteTxService {
      * <p>갈래에 따라 대상 엔트리를 <b>다른 접근자로</b> 집는 것은 {@code findEntryId}·{@code findEntry}의
      * 계약 그대로다: 병합에서 원본은 <b>지울 것</b>이고(id만), 그 밖에서는 <b>고칠 것</b>이다(관리되는 엔티티).
      *
+     * <p><b>사진 색인이 같은 트랜잭션에서 따라온다</b>(TΔ5b-2, D-12 ③) — {@code note_photo}의 참조 축이
+     * {@code (note_id, tasted_on)}이라 엔트리만 옮기면 사진이 옛 날짜에 남아 어느 화면에도 보이지 않는다.
+     * 갈라 두면 <i>"엔트리는 옮겨졌는데 사진은 안 옮겨진"</i> 중간 상태가 커밋될 수 있어 한 경계 안이다.
+     *
+     * @param movedPhotoPaths 파일 이동이 실제로 만든 {@code 옛 경로 → 새 경로}
+     *                        ({@code PhotoStore.moveEntryPhotos}의 반환값). 날짜가 그대로거나 옮긴 사진이
+     *                        없으면 빈 맵. <b>계산하지 않고 받는</b> 이유는 병합에서 파일명이 유일화로
+     *                        바뀌기 때문이다 — 실제 자리는 파일을 옮긴 쪽만 안다.
      * @throws IllegalStateException 대상 노트 또는 {@code targetDate} 엔트리 소실 시
      *                               (호출부가 안내로 수렴, plan §7).
      */
     @Transactional
-    public Note replaceEntry(long noteId, LocalDate targetDate, Entry entry) {
+    public Note replaceEntry(long noteId, LocalDate targetDate, Entry entry,
+                             Map<String, String> movedPhotoPaths) {
         if (notes.findById(noteId).isEmpty()) {
             throw new IllegalStateException("수정 대상 노트 소실: " + noteId);
         }
@@ -426,7 +438,33 @@ public class NoteTxService {
             target.updateTastedOn(movedTo);
             replaceBrews(target.getId(), entry.brews());
         }
+        if (!movedTo.equals(targetDate)) {
+            movePhotoRows(noteId, targetDate, movedTo, movedPhotoPaths);
+        }
         return reload(noteId);
+    }
+
+    /**
+     * 그 날짜의 사진 색인을 새 날짜로 옮긴다 — 회차와 같은 모양으로 <b>이동처 뒤에 이어 붙인다</b>
+     * (ref: changes/0029 tasks.md TΔ5b-2, delta.md#D-12 ③, spec FR-10·FR-21).
+     *
+     * <p>{@code seq}를 0부터 다시 발급하지 않는 것은 선택이 아니라 제약이다 —
+     * {@code UNIQUE (note_id, tasted_on, seq)}가 이동처에 이미 있는 사진과 부딪힌다. 그 결과 순서도
+     * 회차 병합과 같아진다: <b>그날 먼저 있던 사진이 앞, 옮겨 온 것이 뒤</b>.
+     */
+    // POLICY: 옮긴 기록이 없는 행은 경로를 그대로 둔다 — 폴더 스캔이 있는 파일을 빠뜨리지 않으므로
+    //         매핑에 없다는 것은 그 파일이 이동 전부터 없었다는 뜻이고, 날짜 세그먼트만 갈아 끼우면
+    //         없는 파일을 가리키는 새 경로를 지어내는 셈이다 (ref: plan.md#ADR-79 — 행은 색인, 정본은 파일).
+    private void movePhotoRows(long noteId, LocalDate from, LocalDate to, Map<String, String> movedPaths) {
+        List<NotePhotoEntity> rows = notes.findPhotoRows(noteId, from);
+        if (rows.isEmpty()) {
+            return;
+        }
+        Map<String, String> moved = movedPaths == null ? Map.of() : movedPaths;
+        int seq = (int) notes.countPhotos(noteId, to);
+        for (NotePhotoEntity row : rows) {
+            row.moveTo(to, seq++, moved.getOrDefault(row.getPath(), row.getPath()));
+        }
     }
 
     // POLICY: 날짜 이동으로 이동처 date에 기존 엔트리가 있으면 덮어쓰지 않고 그날의 회차 뒤로 합친다 —

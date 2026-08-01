@@ -2,6 +2,7 @@ package com.devwuu.mocha.repository;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 사진 저장소 손 fake — <b>무엇이 스테이징에 닿았고 무엇이 폐기됐는가</b>만 붙든다
@@ -76,8 +77,22 @@ public class RecordingPhotoStore implements PhotoStore {
         }
     }
 
+    /** 날짜 이동이 받은 (폴더 접미, 옛 날짜, 새 날짜) — 인자 3종을 한 줄로 붙여 기록한다(TΔ5b-2). */
+    public final List<String> movedEntries = new ArrayList<>();
+
+    /** 이동이 돌려줄 {@code 옛 경로 → 새 경로}. 비어 있으면 "옮길 사진이 없었다"와 같다. */
+    public Map<String, String> movedPaths = Map.of();
+
+    /** 이동 호출에서 던질 실패 — "파일 이동 실패는 수정을 되돌린다"를 묻는 자리가 쓴다. */
+    public RuntimeException moveFailure;
+
     @Override
-    public void moveEntryPhotos(String noteFolder, String fromDate, String toDate) {
+    public Map<String, String> moveEntryPhotos(String noteFolder, String fromDate, String toDate) {
+        movedEntries.add(noteFolder + " " + fromDate + " → " + toDate);
+        if (moveFailure != null) {
+            throw moveFailure;
+        }
+        return movedPaths;
     }
 
     @Override

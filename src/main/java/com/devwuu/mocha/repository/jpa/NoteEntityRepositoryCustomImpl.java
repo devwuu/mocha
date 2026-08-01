@@ -19,6 +19,7 @@ import com.devwuu.mocha.domain.NoteListItem;
 import com.devwuu.mocha.domain.NotePhoto;
 import com.devwuu.mocha.repository.entity.BrewEntity;
 import com.devwuu.mocha.repository.entity.EntryEntity;
+import com.devwuu.mocha.repository.entity.NotePhotoEntity;
 import com.devwuu.mocha.repository.entity.RecipeEntity;
 import com.devwuu.mocha.repository.entity.TastingEntity;
 import com.querydsl.core.BooleanBuilder;
@@ -342,6 +343,14 @@ class NoteEntityRepositoryCustomImpl implements NoteEntityRepositoryCustom {
                 .where(notePhotoEntity.noteId.eq(noteId))
                 // 계약 순서: 날짜 → 그 안의 seq. 아카이브 폴더를 훑은 것과 같은 순서로 보인다.
                 .orderBy(notePhotoEntity.tastedOn.asc(), notePhotoEntity.seq.asc())
+                .fetch();
+    }
+
+    @Override
+    public List<NotePhotoEntity> findPhotoRows(long noteId, LocalDate tastedOn) {
+        return query.selectFrom(notePhotoEntity)
+                .where(notePhotoEntity.noteId.eq(noteId), notePhotoEntity.tastedOn.eq(tastedOn))
+                .orderBy(notePhotoEntity.seq.asc())
                 .fetch();
     }
 

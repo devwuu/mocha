@@ -1,6 +1,7 @@
 package com.devwuu.mocha.repository;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * 사진 원본 저장소 (ref: plan.md §3, data-model.md#2.2/2.4, tasks T4-1).
@@ -65,19 +66,28 @@ public interface PhotoStore {
     void deletePhotos(List<String> relativePaths);
 
     /**
-     * 수정 세션 날짜 이동 시 그 엔트리의 아카이브 폴더를 새 날짜로 동반 이동한다(ADR-32, FR-21).
+     * 날짜 이동 시 그 엔트리의 아카이브 폴더를 새 날짜로 동반 이동한다(FR-10·FR-21, D-12 ③).
      * <p>{@code photos/<noteFolder>/<fromDate>/}의 파일 전부를 {@code photos/<noteFolder>/<toDate>/}로 옮기고
      * 빈 옛 폴더를 제거한다 — 폴더=진실 불변식을 유지하기 위함이다. 대상 폴더에 같은 이름 파일이 있으면
      * {@code -N} 접미로 유일화해 병합하고(유실 없음), 원본 폴더가 아예 없으면 아무 일도 하지 않는다(no-op).
-     * <p>호출부는 best-effort로 감싼다 — 이동 실패는 커밋을 되돌리지 않고 사진은 옛 폴더에 잔류한다
-     * (아카이브로서 유효, 옛 카드 삭제와 동일 정책). (ref: plan.md#ADR-32, §7)
+     *
+     * <p><b>옮긴 자리를 돌려주는 것이 이 메서드의 계약이다</b>(changes/0029 TΔ5b-2): 유일화가 이름을 바꾸므로
+     * 새 경로는 <b>이동 후에야 정해진다</b> — 호출부가 날짜 세그먼트만 갈아 끼워 계산하면 병합에서 다른 파일을
+     * 가리킨다. {@code note_photo}의 색인이 이 답을 그대로 받아 적는다({@code NoteService.replaceEntry}).
+     *
+     * <p>POLICY: 실패는 <b>삼키지 않는다</b> — 이 호출부에서 삼키면 사진이 옛 날짜에 남아 어느 화면에도
+     * 보이지 않는 상태(TΔ5b-2가 고치는 바로 그 상태)를 조용히 다시 만든다. 아직 아무 행도 바뀌지 않은
+     * 시점이라 전파가 <i>"아무 일도 일어나지 않았다"</i>에 가장 가깝고, 어느 경우든 사진 바이트는 아카이브
+     * 안에 남는다(ref: plan.md#ADR-79, 백엔드 CLAUDE.md §3).
      *
      * @param noteFolder 대상 노트의 폴더 접미 — <b>지금 이름으로 재계산한 값이 아니라 그 폴더가 만들어질 때의
      *                   이름</b>이어야 한다(생성 시점 스냅샷, changes/0028 파생 결정 2).
      * @param fromDate   옮길 원본 날짜 폴더(YYYY-MM-DD).
      * @param toDate     이동처 날짜 폴더(YYYY-MM-DD).
+     * @return 옮긴 파일의 {@code 옛 상대 경로 → 새 상대 경로}(둘 다 {@code photos/} 시작, V-4), 이동 순서대로.
+     *         옮길 것이 없으면 빈 맵.
      */
-    void moveEntryPhotos(String noteFolder, String fromDate, String toDate);
+    Map<String, String> moveEntryPhotos(String noteFolder, String fromDate, String toDate);
 
     /**
      * 스테이징에 원본이 남아 있는 사용자 키 목록(스테이징 하위 디렉토리명). 없으면 빈 목록.

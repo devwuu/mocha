@@ -12,7 +12,9 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
@@ -91,8 +93,7 @@ public class LocalPhotoStore implements PhotoStore {
             for (Path src : staged) {
                 String name = uniqueName(target, src.getFileName().toString());
                 move(src, target.resolve(name));
-                // V-4: JSON에는 photos/ 로 시작하는 상대 경로만. 구분자는 '/'로 고정(플랫폼 무관·file:// 링크용).
-                relPaths.add("photos/" + noteFolder + "/" + date + "/" + name);
+                relPaths.add(relativePath(noteFolder, date, name));
             }
             // 걸러진 비사진 잔재(.DS_Store 등)까지 지우고 폴더를 접는다 — 스테이징은 커밋 후 소멸이 불변식.
             deleteStaging(staging);
@@ -174,24 +175,36 @@ public class LocalPhotoStore implements PhotoStore {
     }
 
     @Override
-    public void moveEntryPhotos(String noteFolder, String fromDate, String toDate) {
+    public Map<String, String> moveEntryPhotos(String noteFolder, String fromDate, String toDate) {
         Path source = photosDir.resolve(noteFolder).resolve(fromDate);
         // 원본 폴더 부재 = 옮길 사진 없음 → no-op(사진 없이 날짜만 이동한 엔트리도 정상 경로).
         if (!Files.isDirectory(source)) {
-            return;
+            return Map.of();
         }
         Path target = photosDir.resolve(noteFolder).resolve(toDate);
+        // 옮긴 자리를 이동 순서대로 — 색인(note_photo)이 이 답을 그대로 받아 적는다(TΔ5b-2).
+        Map<String, String> moved = new LinkedHashMap<>();
         try {
             Files.createDirectories(target);
             for (Path src : listSorted(source)) {
                 // 충돌 시 -N 유일화 병합 — commit과 동일 규칙(재기록·이동 겹침 모두 유실 없이 보관).
-                String name = uniqueName(target, src.getFileName().toString());
+                String oldName = src.getFileName().toString();
+                String name = uniqueName(target, oldName);
                 move(src, target.resolve(name));
+                moved.put(relativePath(noteFolder, fromDate, oldName), relativePath(noteFolder, toDate, name));
             }
             Files.deleteIfExists(source); // 빈 옛 폴더 제거(폴더=진실 불변식).
         } catch (IOException e) {
             throw new UncheckedIOException("사진 폴더 이동 실패: " + source + " → " + target, e);
         }
+        return moved;
+    }
+
+    // V-4: 밖으로 나가는 것은 photos/ 로 시작하는 상대 경로뿐이다. 구분자는 '/'로 고정(플랫폼 무관·file:// 링크용).
+    // 조립을 한곳에 모은 이유는 커밋과 이동이 같은 문자열을 만들어야 하기 때문이다 — 갈리면 note_photo.path가
+    // 커밋 때와 이동 때 다른 모양이 되고, 그 경로로 지우는 삭제가 대상을 못 찾는다.
+    private static String relativePath(String noteFolder, String date, String name) {
+        return "photos/" + noteFolder + "/" + date + "/" + name;
     }
 
     @Override

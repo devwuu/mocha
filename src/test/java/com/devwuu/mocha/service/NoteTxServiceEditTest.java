@@ -30,6 +30,7 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 수정 경로 — {@link NoteTxService#updateMeta}·{@link NoteTxService#replaceEntry} (AC-Δ1).
@@ -211,7 +212,7 @@ class NoteTxServiceEditTest extends PostgresIntegrationTest {
     void replaceEntryUpdatesBrews() {
         Note saved = seed(entry(day(10), "새콤하고 좋았다"));
 
-        Note updated = repo.replaceEntry(saved.id(), day(10), entry(day(10), "다시 보니 복숭아향"));
+        Note updated = repo.replaceEntry(saved.id(), day(10), entry(day(10), "다시 보니 복숭아향"), Map.of());
 
         assertThat(updated.entries()).hasSize(1);
         assertThat(tasteOf(updated.entries().getFirst())).isEqualTo("다시 보니 복숭아향");
@@ -229,7 +230,7 @@ class NoteTxServiceEditTest extends PostgresIntegrationTest {
         Note seeded = seed(entry(day(9), "9일"));
         Note saved = repo.commit(seeded.id(), fullMeta(), entry(day(10), "10일"), Aliases.empty());
 
-        Note updated = repo.replaceEntry(saved.id(), day(10), entry(day(11), "사실 11일에 마심"));
+        Note updated = repo.replaceEntry(saved.id(), day(10), entry(day(11), "사실 11일에 마심"), Map.of());
 
         assertThat(updated.entries()).extracting(Entry::date).containsExactly(day(9), day(11));
         assertThat(tasteOf(updated.entries().getLast())).isEqualTo("사실 11일에 마심");
@@ -248,7 +249,7 @@ class NoteTxServiceEditTest extends PostgresIntegrationTest {
         saved = repo.commit(saved.id(), fullMeta(), entry(day(10), "10일 원본"), Aliases.empty());
         assertThat(saved.entries()).hasSize(2);
 
-        Note updated = repo.replaceEntry(saved.id(), day(9), entry(day(10), "이동해 온 9일 기록"));
+        Note updated = repo.replaceEntry(saved.id(), day(9), entry(day(10), "이동해 온 9일 기록"), Map.of());
 
         // 엔트리 총수 1 감소는 구 규칙에서 유일하게 살아남는 부분이다 — 둘이 하나가 되는 것이라서다.
         assertThat(updated.entries()).hasSize(1);
@@ -278,7 +279,7 @@ class NoteTxServiceEditTest extends PostgresIntegrationTest {
 
         repo.replaceEntry(saved.id(), day(9), entry(day(10), List.of(
                 brew(19.0, "옮겨 온 첫 잔"),
-                brew(20.0, "옮겨 온 둘째 잔"))));
+                brew(20.0, "옮겨 온 둘째 잔"))), Map.of());
         flushAndClear();
 
         long entryId = notes.findEntryId(saved.id(), day(10)).orElseThrow();
@@ -296,7 +297,7 @@ class NoteTxServiceEditTest extends PostgresIntegrationTest {
         saved = repo.commit(saved.id(), fullMeta(), entry(day(10), "10일"), Aliases.empty());
         long destinationBefore = notes.findEntryId(saved.id(), day(10)).orElseThrow();
 
-        repo.replaceEntry(saved.id(), day(9), entry(day(10), "이동"));
+        repo.replaceEntry(saved.id(), day(9), entry(day(10), "이동"), Map.of());
         flushAndClear();
 
         assertThat(notes.findEntryId(saved.id(), day(10))).contains(destinationBefore);
@@ -311,7 +312,7 @@ class NoteTxServiceEditTest extends PostgresIntegrationTest {
         Note saved = seed(entry(day(9), "9일"));
         long entryIdBefore = notes.findEntryId(saved.id(), day(9)).orElseThrow();
 
-        repo.replaceEntry(saved.id(), day(9), entry(day(10), "이동"));
+        repo.replaceEntry(saved.id(), day(9), entry(day(10), "이동"), Map.of());
         flushAndClear();
 
         assertThat(notes.findEntryId(saved.id(), day(10))).contains(entryIdBefore);
@@ -326,7 +327,7 @@ class NoteTxServiceEditTest extends PostgresIntegrationTest {
         long noteId = saved.id();
 
         // 예외가 나지 않는 것 자체가 판정이다 — 파일 구현에는 없던 실패 모드라 별도로 세운다.
-        assertThatCode(() -> repo.replaceEntry(noteId, day(9), entry(day(10), "충돌 이동")))
+        assertThatCode(() -> repo.replaceEntry(noteId, day(9), entry(day(10), "충돌 이동"), Map.of()))
                 .doesNotThrowAnyException();
     }
 
@@ -341,7 +342,7 @@ class NoteTxServiceEditTest extends PostgresIntegrationTest {
         saved = repo.commit(saved.id(), fullMeta(),
                 entry(day(10), List.of(brew(17.0, "10일"))), Aliases.empty());
 
-        repo.replaceEntry(saved.id(), day(9), entry(day(10), List.of(brew(18.0, "이동"))));
+        repo.replaceEntry(saved.id(), day(9), entry(day(10), List.of(brew(18.0, "이동"))), Map.of());
         flushAndClear();
 
         // 남는 것은 이동처 엔트리 하나이고, 그 아래 회차는 기존 1 + 옮겨 온 1 = 2다(구 규칙에서는 1이었다).
@@ -356,7 +357,7 @@ class NoteTxServiceEditTest extends PostgresIntegrationTest {
     @Test
     @DisplayName("plan §7: replaceEntry 대상 노트 소실은 IllegalStateException")
     void replaceEntryRejectsMissingNote() {
-        assertThatThrownBy(() -> repo.replaceEntry(99_999_999L, day(10), entry(day(10), "수정")))
+        assertThatThrownBy(() -> repo.replaceEntry(99_999_999L, day(10), entry(day(10), "수정"), Map.of()))
                 .isInstanceOf(IllegalStateException.class);
     }
 
@@ -365,7 +366,7 @@ class NoteTxServiceEditTest extends PostgresIntegrationTest {
     void replaceEntryRejectsMissingTargetEntry() {
         Note saved = seed(entry(day(10), "원본"));
 
-        assertThatThrownBy(() -> repo.replaceEntry(saved.id(), day(11), entry(day(11), "수정")))
+        assertThatThrownBy(() -> repo.replaceEntry(saved.id(), day(11), entry(day(11), "수정"), Map.of()))
                 .isInstanceOf(IllegalStateException.class);
         // 던지기만 하고 아무것도 지우지 않았다 — 검증이 쓰기보다 앞이다.
         assertThat(repo.findById(saved.id()).orElseThrow().entries()).hasSize(1);

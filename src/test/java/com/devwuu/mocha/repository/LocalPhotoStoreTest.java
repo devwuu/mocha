@@ -9,8 +9,10 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.entry;
 
 /**
  * T4-1: LocalPhotoStore — 임시 디렉토리 실제 파일 I/O로 검증(CLAUDE.md §5.2).
@@ -184,13 +186,17 @@ class LocalPhotoStoreTest {
         store.stage(USER, "b.jpg", jpeg(2));
         store.commit(USER, "yirga", "2026-07-08");
 
-        store.moveEntryPhotos("yirga", "2026-07-08", "2026-07-09");
+        Map<String, String> moved = store.moveEntryPhotos("yirga", "2026-07-08", "2026-07-09");
 
         Path from = dataDir.resolve("photos").resolve("yirga").resolve("2026-07-08");
         Path to = dataDir.resolve("photos").resolve("yirga").resolve("2026-07-09");
         assertThat(from).doesNotExist(); // 빈 옛 폴더 제거(폴더=진실).
         assertThat(to.resolve("a.jpg")).exists();
         assertThat(to.resolve("b.jpg")).exists();
+        // TΔ5b-2: 옮긴 자리를 돌려준다 — 색인(note_photo)이 이 답을 그대로 받아 적는다. V-4 어휘 유지.
+        assertThat(moved).containsExactly(
+                entry("photos/yirga/2026-07-08/a.jpg", "photos/yirga/2026-07-09/a.jpg"),
+                entry("photos/yirga/2026-07-08/b.jpg", "photos/yirga/2026-07-09/b.jpg"));
     }
 
     @Test
@@ -203,20 +209,23 @@ class LocalPhotoStoreTest {
         store.stage(USER, "photo.jpg", jpeg(1));
         store.commit(USER, "yirga", "2026-07-08");
 
-        store.moveEntryPhotos("yirga", "2026-07-08", "2026-07-09");
+        Map<String, String> moved = store.moveEntryPhotos("yirga", "2026-07-08", "2026-07-09");
 
         Path to = dataDir.resolve("photos").resolve("yirga").resolve("2026-07-09");
         // 기존 파일은 덮이지 않고 이동분은 -2로 유일화 — 둘 다 보존된다.
         assertThat(Files.readAllBytes(to.resolve("photo.jpg"))).containsExactly(jpeg(9));
         assertThat(Files.readAllBytes(to.resolve("photo-2.jpg"))).containsExactly(jpeg(1));
         assertThat(dataDir.resolve("photos").resolve("yirga").resolve("2026-07-08")).doesNotExist();
+        // TΔ5b-2: 이름이 바뀌는 갈래라 색인이 계산으로는 못 따라온다 — 실제 자리를 여기서만 알 수 있다.
+        assertThat(moved).containsExactly(
+                entry("photos/yirga/2026-07-08/photo.jpg", "photos/yirga/2026-07-09/photo-2.jpg"));
     }
 
     @Test
     @DisplayName("TΔ3(0014): 원본 폴더가 없으면 아무 일도 하지 않는다(사진 없이 날짜만 이동한 엔트리) — no-op")
     void moveEntryPhotosNoOpWhenSourceAbsent() {
         // 예외 없이 조용히 통과하고, 대상 폴더를 새로 만들지도 않는다.
-        store.moveEntryPhotos("yirga", "2026-07-08", "2026-07-09");
+        assertThat(store.moveEntryPhotos("yirga", "2026-07-08", "2026-07-09")).isEmpty();
 
         assertThat(dataDir.resolve("photos").resolve("yirga").resolve("2026-07-08")).doesNotExist();
         assertThat(dataDir.resolve("photos").resolve("yirga").resolve("2026-07-09")).doesNotExist();

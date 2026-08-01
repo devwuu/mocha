@@ -27,6 +27,7 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 
 /**
  * TΔ8b (changes/0029-app-interface) — {@code note_photo} 색인의 트랜잭션 계층 검증
@@ -146,6 +147,79 @@ class NoteTxServicePhotoTest extends PostgresIntegrationTest {
         }).rootCause().hasMessageContaining("note_photo");
     }
 
+    // ────────────────────────────── 날짜 이동 (TΔ5b-2) ──────────────────────────────
+
+    @Test
+    @DisplayName("D-12 ③: 날짜 이동이 사진 색인을 데리고 간다 — tasted_on과 경로가 함께 새 날짜다")
+    void dateMoveCarriesPhotoRows() {
+        // 참조 축이 (note_id, tasted_on)이라 엔트리만 옮기면 사진이 옛 날짜에 남아 어느 화면에도 보이지
+        // 않는다(TΔ8b 이월 (a)). 경로는 계산이 아니라 파일이 실제로 간 자리를 받아 적는다.
+        Note saved = seed();
+        tx.attachPhotos(saved.id(), day(10), List.of(folderPath(saved, 10, "bag.jpg")));
+        flushAndClear();
+
+        tx.replaceEntry(saved.id(), day(10), entry(day(11)),
+                Map.of(folderPath(saved, 10, "bag.jpg"), folderPath(saved, 11, "bag.jpg")));
+        flushAndClear();
+
+        NoteDetail detail = tx.findDetail(saved.id()).orElseThrow();
+        assertThat(detail.photosOn()).containsOnlyKeys(day(11));
+        assertThat(detail.photosOn().get(day(11))).containsExactly(folderPath(saved, 11, "bag.jpg"));
+    }
+
+    @Test
+    @DisplayName("D-12 ③: 병합이면 이동처 사진 뒤로 seq를 이어 발급한다 — UNIQUE라 선택이 아니라 제약이다")
+    void mergeAppendsPhotosAfterExisting() {
+        Note saved = seed();
+        tx.commit(saved.id(), meta(), entry(day(11)), null);
+        tx.attachPhotos(saved.id(), day(10), List.of(folderPath(saved, 10, "bag.jpg")));
+        tx.attachPhotos(saved.id(), day(11), List.of(folderPath(saved, 11, "label.jpg")));
+        flushAndClear();
+
+        // 이동처에 같은 이름이 없어도 그날 먼저 있던 사진이 앞이다 — 회차 병합과 같은 순서(V-15).
+        tx.replaceEntry(saved.id(), day(10), entry(day(11)),
+                Map.of(folderPath(saved, 10, "bag.jpg"), folderPath(saved, 11, "bag.jpg")));
+        flushAndClear();
+
+        assertThat(tx.photoPaths(saved.id())).containsExactly(
+                folderPath(saved, 11, "label.jpg"), folderPath(saved, 11, "bag.jpg"));
+        assertThat(seqsOn(saved.id(), 11)).containsExactly(0, 1);
+    }
+
+    @Test
+    @DisplayName("D-12 ③: 이동처에 같은 이름이 있으면 색인이 유일화된 실제 경로를 받는다 — 계산이 아니다")
+    void mergeRecordsUniquifiedPath() {
+        // 날짜 세그먼트만 갈아 끼우면 두 행이 같은 파일을 가리킨다 — 실제 자리는 파일을 옮긴 쪽만 안다.
+        Note saved = seed();
+        tx.commit(saved.id(), meta(), entry(day(11)), null);
+        tx.attachPhotos(saved.id(), day(10), List.of(folderPath(saved, 10, "bag.jpg")));
+        tx.attachPhotos(saved.id(), day(11), List.of(folderPath(saved, 11, "bag.jpg")));
+        flushAndClear();
+
+        tx.replaceEntry(saved.id(), day(10), entry(day(11)),
+                Map.of(folderPath(saved, 10, "bag.jpg"), folderPath(saved, 11, "bag-2.jpg")));
+        flushAndClear();
+
+        assertThat(tx.photoPaths(saved.id())).containsExactly(
+                folderPath(saved, 11, "bag.jpg"), folderPath(saved, 11, "bag-2.jpg"));
+    }
+
+    @Test
+    @DisplayName("TΔ5b-2: 날짜가 그대로인 수정은 사진 색인을 건드리지 않는다 — seq도 경로도 그대로")
+    void sameDateEditLeavesPhotoRows() {
+        Note saved = seed();
+        tx.attachPhotos(saved.id(), day(10), List.of(
+                folderPath(saved, 10, "bag.jpg"), folderPath(saved, 10, "label.jpg")));
+        flushAndClear();
+
+        tx.replaceEntry(saved.id(), day(10), entry(day(10)), Map.of());
+        flushAndClear();
+
+        assertThat(tx.photoPaths(saved.id())).containsExactly(
+                folderPath(saved, 10, "bag.jpg"), folderPath(saved, 10, "label.jpg"));
+        assertThat(seqsOn(saved.id(), 10)).containsExactly(0, 1);
+    }
+
     // ────────────────────────────── 상세 조회 (TΔ5a) ──────────────────────────────
 
     @Test
@@ -209,6 +283,13 @@ class NoteTxServicePhotoTest extends PostgresIntegrationTest {
     /** 실제 커밋이 남기는 모양의 상대 경로 — {@code photos/<접미>/<date>/<파일>}(V-4 어휘). */
     private static String folderPath(Note note, int dayOfMonth, String filename) {
         return "photos/" + note.id() + "-커피베라-커피베라 예가체프 G1/2026-07-%02d/".formatted(dayOfMonth) + filename;
+    }
+
+    /** 그 (노트, 날짜)의 사진 seq — 네이티브 질의로 행을 직접 본다(조립 경로는 seq를 도메인에 싣지 않는다). */
+    private List<Integer> seqsOn(long noteId, int dayOfMonth) {
+        return em.createNativeQuery("SELECT seq FROM " + schema + ".note_photo WHERE note_id = " + noteId
+                        + " AND tasted_on = DATE '2026-07-%02d' ORDER BY seq".formatted(dayOfMonth))
+                .getResultList().stream().map(v -> ((Number) v).intValue()).toList();
     }
 
     private void flushAndClear() {

@@ -143,11 +143,12 @@ class NoteServiceTest {
     }
 
     @Nested
-    @DisplayName("외부 IO 없는 유스케이스 — 트랜잭션 계층으로 통과")
+    @DisplayName("트랜잭션 계층으로 통과 — 이 계층이 값을 건드리지 않는다")
     class Delegation {
 
         // delta D-9: 외부 IO가 없어도 상위 계층이 잡는 타입을 하나로 유지한다(사용자 확정 2026-08-01).
         // 여기서 보는 것은 "인자가 변형 없이 통과하는가"뿐이고, 규칙 자체는 NoteTxService 테스트가 진다.
+        // (replaceEntry는 TΔ5b-2에서 사진 이동을 얹어 위임 한 줄이 아니게 됐다 — 그 몫은 Photos가 본다.)
 
         @Test
         @DisplayName("수정·삭제·조회는 트랜잭션 계층에 그대로 위임된다 — 이 계층이 값을 건드리지 않는다")
@@ -171,7 +172,7 @@ class NoteServiceTest {
         }
 
         @Test
-        @DisplayName("백엔드 CLAUDE.md §3: 위임 경로에서 외부 콜이 나가지 않는다")
+        @DisplayName("백엔드 CLAUDE.md §3: 위임 경로에서 LLM 콜이 나가지 않는다 — 별칭은 커밋만의 것이다")
         void delegationDoesNotCallExternalIo() {
             tx.put(saved(7, "커피", "로스터리", Aliases.empty()));
 
@@ -282,6 +283,80 @@ class NoteServiceTest {
         }
     }
 
+    @Nested
+    @DisplayName("TΔ5b-2 날짜 이동 — 사진이 따라간다")
+    class PhotoMove {
+
+        @Test
+        @DisplayName("D-12 ③: 날짜가 바뀌면 아카이브 폴더를 먼저 옮기고 그 결과를 색인에 넘긴다 — 파일이 먼저다")
+        void dateMoveMovesArchiveBeforeRows() {
+            tx.put(saved(7, "커피", "로스터리", Aliases.empty()));
+            tx.photos.add("photos/7-로스터리-커피/2026-07-09/bag.jpg");
+            // 이동처에 같은 이름이 있어 -2로 유일화된 상황 — 날짜 세그먼트만 갈아 끼우면 다른 파일을 가리킨다.
+            photoStore.movedPaths = Map.of(
+                    "photos/7-로스터리-커피/2026-07-09/bag.jpg",
+                    "photos/7-로스터리-커피/2026-07-10/bag-2.jpg");
+
+            service.replaceEntry(7, day(9), entry());
+
+            assertThat(photoStore.movedEntries)
+                    .containsExactly("7-로스터리-커피 2026-07-09 → 2026-07-10");
+            // 색인이 계산값이 아니라 파일이 실제로 간 자리를 받는다.
+            assertThat(tx.lastMovedPhotoPaths)
+                    .containsEntry("photos/7-로스터리-커피/2026-07-09/bag.jpg",
+                            "photos/7-로스터리-커피/2026-07-10/bag-2.jpg");
+        }
+
+        @Test
+        @DisplayName("ADR-75: 폴더 접미는 재계산이 아니라 저장된 경로에서 되읽는다 — 로스터리가 수정된 노트")
+        void reusesRecordedFolderOnMove() {
+            tx.put(saved(7, "커피", "새 로스터리", Aliases.empty()));
+            tx.photos.add("photos/7-옛로스터리-커피/2026-07-09/bag.jpg");
+
+            service.replaceEntry(7, day(9), entry());
+
+            assertThat(photoStore.movedEntries)
+                    .containsExactly("7-옛로스터리-커피 2026-07-09 → 2026-07-10");
+        }
+
+        @Test
+        @DisplayName("날짜가 그대로면 파일을 건드리지 않는다 — 회차만 갈아끼우는 수정이 정상 경로다")
+        void sameDateEditDoesNotTouchFiles() {
+            tx.put(saved(7, "커피", "로스터리", Aliases.empty()));
+            tx.photos.add("photos/7-로스터리-커피/2026-07-10/bag.jpg");
+
+            service.replaceEntry(7, day(10), entry());
+
+            assertThat(photoStore.movedEntries).isEmpty();
+            assertThat(tx.lastMovedPhotoPaths).isEmpty();
+        }
+
+        @Test
+        @DisplayName("색인된 사진이 없으면 이동을 부르지 않는다 — 폴더를 찾아 파일시스템을 훑지 않는다")
+        void noIndexedPhotosMeansNoFileIo() {
+            tx.put(saved(7, "커피", "로스터리", Aliases.empty()));
+
+            service.replaceEntry(7, day(9), entry());
+
+            assertThat(photoStore.movedEntries).isEmpty();
+            assertThat(tx.replaces).isOne();
+        }
+
+        @Test
+        @DisplayName("POLICY: 파일 이동 실패는 삼키지 않는다 — 행은 하나도 바뀌지 않는다")
+        void moveFailureAbortsTheEdit() {
+            tx.put(saved(7, "커피", "로스터리", Aliases.empty()));
+            tx.photos.add("photos/7-로스터리-커피/2026-07-09/bag.jpg");
+            photoStore.moveFailure = new IllegalStateException("디스크 실패");
+
+            assertThatThrownBy(() -> service.replaceEntry(7, day(9), entry()))
+                    .isInstanceOf(IllegalStateException.class);
+
+            // 삼키면 "엔트리는 옮겨졌는데 사진은 옛 날짜"가 조용히 남는다 — 이 task가 고치는 그 상태다.
+            assertThat(tx.replaces).isZero();
+        }
+    }
+
     // ────────────────────────────── 표본 ──────────────────────────────
 
     private static LocalDate day(int dayOfMonth) {
@@ -328,8 +403,10 @@ class NoteServiceTest {
         private Entry lastEntry;
         private LocalDate lastTargetDate;
         private Aliases lastGenerated;
+        private Map<String, String> lastMovedPhotoPaths;
         private int commits;
         private int deletes;
+        private int replaces;
 
         /** 이미 색인된 사진 경로 — 폴더 접미를 되읽는 입력이자 삭제가 지울 목록이다(TΔ8b). */
         private final List<String> photos = new ArrayList<>();
@@ -374,9 +451,12 @@ class NoteServiceTest {
         }
 
         @Override
-        public Note replaceEntry(long noteId, LocalDate targetDate, Entry entry) {
+        public Note replaceEntry(long noteId, LocalDate targetDate, Entry entry,
+                                 Map<String, String> movedPhotoPaths) {
             lastTargetDate = targetDate;
             lastEntry = entry;
+            lastMovedPhotoPaths = movedPhotoPaths;
+            replaces++;
             return notes.get(noteId);
         }
 
