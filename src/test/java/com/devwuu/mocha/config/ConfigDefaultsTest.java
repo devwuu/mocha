@@ -6,6 +6,7 @@ import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
 import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
 import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
+import com.devwuu.mocha.agent.turn.TurnRunner;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.llm.AliasGenerator;
 import com.devwuu.mocha.llm.OpenAiAliasGenerator;
@@ -229,15 +230,18 @@ class ConfigDefaultsTest {
     }
 
     @Test
-    @DisplayName("AC-Δ4(changes/0025 TΔ4a): RouterConfig가 협력자 스텁만으로 턴 배선 4종을 조립한다")
+    @DisplayName("AC-Δ4(changes/0025 TΔ4a): RouterConfig가 협력자 스텁만으로 턴 배선 5종을 조립한다")
     void routerBeansAssembleFromCollaborators() {
         // R-1: 0024 TΔ1b가 라우터 생성자 안 조립을 이 config로 이관했다(ADR-63) — 주입 지점이 늘어난 만큼
         // 배선 누락이 기동 실패로만 드러난다. 협력자는 전부 스텁이라 이 테스트는 "조립되는가"만 본다.
-        // 0029 TΔ4: 커밋 핸들러 빈이 pending과 함께 사라져 5종 → 4종이다(저장 확정은 TΔ6 REST가 가져간다).
+        // 0029 TΔ4: 커밋 핸들러 빈이 pending과 함께 사라져 5종 → 4종이다(저장 확정은 TΔ6b REST가 가져간다).
+        // 0029 TΔ6a: 턴 실행부(TurnRunner)가 라우터에서 빠져 빈이 됐다 — 다시 5종이고, 전송 계층 둘이
+        //            (Slack 라우터·REST 컨트롤러) 이 하나를 주입받는다.
         routerRunner().run(context -> {
             assertThat(context.getBean(RecordProposalValidator.class)).isNotNull();
             assertThat(context.getBean(TurnPromptAssembler.class)).isNotNull();
             assertThat(context.getBean(ToolCallbackProvider.class)).isNotNull();
+            assertThat(context.getBean(TurnRunner.class)).isNotNull();
 
             SlackPhotoIntake photoIntake = context.getBean(SlackPhotoIntake.class);
             // 버퍼 창(FR-10·ADR-31)은 이 config만 default를 선언한다 — 미설정 기동을 함께 박는다.
@@ -277,6 +281,10 @@ class ConfigDefaultsTest {
                 .withBean(PhotoInfoExtractor.class, () -> new PhotoInfoExtractor(null, 4))
                 .withBean(FoldingChatMemory.class, () -> new FoldingChatMemory(20, Duration.ofHours(1),
                         Clock.systemUTC()))
+                // 0029 TΔ6a: 턴 실행부가 빈이 되며 루프 드라이버·세그먼터가 이 러너의 협력자로 올라왔다
+                // (종전에는 AgentConfig가 띄우고 라우터가 직접 받았다). 배선 단언은 어느 쪽도 부르지 않는다.
+                .withBean(ChatClient.class, () -> stub(ChatClient.class))
+                .withBean(UtteranceSegmenter.class, () -> stub(UtteranceSegmenter.class))
                 .withBean(Clock.class, () -> Clock.fixed(Instant.EPOCH, ZoneId.of("Asia/Seoul")))
                 .withBean(ObjectMapper.class, MochaObjectMapper::create);
     }

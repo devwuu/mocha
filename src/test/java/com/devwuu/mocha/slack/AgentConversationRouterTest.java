@@ -11,6 +11,7 @@ import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
 import com.devwuu.mocha.agent.prompt.TurnPrompt;
 import com.devwuu.mocha.agent.tool.ToolCallback;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
+import com.devwuu.mocha.agent.turn.TurnRunner;
 import com.devwuu.mocha.domain.PhotoBuffer;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.llm.PhotoInfoExtractor;
@@ -58,12 +59,18 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>0029 TΔ4에서 버튼 커밋 분기가 사라졌다 — 확인 미리보기가 pending과 함께 폐기돼 도달할 action_id가
  * 없다(delta 0029 D-2). "제안 성공"의 관측 창도 pending 저장소에서 {@code TurnProposalSink}로 옮겨졌고,
  * 그 결과 이 테스트의 제안 시뮬레이션은 <b>실제 propose_record tool을 실행</b>하는 형태가 됐다.
+ * <p>0029 TΔ6a에서 턴 실행부가 {@link TurnRunner}로 빠져나갔다. <b>여기서는 여전히 실물 러너를 세운다</b> —
+ * 이 테스트가 묻는 것이 <i>"Slack 수신이 실제로 턴을 돌리고 그 결과가 버퍼·응답에 어떻게 떨어지는가"</i>라
+ * 러너를 스텁으로 바꾸면 그 배선이 검증에서 빠진다. 단언이 하나도 바뀌지 않은 것이 추출이 행동 무변화
+ * 리팩터링이었다는 사후 확인이다(로그 단언의 채집 대상만 두 로거로 늘었다).
  */
 class AgentConversationRouterTest {
 
     private static final String USER = "U-dev";
     private static final String CHANNEL = "C-mocha";
     private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
+    private static final List<Class<?>> LOG_SOURCES =
+            List.of(AgentConversationRouter.class, TurnRunner.class);
 
     private final Clock clock = Clock.fixed(Instant.parse("2026-07-17T01:20:30Z"), SEOUL); // Seoul 10:20:30
     private final FakeChatClient chatClient = new FakeChatClient();
@@ -80,7 +87,10 @@ class AgentConversationRouterTest {
     void setUp() {
         logs = new ListAppender<>();
         logs.start();
-        ((Logger) LoggerFactory.getLogger(AgentConversationRouter.class)).addAppender(logs);
+        // 턴 진입·세그먼터 관측은 TΔ6a에서 러너로 옮겨갔다 — 두 로거를 함께 채집해야 종전 단언이 그대로 선다.
+        for (Class<?> source : LOG_SOURCES) {
+            ((Logger) LoggerFactory.getLogger(source)).addAppender(logs);
+        }
         SlackPhotoIntake photoIntake = new SlackPhotoIntake(responder,
                 url -> jpegBytes(), photoStore, photoBufferStore, photoInfoExtractor,
                 Duration.ofMinutes(3), clock);
@@ -90,14 +100,16 @@ class AgentConversationRouterTest {
                 .mapper(MochaObjectMapper.create())
                 .clock(clock)
                 .build();
-        router = new AgentConversationRouter(transcript, chatClient, toolCallbackProvider,
-                new TurnPromptAssembler(MochaObjectMapper.create(), clock), segmenter, photoIntake,
-                responder, clock);
+        TurnRunner turnRunner = new TurnRunner(transcript, chatClient, toolCallbackProvider,
+                new TurnPromptAssembler(MochaObjectMapper.create(), clock), segmenter, clock);
+        router = new AgentConversationRouter(turnRunner, photoIntake, responder, clock);
     }
 
     @AfterEach
     void tearDown() {
-        ((Logger) LoggerFactory.getLogger(AgentConversationRouter.class)).detachAppender(logs);
+        for (Class<?> source : LOG_SOURCES) {
+            ((Logger) LoggerFactory.getLogger(source)).detachAppender(logs);
+        }
     }
 
     @Test

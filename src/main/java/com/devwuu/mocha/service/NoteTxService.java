@@ -331,7 +331,7 @@ public class NoteTxService {
      * 않는다. 호출부의 실패 응답이 필요해지는 것은 삭제를 노출하는 TΔ5다.
      *
      * <p>사진({@code data/photos/})·카드({@code artifact/cards/})는 대상이 아니다 — 파일시스템에 남고,
-     * 노트↔사진 연결({@code note_photo})은 TΔ8이 들인다(0028 Q-13).
+     * 노트↔사진 연결({@code note_photo})은 TΔ8b가 들인다(0028 Q-13).
      *
      * <p><b>더할 규칙이 없다</b>: hard delete라 표식을 남길 것이 없고 남는 것은 순서뿐이라 행 층
      * ({@code deleteNote})이 통째로 진다 — 쓰기 3종 중 유일하게 도메인을 지나지 않는 경로다.

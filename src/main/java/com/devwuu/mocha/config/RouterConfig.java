@@ -1,9 +1,13 @@
 package com.devwuu.mocha.config;
 
+import com.devwuu.mocha.agent.ChatClient;
+import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
 import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
 import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
+import com.devwuu.mocha.agent.turn.TurnRunner;
 import com.devwuu.mocha.llm.PhotoInfoExtractor;
+import com.devwuu.mocha.llm.UtteranceSegmenter;
 import com.devwuu.mocha.service.NoteService;
 import com.devwuu.mocha.repository.PhotoBufferStore;
 import com.devwuu.mocha.repository.PhotoStore;
@@ -54,6 +58,21 @@ public class RouterConfig {
             RecordProposalValidator recordProposalValidator,
             Clock clock) {
         return new ToolCallbackProvider(noteService, mapper, recordProposalValidator, clock);
+    }
+
+    // 에이전트 턴 실행부(ADR-44·61·64) — 0029 TΔ6a에서 라우터 안에서 뽑혀 나왔다. 전송 계층이 둘이
+    // 되면서(Slack 라우터·REST 컨트롤러) 턴의 정의를 한 곳에 두어야 했다. 협력자는 종전 라우터가 받던
+    // 것 그대로이고, 라우터에는 Slack이라서 있는 것(수신·응답·사진 버퍼)만 남았다.
+    @Bean
+    public TurnRunner turnRunner(
+            FoldingChatMemory transcript,
+            ChatClient chatClient,
+            ToolCallbackProvider toolCallbackProvider,
+            TurnPromptAssembler turnPromptAssembler,
+            UtteranceSegmenter segmenter,
+            Clock clock) {
+        return new TurnRunner(transcript, chatClient, toolCallbackProvider, turnPromptAssembler,
+                segmenter, clock);
     }
 
     // 사진 수신 배관(FR-10·ADR-29·31) — 라우터(버퍼 그룹핑·OCR)가 쓴다. TΔ4에서 pending 주입이 빠졌다:

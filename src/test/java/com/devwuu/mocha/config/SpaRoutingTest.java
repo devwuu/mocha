@@ -10,6 +10,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.FilterType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.util.StringUtils;
 
@@ -19,8 +21,14 @@ import org.springframework.util.StringUtils;
  * <p>이 테스트가 도는 것 자체가 배관의 절반을 증명한다 — {@code processResources}가 {@code frontendBuild}에
  * 의존하므로, Vite 산출물이 classpath의 {@code static/}에 얹히지 않으면 여기서 먼저 넘어진다.
  * 나머지 절반(fallback 판정)이 아래 세 케이스다.
+ *
+ * <p><b>API 컨트롤러는 슬라이스에서 뺀다</b>(0029 TΔ6a에서 첫 컨트롤러가 생기며 추가): 여기서 묻는 것은
+ * <i>정적 리소스 리졸버가 무엇을 되돌리는가</i>이지 API 표면이 아니고, 컨트롤러를 들이면 그 협력자
+ * ({@code TurnRunner} 등)를 이 테스트가 계속 따라 세워야 한다 — 컨트롤러가 늘 때마다 무관한 테스트가
+ * 깨지는 결합이다. 각 API는 자기 슬라이스 테스트가 가진다({@code web/*ControllerTest}).
  */
-@WebMvcTest
+@WebMvcTest(excludeFilters = @ComponentScan.Filter(
+		type = FilterType.REGEX, pattern = "com\\.devwuu\\.mocha\\.web\\..*"))
 class SpaRoutingTest {
 
 	/** SPA 진입점. {@link WebConfig}의 같은 값과 짝이다 — 한쪽만 바꾸면 이 테스트가 잡는다. */

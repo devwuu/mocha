@@ -6,6 +6,7 @@ import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
 import com.devwuu.mocha.agent.prompt.TurnPrompt;
 import com.devwuu.mocha.agent.tool.ToolCallback;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
+import com.devwuu.mocha.agent.turn.TurnRunner;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.llm.PhotoInfoExtractor;
 import com.devwuu.mocha.llm.UtteranceSegmenter;
@@ -91,9 +92,10 @@ class Change0023RegressionGuardTest {
                 .mapper(mapper)
                 .clock(clock)
                 .build();
-        AgentConversationRouter router = new AgentConversationRouter(transcript, chatClient,
-                toolCallbackProvider, new TurnPromptAssembler(mapper, clock), segmenter, photoIntake,
-                responder, clock);
+        TurnRunner turnRunner = new TurnRunner(transcript, chatClient, toolCallbackProvider,
+                new TurnPromptAssembler(mapper, clock), segmenter, clock);
+        AgentConversationRouter router = new AgentConversationRouter(
+                turnRunner, photoIntake, responder, clock);
 
         // 턴 1: 다중 날짜 → 세그먼터 주입 성공(제안 없는 턴).
         segmenter.canned = List.of(

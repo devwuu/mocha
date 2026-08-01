@@ -115,7 +115,7 @@ export function ChatScreen() {
             void send()
           }}
         >
-          {/* 사진 첨부는 업로드 → EXIF 제거 → 즉시 OCR 경로가 서 있어야 동작한다(TΔ8). 자리만 둔다. */}
+          {/* 사진 첨부는 업로드 → EXIF 제거 → 즉시 OCR 경로가 서 있어야 동작한다(TΔ8a). 자리만 둔다. */}
           <button type="button" className="composer__attach" aria-label="사진 첨부" disabled>
             ＋
           </button>

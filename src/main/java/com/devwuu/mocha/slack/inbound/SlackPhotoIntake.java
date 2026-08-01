@@ -65,7 +65,7 @@ public class SlackPhotoIntake {
      * <p>0029 TΔ4에서 <b>"진행 중 노트가 있으면 스테이징만"</b> 분기가 사라졌다 — 그 판정 입력이 서버의
      * pending이었는데, 작성 중 데이터가 클라이언트 폼으로 옮겨가며 서버가 "진행 중인지"를 알 수 없게 됐다
      * (delta 0029 D-2). 결과적으로 모든 수신 사진이 버퍼 경로로 수렴한다 — 앱에서는 사진이 대화 도중
-     * 흘러드는 것이 아니라 폼에서 업로드되므로(TΔ8 {@code POST /api/photos}) 이 분기 자체가 소멸한다.
+     * 흘러드는 것이 아니라 폼에서 업로드되므로(TΔ8a {@code POST /api/photos}) 이 분기 자체가 소멸한다.
      */
     public void receive(IncomingMedia media) {
         String userId = media.userId();

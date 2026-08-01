@@ -5,6 +5,7 @@ import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
 import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
 import com.devwuu.mocha.agent.turn.TurnDraft;
+import com.devwuu.mocha.agent.turn.TurnRunner;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.llm.OpenAiUtteranceSegmenter;
@@ -156,7 +157,9 @@ final class EvalHarness {
                 url -> new byte[0], new EvalFakes.EmptyPhotoStore(), new EvalFakes.EmptyPhotoBufferStore(),
                 new EvalFakes.NoOpPhotoInfoExtractor(), Settings.PHOTO_BUFFER_WINDOW, clock);
 
-        AgentConversationRouter router = new AgentConversationRouter(
+        // 0029 TΔ6a: 턴 실행부가 라우터에서 빠졌다. 하네스는 계속 라우터를 통해 턴을 돌린다 —
+        // 케이스 리플레이의 입구가 실사용과 같은 경로여야 행동 회귀 측정이 성립한다(ADR-69).
+        TurnRunner turnRunner = new TurnRunner(
                 transcript,
                 // 드라이버 시계만 실시간 — 케이스 날짜는 고정(clock)이지만 턴 경과·요청 잔여 예산(ADR-70 ①)은
                 // 실제 소요를 재야 상한이 실효한다. millis만 쓰므로 존은 무관하다.
@@ -166,9 +169,9 @@ final class EvalHarness {
                 recorder,
                 new TurnPromptAssembler(mapper, clock),
                 new OpenAiUtteranceSegmenter(openAi, settings.segmenterModel(), mapper),
-                photoIntake,
-                responder,
                 clock);
+        AgentConversationRouter router = new AgentConversationRouter(
+                turnRunner, photoIntake, responder, clock);
 
         Map<String, String> notesBefore = snapshotNotes(noteRepository, mapper);
 
