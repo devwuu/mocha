@@ -14,10 +14,32 @@ import type {
   NoteCandidatesResponse,
   NoteCommitRequest,
   NoteCommitResponse,
+  PhotoUploadResponse,
 } from './contract'
 
 export async function postAgentTurn(request: AgentTurnRequest): Promise<AgentTurnResponse> {
   return postJson<AgentTurnResponse>('/api/agent/turn', request)
+}
+
+/**
+ * 사진 업로드 — ＋로 고른 순간 보낸다(TΔ8a).
+ *
+ * 전송 버튼을 기다리지 않는 것이 의도다: 사용자가 발화를 쓰는 동안 업로드가 겹쳐 진행되고, 폰에서
+ * 원본 JPEG 몇 MB를 올리는 시간이 체감에서 사라진다. 돌아온 이름은 화면이 들고 있다가 다음 턴에 싣는다.
+ *
+ * multipart라 `postJson`을 쓰지 않는다 — `Content-Type`을 직접 정하면 브라우저가 붙이는 boundary가
+ * 빠져 서버가 파트를 못 읽는다. FormData를 그대로 넘기고 헤더는 건드리지 않는 것이 정답이다.
+ */
+export async function postPhotos(files: File[]): Promise<PhotoUploadResponse> {
+  const form = new FormData()
+  for (const file of files) {
+    form.append('photos', file)
+  }
+  const response = await fetch('/api/photos', { method: 'POST', body: form })
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`)
+  }
+  return (await response.json()) as PhotoUploadResponse
 }
 
 /**

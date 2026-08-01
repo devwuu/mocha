@@ -8,12 +8,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * ImageFormat 매직바이트 판별 검증 (ref: plan.md#ADR-29, data-model.md#V-12, AC-Δ3).
- * <p>확장자·메타가 아니라 선두 바이트로만 판별하고, vision 지원 여부가 스테이징 입구 게이트의 기준이 됨을 본다.
+ * <p>확장자·메타가 아니라 선두 바이트로만 판별하고, 그 판별이 업로드 입구 게이트의 기준이 됨을 본다.
+ * <p><b>0029 TΔ8a에서 수용 포맷이 JPEG/PNG로 좁혀졌다</b> — 판별 대상(무엇인지 알아본다)과 수용
+ * 대상(받는다)이 갈렸으므로 그 둘을 따로 단언한다.
  */
 class ImageFormatTest {
 
     @Test
-    @DisplayName("AC-Δ3: JPEG/PNG/GIF/WebP 매직바이트를 각 포맷으로 판별하고 vision 지원으로 표시한다")
+    @DisplayName("AC-Δ3: JPEG/PNG/GIF/WebP 매직바이트를 각 포맷으로 판별한다 — 판별은 좁히지 않았다")
     void detectsSupportedFormats() {
         assertThat(ImageFormat.detect(bytes(0xFF, 0xD8, 0xFF, 0xE0, 0, 0, 0, 0, 0, 0, 0, 0)))
                 .isEqualTo(ImageFormat.JPEG);
@@ -23,20 +25,26 @@ class ImageFormatTest {
                 .isEqualTo(ImageFormat.GIF);
         assertThat(ImageFormat.detect(bytes(0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50)))
                 .isEqualTo(ImageFormat.WEBP);
-
-        assertThat(ImageFormat.JPEG.isVisionSupported()).isTrue();
-        assertThat(ImageFormat.PNG.isVisionSupported()).isTrue();
-        assertThat(ImageFormat.GIF.isVisionSupported()).isTrue();
-        assertThat(ImageFormat.WEBP.isVisionSupported()).isTrue();
     }
 
     @Test
-    @DisplayName("ADR-29: HEIC(ftyp heic 계열)는 판별되지만 vision 미지원이다")
+    @DisplayName("TΔ8a: 업로드 수용은 JPEG/PNG뿐이다 — GIF·WebP는 vision이 읽어도 받지 않는다")
+    void acceptsOnlyJpegAndPng() {
+        assertThat(ImageFormat.JPEG.isAccepted()).isTrue();
+        assertThat(ImageFormat.PNG.isAccepted()).isTrue();
+        // POLICY: 구 4종은 "Slack이 받는 포맷이 넓어서"였고 앱 업로드에는 그 사정이 없다
+        //         (ref: changes/0029 tasks.md TΔ8a, 사용자 확정 2026-08-01).
+        assertThat(ImageFormat.GIF.isAccepted()).isFalse();
+        assertThat(ImageFormat.WEBP.isAccepted()).isFalse();
+    }
+
+    @Test
+    @DisplayName("ADR-29: HEIC(ftyp heic 계열)는 판별되지만 수용하지 않는다 — iOS 피커가 JPEG로 변환한다")
     void detectsHeicButNotVisionSupported() {
         // findings-TΔ0: 아이폰 HEIC. ISO-BMFF ftyp 박스의 브랜드가 heic.
         byte[] heic = bytes(0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x68, 0x65, 0x69, 0x63); // "ftypheic"
         assertThat(ImageFormat.detect(heic)).isEqualTo(ImageFormat.HEIC);
-        assertThat(ImageFormat.HEIC.isVisionSupported()).isFalse();
+        assertThat(ImageFormat.HEIC.isAccepted()).isFalse();
 
         // mif1(HEIF still image) 브랜드도 계열로 인식.
         byte[] mif1 = bytes(0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x6D, 0x69, 0x66, 0x31); // "ftypmif1"
@@ -44,7 +52,7 @@ class ImageFormatTest {
     }
 
     @Test
-    @DisplayName("V-12: 미상·너무 짧음·null 바이트는 UNKNOWN이며 vision 미지원이다")
+    @DisplayName("V-12: 미상·너무 짧음·null 바이트는 UNKNOWN이며 수용하지 않는다")
     void unknownForUnrecognizedBytes() {
         assertThat(ImageFormat.detect(null)).isEqualTo(ImageFormat.UNKNOWN);
         assertThat(ImageFormat.detect(new byte[]{1, 2, 3})).isEqualTo(ImageFormat.UNKNOWN);
@@ -52,7 +60,7 @@ class ImageFormatTest {
         // RIFF지만 WEBP가 아닌 컨테이너(예: WAV)는 이미지가 아니다.
         assertThat(ImageFormat.detect(bytes(0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x41, 0x56, 0x45)))
                 .isEqualTo(ImageFormat.UNKNOWN);
-        assertThat(ImageFormat.UNKNOWN.isVisionSupported()).isFalse();
+        assertThat(ImageFormat.UNKNOWN.isAccepted()).isFalse();
     }
 
     @Test

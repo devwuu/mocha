@@ -125,16 +125,45 @@ export interface Draft {
   match: MatchInfo
 }
 
-/** `POST /api/agent/turn` — 첫 턴은 폼이 없으므로 `draft`가 null이다. */
+/**
+ * `POST /api/agent/turn` — 첫 턴은 폼이 없으므로 `draft`가 null이다.
+ *
+ * `photos`는 이번 메시지에 첨부된 사진의 **스테이징 파일명**이다(TΔ8a, D-11) — `POST /api/photos` 응답이
+ * 준 값을 그대로 싣는다. 바이트가 아니라 이름인 것이 계약의 값이다: 턴이 JSON을 유지하고, 실패한 턴을
+ * 재시도할 때 사진을 다시 태우지 않는다.
+ *
+ * **클라이언트는 사진을 병합하지 않는다.** OCR·검색 보강·필드 채움은 전부 서버 턴 안에서 모델이 한다 —
+ * 출처 우선순위(user > photo > search)가 프롬프트와 TS 코드로 이중화되지 않게 하려는 것이 D-11의 결정이다.
+ */
 export interface AgentTurnRequest {
   utterance: string
   draft: Draft | null
+  photos: string[]
 }
 
 /** 턴 응답. 제안이 없었던 턴(잡담·조회·검증 거부)은 `draft`가 null이고, 그때 폼은 그대로 남는다. */
 export interface AgentTurnResponse {
   reply: string
   draft: Draft | null
+}
+
+/** 스테이징된 사진 1장 — 서버가 아는 것은 이름뿐이다(경로도 URL도 주지 않는다). */
+export interface UploadedPhoto {
+  name: string
+}
+
+/**
+ * `POST /api/photos` (multipart, 파트 이름 `photos`) — 업로드 → EXIF 제거 → 포맷 게이트 → 스테이징
+ * (TΔ8a, D-7·D-11).
+ *
+ * **여기서 OCR이 돌지 않는 것이 이 API의 정의다.** 응답은 즉시 파일명만 돌아오고, 사진을 읽는 것은
+ * 그 이름이 실린 다음 턴이다. 그래서 ＋는 *메시지에 사진을 첨부하는* 버튼이지 독립 동작이 아니다.
+ *
+ * 수용 포맷은 **JPEG/PNG뿐**이고 판별은 매직바이트다(확장자·Content-Type 불신, ADR-29). 한 장이라도
+ * 거부되면 **400이고 아무것도 스테이징되지 않는다** — 부분 성공을 표현할 자리가 계약에 없다.
+ */
+export interface PhotoUploadResponse {
+  photos: UploadedPhoto[]
 }
 
 /** `POST /api/notes` — 폼 확정 저장(= 구 [저장] 버튼). 본문이 곧 확정된 draft다. */

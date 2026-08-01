@@ -78,7 +78,7 @@ class Change0023RegressionGuardTest {
                 .clock(clock)
                 .build();
         TurnRunner runner = new TurnRunner(transcript, chatClient, toolCallbackProvider,
-                new TurnPromptAssembler(mapper, clock), segmenter, clock);
+                new TurnPromptAssembler(mapper, clock), segmenter, null, clock);
 
         // 턴 1: 다중 날짜 → 세그먼터 주입 성공(제안 없는 턴).
         segmenter.canned = List.of(

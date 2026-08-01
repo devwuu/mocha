@@ -527,6 +527,7 @@ select:focus {
 .composer {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
   padding: 11px 16px 14px;
   padding-bottom: max(14px, env(safe-area-inset-bottom));
@@ -578,4 +579,40 @@ select:focus {
 .composer__send:disabled {
   opacity: 0.45;
   cursor: default;
+}
+
+/* 첨부 스트립 — 입력 바 안에서 한 줄을 통째로 차지한다(별도 바로 만들면 테두리가 두 겹이 된다). */
+.composer__attachments {
+  flex: 0 0 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.attachment {
+  max-width: 100%;
+  border-radius: 999px;
+  background: var(--chip);
+  color: var(--brown-deep);
+  padding: 3px 10px;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment--pending {
+  color: var(--muted-soft);
+}
+
+/* 실제 파일 입력은 숨기고 ＋ 버튼이 대신 연다 — 브라우저 기본 위젯은 시안(ADR-54)과 어울리지 않는다. */
+.composer__picker {
+  display: none;
+}
+
+.bubble__photos {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 11px;
+  opacity: 0.75;
 }

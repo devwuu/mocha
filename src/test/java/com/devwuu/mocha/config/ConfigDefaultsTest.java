@@ -7,6 +7,7 @@ import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
 import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
 import com.devwuu.mocha.agent.turn.TurnRunner;
+import com.devwuu.mocha.agent.turn.TurnPhotoOcr;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.llm.AliasGenerator;
 import com.devwuu.mocha.llm.OpenAiAliasGenerator;
@@ -20,6 +21,7 @@ import com.devwuu.mocha.render.Theme;
 import com.devwuu.mocha.repository.LocalPhotoStore;
 import com.devwuu.mocha.service.NoteService;
 import com.devwuu.mocha.service.NoteTxService;
+import com.devwuu.mocha.service.PhotoService;
 import com.devwuu.mocha.repository.PhotoStore;
 import com.devwuu.mocha.repository.jpa.NoteEntityRepository;
 import org.junit.jupiter.api.DisplayName;
@@ -213,6 +215,9 @@ class ConfigDefaultsTest {
                 .withUserConfiguration(ServiceConfig.class)
                 .withBean(NoteEntityRepository.class, () -> stub(NoteEntityRepository.class))
                 .withBean(AliasGenerator.class, () -> stub(AliasGenerator.class))
+                // 0029 TΔ8a: 사진 업로드 유스케이스가 이 config에 함께 산다 — 노트와 달리 트랜잭션이 없고,
+                // 그 사실이 빈 목록에서 드러난다(사진은 파일이고 노트 행과 같은 원자 단위가 아니다).
+                .withBean(PhotoStore.class, () -> stub(PhotoStore.class))
                 .run(context -> {
                     NoteService service = context.getBean(NoteService.class);
                     assertThat(ReflectionTestUtils.getField(service, "aliasGenerator")).isNotNull();
@@ -221,23 +226,27 @@ class ConfigDefaultsTest {
                     // (delta D-9) — 생성자 시그니처로 드러나는 성질이라 배선에서 함께 박는다.
                     NoteTxService tx = context.getBean(NoteTxService.class);
                     assertThat(ReflectionTestUtils.getField(tx, "notes")).isNotNull();
+                    assertThat(ReflectionTestUtils.getField(context.getBean(PhotoService.class), "photoStore"))
+                            .isNotNull();
                 });
     }
 
     @Test
-    @DisplayName("AC-Δ4(changes/0025 TΔ4a): TurnConfig가 협력자 스텁만으로 턴 배선 4종을 조립한다")
+    @DisplayName("AC-Δ4(changes/0025 TΔ4a): TurnConfig가 협력자 스텁만으로 턴 배선 5종을 조립한다")
     void turnBeansAssembleFromCollaborators() {
         // R-1: 0024 TΔ1b가 라우터 생성자 안 조립을 이 config로 이관했다(ADR-63) — 주입 지점이 늘어난 만큼
         // 배선 누락이 기동 실패로만 드러난다. 협력자는 전부 스텁이라 이 테스트는 "조립되는가"만 본다.
         // 0029 TΔ4: 커밋 핸들러 빈이 pending과 함께 사라져 5종 → 4종이다(저장 확정은 TΔ6b REST가 가져간다).
         // 0029 TΔ6a: 턴 실행부(TurnRunner)가 라우터에서 빠져 빈이 됐다 — 다시 5종.
-        // 0029 TΔ16: 사진 수신 배관(SlackPhotoIntake) 빈이 Slack과 함께 사라져 4종이고, 남은 넷은 전부
-        //            전송 계층에 무관한 턴 협력자다(config 이름이 TurnConfig로 바뀐 이유이기도 하다).
+        // 0029 TΔ16: 사진 수신 배관(SlackPhotoIntake) 빈이 Slack과 함께 사라져 4종이 됐다.
+        // 0029 TΔ8a: 사진이 다시 턴에 실리며 OCR 전처리(TurnPhotoOcr)가 붙어 5종 — 다만 구 배관과 달리
+        //            전송 계층을 모른다(이름으로 골라 읽을 뿐이다). config 이름이 TurnConfig인 이유가 여기서도 산다.
         turnRunner().run(context -> {
             assertThat(context.getBean(RecordProposalValidator.class)).isNotNull();
             assertThat(context.getBean(TurnPromptAssembler.class)).isNotNull();
             assertThat(context.getBean(ToolCallbackProvider.class)).isNotNull();
             assertThat(context.getBean(TurnRunner.class)).isNotNull();
+            assertThat(context.getBean(TurnPhotoOcr.class)).isNotNull();
         });
     }
 
@@ -274,6 +283,10 @@ class ConfigDefaultsTest {
                 // (종전에는 AgentConfig가 띄우고 라우터가 직접 받았다). 배선 단언은 어느 쪽도 부르지 않는다.
                 .withBean(ChatClient.class, () -> stub(ChatClient.class))
                 .withBean(UtteranceSegmenter.class, () -> stub(UtteranceSegmenter.class))
+                // 0029 TΔ8a: 사진 OCR 전처리의 협력자 둘. 구 배관과 달리 다운로더·버퍼가 없다 —
+                // 사진은 이미 업로드로 서 있고 이 자리가 하는 일은 이름으로 골라 읽는 것뿐이다.
+                .withBean(PhotoStore.class, () -> stub(PhotoStore.class))
+                .withBean(PhotoInfoExtractor.class, () -> new PhotoInfoExtractor(null, 4))
                 .withBean(Clock.class, () -> Clock.fixed(Instant.EPOCH, ZoneId.of("Asia/Seoul")))
                 .withBean(ObjectMapper.class, MochaObjectMapper::create);
     }

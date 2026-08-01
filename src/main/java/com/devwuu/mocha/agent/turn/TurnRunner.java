@@ -48,6 +48,8 @@ public class TurnRunner {
     private final ToolCallbackProvider toolCallbackProvider;
     private final TurnPromptAssembler promptAssembler;
     private final UtteranceSegmenter segmenter;
+    // 이번 턴에 실린 사진의 OCR 전처리(ADR-23·44, TΔ8a) — 사진 없는 턴에는 발동하지 않는다.
+    private final TurnPhotoOcr photoOcr;
     // 시계(Asia/Seoul — V-3, 트랜스크립트와 동일)는 config 공통 빈 주입(ADR-63).
     private final Clock clock;
 
@@ -58,12 +60,14 @@ public class TurnRunner {
             ToolCallbackProvider toolCallbackProvider,
             TurnPromptAssembler promptAssembler,
             UtteranceSegmenter segmenter,
+            TurnPhotoOcr photoOcr,
             Clock clock) {
         this.transcript = transcript;
         this.chatClient = chatClient;
         this.toolCallbackProvider = toolCallbackProvider;
         this.promptAssembler = promptAssembler;
         this.segmenter = segmenter;
+        this.photoOcr = photoOcr;
         this.clock = clock;
     }
 
@@ -75,13 +79,33 @@ public class TurnRunner {
     /**
      * 에이전트 턴 1회 실행.
      *
-     * @param userId    관측·트랜스크립트·tool의 주체 키.
-     * @param utterance 이번 턴의 사용자 발화 원문.
-     * @param draft     현재 폼 상태(0029 TΔ2). 폼이 없으면 null — 첫 턴이 그렇다.
-     * @param ocr       루프 전 결정론 전처리로 읽어 둔 수신 사진 OCR 결과(ADR-23·44). 사진이 없으면 빈 결과.
+     * <p><b>사진 OCR이 이 안에 있다</b>(TΔ8a): 구 판본은 전송 계층(Slack 라우터)이 읽어 결과를 넘겼고
+     * 그래서 이 메서드가 {@code VisionExtraction}을 인자로 받았다. 앱에서는 턴 요청이 <i>사진 이름</i>을
+     * 싣고 오므로(D-11) 읽기부터가 턴의 일이다 — OCR은 애초에 tool이 아니라 <b>루프 전 결정론
+     * 전처리</b>(ADR-44)이고, 다중 날짜 분해와 같은 자리다.
+     *
+     * @param userId     관측·트랜스크립트·tool의 주체 키.
+     * @param utterance  이번 턴의 사용자 발화 원문. 사진만 첨부한 턴은 빈 문자열이다(D-11).
+     * @param draft      현재 폼 상태(0029 TΔ2). 폼이 없으면 null — 첫 턴이 그렇다.
+     * @param photoNames 이번 턴에 첨부된 스테이징 사진 파일명(업로드 응답이 준 값). 없으면 빈 목록.
      * @throws com.devwuu.mocha.agent.AgentException 턴 미완결(모델 호출 실패·상한 도달 — ADR-48 폴백 대상)
      */
-    public TurnResult run(String userId, String utterance, TurnDraft draft, VisionExtraction ocr) {
+    public TurnResult run(String userId, String utterance, TurnDraft draft, List<String> photoNames) {
+        if (photoNames == null || photoNames.isEmpty()) {
+            return run(userId, utterance, draft, VisionExtraction.empty());
+        }
+        // OCR은 tool이 아니라 루프 전 결정론 전처리다(ADR-23·44) — 사진 있으면 1콜, 실패·무정보는 빈 결과로
+        // 컨텍스트에서 빠진다(FR-19, AC-28 — 조립기가 거른다).
+        return run(userId, utterance, draft, photoOcr.read(userId, photoNames));
+    }
+
+    /**
+     * OCR 결과를 이미 들고 있는 경로 — 사진 읽기를 지나지 않는다.
+     *
+     * <p>테스트 seam으로 남긴다: 컨텍스트 주입(FR-19)만 검증하는 자리가 스테이징 파일을 실제로 만들
+     * 필요는 없다. 프로덕션 호출부는 위 {@code photoNames} 판본 하나다.
+     */
+    TurnResult run(String userId, String utterance, TurnDraft draft, VisionExtraction ocr) {
         // 다중 날짜 자동 분해(ADR-61) — OCR과 동렬의 루프 전 전처리. 탐지기가 절대 날짜 2개 이상을
         // 찾은 턴에만 세그먼터 1콜, 그 외·실패 턴은 null(주입 없음 — 게이트 V-16이 뭉뚱그림을 방어).
         List<TurnUserMessage.Segment> segments = segmentIfMultiDate(userId, utterance);
@@ -94,8 +118,8 @@ public class TurnRunner {
         //         회수 경로가 성립하지 않았다. 원문은 개인 데이터이므로 logs/ 비커밋 규칙이 그대로 적용된다
         //         (ref: specs/coffee-note-agent/plan.md §6 ADR-44 관측·#ADR-69, NFR-7/ADR-21, 루트 CLAUDE.md §5).
         // 구 라우터 판본의 buffered=<개수>가 ocr=<유무>로 바뀌었다 — 버퍼는 Slack 배관이었고 TΔ16에서
-        // 소멸했다. 턴이 실제로 아는 것은 "사진에서 읽은 것이 있는가"까지다. 사진 수 관측은 TΔ8a에서
-        // photos가 턴 요청에 실리는 자리에서 다시 선다.
+        // 소멸했다. 이 자리가 아는 것은 "사진에서 읽은 것이 있는가"까지이고, 사진 수는 읽은 쪽
+        // ({@code TurnPhotoOcr})이 남긴다(TΔ8a — 그것이 몇 장을 실제로 vision에 실었는지 아는 유일한 자리다).
         log.info("에이전트 턴 진입: user={} draft={} ocr={} segments={} 원문={}",
                 userId, draft != null, !VisionExtraction.empty().equals(ocr),
                 segments == null ? "-" : segments.size(), utterance);

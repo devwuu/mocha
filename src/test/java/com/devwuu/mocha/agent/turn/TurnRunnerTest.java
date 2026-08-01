@@ -74,7 +74,10 @@ class TurnRunnerTest {
                 .clock(clock)
                 .build();
         runner = new TurnRunner(transcript, chatClient, toolCallbackProvider,
-                new TurnPromptAssembler(MochaObjectMapper.create(), clock), segmenter, clock);
+                new TurnPromptAssembler(MochaObjectMapper.create(), clock), segmenter,
+                // 사진 OCR은 이 테스트의 대상이 아니다 — 사진 있는 턴은 TurnPhotoOcrTest가 소유하고,
+                // 여기서는 컨텍스트 주입만 보는 패키지-프라이빗 판본을 부른다(스테이징 파일이 필요 없다).
+                null, clock);
     }
 
     @AfterEach

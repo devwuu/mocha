@@ -178,6 +178,8 @@ final class EvalHarness {
                 recorder,
                 new TurnPromptAssembler(mapper, clock),
                 new OpenAiUtteranceSegmenter(openAi, settings.segmenterModel(), mapper),
+                // 사진 OCR은 케이스 v1의 비범위다(아래 주석) — 사진 없는 턴은 이 협력자를 지나지 않는다.
+                null,
                 clock);
 
         Map<String, String> notesBefore = snapshotNotes(noteRepository, mapper);

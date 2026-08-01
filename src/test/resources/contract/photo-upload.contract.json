@@ -1,0 +1,13 @@
+{
+  "request_content_type": "multipart/form-data",
+  "request_part_name": "photos",
+  "accepted_formats": ["image/jpeg", "image/png"],
+  "response": {
+    "photos": [
+      { "name": "bag-front.jpg" },
+      { "name": "bag-back.jpg" }
+    ]
+  },
+  "response_status": 200,
+  "rejected_status": 400
+}

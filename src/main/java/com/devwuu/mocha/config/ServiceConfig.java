@@ -1,9 +1,11 @@
 package com.devwuu.mocha.config;
 
 import com.devwuu.mocha.llm.AliasGenerator;
+import com.devwuu.mocha.repository.PhotoStore;
 import com.devwuu.mocha.repository.jpa.NoteEntityRepository;
 import com.devwuu.mocha.service.NoteService;
 import com.devwuu.mocha.service.NoteTxService;
+import com.devwuu.mocha.service.PhotoService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -33,5 +35,12 @@ public class ServiceConfig {
     @Bean
     public NoteService noteService(NoteTxService noteTxService, AliasGenerator aliasGenerator) {
         return new NoteService(noteTxService, aliasGenerator);
+    }
+
+    // 사진 업로드 유스케이스(0029 TΔ8a) — 포맷 게이트 → EXIF 제거 → 스테이징. 트랜잭션이 없는 것이
+    // 계층 축과 정합한다: 사진은 파일이고 노트 행과 같은 원자 단위가 아니다(백엔드 CLAUDE.md §3).
+    @Bean
+    public PhotoService photoService(PhotoStore photoStore) {
+        return new PhotoService(photoStore);
     }
 }

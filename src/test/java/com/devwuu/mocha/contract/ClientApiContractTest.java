@@ -45,6 +45,7 @@ class ClientApiContractTest {
     private static final String NOTE_COMMIT_CONTRACT = "/contract/note-commit.contract.json";
     private static final String NOTE_CANDIDATES_CONTRACT = "/contract/note-candidates.contract.json";
     private static final String AGENT_CANCEL_CONTRACT = "/contract/agent-cancel.contract.json";
+    private static final String PHOTO_UPLOAD_CONTRACT = "/contract/photo-upload.contract.json";
 
     private final JsonMapper mapper = MochaObjectMapper.create();
 
@@ -82,13 +83,57 @@ class ClientApiContractTest {
     }
 
     @Test
-    @DisplayName("TΔ10: 턴 요청 본문 = {utterance, draft}, draft는 첫 턴에 null — 폼이 없으면 보낼 것이 없다")
+    @DisplayName("TΔ10: 턴 요청 본문 = {utterance, draft, photos}, draft는 첫 턴에 null — 폼이 없으면 보낼 것이 없다")
     void turnRequestCarriesUtteranceAndOptionalDraft() throws IOException {
         JsonNode contract = load(AGENT_TURN_CONTRACT);
 
-        assertThat(fieldNames(contract.get("request"))).containsExactly("utterance", "draft");
-        assertThat(fieldNames(contract.get("request_first_turn"))).containsExactly("utterance", "draft");
+        assertThat(fieldNames(contract.get("request"))).containsExactly("utterance", "draft", "photos");
+        assertThat(fieldNames(contract.get("request_first_turn"))).containsExactly("utterance", "draft", "photos");
         assertThat(contract.get("request_first_turn").get("draft").isNull()).isTrue();
+    }
+
+    @Test
+    @DisplayName("TΔ8a: 턴에 실리는 사진은 바이트가 아니라 이름이다 — 업로드 응답이 준 값을 그대로 되싣는다(D-11)")
+    void turnCarriesPhotoNamesNotBytes() throws IOException {
+        JsonNode turn = load(AGENT_TURN_CONTRACT);
+        List<String> uploaded = load(PHOTO_UPLOAD_CONTRACT).get("response").get("photos").valueStream()
+                .map(photo -> photo.get("name").stringValue()).toList();
+
+        JsonNode withPhotos = turn.get("request_with_photos");
+        assertThat(fieldNames(withPhotos)).containsExactly("utterance", "draft", "photos");
+        // 두 계약이 같은 값을 주고받는지가 핵심이다 — 여기가 어긋나면 클라이언트가 서버에 없는 이름을 싣는다.
+        assertThat(withPhotos.get("photos").valueStream().map(JsonNode::stringValue))
+                .containsExactlyElementsOf(uploaded);
+        withPhotos.get("photos").forEach(name ->
+                assertThat(name.isString()).as("사진은 이름으로 실린다 — 바이트를 실으면 턴이 multipart가 된다").isTrue());
+    }
+
+    @Test
+    @DisplayName("TΔ8a: 사진만 첨부한 턴은 utterance가 빈 문자열이다 — 재료가 사진에서 나오는 유효한 턴이다")
+    void photosOnlyTurnHasBlankUtterance() throws IOException {
+        JsonNode request = load(AGENT_TURN_CONTRACT).get("request_photos_only");
+
+        assertThat(request.get("utterance").stringValue()).isEmpty();
+        assertThat(request.get("photos")).isNotEmpty();
+    }
+
+    @Test
+    @DisplayName("TΔ8a: 업로드 응답은 스테이징 파일명뿐이다 — 경로도 URL도 주지 않는다(V-4의 정신)")
+    void uploadResponseCarriesStagedNamesOnly() throws IOException {
+        JsonNode contract = load(PHOTO_UPLOAD_CONTRACT);
+
+        assertThat(fieldNames(contract.get("response"))).containsExactly("photos");
+        assertThat(contract.get("response").get("photos")).isNotEmpty();
+        contract.get("response").get("photos").forEach(photo -> {
+            assertThat(fieldNames(photo)).containsExactly("name");
+            assertThat(photo.get("name").isString()).isTrue();
+        });
+        // POLICY: 수용 포맷은 JPEG/PNG뿐이고, 한 장이라도 거부되면 아무것도 스테이징되지 않는다
+        //         (ref: changes/0029 tasks.md TΔ8a — 계약에 부분 성공을 표현할 자리가 없다).
+        assertThat(contract.get("accepted_formats").valueStream().map(JsonNode::stringValue))
+                .containsExactly("image/jpeg", "image/png");
+        assertThat(contract.get("rejected_status").intValue()).isEqualTo(400);
+        assertThat(contract.get("request_content_type").stringValue()).isEqualTo("multipart/form-data");
     }
 
     @Test

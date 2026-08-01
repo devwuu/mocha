@@ -8,7 +8,8 @@ import com.devwuu.mocha.agent.turn.TurnResult;
 import com.devwuu.mocha.agent.turn.TurnRunner;
 import com.devwuu.mocha.config.CommonConfig;
 import com.devwuu.mocha.json.MochaObjectMapper;
-import com.devwuu.mocha.llm.VisionExtraction;
+import com.devwuu.mocha.repository.RecordingPhotoStore;
+import com.devwuu.mocha.service.PhotoService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -74,12 +75,16 @@ class AgentTurnControllerTest {
     @Autowired
     FoldingChatMemory transcript;
 
+    @Autowired
+    RecordingPhotoStore photoStore;
+
     private JsonNode contract;
 
     @BeforeEach
     void setUp() throws IOException {
         contract = load(CONTRACT);
         turnRunner.reset();
+        photoStore.discarded.clear();
         // 컨텍스트가 테스트 메서드 간 공유되므로 문맥도 함께 되돌린다(접힘 단언이 앞 테스트에 물들지 않게).
         transcript.clear(SingleUser.ID, FoldingChatMemory.FoldTrigger.CANCEL_COMMIT);
     }
@@ -147,14 +152,42 @@ class AgentTurnControllerTest {
     }
 
     @Test
-    @DisplayName("TΔ6a: 빈 발화는 모델을 부르지 않는다 — 400. 사진이 턴에 실리면(TΔ8a) 완화될 조건이다")
+    @DisplayName("TΔ6a: 발화도 사진도 없으면 모델을 부르지 않는다 — 400")
     void blankUtteranceIsRejectedWithoutCallingTheModel() throws Exception {
         mockMvc.perform(post("/api/agent/turn")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"utterance\":\"   \",\"draft\":null}"))
+                        .content("{\"utterance\":\"   \",\"draft\":null,\"photos\":[]}"))
                 .andExpect(status().isBadRequest());
 
         assertThat(turnRunner.calls).isZero();
+    }
+
+    @Test
+    @DisplayName("TΔ8a: 첨부된 사진 이름이 그대로 턴에 실린다 — 서버가 읽을 대상을 클라이언트가 지목한다(D-11)")
+    void attachedPhotoNamesReachTheTurn() throws Exception {
+        perform(contract.get("request_with_photos"));
+
+        // 스테이징에는 저장·취소 전까지 올린 사진이 누적되므로, 이번 메시지의 것이 무엇인지는 이 이름들뿐이다.
+        assertThat(turnRunner.lastPhotos).containsExactly("bag-front.jpg", "bag-back.jpg");
+        assertThat(turnRunner.lastUtterance).isEqualTo("이거 오늘 마셨어");
+    }
+
+    @Test
+    @DisplayName("TΔ8a: 사진만 첨부하고 보내는 것도 유효한 턴이다 — 재료가 사진에서 나온다(D-11)")
+    void photosOnlyTurnIsAccepted() throws Exception {
+        perform(contract.get("request_photos_only"));
+
+        assertThat(turnRunner.calls).isEqualTo(1);
+        assertThat(turnRunner.lastUtterance).isEmpty();
+        assertThat(turnRunner.lastPhotos).containsExactly("bag-front.jpg");
+    }
+
+    @Test
+    @DisplayName("TΔ8a: photos가 없는 요청도 그대로 돈다 — 사진 없는 턴이 여전히 기본형이다")
+    void turnWithoutPhotosStillRuns() throws Exception {
+        perform(contract.get("request_first_turn"));
+
+        assertThat(turnRunner.lastPhotos).isEmpty();
     }
 
     @Test
@@ -166,6 +199,15 @@ class AgentTurnControllerTest {
                 .andExpect(status().isNoContent());
 
         assertThat(transcript.view(SingleUser.ID)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("TΔ8a: [취소]는 대화 문맥과 함께 사진 스테이징도 폐기한다 — 버린 노트의 사진이 다음 턴에 남지 않는다")
+    void cancelDiscardsStagedPhotos() throws Exception {
+        mockMvc.perform(post("/api/agent/cancel"))
+                .andExpect(status().isNoContent());
+
+        assertThat(photoStore.discarded).containsExactly(SingleUser.ID);
     }
 
     @Test
@@ -230,6 +272,20 @@ class AgentTurnControllerTest {
             return new EchoTurnRunner();
         }
 
+        @Bean
+        RecordingPhotoStore photoStore() {
+            return new RecordingPhotoStore();
+        }
+
+        /**
+         * 실물 service를 저장소 fake 위에 세운다 — 취소가 <i>스테이징을 실제로 폐기하는가</i>가 검증
+         * 대상이라 위임 한 겹을 스텁으로 가리면 그 사실이 아니라 "service를 불렀다"까지만 남는다.
+         */
+        @Bean
+        PhotoService photoService(RecordingPhotoStore photoStore) {
+            return new PhotoService(photoStore);
+        }
+
         /**
          * 실물이다 — 접힘은 값 없는 부수효과라 스텁으로 바꾸면 <i>"clear를 불렀다"</i>까지만 확인하게 된다.
          * 확인하고 싶은 것은 그 다음, <b>문맥이 실제로 비었는가</b>다.
@@ -254,9 +310,10 @@ class AgentTurnControllerTest {
         String lastUserId;
         String lastUtterance;
         TurnDraft lastDraft;
+        List<String> lastPhotos;
 
         EchoTurnRunner() {
-            super(null, null, null, null, null, null);
+            super(null, null, null, null, null, null, null);
         }
 
         void reset() {
@@ -267,14 +324,21 @@ class AgentTurnControllerTest {
             lastUserId = null;
             lastUtterance = null;
             lastDraft = null;
+            lastPhotos = null;
         }
 
+        /**
+         * 컨트롤러가 부르는 판본 — TΔ8a에서 seam이 {@code VisionExtraction}에서 <b>사진 이름</b>으로
+         * 내려왔다. OCR이 턴 안으로 들어갔기 때문이고(D-11), 덕분에 이 fake가 <i>"어떤 사진이 실렸나"</i>를
+         * 그대로 관측한다 — 컨트롤러가 이름을 흘리면 여기가 레드다.
+         */
         @Override
-        public TurnResult run(String userId, String utterance, TurnDraft draft, VisionExtraction ocr) {
+        public TurnResult run(String userId, String utterance, TurnDraft draft, List<String> photoNames) {
             calls++;
             lastUserId = userId;
             lastUtterance = utterance;
             lastDraft = draft;
+            lastPhotos = photoNames;
             if (failure != null) {
                 throw failure;
             }

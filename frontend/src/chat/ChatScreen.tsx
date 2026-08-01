@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Draft } from '../api'
-import { postAgentCancel, postAgentTurn, postNoteCommit } from '../api'
+import { postAgentCancel, postAgentTurn, postNoteCommit, postPhotos } from '../api'
 import { DraftForm } from './DraftForm'
 
 /**
@@ -14,35 +14,77 @@ import { DraftForm } from './DraftForm'
  *
  * 추가 발화는 **현재 폼 전체를 동봉**해 나간다(TΔ2 계약) — 에이전트의 과업이 "이 draft 위에 이 발화를
  * 반영하라"이기 때문이다. 제안이 없던 턴은 응답의 draft가 null이고, 그때 폼은 건드리지 않는다.
+ *
+ * **사진은 ＋로 첨부해 발화와 한 전송으로 묶인다**(TΔ8a, D-11). 고른 순간 업로드되고(`POST /api/photos`)
+ * 화면이 들고 있는 것은 스테이징 파일명뿐이며, 읽기(OCR)·검색 보강·필드 채움은 전부 서버 턴 안에서
+ * 모델이 한다 — **이 파일에 병합 코드가 0줄인 것이 D-11의 결정이다.**
  */
 export function ChatScreen() {
   const [messages, setMessages] = useState<Message[]>([GREETING])
   const [draft, setDraft] = useState<Draft | null>(null)
   const [busy, setBusy] = useState(false)
   const [input, setInput] = useState('')
+  // 업로드가 끝나 스테이징에 서 있는 사진의 파일명 — 다음 전송에 실린다.
+  const [photos, setPhotos] = useState<string[]>([])
+  const [uploading, setUploading] = useState(false)
   const tail = useRef<HTMLDivElement>(null)
+  const picker = useRef<HTMLInputElement>(null)
 
   // 새 말풍선·폼 변화가 접히지 않게 항상 끝으로 붙인다.
   useEffect(() => {
     tail.current?.scrollIntoView({ block: 'end' })
-  }, [messages, draft, busy])
+  }, [messages, draft, busy, photos])
+
+  /**
+   * ＋로 고른 사진을 즉시 올린다 — 전송 버튼을 기다리지 않는다(사용자가 발화를 쓰는 동안 겹쳐 진행된다).
+   *
+   * 한 장이라도 수용 포맷(JPEG/PNG)이 아니면 서버가 400으로 답하고 **아무것도 스테이징되지 않는다** —
+   * 부분 성공이 없으므로 화면도 전부 실패로 다루고 사용자가 다시 고른다.
+   */
+  async function attach(files: FileList | null) {
+    const picked = files === null ? [] : Array.from(files)
+    if (picked.length === 0 || uploading || busy) {
+      return
+    }
+    setUploading(true)
+    try {
+      const uploaded = await postPhotos(picked)
+      setPhotos((prev) => [...prev, ...uploaded.photos.map((photo) => photo.name)])
+    } catch (error) {
+      setMessages((prev) => [
+        ...prev,
+        { role: 'system', text: describe(error, '사진을 올리지 못했어요. JPEG·PNG만 받을 수 있어요.') },
+      ])
+    } finally {
+      setUploading(false)
+      // 같은 파일을 다시 고를 수 있게 값을 비운다 — 안 비우면 change 이벤트가 안 뜬다.
+      if (picker.current !== null) {
+        picker.current.value = ''
+      }
+    }
+  }
 
   async function send() {
     const utterance = input.trim()
-    if (utterance === '' || busy) {
+    // 사진만 첨부하고 보내는 것도 유효한 턴이다(D-11) — 그때 재료는 사진에서 나온다.
+    if ((utterance === '' && photos.length === 0) || busy || uploading) {
       return
     }
+    const attached = photos
     setInput('')
-    setMessages((prev) => [...prev, { role: 'user', text: utterance }])
+    setMessages((prev) => [...prev, { role: 'user', text: utterance, photos: attached.length }])
     setBusy(true)
     try {
-      const response = await postAgentTurn({ utterance, draft })
+      const response = await postAgentTurn({ utterance, draft, photos: attached })
+      // 서버가 받아 읽은 사진은 이 메시지의 것으로 소진된다 — 다음 턴에 다시 실으면 같은 사진을 또 읽는다.
+      setPhotos([])
       setMessages((prev) => [...prev, { role: 'agent', text: response.reply }])
       // 제안 없는 턴(잡담·조회·검증 거부)은 draft가 null로 온다 — 폼을 지우지 않는다.
       if (response.draft !== null) {
         setDraft(response.draft)
       }
     } catch (error) {
+      // 실패하면 첨부는 그대로 둔다 — 사진은 스테이징에 서 있고, 재시도가 이름만 다시 실으면 된다.
       // POLICY: 턴 실패는 조용히 삼키지 않는다 — 노트 무변화 + 재요청 안내가 서버 규약이고(ADR-48),
       //         화면도 같은 자리에 실패를 남긴다. 사용자가 방금 한 말은 말풍선에 그대로 있다.
       setMessages((prev) => [...prev, { role: 'system', text: describe(error, '잘 못 들었어요. 다시 한 번 말해 주세요.') }])
@@ -60,6 +102,8 @@ export function ChatScreen() {
     try {
       const saved = await postNoteCommit(draft)
       setDraft(null)
+      // 보내지 않고 남은 첨부는 이 노트의 것이었다 — 저장이 끝났으니 화면에서도 내린다.
+      setPhotos([])
       setMessages((prev) => [...prev, { role: 'system', text: savedNotice(saved.note_id, merged) }])
     } catch (error) {
       setMessages((prev) => [...prev, { role: 'system', text: describe(error, '저장하지 못했어요. 폼은 그대로 두었어요.') }])
@@ -72,8 +116,9 @@ export function ChatScreen() {
     // 폼은 클라이언트 상태라 버리는 것으로 끝나지만 서버 대화 문맥의 접힘은 통지가 필요하다(TΔ6b) —
     // 알리지 않으면 버린 작업의 문맥이 TTL까지 남아 다음 커피의 첫 발화에 섞인다.
     // 폼은 응답을 기다리지 않고 즉시 버린다: 사용자가 [취소]를 누른 순간 그것이 의도이고, 통지 실패가
-    // 취소 자체를 되돌릴 이유는 없다.
+    // 취소 자체를 되돌릴 이유는 없다. 사진 스테이징 폐기도 같은 통지가 겸한다(TΔ8a).
     setDraft(null)
+    setPhotos([])
     setMessages((prev) => [...prev, { role: 'system', text: '작성 중이던 노트를 지웠어요.' }])
     try {
       await postAgentCancel()
@@ -123,8 +168,36 @@ export function ChatScreen() {
             void send()
           }}
         >
-          {/* 사진 첨부는 업로드 → EXIF 제거 → 즉시 OCR 경로가 서 있어야 동작한다(TΔ8a). 자리만 둔다. */}
-          <button type="button" className="composer__attach" aria-label="사진 첨부" disabled>
+          {(photos.length > 0 || uploading) && (
+            <div className="composer__attachments">
+              {photos.map((name) => (
+                <span key={name} className="attachment">
+                  🖼 {name}
+                </span>
+              ))}
+              {uploading && <span className="attachment attachment--pending">올리는 중…</span>}
+            </div>
+          )}
+          {/*
+            ＋는 *메시지에 사진을 첨부하는* 버튼이지 독립 동작이 아니다(D-11) — 고른 순간 업로드되지만
+            사진이 노트에 닿는 것은 이 메시지가 전송될 때다. accept를 JPEG/PNG로 좁혀 두면 피커에서부터
+            거부될 파일이 덜 보이지만, 그것은 편의일 뿐이고 실제 게이트는 서버의 매직바이트다(ADR-29).
+          */}
+          <input
+            ref={picker}
+            className="composer__picker"
+            type="file"
+            accept="image/jpeg,image/png"
+            multiple
+            onChange={(event) => void attach(event.target.files)}
+          />
+          <button
+            type="button"
+            className="composer__attach"
+            aria-label="사진 첨부"
+            disabled={busy || uploading}
+            onClick={() => picker.current?.click()}
+          >
             ＋
           </button>
           <input
@@ -133,7 +206,12 @@ export function ChatScreen() {
             placeholder="메시지 쓰기…"
             onChange={(event) => setInput(event.target.value)}
           />
-          <button type="submit" className="composer__send" aria-label="보내기" disabled={busy || input.trim() === ''}>
+          <button
+            type="submit"
+            className="composer__send"
+            aria-label="보내기"
+            disabled={busy || uploading || (input.trim() === '' && photos.length === 0)}
+          >
             ↑
           </button>
         </form>
@@ -145,6 +223,8 @@ export function ChatScreen() {
 interface Message {
   role: 'user' | 'agent' | 'system'
   text: string
+  /** 이 메시지에 함께 보낸 사진 장수 — 말풍선이 "무엇을 보냈는지"를 온전히 남기기 위한 것뿐이다. */
+  photos?: number
 }
 
 const GREETING: Message = { role: 'agent', text: '오늘의 한 잔, 어땠어요? ☕' }
@@ -154,9 +234,13 @@ function Bubble({ message }: { message: Message }) {
     return <div className="notice">{message.text}</div>
   }
   if (message.role === 'user') {
+    const attached = message.photos ?? 0
     return (
       <div className="row row--user">
-        <div className="bubble bubble--user">{message.text}</div>
+        <div className="bubble bubble--user">
+          {attached > 0 && <span className="bubble__photos">🖼 사진 {attached}장</span>}
+          {message.text}
+        </div>
       </div>
     )
   }

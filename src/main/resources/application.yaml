@@ -25,6 +25,14 @@ spring:
     # 마이그레이션 파일명은 델타 번호와 대응시킨다(V1__0028_..., Q-10) — 스키마 이력이 델타와 1:1로 추적된다.
     locations: classpath:db/migration
 
+  # 사진 업로드(POST /api/photos, changes/0029 TΔ8a). 부트 기본값이 파일당 1MB인데 아이폰 원본 JPEG는
+  # 보통 2~5MB라 기본값으로는 정상 업로드가 전부 413으로 떨어진다. 상한은 vision 1콜 이미지 상한
+  # (mocha.vision.max-images=4)과 짝이다 — 한 메시지에 4장까지가 실제로 읽히는 양이다.
+  servlet:
+    multipart:
+      max-file-size: 15MB
+      max-request-size: 60MB
+
   # 정적 매핑은 WebConfig가 단독 소유한다(ADR-78) — SPA fallback 때문에 리졸버를 직접 얹어야 하고,
   # 부트 기본 매핑을 켜 두면 같은 "/**" 패턴이 둘 등록되어 승자가 등록 순서에 달린다.
   web:

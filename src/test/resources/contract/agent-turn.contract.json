@@ -46,11 +46,23 @@
         "updated_at": "2026-07-16T10:00:00+09:00"
       },
       "match": { "type": "new" }
-    }
+    },
+    "photos": []
   },
   "request_first_turn": {
     "utterance": "오늘 이거 마셨어",
-    "draft": null
+    "draft": null,
+    "photos": []
+  },
+  "request_with_photos": {
+    "utterance": "이거 오늘 마셨어",
+    "draft": null,
+    "photos": ["bag-front.jpg", "bag-back.jpg"]
+  },
+  "request_photos_only": {
+    "utterance": "",
+    "draft": null,
+    "photos": ["bag-front.jpg"]
   },
   "response": {
     "reply": "커피베라 · 봄맞이 블렌드로 고쳤어요. 폼에서 확인해 주세요.",

@@ -5,8 +5,11 @@ import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
 import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
 import com.devwuu.mocha.agent.tool.validation.RecordProposalValidator;
+import com.devwuu.mocha.agent.turn.TurnPhotoOcr;
 import com.devwuu.mocha.agent.turn.TurnRunner;
+import com.devwuu.mocha.llm.PhotoInfoExtractor;
 import com.devwuu.mocha.llm.UtteranceSegmenter;
+import com.devwuu.mocha.repository.PhotoStore;
 import com.devwuu.mocha.service.NoteService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -65,12 +68,17 @@ public class TurnConfig {
             ToolCallbackProvider toolCallbackProvider,
             TurnPromptAssembler turnPromptAssembler,
             UtteranceSegmenter segmenter,
+            TurnPhotoOcr turnPhotoOcr,
             Clock clock) {
         return new TurnRunner(transcript, chatClient, toolCallbackProvider, turnPromptAssembler,
-                segmenter, clock);
+                segmenter, turnPhotoOcr, clock);
     }
 
-    // 0029 TΔ16: 사진 수신 배관(SlackPhotoIntake) 빈이 사라졌다 — 다운로드·버퍼 그룹핑(FR-10)·HEIC 썸네일
-    // 대체가 전부 Slack 파일 메타에 기대던 것이라 REST에 존재할 수 없다. 포맷 게이트(ADR-29)·스테이징·
-    // OCR 전처리는 TΔ8a가 업로드 API 자리에서 다시 세운다(delta D-11).
+    // 이번 턴에 실린 사진의 OCR 전처리(0029 TΔ8a, delta D-11) — 구 SlackPhotoIntake의 자리다. 사라진 것은
+    // 버퍼 윈도우로 "무엇이 이 턴 것인가"를 추정하던 부분이고(TΔ16), 남은 것은 이름으로 골라 읽는 일뿐이다.
+    // 포맷 게이트(ADR-29)·스테이징은 업로드 쪽(service/PhotoService)이 가져갔다 — 읽는 쪽과 쓰는 쪽이 갈렸다.
+    @Bean
+    public TurnPhotoOcr turnPhotoOcr(PhotoStore photoStore, PhotoInfoExtractor photoInfoExtractor) {
+        return new TurnPhotoOcr(photoStore, photoInfoExtractor);
+    }
 }

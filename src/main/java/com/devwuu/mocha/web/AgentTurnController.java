@@ -3,6 +3,7 @@ package com.devwuu.mocha.web;
 import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
 import com.devwuu.mocha.agent.turn.TurnResult;
 import com.devwuu.mocha.agent.turn.TurnRunner;
+import com.devwuu.mocha.service.PhotoService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
@@ -10,6 +11,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 /**
  * {@code POST /api/agent/turn} — 발화 1건을 에이전트 턴으로 돌리고 응답 텍스트와 제안된 폼 상태를
@@ -43,23 +46,26 @@ public class AgentTurnController {
 
     private final TurnRunner turnRunner;
     private final FoldingChatMemory transcript;
+    private final PhotoService photoService;
 
-    public AgentTurnController(TurnRunner turnRunner, FoldingChatMemory transcript) {
+    public AgentTurnController(TurnRunner turnRunner, FoldingChatMemory transcript, PhotoService photoService) {
         this.turnRunner = turnRunner;
         this.transcript = transcript;
+        this.photoService = photoService;
     }
 
     @PostMapping("/turn")
     public ResponseEntity<Response> turn(@RequestBody Request request) {
-        String utterance = request.utterance();
-        if (utterance == null || utterance.isBlank()) {
-            // 빈 턴은 모델 호출만 태우고 아무것도 만들지 않는다. TΔ8a에서 사진이 턴에 실리면
-            // "사진만 첨부하고 전송"이 유효한 턴이 되므로(D-11) 이 조건은 그때 완화된다.
+        String utterance = request.utterance() == null ? "" : request.utterance();
+        List<String> photos = request.photos() == null ? List.of() : request.photos();
+        if (utterance.isBlank() && photos.isEmpty()) {
+            // 빈 턴은 모델 호출만 태우고 아무것도 만들지 않는다. 다만 <b>사진만 첨부하고 전송</b>은
+            // 유효한 턴이다(TΔ8a, D-11) — 그때 발화가 비고 재료는 사진에서 나온다.
             return ResponseEntity.badRequest().build();
         }
         try {
             TurnResult result = turnRunner.run(SingleUser.ID, utterance,
-                    request.draft() == null ? null : request.draft().toDraft());
+                    request.draft() == null ? null : request.draft().toDraft(), photos);
             return ResponseEntity.ok(new Response(result.reply(), DraftBody.of(result.proposal())));
         } catch (Exception e) {
             // POLICY 원문 보존(위 클래스 주석) — 예외 메시지로 폴백 사유를 구분 관측한다(plan §6).
@@ -85,13 +91,14 @@ public class AgentTurnController {
      * <p>본문도 응답도 없다(204). 무엇을 취소하는지는 서버가 이미 안다 — 사용자당 트랜스크립트는 1건이고
      * (단일 사용자 전제, {@link SingleUser}) 서버에는 취소할 draft가 애초에 없다.
      *
-     * <p>버린 사진 스테이징 정리는 아직 여기 없다 — 구 {@code SlackCommitHandler.cancel}이 함께 하던 일인데
-     * TΔ16에서 사진 입구 자체가 사라져 <b>지금은 취소할 스테이징이 생기지 않는다</b>. TΔ8a에서 업로드가
-     * REST로 서는 그때 이 자리에 붙는다.
+     * <p><b>버린 사진 스테이징도 함께 폐기한다</b>(TΔ8a — 구 {@code SlackCommitHandler.cancel}의 자리):
+     * 작성 중 올린 사진은 그 노트를 위한 것이었고, 남겨 두면 다음 커피의 첫 턴에 섞이거나 시작 시 고아
+     * 청소({@code StagingSweeper})까지 남는다. 트랜스크립트 접힘과 <b>같은 이유의 같은 조작</b>이다.
      */
     @PostMapping("/cancel")
     public ResponseEntity<Void> cancel() {
         transcript.clear(SingleUser.ID, FoldingChatMemory.FoldTrigger.CANCEL_COMMIT);
+        photoService.discard(SingleUser.ID);
         return ResponseEntity.noContent().build();
     }
 
@@ -100,8 +107,11 @@ public class AgentTurnController {
      * <p>추가 발화가 폼 전체를 동봉하는 것이 이 델타의 방어선이다(TΔ2): 서버가 작성 중 데이터를 기억하지
      * 않으므로, 이것이 없으면 에이전트가 트랜스크립트만 보고 재제안해 <b>사용자가 고친 값이 되돌아간다</b>
      * (delta.md §1.2).
+     * <p>{@code photos}는 이번 메시지에 첨부된 사진의 스테이징 파일명이다(TΔ8a, D-11) — {@code POST /api/photos}
+     * 응답이 준 값을 그대로 싣는다. <b>바이트가 아니라 이름</b>인 것이 이 계약의 값이다: 턴이 JSON을
+     * 유지하고, 실패한 턴의 재시도가 사진을 다시 태우지 않는다.
      */
-    public record Request(String utterance, DraftBody draft) {
+    public record Request(String utterance, DraftBody draft, List<String> photos) {
     }
 
     /**

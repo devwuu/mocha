@@ -12,32 +12,41 @@ import java.nio.charset.StandardCharsets;
  * "지원하지 않는 포맷" 안내로 수렴시킨다.
  * <p><b>0029 TΔ16에서 HEIC 우회(Slack 썸네일 대체, changes/0013 TΔ3)가 소멸했다</b> — 그 경로는 Slack 파일
  * 메타(mimetype·썸네일 URL)에 기대어 REST에 존재할 수 없고, iOS 이미지 피커가 업로드 시 JPEG로 변환한다.
- * 판별 자체(이 enum)는 남는다 — 입구 게이트는 그대로다(ADR-29). 수용 포맷을 JPEG/PNG로 좁히는 것은
- * TΔ8a의 몫이라 여기서 선점하지 않는다.
+ * 판별 자체(이 enum)는 남는다 — 입구 게이트는 그대로다(ADR-29).
+ *
+ * <p><b>0029 TΔ8a에서 수용 포맷이 JPEG/PNG로 좁혀졌다</b>(사용자 확정 2026-08-01). 게이트가 묻는 질문이
+ * 바뀐 것이다 — 구 기준은 <i>"vision이 읽을 수 있는가"</i>였고 GIF·WebP는 지금도 읽을 수 있지만, 4종으로
+ * 넓었던 이유가 <i>"Slack이 받는 포맷이 넓어서"</i>였고 앱 업로드에는 그 사정이 없다. 좁히면
+ * {@link ExifStripper}가 다뤄야 할 컨테이너도 둘로 고정된다.
  */
 public enum ImageFormat {
     JPEG("image/jpeg", "jpg", true),
     PNG("image/png", "png", true),
-    GIF("image/gif", "gif", true),
-    WEBP("image/webp", "webp", true),
-    // vision 미지원 — 원본을 스테이징하지 않는다(ADR-29). 구 Slack 썸네일 대체는 TΔ16에서 사라졌다.
+    // vision은 읽지만 업로드로 받지 않는다(TΔ8a) — 판별은 남겨 거부 사유를 구분 관측한다.
+    GIF("image/gif", "gif", false),
+    WEBP("image/webp", "webp", false),
+    // vision 미지원 — 구 Slack 썸네일 대체는 TΔ16에서 사라졌다. iOS 피커가 업로드 시 JPEG로 변환한다.
     HEIC("image/heic", "heic", false),
     // 판별 불가 — 스테이징 금지, 안내로 수렴.
     UNKNOWN(null, null, false);
 
     private final String mimeType;
     private final String extension;
-    private final boolean visionSupported;
+    private final boolean accepted;
 
-    ImageFormat(String mimeType, String extension, boolean visionSupported) {
+    ImageFormat(String mimeType, String extension, boolean accepted) {
         this.mimeType = mimeType;
         this.extension = extension;
-        this.visionSupported = visionSupported;
+        this.accepted = accepted;
     }
 
-    /** OpenAI vision이 읽을 수 있는 포맷인가(JPEG/PNG/GIF/WebP). 스테이징 입구 게이트의 통과 기준. */
-    public boolean isVisionSupported() {
-        return visionSupported;
+    /**
+     * 업로드로 받는 포맷인가(JPEG/PNG) — 스테이징 입구 게이트의 통과 기준(ADR-29, V-12).
+     * <p>POLICY: 수용 포맷은 JPEG/PNG뿐이다 — 구 4종은 Slack 수신 포맷 폭에서 온 값이고 앱 업로드에는
+     * 그 사정이 없다 (ref: changes/0029 tasks.md TΔ8a, 사용자 확정 2026-08-01).
+     */
+    public boolean isAccepted() {
+        return accepted;
     }
 
     /** data URI·스테이징에 쓸 MIME. {@link #UNKNOWN}에는 없다 — 호출 전 지원 여부를 확인할 것. */
