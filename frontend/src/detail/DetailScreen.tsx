@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react'
 import type { NoteDetail, NoteDetailBrew, NoteDetailEntry, NotePhoto, Recipe, Source } from '../api'
 import { getNoteDetail } from '../api'
-import { GALLERY } from '../routes'
+import { SOURCE_LABELS } from '../formValues'
+import { editPath, GALLERY } from '../routes'
 
 /**
  * 상세 보기 화면 — 노트 전문 + 회차별 레시피·감상 + 그 날의 사진 (changes/0029 TΔ13a).
  *
- * **읽는 화면이다.** 수정·삭제는 TΔ13b, 공유(카드 생성)는 TΔ9이고 여기에는 그 버튼이 없다 — 갈 곳 없는
- * 버튼을 먼저 다는 것은 TΔ12가 카드를 링크로 만들지 않은 것과 같은 이유로 하지 않는다.
+ * **읽는 화면이다.** 고치는 일은 여기서 하지 않고 `/notes/{id}/edit`이 진다(TΔ13b) — 헤더의 [수정]이
+ * 그리로 보내는 입구뿐이다. 공유(카드 생성)는 TΔ9이고 아직 버튼이 없다: 갈 곳 없는 버튼을 먼저 다는 것은
+ * TΔ12가 카드를 링크로 만들지 않은 것과 같은 이유로 하지 않는다.
  *
  * **이 화면이 `GET /api/notes/{id}` 계약을 정했다**(D-10 ② *"화면이 API의 모양을 정한다"*). 정본은
  * `note-detail.contract.json`이고 **TΔ5a가 그것을 구현했다** — mock에서 실 DB로 갈아 끼우는 동안 이
@@ -64,8 +66,18 @@ export function DetailScreen({ noteId, onNavigate }: DetailScreenProps) {
               ‹ 목록
             </button>
             <div className="detail__eyebrow">COFFEE NOTE</div>
-            {/* 시안의 오른쪽 32px 스페이서 — 가운데 정렬을 유지하는 것이 이 헤더의 인상이다. */}
-            <div className="detail__bar-pad" />
+            {/*
+              시안의 오른쪽 32px 스페이서 자리를 [수정]이 채운다(TΔ13b) — 노트가 서기 전에는 갈 곳이 없으니
+              그때는 빈 스페이서로 남아 가운데 정렬을 지킨다. 시안에 없는 편차이고, 델타가 수정을 UI 전용으로
+              옮긴 이상(D-1) 저장된 노트에서 그리로 가는 입구가 하나는 있어야 한다.
+            */}
+            {note === null ? (
+              <div className="detail__bar-pad" />
+            ) : (
+              <button type="button" className="detail__edit" onClick={() => onNavigate(editPath(note.note_id))}>
+                수정
+              </button>
+            )}
           </div>
           <h1 className="detail__title">{note?.coffee_name.value ?? ' '}</h1>
           {note !== null && (
@@ -343,8 +355,6 @@ function SourceMark({ source }: { source?: Source }) {
   }
   return <em className="detail__source">{SOURCE_LABELS[source]}</em>
 }
-
-const SOURCE_LABELS: Record<string, string> = { photo: '사진', search: '검색' }
 
 /** `2026-07-02` → `2026. 7. 2` — 시안의 날짜 표기다. 형식이 아니면 받은 값을 그대로 쓴다. */
 function formatDate(date: string): string {

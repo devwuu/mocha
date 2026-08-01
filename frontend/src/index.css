@@ -1,8 +1,8 @@
 /*
- * 화면 스타일 (changes/0029 TΔ10 캡처 · TΔ12 갤러리 · TΔ13a 상세).
+ * 화면 스타일 (changes/0029 TΔ10 캡처 · TΔ12 갤러리 · TΔ13a 상세 · TΔ13b 수정).
  *
- * 값은 시안 `design/채팅 - 말풍선.dc.html`·`design/리스트 - 갤러리.dc.html`·`design/노트 상세.dc.html`
- * 에서 그대로 가져왔다 —
+ * 값은 시안 `design/채팅 - 말풍선.dc.html`·`design/리스트 - 갤러리.dc.html`·`design/노트 상세.dc.html`·
+ * `design/노트 수정.dc.html` 에서 그대로 가져왔다 —
  * 시안이 디자인 source of truth이고
  * (ADR-54) 수정 금지 대상이라, 편차가 필요하면 여기(이식본)에만 둔다. 실제로 둔 편차는 셋이다:
  *   ① 시안은 390×780 고정 프레임이고 여기서는 뷰포트를 채운다(휴대폰 실사용이 1차 대상).
@@ -11,6 +11,11 @@
  *   ③ 시안에 없는 상태(전송 중 비활성, 시스템 알림)의 스타일을 같은 팔레트로 보탰다.
  * TΔ11에서 ③이 한 번 더 늘었다 — **매칭 변경 시트는 시안에 없는 화면**이다. 팔레트·서체·모서리 굴림만
  * 가져오고 형태(하단 시트)는 여기서 정했다. 시안이 생기면 그쪽이 정본이 된다(ADR-54).
+ *
+ * TΔ13b에서 **수정 화면 시안이 도착해 형태를 그쪽으로 갈아 끼웠다**(첫 구현은 시안 없이 지었다). 그 화면의
+ * 편차 여섯은 §수정 화면 머리말과 `EditScreen.tsx`가 소유하고, 여기서 알아 둘 것은 **입력 요소를 캡처 폼과
+ * 공유하지 않는다**는 것이다(`.field` ↔ `.efield`) — 두 시안이 라벨 크기·테두리·여백을 다르게 정했고
+ * ADR-54가 정본으로 삼는 것은 각 시안이다. 공유하는 것은 형태가 아니라 규칙이다(`formValues.ts`).
  */
 
 :root {
@@ -1250,5 +1255,546 @@ select:focus {
   font-size: 11px;
   letter-spacing: 1px;
   color: var(--brown-deep);
+  cursor: pointer;
+}
+
+
+/* ── 수정 화면 (TΔ13b) ───────────────────────────────────────────── */
+
+/*
+ * 시안 `design/노트 수정.dc.html` 이식본. 값은 시안 그대로이고 편차는 여섯이며(각각 `EditScreen.tsx`의
+ * 그 자리 주석이 근거를 소유한다) 여기 CSS로 드러나는 것은 셋이다: 출처 배지(①), 수치 격자에 `추출 ml`이
+ * 늘어난 것(②)과 분쇄도·기구가 두 칸인 것(③), 맨 아래 점선 박스가 `＋ 새 날짜`가 아니라 노트 삭제인 것(⑥).
+ *
+ * 상세(`.detail__*`)와 헤더 틀을 공유한다 — 같은 노트의 두 면이라 액자가 갈리면 이동이 화면 전환처럼 읽힌다.
+ * 반면 입력 요소는 캡처 폼(`.field`)과 공유하지 않는다: 두 화면의 시안이 다르고, ADR-54가 정본으로 삼는
+ * 것은 각 시안이다. 공유하는 것은 형태가 아니라 규칙이다(`formValues.ts`).
+ */
+
+/* 상세 헤더 오른쪽 32px 스페이서 자리 — 크기를 맞춰 가운데 정렬이 그대로 선다. */
+.detail__edit {
+  min-width: 32px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: 11.5px;
+  color: #6d5e4f;
+  cursor: pointer;
+  text-align: right;
+}
+
+.edit__header {
+  flex: none;
+  padding: 14px 20px 16px;
+  padding-top: max(14px, env(safe-area-inset-top));
+  border-bottom: 1px solid var(--bar-border);
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.edit__title {
+  /* 제목은 첫 조회 전에도 높이를 차지한다 — 값이 들어오며 아래가 밀리지 않게(상세와 같은 처리). */
+  min-height: 1.35em;
+  margin: 0;
+  text-align: center;
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--ink);
+  text-wrap: pretty;
+}
+
+.edit__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* 시안의 섹션은 카드가 아니라 **가로 띠**다 — 패널 폭을 꽉 채우고 구획선으로만 갈린다. */
+.edit__section {
+  border-bottom: 1px solid var(--bar-border);
+  display: flex;
+  flex-direction: column;
+}
+
+.edit__section-head {
+  padding: 9px 20px;
+  background: var(--bar);
+  border-bottom: 1px solid var(--brew-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.edit__section-title {
+  font-size: 10.5px;
+  letter-spacing: 3px;
+  color: #6d5e4f;
+}
+
+.edit__section-body {
+  padding: 16px 20px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.edit__locked {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.edit__locked-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.edit__locked-why {
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
+.edit__pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.edit__group {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.edit__group-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.edit__group-title {
+  font-size: 10.5px;
+  letter-spacing: 1.5px;
+  color: #6d5e4f;
+}
+
+.edit__hint {
+  font-size: 9.5px;
+  color: var(--muted-soft);
+}
+
+/* ── 입력 요소(시안) ─────────────────────────────────────────────── */
+
+.efield {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.efield--span {
+  grid-column: span 2;
+}
+
+.efield__label {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 9.5px;
+  letter-spacing: 1.5px;
+  color: var(--muted);
+}
+
+/* 편차 ① — 시안에 출처 표시가 없다. 무엇을 고칠지 고르는 근거라 두되 값보다 작고 약하게. */
+.efield__source {
+  font-size: 8.5px;
+  font-style: normal;
+  letter-spacing: 0.5px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: var(--chip);
+  color: #7c6b5b;
+}
+
+.efield__input,
+.efield__select {
+  width: 100%;
+  border: 1px solid var(--brew-border);
+  border-radius: 0;
+  background: #fbf8f2;
+  padding: 9px 11px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--ink);
+  resize: vertical;
+}
+
+/* 값이 없는 칸은 점선이다(시안의 빈 원두 슬롯) — 채워야 할 자리와 채워진 자리가 눈으로 갈린다. */
+.efield__input--blank {
+  border-style: dashed;
+  border-color: #cfc3b3;
+  background: var(--card);
+}
+
+.efield__input--number {
+  font-size: 14px;
+  font-weight: 700;
+  padding: 8px 10px;
+}
+
+.efield__input::placeholder {
+  color: #bdb0a0;
+}
+
+.efield__select {
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 15px) 50%, calc(100% - 11px) 50%;
+  background-size: 4px 4px, 4px 4px;
+  background-repeat: no-repeat;
+  padding-right: 28px;
+}
+
+.efield__input:focus,
+.efield__select:focus {
+  outline: 2px solid var(--brown);
+  outline-offset: -2px;
+}
+
+/* ── 공식 노트 칩(시안) ──────────────────────────────────────────── */
+
+.edit__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.edit__chip {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid var(--brew-border);
+  background: #fbf8f2;
+  padding: 7px 11px;
+  font-size: 12.5px;
+  color: var(--ink);
+}
+
+.edit__chip-x {
+  padding: 0;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  color: var(--muted-soft);
+  cursor: pointer;
+}
+
+/* 점선 칩이 곧 입력이다 — 시안의 `＋ 노트` 자리에 실제로 칠 수 있는 칸을 둔다. 칩 크기를 넘지 않게
+   폭을 못 박는다: 입력은 기본 폭이 넓어 그대로 두면 한 줄을 통째로 차지해 칩 열이 무너진다. */
+.edit__chip-input {
+  width: 108px;
+  flex: none;
+  border: 1px dashed #cfc3b3;
+  background: var(--card);
+  padding: 7px 11px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--ink);
+}
+
+.edit__chip-input::placeholder {
+  color: #bdb0a0;
+}
+
+.edit__chip-input:focus {
+  outline: 2px solid var(--brown);
+  outline-offset: -2px;
+}
+
+/* ── 날짜 섹션(시안) ─────────────────────────────────────────────── */
+
+/* 펼친 날짜는 짙은 갈색 바다 — 지금 무엇을 고치는 중인지가 한눈에 보인다. */
+.edit__date-head {
+  padding: 10px 20px;
+  background: var(--brown);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.edit__date-head--folded {
+  background: var(--chip);
+  border-bottom: 1px solid var(--brew-border);
+}
+
+.edit__date-left {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.edit__date-text {
+  font: 13px ui-monospace, Menlo, monospace;
+  letter-spacing: 1px;
+  color: var(--ink);
+}
+
+/*
+ * 시안의 날짜는 표시 전용인데 여기서는 입력이다 — 날짜 이동이 이 화면의 기능이라(V-10·D-12) 헤더의 그
+ * 값이 곧 고칠 대상이다. 바 위에 앉으므로 테두리 없이 글자만 남겨 시안의 인상을 지킨다.
+ */
+.edit__date-input {
+  border: none;
+  background: transparent;
+  padding: 0;
+  font: 13px ui-monospace, Menlo, monospace;
+  letter-spacing: 1px;
+  color: var(--on-brown);
+}
+
+.edit__date-input::-webkit-calendar-picker-indicator {
+  filter: invert(1) opacity(0.7);
+  cursor: pointer;
+}
+
+.edit__date-head .edit__weekday {
+  flex: none;
+  white-space: nowrap;
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: rgba(246, 241, 233, 0.66);
+}
+
+.edit__date-head--folded .edit__weekday {
+  color: var(--muted);
+}
+
+.edit__fold {
+  flex: none;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  color: var(--on-brown);
+  cursor: pointer;
+}
+
+.edit__date-head--folded .edit__fold {
+  color: var(--brown-deep);
+}
+
+/* 접힌 날짜의 회차 한 줄 요약(시안). */
+.edit__summary {
+  font-size: 12px;
+  line-height: 1.7;
+  color: #6d5e4f;
+  text-wrap: pretty;
+}
+
+/* 경고가 아니라 안내다(D-12) — 잃는 것이 없으므로 색으로 겁주지 않는다. */
+.edit__merge {
+  margin: 0;
+  padding: 9px 11px;
+  background: var(--chip);
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--brown-deep);
+  text-wrap: pretty;
+}
+
+/* ── 회차 카드(시안) ─────────────────────────────────────────────── */
+
+.ebrew {
+  border: 1px solid var(--brew-border);
+  background: var(--card);
+  display: flex;
+  flex-direction: column;
+}
+
+.ebrew__head {
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--brew-line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ebrew__no {
+  font-size: 11.5px;
+  letter-spacing: 1px;
+  color: #6d5e4f;
+}
+
+/* 시안의 `핸드드립 ▾` 칩 — 값 집합이 없어(FR-18 자유 문자열) 드롭다운이 아니라 입력이다. */
+.ebrew__method {
+  width: 116px;
+  flex: none;
+  border: 1px solid var(--brew-border);
+  border-radius: 999px;
+  background: transparent;
+  padding: 3px 11px;
+  font: inherit;
+  font-size: 10.5px;
+  letter-spacing: 1.5px;
+  color: #64564a;
+  text-align: center;
+}
+
+.ebrew__method:focus {
+  outline: 2px solid var(--brown);
+  outline-offset: -2px;
+}
+
+/* 레시피 / 평가 구획 머리 — 회차 안에서 두 관심사가 갈리는 자리(ADR-59의 1:1 구조). */
+.ebrew__band {
+  padding: 9px 14px;
+  background: #efe8dd;
+  border-bottom: 1px solid var(--brew-line);
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+}
+
+.ebrew__band-title {
+  font-size: 10px;
+  letter-spacing: 2.5px;
+  color: #6d5e4f;
+}
+
+.ebrew__stats {
+  padding: 13px 14px;
+  border-bottom: 1px solid var(--brew-line);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.ebrew__block {
+  padding: 13px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ebrew__block + .ebrew__band {
+  border-top: 1px solid var(--brew-line);
+}
+
+.ebrew__stats + .ebrew__block {
+  border-bottom: 1px solid var(--brew-line);
+}
+
+/* ── 액션 / 알림 / 삭제 ──────────────────────────────────────────── */
+
+.edit__actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  padding-top: 2px;
+}
+
+.edit__revert {
+  padding: 0;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.edit__save {
+  border: none;
+  border-radius: 0;
+  background: var(--brown);
+  padding: 8px 22px;
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 2px;
+  color: var(--on-brown);
+  cursor: pointer;
+}
+
+.edit__revert:disabled,
+.edit__save:disabled,
+.edit__danger-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.edit__notice {
+  margin: 12px 20px 0;
+  padding: 9px 11px;
+  background: var(--bar);
+  border: 1px solid var(--bar-border);
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--brown-deep);
+}
+
+.edit__empty {
+  padding: 22px 20px;
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--muted-soft);
+}
+
+/* 편차 ⑥ — 시안 맨 아래의 `＋ 새 날짜 기록 추가` 점선 박스 자리를 노트 삭제가 쓴다(AC-6). */
+.edit__danger {
+  margin: 14px 20px 22px;
+  padding: 14px;
+  border: 1px dashed var(--brew-border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+}
+
+.edit__danger-why {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: #6d5e4f;
+  text-wrap: pretty;
+}
+
+.edit__danger-button {
+  border: none;
+  border-radius: 0;
+  background: #8a3f34;
+  padding: 8px 22px;
+  font: inherit;
+  font-size: 11.5px;
+  letter-spacing: 1px;
+  color: var(--on-brown);
+  cursor: pointer;
+}
+
+/* 시스템 알림에 붙는 다음 자리 — 알림 자체가 작은 칩이라 링크도 그 안에 앉는다. */
+.notice__action {
+  margin-left: 8px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: inherit;
+  letter-spacing: inherit;
+  color: var(--brown-deep);
+  text-decoration: underline;
   cursor: pointer;
 }

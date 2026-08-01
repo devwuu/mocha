@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Draft } from '../api'
 import { postAgentCancel, postAgentTurn, postNoteCommit, postPhotos } from '../api'
-import { GALLERY } from '../routes'
+import { editPath, GALLERY } from '../routes'
 import { DraftForm } from './DraftForm'
 
 /**
@@ -109,7 +109,16 @@ export function ChatScreen({ onNavigate }: ChatScreenProps) {
       setDraft(null)
       // 보내지 않고 남은 첨부는 이 노트의 것이었다 — 저장이 끝났으니 화면에서도 내린다.
       setPhotos([])
-      setMessages((prev) => [...prev, { role: 'system', text: savedNotice(saved.note_id, merged) }])
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'system',
+          text: savedNotice(saved.note_id, merged),
+          // 병합이면 폼에서 고친 커피 사실이 저장되지 않았다 — 그것을 고칠 수 있는 자리로 바로 보낸다.
+          // TΔ11 이월 (a)가 닫히는 지점이고, 안내만 있고 갈 곳이 없던 상태가 여기서 끝난다(TΔ13b).
+          action: merged ? { label: '커피 정보 고치기 ›', path: editPath(saved.note_id) } : undefined,
+        },
+      ])
     } catch (error) {
       setMessages((prev) => [...prev, { role: 'system', text: describe(error, '저장하지 못했어요. 폼은 그대로 두었어요.') }])
     } finally {
@@ -147,7 +156,7 @@ export function ChatScreen({ onNavigate }: ChatScreenProps) {
 
         <div className="stream">
           {messages.map((message, index) => (
-            <Bubble key={index} message={message} />
+            <Bubble key={index} message={message} onNavigate={onNavigate} />
           ))}
 
           {draft !== null && (
@@ -234,13 +243,25 @@ interface Message {
   text: string
   /** 이 메시지에 함께 보낸 사진 장수 — 말풍선이 "무엇을 보냈는지"를 온전히 남기기 위한 것뿐이다. */
   photos?: number
+  /** 안내가 가리키는 다음 자리 — 지금은 병합 저장 뒤의 수정 화면 하나뿐이다(TΔ13b). */
+  action?: { label: string; path: string }
 }
 
 const GREETING: Message = { role: 'agent', text: '오늘의 한 잔, 어땠어요? ☕' }
 
-function Bubble({ message }: { message: Message }) {
+function Bubble({ message, onNavigate }: { message: Message; onNavigate: (path: string) => void }) {
   if (message.role === 'system') {
-    return <div className="notice">{message.text}</div>
+    const action = message.action
+    return (
+      <div className="notice">
+        {message.text}
+        {action !== undefined && (
+          <button type="button" className="notice__action" onClick={() => onNavigate(action.path)}>
+            {action.label}
+          </button>
+        )}
+      </div>
+    )
   }
   if (message.role === 'user') {
     const attached = message.photos ?? 0
@@ -267,8 +288,11 @@ function Bubble({ message }: { message: Message }) {
  * 기존 노트에 병합하면 폼에서 고친 커피 사실(로스터리·원두·로스팅·공식 노트)은 저장되지 않는다 —
  * "재기록은 그날의 엔트리를 쌓는 일이지 커피의 사실을 다시 쓰는 일이 아니다"(ADR-4). 그것을 알리지 않으면
  * 사용자가 고친 값이 화면에 남은 채 조용히 무시되고, 그 형태가 이 델타가 없애려는 실패와 닮는다
- * (delta.md §1.2 — 다만 이번 것은 버그가 아니라 정책이다). 사실을 고치는 경로는 상세 수정 화면(TΔ13)이고,
- * 필드 잠금·수정 안내는 그 화면이 설 때 판단한다.
+ * (delta.md §1.2 — 다만 이번 것은 버그가 아니라 정책이다).
+ *
+ * **TΔ13b에서 그 안내에 갈 곳이 생겼다**: 병합 저장이면 안내 옆에 수정 화면 링크가 붙는다(TΔ11 이월 (a)
+ * 해소). 필드를 잠그는 쪽은 고르지 않았다 — 폼의 값은 *"이 커피는 이런 커피다"*라는 사용자의 판단이고,
+ * 저장되지 않는다는 이유로 입력조차 막으면 그 판단을 옮겨 적을 자리가 사라진다.
  */
 function savedNotice(noteId: number, merged: boolean): string {
   return merged

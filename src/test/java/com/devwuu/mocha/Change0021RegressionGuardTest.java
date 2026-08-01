@@ -62,11 +62,12 @@ class Change0021RegressionGuardTest {
             "9be63b0b842019ed10c2cb5599421d741546b74c76f38fe48457045db2490b59", // 세리프 - 2 레시피 핸드드립
             "f235e2186b7dfd6a7cedabb12131c65b2e3f027ae637c600d18525c2fff829cf", // 리스트 - 갤러리 (0029 S2)
             "9895f4492386faafd77d613054e85bfe2b08406f338ff27a488570b641b78947", // 채팅 - 말풍선 (0029 S1)
-            "f5304f6128403fc695af6c89d3db6ebbadf4ca88f6043c2df0572db0efe8a961"  // 노트 상세 (0029 S2, TΔ13a)
+            "f5304f6128403fc695af6c89d3db6ebbadf4ca88f6043c2df0572db0efe8a961", // 노트 상세 (0029 S2, TΔ13a)
+            "e2b857e111adcdcb95ae0046373fcb4523dd7ecccca10aa771ff9d7225c47d47"  // 노트 수정 (0029 S2, TΔ13b)
     );
 
     @Test
-    @DisplayName("AC-Δ10: design/ 시안 원본 9종이 확정본에서 변경되지 않았다(체크섬 대조)")
+    @DisplayName("AC-Δ10: design/ 시안 원본 10종이 확정본에서 변경되지 않았다(체크섬 대조)")
     void designMockupsUnchanged() throws IOException {
         Path designDir = Path.of("design");
         // design/은 gitignore된 로컬 전용 자산 — 없는 환경(fresh clone)에서는 대조 불가라 건너뛴다.

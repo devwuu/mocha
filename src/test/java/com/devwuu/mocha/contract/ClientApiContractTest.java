@@ -39,6 +39,13 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 전문이라, 두 계약이 <b>같은 노트를 다른 깊이로</b> 말한다. 화면이 실제로 보여주는 것만 실린 결과가 세
  * 절단이고({@code aliases}·감사 컬럼·{@code my_taste_original}) 아래 테스트가 그것을 박는다.
  *
+ * <p>TΔ13b가 {@code note-update.contract.json}을 보탠다 — 수정 화면이 도출한 {@code PATCH /api/notes/&#123;id&#125;}·
+ * {@code PATCH /api/notes/&#123;id&#125;/entries/&#123;date&#125;}·{@code DELETE /api/notes/&#123;id&#125;}이고 <b>구현은 TΔ5b</b>다.
+ * 여기 박힌 것 중 둘은 규칙의 실행 가능한 형태다: ① 커피명이 <b>필드로 존재하지 않는다</b>(V-9를 검사가
+ * 아니라 구조로 막는다 — 구 {@code propose_edit} patch 스키마가 하던 일이고 TΔ1에서 그 tool과 함께
+ * 사라졌다) ② <b>날짜 이동 충돌은 덮어쓰기가 아니라 회차 병합</b>이다(delta.md D-12 — 구 V-10은 엔트리가
+ * 하루치 감상 1건이던 시절의 규칙이라 회차 배열 위에서는 그날을 통째로 지우는 뜻이 됐다).
+ *
  * <p><b>{@code aliases} 절단은 이 테스트가 소유한다</b>(TΔ2 이월 (b)의 판단 지점, tasks.md TΔ10). draft가
  * {@code Note} 그대로라서 내부 전용 별칭(V-13)이 계약에 실려 나가고 있었는데, <b>폼이 그 값을 쓰지 않는</b>
  * 것이 이 task에서 확인됐다 — 표시도 편집도 하지 않고, 커밋의 별칭 축적은 저장된 값을 읽어 서버가 계산한다
@@ -60,6 +67,7 @@ class ClientApiContractTest {
     private static final String PHOTO_UPLOAD_CONTRACT = "/contract/photo-upload.contract.json";
     private static final String NOTE_LIST_CONTRACT = "/contract/note-list.contract.json";
     private static final String NOTE_DETAIL_CONTRACT = "/contract/note-detail.contract.json";
+    private static final String NOTE_UPDATE_CONTRACT = "/contract/note-update.contract.json";
 
     private final JsonMapper mapper = MochaObjectMapper.create();
 
@@ -569,6 +577,113 @@ class ClientApiContractTest {
     }
 
     @Test
+    @DisplayName("TΔ13b: 메타 수정 본문 = 상세 − {note_id, coffee_name, entries} — 커피명은 필드가 없어 구조로 막힌다(V-9)")
+    void metaUpdateBodyIsTheDetailWithoutIdentityAndEntries() throws IOException {
+        List<String> detailFields = new ArrayList<>(fieldNames(load(NOTE_DETAIL_CONTRACT).get("response")));
+        detailFields.removeAll(List.of("note_id", "coffee_name", "entries"));
+
+        JsonNode contract = load(NOTE_UPDATE_CONTRACT);
+        // 수정 폼이 `GET /api/notes/{id}`를 그대로 딛는다 — 필드가 갈리면 고치지 않은 값을 되싣지 못한다.
+        assertThat(fieldNames(contract.get("meta_request"))).isEqualTo(detailFields);
+        // V-9는 "검사"가 아니라 "필드 부재"로 막는 것이 1차 방어선이다 — 구 propose_edit patch 스키마가
+        // 같은 방식이었고(data-model §3.4) TΔ1에서 그 tool과 함께 사라졌다가 여기서 다시 선다.
+        assertThat(keysAnywhere(contract.get("meta_request")))
+                .as("메타 수정 본문에 커피명이 실릴 자리가 있다 — 노트 생성 후 불변이다(V-9)")
+                .doesNotContain("coffee_name");
+        // 응답은 갱신된 노트 전문이다 — 서버 정규화(V-14 빈 원두 드롭 등)를 화면이 따라 계산하지 않는다.
+        assertThat(fieldNames(contract.get("response_after_meta")))
+                .isEqualTo(fieldNames(load(NOTE_DETAIL_CONTRACT).get("response")));
+        assertThat(contract.get("response_after_meta").get("roastery"))
+                .as("응답이 방금 보낸 값을 반영하지 않으면 화면이 무엇을 믿어야 할지 모른다")
+                .isEqualTo(contract.get("meta_request").get("roastery"));
+    }
+
+    @Test
+    @DisplayName("TΔ13b: 엔트리 수정 본문 = {date, brews} — 경로의 {date}가 대상이고 본문의 date가 결과다")
+    void entryUpdateSeparatesTargetDateFromResultDate() throws IOException {
+        JsonNode contract = load(NOTE_UPDATE_CONTRACT);
+
+        assertThat(contract.get("entry_path").stringValue()).isEqualTo("/api/notes/{id}/entries/{date}");
+        for (String example : List.of("entry_request", "entry_request_moved")) {
+            assertThat(fieldNames(contract.get(example))).containsExactly("date", "brews");
+        }
+        // 한 필드가 "대상"과 "결과" 두 뜻을 지면 요청만 보고 이동인지 제자리 수정인지 알 수 없다.
+        // NoteTxService.replaceEntry(noteId, targetDate, entry)가 이미 그 모양이다(TΔ4a).
+        List<String> storedDates = load(NOTE_DETAIL_CONTRACT).get("response").get("entries").valueStream()
+                .map(entry -> entry.get("date").stringValue()).toList();
+        String inPlace = contract.get("entry_request").get("date").stringValue();
+        String movedTo = contract.get("entry_request_moved").get("date").stringValue();
+        assertThat(inPlace).as("제자리 수정 예시가 실재하지 않는 엔트리를 가리킨다").isIn(storedDates);
+        assertThat(movedTo)
+                .as("이동 예시가 없거나 제자리와 같으면 계약이 이동을 표현하지 못한다")
+                .isIn(storedDates).isNotEqualTo(inPlace);
+        // 회차는 늘지도 줄지도 않는다 — 새 회차는 대화로 쌓고(ADR-4·59) 회차 삭제는 spec에 없다.
+        assertThat(contract.get("entry_request_moved").get("brews"))
+                .isEqualTo(contract.get("entry_request").get("brews"));
+    }
+
+    @Test
+    @DisplayName("TΔ13b: 수정 본문도 감상 원문을 싣지 않는다 — 폼이 고치는 것은 정규화본뿐이다(V-11 뒷문장)")
+    void entryUpdateDropsTheOriginalTasting() throws IOException {
+        JsonNode contract = load(NOTE_UPDATE_CONTRACT);
+
+        assertThat(keysAnywhere(contract))
+                .as("수정 계약에 감상 원문·별칭이 실려 나간다 — 상세 응답의 절단과 같은 선이다")
+                .doesNotContain("my_taste_original", "aliases");
+        contract.get("entry_request").get("brews").forEach(brew -> {
+            assertThat(fieldNames(brew)).containsExactly("recipe", "tasting");
+            JsonNode tasting = brew.get("tasting");
+            if (!tasting.isNull()) {
+                assertThat(fieldNames(tasting)).containsExactly("my_taste", "rating");
+            }
+        });
+    }
+
+    @Test
+    @DisplayName("TΔ13b: 날짜 이동 충돌은 덮어쓰기가 아니라 회차 병합이다 — 구 V-10 개정(delta D-12)")
+    void movingOntoAnExistingDateMergesBrewsInsteadOfOverwriting() throws IOException {
+        JsonNode contract = load(NOTE_UPDATE_CONTRACT);
+        JsonNode before = load(NOTE_DETAIL_CONTRACT).get("response");
+        JsonNode moved = contract.get("entry_request_moved");
+
+        // 구 V-10(changes/0012)은 이동처 엔트리를 통째 대체했다. 엔트리가 하루치 감상 1건이던 시절의
+        // 규칙이라 회차 배열(ADR-59) 위에서는 그날의 N회차를 통째로 지우는 뜻이 된다 — 캡처 경로가 같은
+        // 상황에 이미 "회차 append"로 답하고 있고(ADR-4·59), 사용자 의도도 "그날로 옮긴다"이지 "그날을
+        // 지운다"가 아니다. 이 단언이 그 개정을 실행 가능한 형태로 박는다.
+        assertThat(contract.get("date_conflict").stringValue()).isEqualTo("merge_brews");
+
+        JsonNode target = entryOf(before, moved.get("date").stringValue());
+        JsonNode source = entryOf(before, contract.get("entry_request").get("date").stringValue());
+        List<JsonNode> after = contract.get("response_after_move").get("entries").valueStream().toList();
+
+        // 엔트리 총수는 1 줄어든다(둘이 하나가 된다) — 구 V-10에서 유일하게 살아남은 부분이다.
+        assertThat(after).hasSize(before.get("entries").size() - 1);
+        JsonNode mergedEntry = after.getFirst();
+        assertThat(mergedEntry.get("date")).isEqualTo(moved.get("date"));
+        // 순서가 곧 회차 번호다(V-15의 seq) — 원래 있던 것이 앞이고 옮겨 온 것이 뒤다.
+        List<JsonNode> brews = mergedEntry.get("brews").valueStream().toList();
+        assertThat(brews).hasSize(target.get("brews").size() + moved.get("brews").size());
+        assertThat(brews.subList(0, target.get("brews").size()))
+                .as("이동처의 기존 회차가 사라졌다 — 이것이 구 V-10이 하던 일이다")
+                .isEqualTo(target.get("brews").valueStream().toList());
+        // 사진도 함께 옮겨 온다(FR-10·FR-21) — note_photo의 참조 축이 (note_id, tasted_on)이라
+        // 행을 옮기지 않으면 옛 날짜에 남아 어느 화면에도 보이지 않는다.
+        assertThat(mergedEntry.get("photos")).hasSize(source.get("photos").size());
+        assertThat(mergedEntry.get("photos").valueStream().map(photo -> photo.get("url").stringValue()))
+                .allSatisfy(url -> assertThat(url).contains(moved.get("date").stringValue()));
+    }
+
+    @Test
+    @DisplayName("TΔ13b: 삭제는 본문 없는 204, 없는 id는 404 — hard delete라 되돌릴 자리가 없다(AC-6)")
+    void deleteCarriesNoBody() throws IOException {
+        JsonNode contract = load(NOTE_UPDATE_CONTRACT);
+
+        assertThat(contract.get("delete_path").stringValue()).isEqualTo(contract.get("meta_path").stringValue());
+        assertThat(contract.get("delete_status").intValue()).isEqualTo(204);
+        assertThat(contract.get("missing_status").intValue()).isEqualTo(404);
+    }
+
+    @Test
     @DisplayName("TΔ6b: 취소 통지는 본문이 없다 — 무엇을 취소하는지는 서버가 안다(사용자당 트랜스크립트 1건)")
     void cancelCarriesNoBodyInEitherDirection() throws IOException {
         JsonNode contract = load(AGENT_CANCEL_CONTRACT);
@@ -577,6 +692,14 @@ class ClientApiContractTest {
         assertThat(contract.get("request").isNull()).isTrue();
         assertThat(contract.get("response").isNull()).isTrue();
         assertThat(contract.get("response_status").intValue()).isEqualTo(204);
+    }
+
+    /** 상세 계약 예시에서 그 날짜의 엔트리 — 이동 전/후를 견주는 기준점이다. */
+    private static JsonNode entryOf(JsonNode detail, String date) {
+        return detail.get("entries").valueStream()
+                .filter(entry -> entry.get("date").stringValue().equals(date))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("상세 계약 예시에 " + date + " 엔트리가 없다"));
     }
 
     /** TΔ2 캡처본에서 {@code note.aliases}만 제거한 draft — 이 델타가 확정한 클라이언트 계약형이다. */

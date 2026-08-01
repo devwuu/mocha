@@ -1,0 +1,223 @@
+{
+  "meta_path": "/api/notes/{id}",
+  "entry_path": "/api/notes/{id}/entries/{date}",
+  "delete_path": "/api/notes/{id}",
+  "missing_status": 404,
+  "delete_status": 204,
+  "date_move": "entry_request.date != path {date} 이면 그 엔트리가 그 날짜로 옮겨간다",
+  "date_conflict": "merge_brews",
+  "meta_request": {
+    "roastery": { "value": "프릳츠커피", "source": "user" },
+    "beans": [
+      {
+        "description": { "value": "에티오피아 게뎁 헤어룸", "source": "search" },
+        "process": { "value": "워시드", "source": "search" }
+      },
+      {
+        "description": { "value": "콜롬비아 우일라 카투라", "source": "user" },
+        "process": null
+      }
+    ],
+    "roast_level": { "value": "라이트", "source": "photo" },
+    "official_notes": { "value": ["자몽", "베르가못", "홍차"], "source": "search" },
+    "sources": ["https://fritz.co.kr/products/ethiopia-gedeb"]
+  },
+  "entry_request": {
+    "date": "2026-07-02",
+    "brews": [
+      {
+        "recipe": {
+          "method": "핸드드립",
+          "dose_g": 15.0,
+          "water_ml": 240.0,
+          "yield_ml": null,
+          "time_sec": null,
+          "temp_c": 90.0,
+          "grind": "220클릭",
+          "machine": "매버릭 2.0",
+          "pouring": null,
+          "feedback": null
+        },
+        "tasting": null
+      },
+      {
+        "recipe": null,
+        "tasting": {
+          "my_taste": "온도 낮추니 떫은 맛이 사라졌다. 다음에도 90℃로.",
+          "rating": "완전 내스타일"
+        }
+      }
+    ]
+  },
+  "entry_request_moved": {
+    "date": "2026-06-28",
+    "brews": [
+      {
+        "recipe": {
+          "method": "핸드드립",
+          "dose_g": 15.0,
+          "water_ml": 240.0,
+          "yield_ml": null,
+          "time_sec": null,
+          "temp_c": 90.0,
+          "grind": "220클릭",
+          "machine": "매버릭 2.0",
+          "pouring": null,
+          "feedback": null
+        },
+        "tasting": null
+      },
+      {
+        "recipe": null,
+        "tasting": {
+          "my_taste": "온도 낮추니 떫은 맛이 사라졌다. 다음에도 90℃로.",
+          "rating": "완전 내스타일"
+        }
+      }
+    ]
+  },
+  "response_after_meta": {
+    "note_id": 21,
+    "coffee_name": { "value": "에티오피아 게뎁", "source": "photo" },
+    "roastery": { "value": "프릳츠커피", "source": "user" },
+    "beans": [
+      {
+        "description": { "value": "에티오피아 게뎁 헤어룸", "source": "search" },
+        "process": { "value": "워시드", "source": "search" }
+      },
+      {
+        "description": { "value": "콜롬비아 우일라 카투라", "source": "user" },
+        "process": null
+      }
+    ],
+    "roast_level": { "value": "라이트", "source": "photo" },
+    "official_notes": { "value": ["자몽", "베르가못", "홍차"], "source": "search" },
+    "sources": ["https://fritz.co.kr/products/ethiopia-gedeb"],
+    "entries": [
+      {
+        "date": "2026-06-28",
+        "brews": [
+          {
+            "recipe": {
+              "method": "핸드드립",
+              "dose_g": 15.0,
+              "water_ml": 240.0,
+              "yield_ml": null,
+              "time_sec": 160.0,
+              "temp_c": 92.0,
+              "grind": "210클릭",
+              "machine": "매버릭 2.0",
+              "pouring": "뜸 40ml 30초 → 100ml → 100ml",
+              "feedback": "다음엔 한 단계 굵게"
+            },
+            "tasting": {
+              "my_taste": "새콤하고 좋았다. 식으니까 자몽 같은 신맛이 올라온다.",
+              "rating": "맛있다"
+            }
+          }
+        ],
+        "photos": []
+      },
+      {
+        "date": "2026-07-02",
+        "brews": [
+          {
+            "recipe": {
+              "method": "핸드드립",
+              "dose_g": 15.0,
+              "water_ml": 240.0,
+              "yield_ml": null,
+              "time_sec": null,
+              "temp_c": 90.0,
+              "grind": "220클릭",
+              "machine": "매버릭 2.0",
+              "pouring": null,
+              "feedback": null
+            },
+            "tasting": null
+          },
+          {
+            "recipe": null,
+            "tasting": {
+              "my_taste": "온도 낮추니 떫은 맛이 사라졌다.",
+              "rating": "완전 내스타일"
+            }
+          }
+        ],
+        "photos": [
+          { "url": "/api/photos/21-프릳츠-에티오피아-게뎁/2026-07-02/IMG_4402.jpg" },
+          { "url": "/api/photos/21-프릳츠-에티오피아-게뎁/2026-07-02/IMG_4403.jpg" }
+        ]
+      }
+    ]
+  },
+  "response_after_move": {
+    "note_id": 21,
+    "coffee_name": { "value": "에티오피아 게뎁", "source": "photo" },
+    "roastery": { "value": "프릳츠", "source": "photo" },
+    "beans": [
+      {
+        "description": { "value": "에티오피아 게뎁 헤어룸", "source": "search" },
+        "process": { "value": "워시드", "source": "search" }
+      },
+      {
+        "description": { "value": "콜롬비아 우일라 카투라", "source": "user" },
+        "process": null
+      }
+    ],
+    "roast_level": { "value": "라이트", "source": "photo" },
+    "official_notes": { "value": ["자몽", "베르가못", "홍차"], "source": "search" },
+    "sources": ["https://fritz.co.kr/products/ethiopia-gedeb"],
+    "entries": [
+      {
+        "date": "2026-06-28",
+        "brews": [
+          {
+            "recipe": {
+              "method": "핸드드립",
+              "dose_g": 15.0,
+              "water_ml": 240.0,
+              "yield_ml": null,
+              "time_sec": 160.0,
+              "temp_c": 92.0,
+              "grind": "210클릭",
+              "machine": "매버릭 2.0",
+              "pouring": "뜸 40ml 30초 → 100ml → 100ml",
+              "feedback": "다음엔 한 단계 굵게"
+            },
+            "tasting": {
+              "my_taste": "새콤하고 좋았다. 식으니까 자몽 같은 신맛이 올라온다.",
+              "rating": "맛있다"
+            }
+          },
+          {
+            "recipe": {
+              "method": "핸드드립",
+              "dose_g": 15.0,
+              "water_ml": 240.0,
+              "yield_ml": null,
+              "time_sec": null,
+              "temp_c": 90.0,
+              "grind": "220클릭",
+              "machine": "매버릭 2.0",
+              "pouring": null,
+              "feedback": null
+            },
+            "tasting": null
+          },
+          {
+            "recipe": null,
+            "tasting": {
+              "my_taste": "온도 낮추니 떫은 맛이 사라졌다. 다음에도 90℃로.",
+              "rating": "완전 내스타일"
+            }
+          }
+        ],
+        "photos": [
+          { "url": "/api/photos/21-프릳츠-에티오피아-게뎁/2026-06-28/IMG_4402.jpg" },
+          { "url": "/api/photos/21-프릳츠-에티오피아-게뎁/2026-06-28/IMG_4403.jpg" }
+        ]
+      }
+    ]
+  }
+}

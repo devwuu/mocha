@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { ChatScreen } from './chat/ChatScreen'
 import { DetailScreen } from './detail/DetailScreen'
+import { EditScreen } from './edit/EditScreen'
 import { GalleryScreen } from './gallery/GalleryScreen'
-import { GALLERY, matchNote } from './routes'
+import { GALLERY, matchNote, matchNoteEdit } from './routes'
 
 /**
  * 앱 진입점 + 라우팅 (changes/0029, TΔ12에서 화면이 둘이 됐다).
@@ -14,7 +15,8 @@ import { GALLERY, matchNote } from './routes'
  * SPA fallback은 이미 서 있으므로(TΔ23 `WebConfig`) 경로가 늘어도 서버는 손대지 않는다 — `/notes`를
  * 새로고침해도 index.html이 오고 여기서 다시 갈린다.
  *
- * TΔ13a가 `/notes/{id}`(상세)를 보탰다 — 화면이 셋이 됐지만 고르는 방식은 그대로다.
+ * TΔ13a가 `/notes/{id}`(상세)를, TΔ13b가 `/notes/{id}/edit`(수정)을 보탰다 — 화면이 넷이 됐지만 고르는
+ * 방식은 그대로다.
  */
 function App() {
   const [path, setPath] = useState(() => window.location.pathname)
@@ -36,6 +38,12 @@ function App() {
 
   if (path === GALLERY) {
     return <GalleryScreen onNavigate={navigate} />
+  }
+  // 수정이 상세보다 먼저다 — `/notes/12/edit`은 `matchNote`의 정규식에 걸리지 않지만, 순서를 규칙으로
+  // 굳혀 두면 나중에 상세 패턴이 느슨해져도 수정 경로가 상세로 먹히지 않는다(TΔ13b).
+  const editId = matchNoteEdit(path)
+  if (editId !== null) {
+    return <EditScreen key={editId} noteId={editId} onNavigate={navigate} />
   }
   // 상세는 경로가 값을 담는 유일한 화면이라 id가 곧 조회 키다. key로도 쓴다 — 상세에서 상세로 옮겨가면
   // (아직 그런 경로는 없지만) 컴포넌트가 새로 서야 이전 노트의 내용이 잠깐 비치지 않는다.

@@ -1,40 +1,12 @@
-import type { Bean, Brew, Draft, DraftNote, Entry, NoteCandidate, Recipe, Sourced, Tasting } from '../api/contract'
+import type { Bean, Brew, Draft, DraftNote, Entry, NoteCandidate, Recipe, Tasting } from '../api/contract'
 
 /**
  * 폼 편집 = draft의 불변 갱신 (changes/0029 TΔ10).
  *
- * **여기 사는 유일한 규칙**: 사용자가 폼에서 고친 출처 표시 필드는 출처가 `user`가 된다
- * (FR-12 우선순위 `user > photo > search`). 이것이 없으면 다음 턴에서 검색 보강이 사용자가 고친 값을
- * 덮어쓰고, 그것이 이 델타가 없애려는 실패(delta.md §1.2)다. 서버는 같은 규칙을 V-6 게이트로 대조하므로
- * (`RecordProposalValidator`, TΔ2), 여기서 출처를 올리지 않으면 **정정이 게이트에 거부당한다**.
- *
- * 빈 문자열은 필드 제거(null)로 수렴시킨다 — 서버 정규화(V-8·V-14·V-15)와 같은 취급이라 폼에서
- * 지운 값이 공백 문자열로 살아 돌아오지 않는다.
+ * 입력값 → 도메인 값 변환(고친 필드는 출처가 `user`가 된다는 규칙 포함)은 **`../formValues`가 소유한다** —
+ * 수정 폼(TΔ13b)이 같은 규칙을 쓰기 때문에 어느 한 화면에 두면 갈라진다. 여기 남는 것은 `Draft` 구조를
+ * 불변으로 갈아끼우는 조작뿐이다.
  */
-
-/** 사용자가 입력한 스칼라 — 비우면 필드 자체가 없어진다. */
-export function userValue(text: string): Sourced<string> | null {
-  const trimmed = text.trim()
-  return trimmed === '' ? null : { value: trimmed, source: 'user' }
-}
-
-/** 쉼표로 나열한 목록형 필드(공식 노트) — 빈 항목은 버린다. */
-export function userList(text: string): Sourced<string[]> | null {
-  const values = text.split(',').map((item) => item.trim()).filter((item) => item !== '')
-  return values.length === 0 ? null : { value: values, source: 'user' }
-}
-
-/** 수치 레시피 필드 — 양수만 유효하고 나머지는 null이다(V-8). 레시피에는 출처 개념이 없다. */
-export function numberValue(text: string): number | null {
-  const parsed = Number(text.trim())
-  return text.trim() === '' || !Number.isFinite(parsed) || parsed <= 0 ? null : parsed
-}
-
-/** 텍스트 레시피·감상 필드 — 공백은 null. */
-export function textValue(text: string): string | null {
-  const trimmed = text.trim()
-  return trimmed === '' ? null : trimmed
-}
 
 export function patchNote(draft: Draft, patch: Partial<DraftNote>): Draft {
   return { ...draft, note: { ...draft.note, ...patch } }

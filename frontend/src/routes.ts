@@ -27,3 +27,20 @@ export function matchNote(path: string): number | null {
   const matched = /^\/notes\/(\d+)$/.exec(path)
   return matched === null ? null : Number(matched[1])
 }
+
+/**
+ * 수정 경로 — 상세의 [수정] 버튼이 가는 곳이고, 저장 완료 안내가 *"커피 정보를 고치려면"*으로 거는 곳이다
+ * (changes/0029 TΔ13b).
+ *
+ * 상세와 **경로를 나눈 것**이 결정이다(사용자 확정 2026-08-01): 읽는 화면과 고치는 화면이 한 컴포넌트에서
+ * 모드로 갈리면 TΔ13a가 세운 *"상세는 읽는 화면이다"*가 흐려지고, 뒤로 가기가 모드를 되돌리지 못한다.
+ */
+export function editPath(noteId: number): string {
+  return `${GALLERY}/${noteId}/edit`
+}
+
+/** `/notes/{id}/edit`면 그 id, 아니면 null. `matchNote`와 같은 이유로 숫자만 받는다. */
+export function matchNoteEdit(path: string): number | null {
+  const matched = /^\/notes\/(\d+)\/edit$/.exec(path)
+  return matched === null ? null : Number(matched[1])
+}

@@ -1,17 +1,9 @@
 import type { ReactNode } from 'react'
 import type { Draft, Rating, Sourced } from '../api/contract'
 import { RATINGS } from '../api/contract'
+import { numberValue, SOURCE_LABELS, textValue, userList, userValue } from '../formValues'
 import { MatchBadge } from './MatchBadge'
-import {
-  numberValue,
-  patchBean,
-  patchNote,
-  patchRecipe,
-  patchTasting,
-  textValue,
-  userList,
-  userValue,
-} from './draftEdits'
+import { patchBean, patchNote, patchRecipe, patchTasting } from './draftEdits'
 
 /**
  * 미리보기 폼 — 에이전트가 제안한 draft를 사용자가 확인하고 고치는 자리 (changes/0029 TΔ10, AC-1).
@@ -220,6 +212,7 @@ export function DraftForm({ draft, busy, onChange, onSave, onCancel }: DraftForm
   )
 }
 
+
 function SourcedText({
   label,
   field,
@@ -247,16 +240,17 @@ function NumberField({
 }) {
   return (
     <Field label={label}>
-      <input
-        inputMode="decimal"
-        value={value ?? ''}
-        onChange={(event) => onChange(numberValue(event.target.value))}
-      />
+      <input inputMode="decimal" value={value ?? ''} onChange={(event) => onChange(numberValue(event.target.value))} />
     </Field>
   )
 }
 
-/** 출처는 `user`가 아닐 때만 보여준다 — 사용자 자신이 넣은 값에 "user"를 달아 두면 소음이다. */
+/**
+ * 출처는 `user`가 아닐 때만 보여준다 — 어휘는 `formValues`가 소유하고 형태는 이 화면 시안이 정한다.
+ *
+ * 수정 폼(TΔ13b)이 같은 값을 다른 크기·다른 배치로 보여주는 것은 **시안이 다르기 때문**이다(ADR-54) —
+ * 규칙은 공유하고 컴포넌트는 공유하지 않는 것이 이 저장소가 두 시안을 다루는 방식이다.
+ */
 function Field({ label, source, children }: { label: string; source?: string; children: ReactNode }) {
   return (
     <label className="field">
@@ -268,5 +262,3 @@ function Field({ label, source, children }: { label: string; source?: string; ch
     </label>
   )
 }
-
-const SOURCE_LABELS: Record<string, string> = { photo: '사진', search: '검색' }
