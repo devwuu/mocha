@@ -95,10 +95,19 @@ public class AgentTurnController {
      * <p><b>버린 사진 스테이징도 함께 폐기한다</b>(TΔ8a — 구 {@code SlackCommitHandler.cancel}의 자리):
      * 작성 중 올린 사진은 그 노트를 위한 것이었고, 남겨 두면 다음 커피의 첫 턴에 섞이거나 시작 시 고아
      * 청소({@code StagingSweeper})까지 남는다. 트랜스크립트 접힘과 <b>같은 이유의 같은 조작</b>이다.
+     *
+     * <p><b>호출자가 둘이다</b>(TΔ28b): 폼 [취소]와 <b>수정 저장(PATCH) 뒤 뒷정리</b>. 후자가 이 경로를 쓰는
+     * 것은 {@code POST /api/notes}가 겸하던 접힘·스테이징 정리를 PATCH가 지지 않기 때문이고, 알리지 않으면
+     * 끝난 작업의 문맥이 TTL까지 남아 다음 커피의 첫 발화에 섞인다.
+     * <p><b>둘을 가르는 인자를 받지 않는다</b>(사용자 확정 2026-08-02, TΔ30): 서버가 하는 일이 어느 쪽에서든
+     * 같으므로 사유를 받아도 쓸 곳이 로그뿐이고, 그것 때문에 <i>"본문도 응답도 없다"</i>는 이 계약을 여는 값이
+     * 서지 않는다. 대신 접힘 라벨을 서버가 아는 수준으로 낮췄다
+     * ({@code CANCEL_COMMIT} → {@link FoldingChatMemory.FoldTrigger#FORM_CLOSED}) — <b>어긋남은 배선이 아니라
+     * 이름에 있었다.</b>
      */
     @PostMapping("/cancel")
     public ResponseEntity<Void> cancel() {
-        transcript.clear(SingleUser.ID, FoldingChatMemory.FoldTrigger.CANCEL_COMMIT);
+        transcript.clear(SingleUser.ID, FoldingChatMemory.FoldTrigger.FORM_CLOSED);
         photoService.discard(SingleUser.ID);
         return ResponseEntity.noContent().build();
     }

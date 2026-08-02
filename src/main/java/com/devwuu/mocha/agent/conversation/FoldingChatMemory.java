@@ -35,10 +35,19 @@ public class FoldingChatMemory {
      * TTL 소멸은 호출부 트리거가 아니라 내부 판정이라 여기 없다.
      */
     public enum FoldTrigger {
-        /** [저장] 커밋 — 배선: 저장 버튼 액션 핸들러(ADR-3 커밋 경로). */
+        /** [저장] 커밋 — 배선: {@code POST /api/notes}(ADR-3 커밋 경로). */
         SAVE_COMMIT,
-        /** [취소] 커밋 — 배선: 취소 버튼 액션 핸들러. */
-        CANCEL_COMMIT
+        /**
+         * 폼이 닫혀 그 작업의 문맥이 끝났다 — 배선: {@code POST /api/agent/cancel}.
+         *
+         * <p><b>구 이름은 {@code CANCEL_COMMIT}이었다</b>(changes/0029 TΔ30 개명): TΔ28b가 <b>수정 저장(PATCH)
+         * 뒤 뒷정리</b>에도 같은 통지를 쓰면서 로그의 사유가 실제(저장 확정)와 어긋났다. 어긋남의 원인은
+         * 배선이 아니라 <b>라벨이 서버가 아는 것보다 많이 말한 것</b>이다 — 취소인지 저장 후 정리인지는
+         * 클라이언트만 알고, 서버에 도착하는 사실은 <i>"이 작업은 끝났다"</i>뿐이다. 라벨을 그 수준으로
+         * 낮추자 어긋날 것이 없어졌고, <b>클라이언트 계약({@code agent-cancel.contract.json} —
+         * "본문도 응답도 없다")은 한 바이트도 열리지 않았다.</b>
+         */
+        FORM_CLOSED
     }
 
     /** 사용자 1명의 트랜스크립트 상태 — 턴 목록 + TTL 판정용 타임스탬프(data-model §2.5). */

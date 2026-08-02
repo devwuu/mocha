@@ -87,7 +87,7 @@ class AgentTurnControllerTest {
         turnRunner.reset();
         photoStore.discarded.clear();
         // 컨텍스트가 테스트 메서드 간 공유되므로 문맥도 함께 되돌린다(접힘 단언이 앞 테스트에 물들지 않게).
-        transcript.clear(SingleUser.ID, FoldingChatMemory.FoldTrigger.CANCEL_COMMIT);
+        transcript.clear(SingleUser.ID, FoldingChatMemory.FoldTrigger.FORM_CLOSED);
     }
 
     @Test
