@@ -116,5 +116,47 @@
   "response_no_proposal": {
     "reply": "그 원두는 워시드 가공이에요. 어떻게 내려 드셨나요?",
     "draft": null
-  }
+  },
+  "response_edit_mode": {
+    "reply": "어제 기록 가져왔어. 평가 낮춰서 담아 뒀으니 확인해 줘.",
+    "draft": {
+      "note": {
+        "id": 12,
+        "coffee_name": { "value": "Ethiopia Chelbesa", "source": "user" },
+        "roastery": { "value": "커피베라", "source": "user" },
+        "beans": [
+          {
+            "description": { "value": "에티오피아 게데오 헤어룸", "source": "search" },
+            "process": { "value": "워시드", "source": "search" }
+          }
+        ],
+        "roast_level": { "value": "라이트", "source": "search" },
+        "official_notes": { "value": [ "자스민", "베르가못" ], "source": "search" },
+        "sources": [ "https://example.test/chelbesa" ],
+        "entries": [
+          {
+            "date": "2026-07-28",
+            "brews": [
+              {
+                "recipe": null,
+                "tasting": {
+                  "my_taste": "새콤하고 좋았음",
+                  "my_taste_original": "새콤하고 좋았다",
+                  "rating": "맛은 있는데 내스타일은 아님"
+                }
+              }
+            ],
+            "updated_at": "2026-07-28T21:10:00+09:00"
+          }
+        ],
+        "created_at": "2026-07-28T21:10:00+09:00",
+        "updated_at": "2026-07-28T21:10:00+09:00"
+      },
+      "match": { "type": "edit", "note_id": 12, "date": "2026-07-28" }
+    }
+  },
+  "match_types": ["new", "existing", "edit"],
+  "edit_target_axis": "note_id + date",
+  "edit_locked_fields": ["coffee_name", "roastery", "beans", "roast_level", "official_notes", "sources"],
+  "edit_editable_fields": ["entries[].brews"]
 }

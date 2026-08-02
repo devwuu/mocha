@@ -25,35 +25,65 @@ interface DraftFormProps {
 
 export function DraftForm({ draft, busy, onChange, onSave, onCancel }: DraftFormProps) {
   const { note } = draft
+  /*
+   * 수정 모드에서는 **노트 레벨 전체를 잠그고 회차만 연다** (TΔ28a, 사용자 확정 2026-08-02, AC-14).
+   *
+   * 기준은 «이 값이 다른 회차에도 걸리는가»다. 커피명·로스터리·원두·로스팅·공식 노트는 **노트 1건에
+   * 하나씩 있고 그 노트의 모든 회차가 함께 딛는 값**이라, 한 회차를 고치는 자리에서 바꾸면 손대지 않은
+   * 다른 날 감상까지 뜻이 달라진다. 회차(레시피·감상)만 그 날 그 잔의 것이다.
+   *
+   * 정체성 둘(커피명·로스터리)은 그중에서도 더 세다 — 바뀌면 아예 다른 커피가 된다(V-9, 싱글 오리진은
+   * 커피명이 산지·농장·품종에서 와 로스터리가 다르면 같은 이름의 다른 커피다). 그건 «새 노트»에서 할
+   * 일이지 수정 폼으로 흘러들어올 일이 아니다.
+   *
+   * **목록에서 들어간 수정 화면(TΔ13b)은 이 값들을 연다.** 그 화면은 노트 전체를 펼쳐 다른 기록들이
+   * 함께 보이므로 무엇에 영향을 주는지가 눈에 있지만, **채팅 안의 폼은 구조상 그것을 보여줄 수 없다** —
+   * 대화 흐름에 앉은 카드 하나라 회차 1건만 담는다. 같은 규칙이 아니라 **같은 이유의 다른 답**이다.
+   *
+   * 그래서 이 폼이 저장하는 것은 **엔트리 하나**이고, 메타 PATCH를 보낼 이유가 없다(TΔ28b가 받는다).
+   */
+  const locked = draft.match.type === 'edit'
 
   return (
-    <section className="draft" aria-label="작성 중인 노트">
-      {/* 매칭 배지 — 탭하면 후보 시트가 열리고 판정을 양방향으로 바꿀 수 있다(TΔ11). */}
+    <section className="draft" aria-label={locked ? '고치는 중인 기록' : '작성 중인 노트'}>
+      {/* 매칭 배지 — 탭하면 후보 시트가 열리고 판정을 양방향으로 바꿀 수 있다(TΔ11).
+          수정 모드에서는 시트가 «어느 커피 → 어느 날 기록»의 두 걸음이 된다(TΔ28a). */}
       <MatchBadge draft={draft} busy={busy} onChange={onChange} />
+
+      {/* 잠긴 칸이 "왜"까지 말하지는 못한다 — 고칠 자리가 어디인지는 알려 줘야 막다른 길이 되지 않는다. */}
+      {locked && <p className="draft__locked-note">커피 정보는 이 기록에만 딸린 값이 아니라서 노트 화면에서 고쳐.</p>}
 
       <div className="draft__grid">
         <SourcedText
           label="커피명"
           field={note.coffee_name}
+          locked={locked}
           onChange={(next) => onChange(patchNote(draft, { coffee_name: next }))}
         />
         <SourcedText
           label="로스터리"
           field={note.roastery}
+          locked={locked}
           onChange={(next) => onChange(patchNote(draft, { roastery: next }))}
         />
         <SourcedText
           label="로스팅"
           field={note.roast_level}
+          locked={locked}
           onChange={(next) => onChange(patchNote(draft, { roast_level: next }))}
         />
-        <Field label="공식 노트" source={note.official_notes?.source}>
-          <input
-            value={note.official_notes?.value.join(', ') ?? ''}
-            placeholder="쉼표로 구분"
-            onChange={(event) => onChange(patchNote(draft, { official_notes: userList(event.target.value) }))}
-          />
-        </Field>
+        {/* 잠긴 채로 비어 있는 칸은 지우고 보여준다 — 고칠 수도 없고 값도 없으면 "여기 뭘 넣나"만 묻게 된다. */}
+        {!(locked && note.official_notes === null) && (
+          <Field label="공식 노트" source={note.official_notes?.source} locked={locked}>
+            <input
+              className={locked ? 'locked' : undefined}
+              value={note.official_notes?.value.join(', ') ?? ''}
+              placeholder="쉼표로 구분"
+              readOnly={locked}
+              onChange={(event) => onChange(patchNote(draft, { official_notes: userList(event.target.value) }))}
+            />
+          </Field>
+        )}
       </div>
 
       {note.beans.length > 0 && (
@@ -64,6 +94,7 @@ export function DraftForm({ draft, busy, onChange, onSave, onCancel }: DraftForm
               <SourcedText
                 label="원산지·품종"
                 field={bean.description}
+                locked={locked}
                 onChange={(next) =>
                   // description이 비면 서버가 그 원두를 통째로 드롭한다(V-14) — 폼에서 지우는 것이
                   // 곧 "이 원두는 아니었다"이므로 별도 삭제 버튼을 두지 않는다.
@@ -73,6 +104,7 @@ export function DraftForm({ draft, busy, onChange, onSave, onCancel }: DraftForm
               <SourcedText
                 label="가공방식"
                 field={bean.process}
+                locked={locked}
                 onChange={(next) => onChange(patchBean(draft, beanIndex, { process: next }))}
               />
             </div>
@@ -213,18 +245,38 @@ export function DraftForm({ draft, busy, onChange, onSave, onCancel }: DraftForm
 }
 
 
+/**
+ * 출처 표시 텍스트 필드.
+ *
+ * **잠금은 `readOnly`이지 `disabled`가 아니다** — 잠긴 값도 읽히고 복사되고 스크린리더가 읽어야 한다.
+ * 고칠 수 없다는 것과 없는 것은 다르고, 수정 모드에서 커피명·로스터리는 *"무엇을 고치는 중인가"*를 말하는
+ * 가장 중요한 두 값이다.
+ *
+ * **잠긴 채로 비어 있으면 자리를 비운다**: 고칠 수도 없고 값도 없는 칸은 *"여기 뭘 넣나"*만 묻게 하고
+ * 답이 아니오다. 저장된 노트의 커피명은 non-null이라(V-9) 실제로 사라지는 것은 값이 안 잡힌 필드뿐이다.
+ */
 function SourcedText({
   label,
   field,
+  locked = false,
   onChange,
 }: {
   label: string
   field: Sourced<string> | null
+  locked?: boolean
   onChange: (next: Sourced<string> | null) => void
 }) {
+  if (locked && field === null) {
+    return null
+  }
   return (
-    <Field label={label} source={field?.source}>
-      <input value={field?.value ?? ''} onChange={(event) => onChange(userValue(event.target.value))} />
+    <Field label={label} source={field?.source} locked={locked}>
+      <input
+        className={locked ? 'locked' : undefined}
+        value={field?.value ?? ''}
+        readOnly={locked}
+        onChange={(event) => onChange(userValue(event.target.value))}
+      />
     </Field>
   )
 }
@@ -251,12 +303,24 @@ function NumberField({
  * 수정 폼(TΔ13b)이 같은 값을 다른 크기·다른 배치로 보여주는 것은 **시안이 다르기 때문**이다(ADR-54) —
  * 규칙은 공유하고 컴포넌트는 공유하지 않는 것이 이 저장소가 두 시안을 다루는 방식이다.
  */
-function Field({ label, source, children }: { label: string; source?: string; children: ReactNode }) {
+function Field({
+  label,
+  source,
+  locked = false,
+  children,
+}: {
+  label: string
+  source?: string
+  locked?: boolean
+  children: ReactNode
+}) {
   return (
     <label className="field">
       <span className="field__label">
         {label}
         {source && source !== 'user' && <em className="field__source">{SOURCE_LABELS[source] ?? source}</em>}
+        {/* 잠금은 형태(점선·바탕)로도 읽히지만 그것만으로는 "왜"가 없다 — 라벨에 한 낱말을 둔다. */}
+        {locked && <em className="field__lock">잠김</em>}
       </span>
       {children}
     </label>

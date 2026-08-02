@@ -252,6 +252,22 @@ body {
   text-align: left;
 }
 
+/*
+ * 수정 모드 배지 — 저장이 «회차 추가»가 아니라 «기존 회차 교체»임을 색으로도 알린다(TΔ28a, D-14).
+ *
+ * 문구만 갈면 `기존 노트 ·`와 `기존 기록 수정 ·`이 같은 칩 안에서 앞 두 글자만 다른 상태가 된다 —
+ * 저장 결과가 정반대인 두 모드가 훑어볼 때 구분되지 않는다. 반전은 시안 팔레트 안에서 해결한다
+ * (사용자 말풍선이 이미 쓰는 조합이라 새 색을 들이지 않는다).
+ */
+.badge--edit {
+  background: var(--brown);
+  color: var(--on-brown);
+}
+
+.badge--edit .badge__chevron {
+  color: color-mix(in srgb, var(--on-brown) 70%, transparent);
+}
+
 .badge:disabled {
   opacity: 0.45;
   cursor: default;
@@ -261,6 +277,22 @@ body {
   font-size: 13px;
   line-height: 1;
   color: var(--muted);
+}
+
+/*
+ * 수정 모드에서 잠긴 값들이 «왜» 잠겼고 어디서 고치는지 (TΔ28a).
+ *
+ * 잠금 표시는 «못 고친다»까지만 말한다 — 그것만 두면 막다른 길이고, 사용자는 고칠 자리를 찾아 앱을
+ * 헤맨다. 링크를 달지는 않았다: 여기서 화면을 떠나면 작성 중인 수정이 사라진다(대화가 세션 상태다).
+ */
+.draft__locked-note {
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--chip);
+  font-size: 10.5px;
+  line-height: 1.7;
+  color: var(--brown-deep);
 }
 
 .draft__grid {
@@ -366,6 +398,45 @@ body {
   color: var(--ink);
 }
 
+/* 걸음 2의 머리 — 어느 커피의 기록을 고르는 중인지(TΔ28a). 제목 자리는 [‹ 다시 고르기]가 가져갔다. */
+.sheet__title--sub {
+  padding: 2px 0 0;
+  font-weight: 400;
+}
+
+.sheet__title--sub .sheet__meta {
+  font-weight: 400;
+}
+
+/*
+ * 고르기 «전»에 대가를 알리는 자리 — 고른 기록의 저장된 값으로 폼이 통째로 갈린다(사용자 확정 2026-08-02).
+ * 고른 뒤에 알리면 사용자는 "고쳐 둔 게 왜 원래대로 돌아왔지"를 먼저 겪는다.
+ */
+.sheet__hint {
+  margin: 0;
+  padding: 7px 11px;
+  border-radius: 10px;
+  background: var(--chip);
+  font-size: 10.5px;
+  line-height: 1.7;
+  color: var(--brown-deep);
+}
+
+/* 걸음 2로 갔다 되돌아오는 길 — 커피를 잘못 골랐을 때 시트를 닫았다 다시 열지 않아도 된다. */
+.sheet__back {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 11px 4px 8px;
+  border: none;
+  border-radius: 999px;
+  background: var(--chip);
+  font: inherit;
+  font-size: 11px;
+  color: var(--brown-deep);
+  cursor: pointer;
+}
+
 .sheet__close {
   width: 26px;
   height: 26px;
@@ -413,9 +484,16 @@ body {
   cursor: pointer;
 }
 
-/* 지금 붙어 있는 노트 — 시트를 열었을 때 어디에서 출발하는지가 보여야 한다. */
+/* 지금 붙어 있는(또는 고치는 중인) 노트 — 시트를 열었을 때 어디에서 출발하는지가 보여야 한다. */
 .sheet__item--current {
   border-color: var(--brown);
+}
+
+/* 수정 모드에서 기록이 없는 노트 — 고칠 것이 없다(TΔ28a). 캡처 모드에서는 정상 후보라 비활성이 아니다. */
+.sheet__item:disabled {
+  opacity: 0.45;
+  border-style: dashed;
+  cursor: default;
 }
 
 .sheet__name {
@@ -423,9 +501,27 @@ body {
   color: var(--ink);
 }
 
+/* 걸음 2의 한 줄 — 날짜가 이름 자리에 선다. 숫자가 세로로 맞아야 훑을 때 날짜로 읽힌다. */
+.sheet__date {
+  font-size: 13px;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * 후보의 로스터리·날짜, 그리고 걸음 2의 기록 요약(회차 수 · 평가 · 감상 첫머리).
+ *
+ * 감상은 길이가 정해져 있지 않아 두 줄에서 자른다 — 안 자르면 감상 하나가 목록의 절반을 먹어 나머지
+ * 날짜가 스크롤 밖으로 밀린다. 고르는 데 필요한 것은 *"아, 자몽 같다고 했던 날"*까지다.
+ */
 .sheet__meta {
   font-size: 10.5px;
   color: var(--muted);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
 }
 
 .sheet__empty {
@@ -479,6 +575,37 @@ body {
   border-radius: 999px;
   background: var(--chip);
   color: var(--brown-deep);
+}
+
+/* 수정 모드에서 잠긴 정체성 필드(TΔ28a) — 출처 칩과 같은 자리·같은 크기이고 테두리로만 갈린다. */
+.field__lock {
+  font-style: normal;
+  font-size: 8.5px;
+  letter-spacing: 1px;
+  padding: 1px 5px;
+  border: 1px dashed var(--bar-border);
+  border-radius: 999px;
+  color: var(--muted);
+}
+
+/*
+ * 잠긴 입력칸 — 고칠 수 없다는 것이 **눌러 보기 전에** 읽혀야 한다.
+ *
+ * `readOnly`라 브라우저 기본 표시가 없다(`disabled`와 달리 회색으로 변하지 않는다). 그것이 의도다 —
+ * 값은 읽히고 복사되고 스크린리더가 읽어야 하므로 `disabled`를 쓰지 않고, 대신 여기서 «입력칸이 아니다»를
+ * 형태로 만든다: 흰 바탕 대신 칩 바탕, 실선 대신 점선.
+ */
+input.locked {
+  background: var(--chip);
+  border-style: dashed;
+  border-color: var(--bar-border);
+  color: var(--brown-deep);
+  cursor: default;
+}
+
+/* 포커스는 남긴다 — 탭 이동으로 값에 닿을 수 있어야 한다(읽기 대상이다). */
+input.locked:focus {
+  outline-color: var(--bar-border);
 }
 
 input,

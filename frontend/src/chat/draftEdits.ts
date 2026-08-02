@@ -1,4 +1,15 @@
-import type { Bean, Brew, Draft, DraftNote, Entry, NoteCandidate, Recipe, Tasting } from '../api/contract'
+import type {
+  Bean,
+  Brew,
+  Draft,
+  DraftNote,
+  Entry,
+  NoteCandidate,
+  NoteDetail,
+  NoteDetailBrew,
+  Recipe,
+  Tasting,
+} from '../api/contract'
 
 /**
  * 폼 편집 = draft의 불변 갱신 (changes/0029 TΔ10).
@@ -53,6 +64,57 @@ export function selectExisting(draft: Draft, candidate: NoteCandidate): Draft {
  */
 export function selectNew(draft: Draft): Draft {
   return { note: { ...draft.note, id: null }, match: { type: 'new' } }
+}
+
+/**
+ * 수정 시트에서 «어느 날 기록»을 골랐다 — 폼 전체가 그 저장된 기록으로 갈린다 (TΔ28a, D-14, AC-13).
+ *
+ * **`draft`를 받지 않는 것이 이 함수의 요점이다.** 대상이 바뀌면 이전 폼의 값은 *다른 기록*을 딛고 만들어진
+ * 것이라 한 줄도 이어받을 것이 없다 — 이어받으면 남의 노트 값이 이 기록을 덮는 조합이 만들어지고, 그것이
+ * delta.md §1.2가 기록한 «성공을 보고하면서 틀린 데이터를 쓴다»와 같은 형태다. 모카가 반영해 뒀던 요구
+ * (*"평가 낮춰줘"*)도 함께 사라지고 사용자가 폼에서 다시 넣는다 — **시트가 고르기 전에 그 사실을 알린다**
+ * (사용자 확정 2026-08-02). 변경분만 새 대상에 옮겨 얹는 안은 기각했다: 무엇이 사용자 요구였는지
+ * 클라이언트가 알지 못하고, 알려면 병합 규칙을 프론트에 다시 쓰게 된다(D-11이 기각한 부류).
+ *
+ * `match.date`가 필수인 것이 여기서 지켜진다 — 고른 엔트리의 날짜가 그대로 대상이고, 폼이 담는 엔트리도
+ * 그 하나뿐이다(폼의 단위가 엔트리 1건이다).
+ *
+ * **`my_taste_original`은 null로 둔다**(V-11 뒷문장): 상세 응답에 원문이 실려 오지 않고 — 저장된 감상은
+ * `{my_taste, rating}` 둘뿐이다 — 폼이 고치는 것도 정규화본이라, 비워 보내면 서버가 정규화본을 양쪽에
+ * 담는다. `note-update.contract.json`이 이미 같은 규약이다.
+ */
+export function selectEditTarget(detail: NoteDetail, date: string): Draft {
+  const entry = detail.entries.find((candidate) => candidate.date === date)
+  if (entry === undefined) {
+    // 시트는 이 상세 응답에서 날짜를 뽑아 보여주므로 정상 경로에서 성립할 수 없다 — 조용히 빈 폼을
+    // 만들면 무엇을 고치는지 모르는 채 [저장]이 열린다.
+    throw new Error(`${date} 기록을 찾지 못했어`)
+  }
+  return {
+    note: {
+      id: detail.note_id,
+      coffee_name: detail.coffee_name,
+      roastery: detail.roastery,
+      beans: detail.beans,
+      roast_level: detail.roast_level,
+      official_notes: detail.official_notes,
+      sources: detail.sources,
+      entries: [{ date: entry.date, brews: entry.brews.map(toDraftBrew), updated_at: null }],
+      // 감사 컬럼은 상세 계약에 없다 — 화면이 쓰지 않는 값이라 잘려 있고(TΔ13a) 폼도 쓰지 않는다.
+      created_at: null,
+      updated_at: null,
+    },
+    match: { type: 'edit', note_id: detail.note_id, date: entry.date },
+  }
+}
+
+function toDraftBrew(brew: NoteDetailBrew): Brew {
+  return {
+    recipe: brew.recipe,
+    tasting: brew.tasting === null
+      ? null
+      : { my_taste: brew.tasting.my_taste, my_taste_original: null, rating: brew.tasting.rating },
+  }
 }
 
 export function patchBean(draft: Draft, beanIndex: number, patch: Partial<Bean>): Draft {

@@ -684,6 +684,79 @@ class ClientApiContractTest {
     }
 
     @Test
+    @DisplayName("TΔ28a: match에 edit 갈래가 는다 — 가산 변경이라 new·existing 예시는 그대로다(D-14)")
+    void matchGainsAnEditBranchWithoutDisturbingTheExistingOnes() throws IOException {
+        JsonNode contract = load(AGENT_TURN_CONTRACT);
+
+        assertThat(contract.get("match_types").valueStream().map(JsonNode::stringValue))
+                .containsExactly("new", "existing", "edit");
+        // 기존 두 갈래가 그대로여야 "가산"이다 — 셋째를 더하며 앞의 예시를 고치면 TΔ6a가 구현한 왕복이 흔들린다.
+        assertThat(contract.get("request").get("draft").get("match").get("type").stringValue()).isEqualTo("new");
+        assertThat(contract.get("response").get("draft").get("match").get("type").stringValue()).isEqualTo("new");
+
+        // 폼 상태는 방향이 달라도 같은 값이다 — edit 예시의 note도 다른 예시와 같은 형태여야 한다.
+        JsonNode editDraft = contract.get("response_edit_mode").get("draft");
+        assertThat(fieldNames(editDraft.get("note"))).isEqualTo(fieldNames(draftWithoutAliases().get("note")));
+        assertThat(fieldNames(contract.get("response_edit_mode"))).containsExactly("reply", "draft");
+    }
+
+    @Test
+    @DisplayName("TΔ28a: edit의 대상은 노트가 아니라 (note_id, date)다 — 날짜가 없으면 무엇을 고칠지 정해지지 않는다")
+    void editTargetsAnEntryNotJustANote() throws IOException {
+        JsonNode contract = load(AGENT_TURN_CONTRACT);
+        JsonNode draft = contract.get("response_edit_mode").get("draft");
+        JsonNode match = draft.get("match");
+
+        assertThat(contract.get("edit_target_axis").stringValue()).isEqualTo("note_id + date");
+        // POLICY: date는 선택 필드가 아니다(사용자 확정 2026-08-02) — existing의 date는 미리보기 표기용이라
+        //         없어도 되지만(어느 날에 붙일지는 서버가 정한다) edit은 그 날짜가 곧 대상이다. 비워 두면
+        //         시스템이 추측으로 채우는 자리가 생기고, 추측한 날짜로 저장하면 사용자가 고치려던 적 없는
+        //         기록이 덮인다. 시트가 «어느 커피 → 어느 날 기록» 두 걸음인 것이 이 필수 표기의 짝이다.
+        assertThat(fieldNames(match)).containsExactly("type", "note_id", "date");
+        assertThat(match.get("date").isString()).isTrue();
+
+        // 저장된 기록을 딛으므로 노트 식별자가 두 자리에서 같아야 한다 — 갈리면 "이 노트의 이 날짜"가
+        // 두 가지를 뜻하게 된다(new는 note.id가 null인 것과 대비된다).
+        assertThat(draft.get("note").get("id")).isEqualTo(match.get("note_id"));
+        // 폼이 담는 엔트리가 곧 고칠 대상이다 — 폼의 단위가 엔트리 1건이라 그 밖의 날짜는 실릴 자리가 없다.
+        List<String> dates = draft.get("note").get("entries").valueStream()
+                .map(entry -> entry.get("date").stringValue()).toList();
+        assertThat(dates).containsExactly(match.get("date").stringValue());
+    }
+
+    @Test
+    @DisplayName("TΔ28a: 수정 모드는 노트 레벨 전체를 잠그고 회차만 연다 — 다른 회차에 걸리는 값은 못 고친다(AC-14)")
+    void editModeLocksEverythingSharedAcrossBrews() throws IOException {
+        JsonNode contract = load(AGENT_TURN_CONTRACT);
+        JsonNode note = contract.get("response_edit_mode").get("draft").get("note");
+
+        // POLICY: 기준은 "이 값이 다른 회차에도 걸리는가"다(사용자 확정 2026-08-02). 노트 레벨 값은 그
+        //         노트의 모든 회차가 함께 딛으므로, 한 회차를 고치는 자리에서 바꾸면 손대지 않은 다른 날
+        //         감상까지 뜻이 달라진다. 그중 커피명·로스터리는 더 세다 — 바뀌면 아예 다른 커피다(V-9).
+        //         목록에서 들어간 수정 화면(TΔ13b)은 이 값들을 여는데, 그 화면은 노트 전체를 펼쳐 영향
+        //         범위가 눈에 있기 때문이다 — 채팅 폼은 회차 1건만 담아 그럴 수 없다.
+        List<String> locked = contract.get("edit_locked_fields").valueStream()
+                .map(JsonNode::stringValue).toList();
+        assertThat(contract.get("edit_editable_fields").valueStream().map(JsonNode::stringValue))
+                .containsExactly("entries[].brews");
+
+        // 잠금 목록이 draft의 노트 레벨 필드를 빠짐없이 덮어야 한다 — 하나라도 빠지면 그 필드가 조용히
+        // 열린 채 남고, 그것이 "다른 회차에 영향을 준다"는 이 규칙이 막으려는 바로 그 경로다.
+        List<String> noteLevel = new ArrayList<>(fieldNames(note));
+        noteLevel.removeAll(List.of("id", "entries", "created_at", "updated_at"));
+        assertThat(locked)
+                .as("draft의 노트 레벨 필드 중 잠금 목록에 없는 것이 있다")
+                .containsExactlyInAnyOrderElementsOf(noteLevel);
+
+        // 잠긴 필드도 draft에 실려 나간다 — 잠금은 «보내지 않는다»가 아니라 «고칠 수 없다»이고, 화면은
+        // 무엇을 고치는 중인지 그 값들로 말한다. 서버 최종 방어는 TΔ29a다.
+        for (String field : List.of("coffee_name", "roastery", "roast_level", "official_notes")) {
+            assertThat(fieldNames(note.get(field)))
+                    .as("%s 이 출처 표시 필드가 아니다", field).containsExactly("value", "source");
+        }
+    }
+
+    @Test
     @DisplayName("TΔ6b: 취소 통지는 본문이 없다 — 무엇을 취소하는지는 서버가 안다(사용자당 트랜스크립트 1건)")
     void cancelCarriesNoBodyInEitherDirection() throws IOException {
         JsonNode contract = load(AGENT_CANCEL_CONTRACT);
