@@ -8,7 +8,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * 시스템 프롬프트의 정책 문구 포함 단언 — 프롬프트가 단일 소유하는 결정(페르소나·말투·대화 경계·보강 정책·
  * 출처 우선순위·my_taste 정규화·대기 중 수정 우선·즉시 propose·회차 분리/병합·수치 정규화·다중 날짜
- * 순차 제안)이 빠지지 않았는지 가드한다 (ref: changes/0018 tasks.md TΔ7a, changes/0021 TΔ3b,
+ * 순차 제안·대화 수정 흐름)이 빠지지 않았는지 가드한다 (ref: changes/0018 tasks.md TΔ7a, changes/0021 TΔ3b,
  * changes/0023 TΔ3d; plan.md#ADR-47/#ADR-49/#ADR-30/#ADR-59/#ADR-61, data-model.md#V-6,
  * spec FR-5/FR-15/FR-18/FR-21/FR-22).
  * <p>언어 정책(ADR-38)의 vision 프롬프트와의 동일 문구 비교는 llm 패키지의 LanguagePolicyParityTest가 맡는다.
@@ -189,10 +189,53 @@ class AgentSystemPromptTest {
     }
 
     @Test
+    @DisplayName("D-14/AC-13 (TΔ29b): 수정 흐름 — 대상 지목 → get_note → match.type=edit 제안")
+    void encodesConversationalEditFlow() {
+        // 구 금지 규칙이 이 기능을 막고 있었다 — 부재 단언이 개정의 절반이다(TΔ27의 "~멍"과 같은 형태).
+        assertThat(PROMPT).doesNotContain("저장이 끝난 기록은 대화로 고치지 않는다");
+        assertThat(PROMPT).contains("match.type=edit으로 제안한다");
+        assertThat(PROMPT).contains("고치는 단위는 그 날짜 엔트리 하나다");
+        // 대상 키는 짐작이 아니라 get_note가 돌려준 값에서 고른다 — 없는 날짜는 서버가 거부한다(TΔ29a).
+        assertThat(PROMPT).contains("get_note가 돌려준 날짜 중에서 고른다");
+        // 잠긴 메타는 저장된 값 그대로 되싣는다 — V-9는 서버가 최종 방어하지만(TΔ29a) 애초에 안 바꾸게 한다.
+        assertThat(PROMPT).contains("저장된 값을 그대로 다시 싣는다");
+        // 인접 규칙과의 충돌을 닫는다 — "새 감상이 없는 발화엔 제안 금지"가 "평가 낮춰줘"를 삼키면
+        // 수정 흐름이 조회 안내로 흘러 이 task가 걷은 금지 규칙이 사실상 되살아난다.
+        assertThat(PROMPT).contains("저장된 기록을 고쳐 달라는 요구는 여기 해당하지 않는다");
+    }
+
+    @Test
+    @DisplayName("D-14 (TΔ29b): 수정 제안은 그 엔트리의 회차를 전부 싣는다 — 저장이 배열을 통째로 교체한다")
+    void encodesFullBrewArrayOnEdit() {
+        // 이 규칙이 빠지면 실패가 조용하다 — 폼은 온전해 보이고 [저장] 순간 나머지 회차가 사라진다.
+        // 근거(통째 교체)를 함께 싣는 것이 ADR-60 사유 정보량 원칙의 프롬프트 측 적용이다.
+        assertThat(PROMPT).contains("회차(brews)는 하나도 빠뜨리지 말고 전부 싣는다");
+        assertThat(PROMPT).contains("회차 배열을 통째로 교체하므로");
+        assertThat(PROMPT).contains("나머지 회차는 저장된 값 그대로 둔다");
+    }
+
+    @Test
+    @DisplayName("D-14/D-12 (TΔ29b): edit의 갈래 구분 — existing과의 분기·날짜 이동·대상 부재 시 되묻기")
+    void encodesEditBranchDistinctions() {
+        // existing과 edit은 인자 모양이 같고 뜻이 반대다(회차 추가 ↔ 엔트리 교체) — 모델이 발화의 뜻으로 고른다.
+        assertThat(PROMPT).contains("새로 마신 시음을 더하는 것이면 existing(회차 추가)이고");
+        // 날짜 이동은 match.date(대상)와 target_date(결과)가 갈리는 자리다(D-12, TΔ28c).
+        assertThat(PROMPT).contains("match.date에 원래 날짜를 두고 target_date에 새 날짜를 넣는다");
+        // AC-36 승계 — 매칭 실패는 폼이 아니라 되묻기다.
+        assertThat(PROMPT).contains("못 찾으면 제안하지 말고 짧게 되묻는다");
+        // 수정 모드 draft의 match는 이어지는 턴에서 고정 — 바뀌면 엉뚱한 기록을 덮는다.
+        assertThat(PROMPT).contains("draft가 수정 모드(match.type=edit)면 재호출에서도 그 match를 그대로 유지한다");
+    }
+
+    @Test
     @DisplayName("FR-14: 매칭 tool 흐름 — list_notes 출발·today 기준 상대 날짜")
     void encodesToolWorkflow() {
         assertThat(PROMPT).contains("list_notes");
         assertThat(PROMPT).contains("get_note");
+        // TΔ29b: 매칭 대조가 «출발점» 서술에서 «제안 전 필수»로 조여졌다 — 수정 흐름 절을 더한 뒤
+        // brew-split 케이스에서 list_notes 생략이 6회차 중 3회 관측됐고(전 0/6), 이 문장이 6/6으로 되돌렸다.
+        assertThat(PROMPT).contains("기록을 제안하기 전에 언제나 list_notes");
+        assertThat(PROMPT).contains("대조를 건너뛰면 이미 있는 커피를 새 노트로 또 만든다");
         assertThat(PROMPT).contains("today 기준으로 절대 날짜");
         // 0029 TΔ1: 폐기된 tool을 다시 부르게 두지 않는다 — 수정·카드 전송은 UI 몫이다(D-1·D-5).
         assertThat(PROMPT).doesNotContain("propose_edit").doesNotContain("send_entry_card");

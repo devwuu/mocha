@@ -149,10 +149,13 @@ class ProposalTools {
     ToolCallback proposeRecord(String userId, TurnUserMessage utterance, TurnDraft draft, TurnProposalSink sink) {
         return new ToolCallback(
                 "propose_record",
-                "신규 시음 기록(또는 기존 노트에 더하는 새 시음)을 제안한다 — 검증 통과 시 제안 내용이 사용자 "
+                "시음 기록을 제안한다 — 신규(new) · 기존 노트에 더하는 새 시음(existing) · 이미 저장된 기록의 "
+                        + "수정(edit)이고, 어느 것인지는 match가 말한다. 검증 통과 시 제안 내용이 사용자 "
                         + "화면의 작성 폼으로 돌아간다. 저장은 사용자의 [저장] 확정만 한다. 작성 중인 draft가 있으면 "
                         + "재호출은 그 draft 위에 이번 발화를 반영한 전체 내용이어야 한다 — 건드리지 않은 필드도 draft "
-                        + "값을 그대로 다시 실어라. 검증 거부는 사유를 돌려주니 정정해 재호출해라.",
+                        + "값을 그대로 다시 실어라. edit은 get_note로 읽은 그 날짜 엔트리의 회차를 전부 실어야 한다 "
+                        + "— 저장이 회차 배열을 통째로 교체하므로 빠뜨린 회차는 사라진다. "
+                        + "검증 거부는 사유를 돌려주니 정정해 재호출해라.",
                 PROPOSE_RECORD_SCHEMA,
                 argumentsJson -> executeProposeRecord(userId, utterance, draft, sink, argumentsJson));
     }
