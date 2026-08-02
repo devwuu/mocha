@@ -280,6 +280,89 @@ class EvalCaseLoaderTest {
     }
 
     @Test
+    @DisplayName("TΔ21: state=absent인데 match를 단언하면 실패한다 — draft와 같은 모순, 새 필드에도 같은 그물")
+    void rejectsAbsentProposalWithMatchAssertions(@TempDir Path tmp) {
+        String yaml = """
+                origin: "모순 — match 갈래"
+                today: "2026-03-14T09:30:00+09:00"
+                utterances: ["안녕"]
+                expect:
+                  proposal:
+                    state: absent
+                    match:
+                      - path: type
+                        value: "edit"
+                """;
+
+        assertThatThrownBy(() -> loadYaml(tmp, "contradiction-match", yaml))
+                .isInstanceOf(EvalCaseFormatException.class)
+                .hasMessageContaining("state=absent")
+                .hasMessageContaining("match 단언");
+    }
+
+    @Test
+    @DisplayName("TΔ21: match 경로 단언도 문법·모호성 검증을 받는다 — draft만 그물에 걸리면 새 필드가 초록 거짓말이 된다")
+    void validatesMatchAssertionsLikeDraft(@TempDir Path tmp) {
+        String yaml = """
+                origin: "match 단언 모호성"
+                today: "2026-03-14T09:30:00+09:00"
+                utterances: ["안녕"]
+                expect:
+                  proposal:
+                    state: created
+                    match:
+                      - path: type
+                        value: "edit"
+                        present: true
+                """;
+
+        assertThatThrownBy(() -> loadYaml(tmp, "ambiguous-match", yaml))
+                .isInstanceOf(EvalCaseFormatException.class)
+                .hasMessageContaining("expect.proposal.match");
+    }
+
+    @Test
+    @DisplayName("TΔ21: blank도 «정확히 1개» 규칙에 든다 — 새 단언이 다른 것과 겹쳐도 걸린다")
+    void countsBlankAmongExclusiveAssertions(@TempDir Path tmp) {
+        String yaml = """
+                origin: "blank 겹침"
+                today: "2026-03-14T09:30:00+09:00"
+                utterances: ["안녕"]
+                expect:
+                  proposal:
+                    state: created
+                    draft:
+                      - path: beans
+                        blank: true
+                        size: 0
+                """;
+
+        assertThatThrownBy(() -> loadYaml(tmp, "blank-overlap", yaml))
+                .isInstanceOf(EvalCaseFormatException.class)
+                .hasMessageContaining("정확히 1개")
+                .hasMessageContaining("blank");
+    }
+
+    @Test
+    @DisplayName("TΔ21: initial.draft는 디렉터리가 아니라 파일이어야 하고, 없으면 사유와 함께 실패한다")
+    void rejectsMissingDraftFixture(@TempDir Path tmp) throws Exception {
+        String yaml = """
+                origin: "draft 픽스처 부재"
+                today: "2026-03-14T09:30:00+09:00"
+                utterances: ["안녕"]
+                initial:
+                  draft: draft.json
+                expect:
+                  unchanged_notes: true
+                """;
+
+        assertThatThrownBy(() -> loadYaml(tmp, "missing-draft", yaml))
+                .isInstanceOf(EvalCaseFormatException.class)
+                .hasMessageContaining("initial.draft")
+                .hasMessageContaining("파일");
+    }
+
+    @Test
     @DisplayName("AC-Δ1: 경로 단언이 value·size·present를 겹쳐 쓰면 실패한다 — 무엇이 깨졌는지 흐려진다")
     void rejectsAmbiguousAssertion(@TempDir Path tmp) {
         String yaml = """

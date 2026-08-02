@@ -135,6 +135,8 @@ public final class EvalCaseLoader {
             return;
         }
         requireFixture(at + "initial.notes", initial.notes(), caseDir, true);
+        // draft는 디렉터리가 아니라 파일 하나다 — 폼은 화면에 하나뿐이라(spec §8) 여러 벌을 심을 자리가 없다.
+        requireFixture(at + "initial.draft", initial.draft(), caseDir, false);
     }
 
     /** 동봉 픽스처 참조 검증 — 케이스 폴더 안이어야 하고, 실재해야 한다. */
@@ -185,7 +187,14 @@ public final class EvalCaseLoader {
             throw new EvalCaseFormatException(at + " — state=absent인데 draft 단언이 있다"
                     + " (없을 제안의 내용은 단언할 수 없다)");
         }
+        // match도 같은 모순이다 — 없을 제안의 매칭 판정을 단언할 수 없다(TΔ21).
+        if (proposal.state() == EvalCase.Proposal.State.ABSENT
+                && proposal.match() != null && !proposal.match().isEmpty()) {
+            throw new EvalCaseFormatException(at + " — state=absent인데 match 단언이 있다"
+                    + " (없을 제안의 매칭 판정은 단언할 수 없다)");
+        }
         validateAssertions(at + ".draft", proposal.draft());
+        validateAssertions(at + ".match", proposal.match());
     }
 
     private static void validateTools(String at, EvalCase.Tools tools) {
@@ -284,8 +293,11 @@ public final class EvalCaseLoader {
         if (assertion.present() != null) {
             given.add("present");
         }
+        if (assertion.blank() != null) {
+            given.add("blank");
+        }
         if (given.size() != 1) {
-            throw new EvalCaseFormatException(at + " — 단언은 value·size·present 중 정확히 1개여야 한다"
+            throw new EvalCaseFormatException(at + " — 단언은 value·size·present·blank 중 정확히 1개여야 한다"
                     + " (지금: " + (given.isEmpty() ? "없음" : String.join("·", given)) + ")");
         }
         // 스칼라만 비교한다 — 중첩 구조 비교는 "무엇이 달랐나"가 흐려져서, 경로를 더 내려 쓰게 한다.

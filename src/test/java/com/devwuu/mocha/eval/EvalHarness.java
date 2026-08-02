@@ -6,6 +6,7 @@ import com.devwuu.mocha.agent.prompt.TurnPromptAssembler;
 import com.devwuu.mocha.agent.tool.ToolCallbackProvider;
 import com.devwuu.mocha.agent.turn.TurnDraft;
 import com.devwuu.mocha.agent.turn.TurnProposalEnricher;
+import com.devwuu.mocha.agent.turn.TurnResult;
 import com.devwuu.mocha.agent.turn.TurnRunner;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.domain.Note;
@@ -190,17 +191,27 @@ final class EvalHarness {
 
         Map<String, String> notesBefore = snapshotNotes(noteRepository, mapper);
 
-        // 케이스 v1은 사진 없는 텍스트 턴만 다룬다(ADR-68 비범위) — draft도 null이다. 폼 상태를 동봉하는
-        // 케이스(TΔ2 계약)는 TΔ21이 코퍼스와 함께 세운다.
+        // 케이스 v1은 사진 없는 텍스트 턴만 다룬다(ADR-68 비범위). draft는 TΔ21에서 열렸다 — 아래.
         List<String> replies = new ArrayList<>();
+        // 폼 상태를 턴 사이로 나른다(TΔ21). 첫 값은 케이스 픽스처(= 사용자가 손으로 고쳐 둔 값)이고,
+        // 이후는 **직전 턴의 제안 결과**다 — 실사용 클라이언트가 응답의 draft를 폼에 넣고 다음 발화에
+        // 되싣는 것과 같은 거동이다(ADR-80). 여기서 케이스가 턴마다 draft를 지정하게 두면 실사용에 없는
+        // 조합을 재게 되고, 반대로 이 승계를 빼면 둘째 턴이 항상 폼 없는 상태가 되어 V-6이 무발동한다.
+        TurnDraft draft = loadDraft(evalCase, mapper);
         long startedAt = System.nanoTime();
         for (String utterance : evalCase.utterances()) {
             // 멀티턴은 같은 러너·트랜스크립트에 순차 주입 — 턴 사이 문맥은 트랜스크립트가 잇는다.
             try {
-                replies.add(turnRunner.run(USER, utterance, null).reply());
+                TurnResult result = turnRunner.run(USER, utterance, draft);
+                replies.add(result.reply());
+                // 제안이 없는 턴(잡담·되묻기)은 폼을 갈지 않는다 — 화면의 폼이 그대로 있는 것과 같다.
+                if (result.proposal() != null) {
+                    draft = result.proposal();
+                }
             } catch (RuntimeException e) {
                 // 폴백 턴(ADR-48): 응답 없음으로 기록하고 다음 발화로 간다 — 시퀀스를 여기서 끊으면
                 // 뒤 턴의 행동을 재지 못한다. 사유는 프로덕션과 같은 자리(로그)에 남긴다.
+                // draft는 갈지 않는다: 실패한 턴은 폼을 건드리지 않는다(AC-63 — 노트도 폼도 무변화).
                 log.warn("eval 턴 폴백(응답 없음): 원문={}", utterance, e);
                 replies.add(null);
             }
@@ -235,6 +246,25 @@ final class EvalHarness {
                 }
             }
         }
+    }
+
+    /**
+     * 첫 턴에 실릴 폼 상태를 케이스 픽스처에서 읽는다(TΔ21). 없으면 null — 폼이 안 뜬 상태다.
+     *
+     * <p><b>저장소에 심지 않고 값으로 든다</b>: draft는 서버 상태가 아니라 클라이언트가 요청에 실어
+     * 보내는 것이라(ADR-80) 심을 행이 없다. 구 {@code pending} 픽스처가 저장소로 갔던 것과 대비되는
+     * 지점이고, 그 차이가 이 델타가 바꾼 것 자체다.
+     *
+     * <p>역직렬화는 프로덕션과 같은 매퍼를 쓴다 — {@code POST /api/agent/turn}이 요청 본문의 draft를
+     * 읽는 경로와 같은 규칙이어야 픽스처가 <b>실제로 보낼 수 있는 값</b>임이 보장된다.
+     */
+    private static TurnDraft loadDraft(EvalCase evalCase, JsonMapper mapper) throws IOException {
+        EvalCase.Initial initial = evalCase.initial();
+        if (initial == null || initial.draft() == null) {
+            return null;
+        }
+        Path file = evalCase.dir().resolve(initial.draft());
+        return mapper.readValue(Files.readString(file, StandardCharsets.UTF_8), TurnDraft.class);
     }
 
     // 노트 저장소 스냅샷 — 파일 시절의 "파일명 → 내용"을 "id → 직렬화 본문"이 승계한다. 저장소가 id

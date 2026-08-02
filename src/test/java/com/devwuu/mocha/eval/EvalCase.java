@@ -45,13 +45,25 @@ public record EvalCase(
      * (직렬화 왕복이 판정 대상 — findings-TΔ0 §1.2), 실사용에서 노트를 그대로 떠 오는 박제도 그만큼 싸진다(ADR-69 ①).
      *
      * <p>0029 TΔ4에서 {@code pending} 픽스처가 사라졌다 — 서버가 작성 중 상태를 갖지 않으므로 심을 곳이
-     * 없다. "폼이 떠 있는 상태에서 추가 발화"를 표현하는 자리는 draft 동봉 케이스가 다시 세운다(TΔ21).
+     * 없다. <b>"폼이 떠 있는 상태에서 추가 발화"를 표현하는 자리는 {@code draft}가 다시 세운다</b>(TΔ21).
      *
      * @param notes 노트 픽스처 디렉터리(도메인 {@code Note} JSON 모음). null이면 노트 0건에서 시작.
      *              <b>파일명 오름차순으로 INSERT되고 id는 DB가 발급한다</b> — 픽스처의 {@code id} 필드는
      *              무시되므로, 케이스가 특정 id를 전제하면 파일명 순서로 고정한다(changes/0028 TΔ6b).
+     * @param draft <b>첫 턴에 실릴 폼 상태</b>({@code TurnDraft} JSON 파일 — {@code {note, match}}).
+     *              null이면 첫 턴은 폼이 없는 상태(종전 전부의 거동)다.
+     *              <p>구 {@code pending} 픽스처의 자리를 받지만 <b>성격이 반대다</b>: 그것은 서버에 심는
+     *              행이었고 이것은 <b>클라이언트가 요청에 실어 보내는 값</b>이다(ADR-80). 심을 저장소가
+     *              없으므로 러너가 턴 인자로 넘긴다.
+     *              <p><b>둘째 턴부터는 케이스가 아니라 러너가 정한다</b> — 직전 턴의 제안 결과가 다음 턴의
+     *              draft가 된다(제안이 없으면 직전 값 유지). 실사용 클라이언트가 응답의 draft를 폼에 넣고
+     *              다음 발화에 되싣는 것과 같은 거동이고, 케이스가 턴마다 draft를 적으면 <b>실사용에 없는
+     *              조합</b>을 재게 된다.
+     *              <p>그래서 이 픽스처가 표현하는 것은 정확히 <b>"사용자가 손으로 고쳐 둔 값"</b>이다 —
+     *              모델이 만든 것도, 직전 턴이 남긴 것도 아닌 값을 첫 턴에 세우는 유일한 수단이라
+     *              V-6 draft 대조의 케이스가 여기서만 성립한다.
      */
-    public record Initial(String notes) {
+    public record Initial(String notes, String draft) {
     }
 
     /**
@@ -72,8 +84,17 @@ public record EvalCase(
      * @param state 턴 종료 후 제안 유무.
      * @param draft 제안 내용(Note 구조, snake_case) 경로 단언. 전체 일치가 아니라 <b>부분 일치</b>다 —
      *              LLM이 채우는 필드 대부분은 비결정이고, 케이스가 실제로 보려는 필드만 못박는다.
+     * @param match 제안의 <b>매칭 판정</b>(`{type, note_id, date}`) 경로 단언 — changes/0029 TΔ21 신설.
+     *              <p>{@code draft}와 뿌리를 나눈 이유: 전자는 {@code Note} 구조라 {@code entries[0].date} 같은
+     *              경로가 노트 안을 가리키는데, {@code match}는 노트 밖의 형제 필드다. 한 뿌리로 합치면
+     *              기존 케이스의 경로가 전부 한 단계 깊어진다.
+     *              <p><b>tool 인자 단언으로 갈음하지 않는 이유</b>: {@code calls[].args}는 <i>모델이 무엇을
+     *              보냈는가</i>를 보지만 이 필드는 <i>서버 검증을 통과해 폼에 도달한 것이 무엇인가</i>를 본다.
+     *              {@code edit} 제안이 거부된 뒤 {@code existing}으로 다시 나가 성사된 흐름은 전자로는
+     *              통과하고 후자로는 걸린다 — D-14가 없애려는 실패(*"의도는 수정, 결과는 추가"*)가 정확히
+     *              그 모양이라 관측 창이 뒤쪽이어야 한다.
      */
-    public record Proposal(State state, List<PathAssertion> draft) {
+    public record Proposal(State state, List<PathAssertion> draft, List<PathAssertion> match) {
 
         /**
          * {@code created} — 턴 종료 시 제안 결과가 있다.<br>
@@ -119,7 +140,18 @@ public record EvalCase(
      * @param size    배열 크기.
      * @param present 존재 여부 — {@code true}면 null 아닌 값이 있어야 하고, {@code false}면 없어야 한다.
      */
-    public record PathAssertion(String path, Object value, Integer size, Boolean present) {
+    /**
+     * 경로 하나에 대한 단언 — {@code value}·{@code size}·{@code present}·{@code blank} 중 <b>정확히 1개</b>.
+     *
+     * @param blank <b>"비었다"</b> — 부재·null·길이 0을 <b>한 값으로 본다</b>(changes/0029 TΔ21 신설).
+     *              <p>{@code present: false}와 다르다: 그쪽은 부재·null만 참이고 빈 배열은 거짓이다.
+     *              <p><b>왜 필요한가</b>: 보강 트리거가 정확히 이 술어다
+     *              ({@code Sourced.valuesOrEmpty(officialNotes).isEmpty()} — null과 {@code []}를 같게 본다).
+     *              케이스가 트리거보다 좁은 술어를 걸면 <b>시스템이 신경 쓰지 않는 차이로 빨개진다</b> —
+     *              모델이 {@code null} 대신 {@code []}를 내는 것은 보강 관점에서 같은 상태인데 케이스만
+     *              뒤집힌다. 회귀 가드가 재야 하는 것은 <i>시스템이 판정에 쓰는 조건</i>이다.
+     */
+    public record PathAssertion(String path, Object value, Integer size, Boolean present, Boolean blank) {
 
         /** 파싱된 경로 — 문법은 로더가 이미 검증했으므로 여기서는 실패하지 않는다. */
         public EvalPath parsedPath() {

@@ -65,6 +65,14 @@ final class EvalJudge {
                 check("제안 draft", assertion, draft, failures);
             }
         }
+        if (expect.match() != null) {
+            // 뿌리가 note가 아니라 match다 — 노트 밖의 형제 필드라 draft 경로와 섞이지 않는다(TΔ21).
+            // match가 null인 제안은 있을 수 없지만(검증기가 필수로 건다) 판정기는 그것을 전제하지 않는다.
+            JsonNode match = mapper.valueToTree(proposal.match());
+            for (EvalCase.PathAssertion assertion : expect.match()) {
+                check("제안 match", assertion, match, failures);
+            }
+        }
     }
 
     private static void judgeTools(EvalCase.Tools expect, EvalHarness.Run run,
@@ -172,6 +180,12 @@ final class EvalJudge {
             }
             return;
         }
+        if (assertion.blank() != null) {
+            if (isBlankNode(node) != assertion.blank()) {
+                failures.add(at + " 기대 비었음=" + assertion.blank() + " 실제=" + describe(node));
+            }
+            return;
+        }
         if (assertion.size() != null) {
             if (node == null || !node.isArray()) {
                 failures.add(at + " 기대 배열 크기=" + assertion.size() + " 실제=" + describe(node) + "(배열 아님)");
@@ -225,6 +239,26 @@ final class EvalJudge {
 
     private static String describe(JsonNode node) {
         return node == null || node.isNull() ? "없음" : node.toString();
+    }
+
+    /**
+     * "비었다" — 부재·null·길이 0을 한 값으로 본다(TΔ21).
+     *
+     * <p>보강 트리거({@code Sourced.valuesOrEmpty(...).isEmpty()})와 <b>같은 술어</b>다: 모델이
+     * {@code null}을 내든 {@code []}를 내든 보강 관점에서 같은 상태이므로, 케이스도 그 둘을 갈라서는
+     * 안 된다. 스칼라(숫자·불리언)는 비어 있을 수 없으므로 값이 있으면 항상 false다.
+     */
+    private static boolean isBlankNode(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return true;
+        }
+        if (node.isArray() || node.isObject()) {
+            return node.isEmpty();
+        }
+        if (node.isTextual()) {
+            return node.asString().isBlank();
+        }
+        return false;
     }
 
     private static String summarize(String json) {
