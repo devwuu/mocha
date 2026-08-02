@@ -3,7 +3,7 @@ import type { Draft, Rating, Sourced } from '../api/contract'
 import { RATINGS } from '../api/contract'
 import { numberValue, SOURCE_LABELS, textValue, userList, userValue } from '../formValues'
 import { MatchBadge } from './MatchBadge'
-import { patchBean, patchNote, patchRecipe, patchTasting } from './draftEdits'
+import { patchBean, patchEntry, patchNote, patchRecipe, patchTasting } from './draftEdits'
 
 /**
  * 미리보기 폼 — 에이전트가 제안한 draft를 사용자가 확인하고 고치는 자리 (changes/0029 TΔ10, AC-1).
@@ -43,6 +43,15 @@ export function DraftForm({ draft, busy, onChange, onSave, onCancel }: DraftForm
    * 그래서 이 폼이 저장하는 것은 **엔트리 하나**이고, 메타 PATCH를 보낼 이유가 없다(TΔ28b가 받는다).
    */
   const locked = draft.match.type === 'edit'
+  /*
+   * 수정 대상의 «원래 날짜» — 수정 모드에서만 있고, 날짜 입력이 열리는 신호이자 이동 판정의 기준이다
+   * (TΔ28c). 폼의 날짜가 이 값과 달라지면 그것이 곧 날짜 이동 요청이고, 서버는 경로의 이 날짜를 대상으로
+   * 찾아 본문의 날짜로 옮긴다(`note-update.contract.json`의 `date_move`).
+   */
+  const target = draft.match.type === 'edit' ? draft.match.date : null
+  // 날짜가 빈 폼은 보내지 않는다 — 엔트리의 유일 키라(V-3) 서버가 400으로 답할 요청이고, 그 실패를
+  // 「저장하지 못했어」로 옮기면 사용자는 무엇이 문제인지 모른 채 폼을 들여다보게 된다.
+  const incomplete = note.entries.some((entry) => entry.date === '')
 
   return (
     <section className="draft" aria-label={locked ? '고치는 중인 기록' : '작성 중인 노트'}>
@@ -113,8 +122,40 @@ export function DraftForm({ draft, busy, onChange, onSave, onCancel }: DraftForm
       )}
 
       {note.entries.map((entry, entryIndex) => (
-        <div className="draft__section" key={entry.date}>
-          <h3>{entry.date}</h3>
+        // key가 날짜가 아니라 인덱스인 것은 날짜가 편집 가능해졌기 때문이다(TΔ28c) — 날짜를 키로 두면
+        // 값이 바뀔 때마다 섹션이 통째로 다시 마운트돼 입력 중 포커스가 날아간다. 폼 안에서 엔트리가
+        // 재정렬되거나 늘고 주는 일이 없어 인덱스가 안정적인 키다.
+        <div className="draft__section" key={entryIndex}>
+          {/*
+            **날짜는 수정 모드에서만 열린다**(TΔ28c, 사용자 확정 2026-08-02). 서버 의미론이 이미 있는
+            자리라서다: PATCH는 «경로=대상, 본문=결과»로 날짜 이동을 규정하고(D-12) 수정 폼은 엔트리를
+            1건만 담아 **같은 날짜가 둘 생길 자리가 없다**. 캡처 모드에서 열면 다중 날짜 분해(ADR-61)로
+            여러 엔트리를 든 draft에서 날짜가 겹칠 수 있고, 그때 서버는 병합하지 않고 UNIQUE로 깨진다(V-3).
+          */}
+          {target === null ? (
+            <h3>{entry.date}</h3>
+          ) : (
+            <div className="draft__date">
+              <input
+                className="draft__date-input"
+                type="date"
+                value={entry.date}
+                aria-label="시음 날짜"
+                onChange={(event) => onChange(patchEntry(draft, entryIndex, { date: event.target.value }))}
+              />
+              {/*
+                이동은 «알리기만» 한다(D-12 — 합병에는 잃는 것이 없어 경고가 아니라 안내다). 다만 이
+                화면은 **이동처에 기록이 있는지 모른다**: 수정 화면(TΔ13b)은 노트 전문을 들고 있어 저장
+                전에 충돌을 판정하지만(`mergeTargetOf`) 채팅 폼은 기록 1건만 담는다. 그래서 아는 것까지만
+                말하고, 실제로 합쳐졌는지는 저장 응답이 답한다(`ChatScreen`의 저장 안내).
+              */}
+              {entry.date !== '' && entry.date !== target && (
+                <p className="draft__date-move">
+                  {target} 기록을 이 날짜로 옮겨. 그날 이미 기록이 있으면 뒤 회차로 합쳐져.
+                </p>
+              )}
+            </div>
+          )}
           {entry.brews.map((brew, brewIndex) => (
             <div className="draft__brew" key={brewIndex}>
               <div className="draft__brew-no">{brewIndex + 1}회차</div>
@@ -236,7 +277,7 @@ export function DraftForm({ draft, busy, onChange, onSave, onCancel }: DraftForm
         <button type="button" className="button button--ghost" onClick={onCancel} disabled={busy}>
           취소
         </button>
-        <button type="button" className="button button--primary" onClick={onSave} disabled={busy}>
+        <button type="button" className="button button--primary" onClick={onSave} disabled={busy || incomplete}>
           저장
         </button>
       </div>

@@ -317,6 +317,38 @@ body {
   color: var(--muted);
 }
 
+/*
+ * 수정 모드의 날짜 입력 (TΔ28c) — 캡처 모드의 `h3`가 서던 자리다.
+ *
+ * 입력이지만 **제목의 크기·색을 유지한다**: 이 줄이 여전히 "이 기록은 언제 것인가"의 머리글이고, 폼
+ * 안의 다른 입력처럼 보이면 회차 필드와 같은 층위로 읽힌다. 고칠 수 있다는 신호는 테두리 하나로 족하다
+ * (잠긴 칸이 점선인 것과 대비된다).
+ */
+.draft__date {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.draft__date-input {
+  align-self: flex-start;
+  padding: 3px 6px;
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  color: var(--brown-deep);
+}
+
+/* 이동 안내 — 경고가 아니라 안내다(D-12: 합병에는 잃는 것이 없다). 색으로 겁주지 않는다. */
+.draft__date-move {
+  margin: 0;
+  font-size: 10.5px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+
 .draft__brew {
   display: flex;
   flex-direction: column;

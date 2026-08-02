@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
-import type { Draft } from '../api'
+import type { Draft, NoteDetail } from '../api'
 import { patchNoteEntry, postAgentCancel, postAgentTurn, postNoteCommit, postPhotos } from '../api'
+import type { EntryDraft } from '../edit/noteEdits'
 import { toEntryUpdate } from '../edit/noteEdits'
 import { editPath, GALLERY, notePath } from '../routes'
 import { DraftForm } from './DraftForm'
@@ -242,7 +243,7 @@ export function ChatScreen({ onNavigate }: ChatScreenProps) {
     const saved = await patchNoteEntry(noteId, update.targetDate, update.value)
     const notice: Message = {
       role: 'system',
-      text: `${update.value.date} 기록을 고쳤어. (노트 #${saved.note_id})`,
+      text: editedNotice(saved, update),
       action: { label: '기록 보기 ›', path: notePath(saved.note_id) },
     }
     try {
@@ -494,6 +495,28 @@ function savedNotice(noteId: number, merged: boolean): string {
   return merged
     ? `기존 노트 #${noteId}에 오늘 기록을 더했어. 커피 정보는 기존 노트의 값을 그대로 뒀어.`
     : `저장했어. (노트 #${noteId})`
+}
+
+/**
+ * 수정 저장 안내 — 제자리 수정 · 날짜 이동 · 회차 병합 셋으로 갈린다 (TΔ28c, D-12).
+ *
+ * **판정을 응답에서 읽는 것이 요점이다.** 수정 화면(TΔ13b)은 노트 전문을 들고 있어 저장 *전에* 충돌을
+ * 알리지만(`mergeTargetOf`) 채팅 폼은 기록 1건만 담아 그럴 수 없다 — 그래서 폼은 *"그날 기록이 있으면
+ * 합쳐져"*까지만 말하고, **무슨 일이 실제로 일어났는지는 여기서 답한다.** 서버가 돌려준 노트가 결과를
+ * 이미 담고 있으므로 요청을 하나도 더 보내지 않는다.
+ *
+ * 병합 판정이 *"보낸 회차보다 많다"*인 것은 그 자리에 원래 있던 회차 뒤로 이어 붙기 때문이다(D-12 —
+ * 기존이 앞, 옮겨 온 것이 뒤). 이동처가 비어 있었으면 보낸 그대로라 수가 같다.
+ */
+function editedNotice(saved: NoteDetail, update: EntryDraft): string {
+  const suffix = `(노트 #${saved.note_id})`
+  if (update.value.date === update.targetDate) {
+    return `${update.value.date} 기록을 고쳤어. ${suffix}`
+  }
+  const brews = saved.entries.find((entry) => entry.date === update.value.date)?.brews.length ?? 0
+  return brews > update.value.brews.length
+    ? `${update.targetDate} 기록을 ${update.value.date} 기록에 합쳤어. 이제 ${brews}회차야. ${suffix}`
+    : `${update.targetDate} 기록을 ${update.value.date}로 옮겼어. ${suffix}`
 }
 
 function describe(error: unknown, fallback: string): string {

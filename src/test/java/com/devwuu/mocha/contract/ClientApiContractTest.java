@@ -737,8 +737,9 @@ class ClientApiContractTest {
         //         범위가 눈에 있기 때문이다 — 채팅 폼은 회차 1건만 담아 그럴 수 없다.
         List<String> locked = contract.get("edit_locked_fields").valueStream()
                 .map(JsonNode::stringValue).toList();
+        // 열리는 것은 그 날 그 잔의 값뿐이다 — 회차와 그 회차가 딸린 날짜(TΔ28c에서 는다).
         assertThat(contract.get("edit_editable_fields").valueStream().map(JsonNode::stringValue))
-                .containsExactly("entries[].brews");
+                .containsExactly("entries[].date", "entries[].brews");
 
         // 잠금 목록이 draft의 노트 레벨 필드를 빠짐없이 덮어야 한다 — 하나라도 빠지면 그 필드가 조용히
         // 열린 채 남고, 그것이 "다른 회차에 영향을 준다"는 이 규칙이 막으려는 바로 그 경로다.
@@ -797,6 +798,33 @@ class ClientApiContractTest {
         assertThat(fieldNames(firstTasting(body)))
                 .as("변환이 떨구는 것은 my_taste_original 하나여야 한다")
                 .isEqualTo(draftTasting.stream().filter(field -> !field.equals("my_taste_original")).toList());
+    }
+
+    @Test
+    @DisplayName("TΔ28c: 수정 모드는 날짜도 연다 — match.date는 대상으로 남고 폼의 date가 결과다(D-12)")
+    void editModeOpensTheEntryDateWhileTheTargetStaysInMatch() throws IOException {
+        JsonNode turn = load(AGENT_TURN_CONTRACT);
+        JsonNode update = load(NOTE_UPDATE_CONTRACT);
+
+        // 날짜는 «그 날 그 잔»의 값이라 다른 회차에 걸리지 않는다 — 잠금 기준(노트 레벨)에 해당하지 않는다.
+        assertThat(turn.get("edit_locked_fields").valueStream().map(JsonNode::stringValue))
+                .doesNotContain("entries[].date", "date");
+        // 이동의 의미론은 이 계약이 새로 짓는 것이 아니라 수정 화면이 도출한 PATCH 계약이 소유한다 —
+        // 두 자리에 규칙을 쓰면 «경로=대상, 본문=결과»가 두 벌이 된다.
+        assertThat(turn.get("edit_date_move").stringValue()).contains("match.date");
+        assertThat(update.get("date_move").stringValue()).isNotEmpty();
+        assertThat(update.get("date_conflict").stringValue()).isEqualTo("merge_brews");
+
+        // POLICY: 캡처 모드(new·existing)의 날짜는 열지 않는다(사용자 확정 2026-08-02) — 다중 날짜
+        //         분해(ADR-61)로 draft가 엔트리를 여럿 들 수 있어 폼에서 날짜가 겹칠 수 있고, 그때
+        //         서버는 병합이 아니라 UNIQUE(note_id, tasted_on)로 깨진다(V-3). 수정 모드는 엔트리를
+        //         1건만 담아 그 조합이 성립하지 않는다 — 그것이 두 모드를 가르는 근거다.
+        assertThat(turn.get("capture_editable_dates").booleanValue()).isFalse();
+
+        // 제자리 수정 예시는 둘이 같다 — 다르면 «이동»이고, 그 갈림이 계약의 유일한 판정이다.
+        JsonNode editDraft = turn.get("response_edit_mode").get("draft");
+        assertThat(editDraft.get("note").get("entries").get(0).get("date"))
+                .isEqualTo(editDraft.get("match").get("date"));
     }
 
     @Test
