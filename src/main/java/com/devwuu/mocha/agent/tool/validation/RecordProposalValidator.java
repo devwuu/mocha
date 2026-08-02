@@ -194,26 +194,43 @@ public class RecordProposalValidator {
         };
     }
 
+    // POLICY: existing과 edit은 같은 (note_id, date)를 요구하지만 뜻이 반대다 — 전자는 그 노트에 회차를
+    //         더하는 것이고 후자는 그 날짜의 엔트리를 갈아끼우는 것이다. 축을 합치면 "수정하려던 것이
+    //         회차 추가로 저장되는" 조합이 생긴다 (ref: changes/0029 delta.md#D-14 ②).
+    // 대상 실존 검사(노트·엔트리)와 V-9 최종 방어는 여기 없다 — 저장소를 읽어야 하고 이 클래스는
+    // 순수 도메인 계층이다(위 클래스 주석). 그 몫은 ProposalTools의 환각 필터가 진다(TΔ29a).
     private static MatchInfo toMatchInfo(ProposeRecordArgs.MatchArg match) {
         if (match == null || match.type() == null) {
-            throw new RejectedException("match가 없다 — 신규면 {\"type\":\"new\"}, 기존 노트 대상이면 "
-                    + "{\"type\":\"existing\",\"note_id\":...,\"date\":...}를 채워라.");
+            throw new RejectedException("match가 없다 — 신규면 {\"type\":\"new\"}, 기존 노트에 더하는 시음이면 "
+                    + "{\"type\":\"existing\",\"note_id\":...,\"date\":...}, 기존 기록을 고치는 것이면 "
+                    + "{\"type\":\"edit\",\"note_id\":...,\"date\":...}를 채워라.");
         }
         return switch (match.type()) {
             case "new" -> MatchInfo.newNote();
-            case "existing" -> {
-                Long noteId = ValidationSupport.parseNoteId("match.note_id", match.noteId());
-                if (noteId == null) {
-                    throw new RejectedException("match.type=existing인데 note_id가 없다 — 대상 노트 id를 채워라.");
-                }
-                LocalDate date = ValidationSupport.parseDate("match.date", match.date());
-                if (date == null) {
-                    throw new RejectedException("match.type=existing인데 date가 없다 — 대상 날짜(YYYY-MM-DD)를 채워라.");
-                }
-                yield MatchInfo.existing(noteId, date);
-            }
+            case "existing" -> MatchInfo.existing(
+                    requireNoteId(match, "existing"), requireDate(match, "existing"));
+            case "edit" -> MatchInfo.edit(
+                    requireNoteId(match, "edit"), requireDate(match, "edit"));
             default -> throw new RejectedException("match.type '" + match.type()
-                    + "'는 허용되지 않는다 — new|existing 중 하나여야 한다.");
+                    + "'는 허용되지 않는다 — new|existing|edit 중 하나여야 한다.");
         };
+    }
+
+    private static Long requireNoteId(ProposeRecordArgs.MatchArg match, String type) {
+        Long noteId = ValidationSupport.parseNoteId("match.note_id", match.noteId());
+        if (noteId == null) {
+            throw new RejectedException("match.type=" + type + "인데 note_id가 없다 — 대상 노트 id를 채워라.");
+        }
+        return noteId;
+    }
+
+    // edit의 date는 "고칠 엔트리"를 가리키는 대상 키다 — 없으면 무엇을 고칠지 정해지지 않고, 추측으로
+    // 메우면 사용자가 보지 못한 회차가 갈린다(TΔ28a — 폼도 같은 이유로 date를 필수로 잡는다).
+    private static LocalDate requireDate(ProposeRecordArgs.MatchArg match, String type) {
+        LocalDate date = ValidationSupport.parseDate("match.date", match.date());
+        if (date == null) {
+            throw new RejectedException("match.type=" + type + "인데 date가 없다 — 대상 날짜(YYYY-MM-DD)를 채워라.");
+        }
+        return date;
     }
 }

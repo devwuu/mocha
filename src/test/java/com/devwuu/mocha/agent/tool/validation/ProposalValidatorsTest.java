@@ -567,7 +567,7 @@ class ProposalValidatorsTest {
             assertThat(rejectionOf(validateRecord(
                     recordArgs("예가체프", null, TASTED.toString(),
                             new ProposeRecordArgs.MatchArg("maybe", null, null)))))
-                    .contains("new|existing");
+                    .contains("new|existing|edit");
             assertThat(rejectionOf(validateRecord(
                     recordArgs("예가체프", null, TASTED.toString(),
                             new ProposeRecordArgs.MatchArg("existing", null, TASTED.toString())))))
@@ -588,6 +588,33 @@ class ProposalValidatorsTest {
                             new ProposeRecordArgs.MatchArg("existing", "12", "2026-07-16"))));
             assertThat(proposal.match())
                     .isEqualTo(MatchInfo.existing(12L, LocalDate.of(2026, 7, 16)));
+        }
+
+        @Test
+        @DisplayName("TΔ29a: match edit 통과 시 MatchInfo.edit으로 변환된다 — existing과 같은 인자, 다른 뜻(D-14)")
+        void editMatchConverted() {
+            RecordProposal proposal = okOf(validateRecord(
+                    recordArgs("예가체프", null, TASTED.toString(),
+                            new ProposeRecordArgs.MatchArg("edit", "12", "2026-07-16"))));
+            // 같은 (note_id, date)라도 existing과 같은 값이 되면 저장 경로가 갈리지 않는다 —
+            // "또 마셨다"와 "그때 기록이 틀렸다"가 한 값으로 뭉개지는 자리다(D-14 ②).
+            assertThat(proposal.match())
+                    .isEqualTo(MatchInfo.edit(12L, LocalDate.of(2026, 7, 16)))
+                    .isNotEqualTo(MatchInfo.existing(12L, LocalDate.of(2026, 7, 16)));
+        }
+
+        @Test
+        @DisplayName("TΔ29a: edit은 note_id·date가 둘 다 필수 — 대상이 정해지지 않은 수정 제안은 거부된다")
+        void editMatchRequiresBothTargetKeys() {
+            assertThat(rejectionOf(validateRecord(
+                    recordArgs("예가체프", null, TASTED.toString(),
+                            new ProposeRecordArgs.MatchArg("edit", null, "2026-07-16")))))
+                    .contains("note_id");
+            // date는 "고칠 엔트리"의 키다 — 추측으로 메우면 사용자가 보지 못한 회차가 갈린다(TΔ28a).
+            assertThat(rejectionOf(validateRecord(
+                    recordArgs("예가체프", null, TASTED.toString(),
+                            new ProposeRecordArgs.MatchArg("edit", "12", null)))))
+                    .contains("date");
         }
     }
 }

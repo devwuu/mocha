@@ -35,10 +35,13 @@ public record ProposeRecordArgs(
 ) {
 
     /**
-     * 신규/기존 판정 인자 — {@code { "type": "new" }} 또는
-     * {@code { "type": "existing", "note_id": 12, "date": "YYYY-MM-DD" }}의 미검증 원시 형태.
+     * 신규/기존/수정 판정 인자 — {@code { "type": "new" }} ·
+     * {@code { "type": "existing", "note_id": 12, "date": "YYYY-MM-DD" }} ·
+     * {@code { "type": "edit", "note_id": 12, "date": "YYYY-MM-DD" }}의 미검증 원시 형태.
      * 검증 통과 시 {@link com.devwuu.mocha.domain.MatchInfo}로 변환된다 —
      * {@code note_id}를 원시 String으로 두는 것도 rating·날짜와 같은 이유다(위반은 예외가 아니라 거부 사유).
+     * <p>{@code edit} 갈래는 changes/0029 TΔ29a에서 열렸다(delta.md#D-14) — {@code existing}과 인자 모양은
+     * 같지만 뜻이 반대라(회차 추가 ↔ 엔트리 교체) 같은 값으로 뭉뚱그리지 않는다.
      */
     public record MatchArg(String type, String noteId, String date) {
     }

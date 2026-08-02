@@ -8,6 +8,7 @@ import com.devwuu.mocha.agent.turn.TurnUserMessage;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
+import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.service.NoteService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,6 +19,8 @@ import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 
 /**
  * 쓰기 제안 축 tool — {@code propose_record}
@@ -29,6 +32,10 @@ import java.util.Map;
  * (ADR-45, findings-TΔ0 §SDK).
  * <p>changes/0029 TΔ1에서 {@code propose_edit}과 단일 대기 게이트가 함께 사라졌다 — 저장된 노트 수정은
  * UI 전용이 되고(delta 0029 D-1·D-2), 검증 진입점은 여기 하나만 남는다(백로그 R-3·R-4 해소).
+ * <p>TΔ29a에서 <b>대화 수정이 돌아왔지만 tool은 늘지 않았다</b>(delta 0029 D-14): {@code match}에
+ * {@code edit} 갈래가 늘 뿐이고, 자연어가 하는 일은 <i>"어느 기록인가"</i>를 지목하고 초안을 채우는 데까지다
+ * — <i>"어떤 필드를 무슨 값으로"</i>는 여전히 폼이 소유한다. {@code propose_edit}을 되살렸다면 검증 진입점이
+ * 다시 둘이 되어 백로그 R-3이 되살아난다.
  * <p>TΔ4에서 제안의 <b>효과</b>가 바뀌었다: 종전에는 서버의 pending 행을 쓰고 Slack 미리보기를 보냈으나,
  * 이제는 {@link TurnProposalSink}에 결과를 실어 <b>응답으로 돌려주는</b> 데까지다 — 작성 중 데이터는
  * 클라이언트(폼)가 소유하고 서버는 기억하지 않는다(OQ-1, delta 0029 D-2).
@@ -85,10 +92,10 @@ class ProposalTools {
               "official_notes":%s,
               "brews":{"type":"array","description":"회차 배열 — 배열 순서 = 회차 번호. 시도를 나눠 말했으면 시도마다 요소(V-15). target_date 하루의 시도만 담는다 — 다른 날짜의 시도를 이 날짜의 회차로 합치지 않는다(다중 날짜 발화는 active_date 세그먼트의 내용만 — ADR-59·61)","items":%s},
               "target_date":{"type":"string","description":"시음일 YYYY-MM-DD — 상대 날짜(\\"어제\\")는 컨텍스트의 today 기준으로 절대화해 보낸다. 발화에 시음 날짜가 2개 이상 섞여 있으면 컨텍스트의 자동 분해 세그먼트 중 active_date(가장 이른 날짜)로만 제안한다 — 세그먼트 컨텍스트가 없으면(분해 실패) 이 tool을 호출하지 말고 한 날짜씩 나눠 보내달라고 안내한다(FR-15, ADR-61)"},
-              "match":{"type":"object","description":"신규/기존 판정 — 기존 노트의 시음 기록이면 existing(list_notes로 대조)","properties":{
-                "type":{"type":"string","enum":["new","existing"]},
-                "note_id":{"type":["integer","null"],"description":"existing일 때 대상 노트 id — list_notes 응답의 id"},
-                "date":{"type":["string","null"],"description":"existing일 때 대상 날짜 YYYY-MM-DD"}
+              "match":{"type":"object","description":"이 제안이 무엇인지 — new(새 커피) · existing(기존 노트를 또 마신 새 시음 = 회차 추가) · edit(이미 저장된 기록을 고침 = 그 날짜 엔트리 교체). existing과 edit은 인자 모양이 같지만 뜻이 반대다: \\"또 마셨다\\"면 existing, \\"그때 기록이 틀렸다\\"면 edit. 기존 노트 대조는 list_notes로 한다","properties":{
+                "type":{"type":"string","enum":["new","existing","edit"]},
+                "note_id":{"type":["integer","null"],"description":"existing·edit일 때 대상 노트 id — list_notes 응답의 id"},
+                "date":{"type":["string","null"],"description":"existing·edit일 때 대상 날짜 YYYY-MM-DD. edit에서는 고칠 엔트리를 가리키는 키라 실제로 있는 날짜여야 한다(get_note로 확인) — 날짜를 바꾸려면 여기는 원래 날짜를 두고 target_date에 새 날짜를 넣어라"}
               },"required":["type","note_id","date"],"additionalProperties":false},
               "sources":{"type":"array","items":{"type":"string"},"description":"검색 참조 링크 — 동일성 가드를 통과한 출처만(AC-58)"}
             },"required":["coffee_name","roastery","beans","roast_level","official_notes","brews","target_date","match","sources"],"additionalProperties":false}"""
@@ -162,13 +169,24 @@ class ProposalTools {
         }
         RecordProposal proposal = ((ToolValidation.Ok<RecordProposal>) validation).value();
 
-        // 환각 필터(get_note 미존재 오류와 같은 정신): match=existing의 대상 노트가 실존해야 커밋(upsertEntry)이
-        // 유령 id로 새 노트를 만들지 않는다. 여기까지 온 note_id는 검증이 Long으로 정규화한 값이다.
-        boolean existing = proposal.match().type() == MatchInfo.MatchType.EXISTING;
-        if (existing && noteService.findById(proposal.match().noteId()).isEmpty()) {
-            log.info("propose_record 검증 거부: user={} reason=미존재 match.note_id {}",
-                    userId, proposal.match().noteId());
-            return ToolSupport.errorOutput(mapper, ToolSupport.missingNoteReason(proposal.match().noteId()));
+        // 환각 필터(get_note 미존재 오류와 같은 정신): existing·edit의 대상 노트가 실존해야 커밋이 유령
+        // id로 새 노트를 만들지 않는다. 여기까지 온 note_id는 검증이 Long으로 정규화한 값이다.
+        MatchInfo match = proposal.match();
+        Note target = null;
+        if (match.noteId() != null) {
+            Optional<Note> found = noteService.findById(match.noteId());
+            if (found.isEmpty()) {
+                log.info("propose_record 검증 거부: user={} reason=미존재 match.note_id {}", userId, match.noteId());
+                return ToolSupport.errorOutput(mapper, ToolSupport.missingNoteReason(match.noteId()));
+            }
+            target = found.get();
+        }
+        if (match.type() == MatchInfo.MatchType.EDIT) {
+            String rejection = editTargetRejection(target, match, proposal);
+            if (rejection != null) {
+                log.info("propose_record 검증 거부: user={} reason={}", userId, rejection);
+                return ToolSupport.errorOutput(mapper, rejection);
+            }
         }
 
         OffsetDateTime now = OffsetDateTime.now(clock);
@@ -177,8 +195,9 @@ class ProposalTools {
         //         draft가 식별자를 가질 방법이 없고, 이 null이 그대로 커밋의 신규/기존 분기가 된다
         //         (ref: changes/0028 D-1, ADR-75 — 구 recordSlug 대체키 발급은 근거와 함께 소멸했다).
         // 이름이 proposedNote인 이유: 이 메서드의 draft는 턴 입력(TurnDraft)이 이미 쓰고 있다(0029 TΔ2).
+        // existing·edit은 둘 다 대상 노트의 id를 그대로 딛는다 — 갈리는 것은 저장 경로이지 식별자가 아니다.
         Note proposedNote = new Note(
-                existing ? proposal.match().noteId() : null,
+                match.noteId(),
                 proposal.meta().coffeeName(), proposal.meta().roastery(), proposal.meta().beans(),
                 proposal.meta().roastLevel(), proposal.meta().officialNotes(),
                 proposal.meta().sources(), List.of(entry), now, now);
@@ -205,5 +224,36 @@ class ProposalTools {
         // 새로 만든 제안인지 작성 중이던 폼을 고친 것인지 — 모델의 최종 안내 문구가 갈리는 지점이다.
         result.put("updated_draft", draft != null);
         return mapper.writeValueAsString(result);
+    }
+
+    /**
+     * {@code match=edit}의 대상 검사 — 통과면 null, 아니면 <b>루프 안에서 정정 가능한 사유</b>
+     * (ref: changes/0029 tasks.md TΔ29a, delta.md#D-14).
+     *
+     * <p><b>왜 검증기가 아니라 여기인가</b>: 저장된 노트를 읽어야 답이 나오는 검사라
+     * {@link RecordProposalValidator}(순수 도메인 계층)에 둘 수 없다. 같은 이유로 존재하던 환각 필터
+     * 바로 옆에 둬 <b>진입점을 늘리지 않는다</b>(백로그 R-3이 닫아 둔 자리).
+     */
+    // POLICY: V-9(커피명 불변)의 최종 방어선 — 폼이 커피명을 잠그지만(TΔ28a) 요청은 조작 가능하다.
+    //         저장된 값과 대조하는 것은 NoteTxService.updateMeta가 쓰기 직전에 하는 것과 같은 검사이고,
+    //         여기서 막으면 애초에 폼이 다른 커피명을 달고 서지 않는다
+    //         (ref: specs/coffee-note-agent/data-model.md#V-9, changes/0029 tasks.md TΔ29a).
+    private static String editTargetRejection(Note target, MatchInfo match, RecordProposal proposal) {
+        // 대상 엔트리가 실존해야 한다 — 없는 날짜를 고치겠다는 제안은 PATCH 단계에서 404로 죽고, 그때는
+        // 사용자가 [저장]을 누른 뒤라 정정할 자리가 없다. 루프 안에서 되돌린다.
+        boolean hasEntry = target.entries().stream().anyMatch(entry -> match.date().equals(entry.date()));
+        if (!hasEntry) {
+            return "노트 " + match.noteId() + "에 " + match.date() + " 기록이 없다 — get_note로 실제 엔트리 "
+                    + "날짜를 확인하고 고칠 날짜를 다시 지목해라. 새로 마신 것을 더하는 것이라면 "
+                    + "match.type=existing이다.";
+        }
+        String stored = Sourced.valueOrNull(target.coffeeName());
+        String proposed = Sourced.valueOrNull(proposal.meta().coffeeName());
+        if (!Objects.equals(stored, proposed)) {
+            return "coffee_name은 노트 생성 후 불변이다(V-9) — 노트 " + match.noteId() + "는 '" + stored
+                    + "'인데 제안이 '" + proposed + "'로 바꿨다. 오타 정정도 예외가 아니다. 이름을 그대로 두고 "
+                    + "다시 제안하고, 다른 커피의 기록이라면 match.type=new로 새 노트를 만들어라.";
+        }
+        return null;
     }
 }

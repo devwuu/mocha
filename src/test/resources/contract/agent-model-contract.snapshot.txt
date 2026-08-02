@@ -64,10 +64,10 @@ note_id로 노트 전체(모든 시음 엔트리 포함)를 돌려준다 — 상
 },"required":["my_taste","my_taste_original","rating"],"additionalProperties":false}
 },"required":["recipe","tasting"],"additionalProperties":false}},
   "target_date":{"type":"string","description":"시음일 YYYY-MM-DD — 상대 날짜(\"어제\")는 컨텍스트의 today 기준으로 절대화해 보낸다. 발화에 시음 날짜가 2개 이상 섞여 있으면 컨텍스트의 자동 분해 세그먼트 중 active_date(가장 이른 날짜)로만 제안한다 — 세그먼트 컨텍스트가 없으면(분해 실패) 이 tool을 호출하지 말고 한 날짜씩 나눠 보내달라고 안내한다(FR-15, ADR-61)"},
-  "match":{"type":"object","description":"신규/기존 판정 — 기존 노트의 시음 기록이면 existing(list_notes로 대조)","properties":{
-    "type":{"type":"string","enum":["new","existing"]},
-    "note_id":{"type":["integer","null"],"description":"existing일 때 대상 노트 id — list_notes 응답의 id"},
-    "date":{"type":["string","null"],"description":"existing일 때 대상 날짜 YYYY-MM-DD"}
+  "match":{"type":"object","description":"이 제안이 무엇인지 — new(새 커피) · existing(기존 노트를 또 마신 새 시음 = 회차 추가) · edit(이미 저장된 기록을 고침 = 그 날짜 엔트리 교체). existing과 edit은 인자 모양이 같지만 뜻이 반대다: \"또 마셨다\"면 existing, \"그때 기록이 틀렸다\"면 edit. 기존 노트 대조는 list_notes로 한다","properties":{
+    "type":{"type":"string","enum":["new","existing","edit"]},
+    "note_id":{"type":["integer","null"],"description":"existing·edit일 때 대상 노트 id — list_notes 응답의 id"},
+    "date":{"type":["string","null"],"description":"existing·edit일 때 대상 날짜 YYYY-MM-DD. edit에서는 고칠 엔트리를 가리키는 키라 실제로 있는 날짜여야 한다(get_note로 확인) — 날짜를 바꾸려면 여기는 원래 날짜를 두고 target_date에 새 날짜를 넣어라"}
   },"required":["type","note_id","date"],"additionalProperties":false},
   "sources":{"type":"array","items":{"type":"string"},"description":"검색 참조 링크 — 동일성 가드를 통과한 출처만(AC-58)"}
 },"required":["coffee_name","roastery","beans","roast_level","official_notes","brews","target_date","match","sources"],"additionalProperties":false}

@@ -180,6 +180,23 @@ class NoteControllerTest {
     }
 
     @Test
+    @DisplayName("TΔ29a/D-14: match=edit 본문은 400 — 수정의 저장 경로는 커밋이 아니라 엔트리 PATCH다")
+    void editModeBodyIsRejectedOnTheCommitPath() throws Exception {
+        ObjectNode request = (ObjectNode) contract.get("request");
+        ObjectNode edit = mapper.createObjectNode();
+        edit.put("type", "edit");
+        edit.put("note_id", 12);
+        edit.put("date", "2026-07-16");
+        request.set("match", edit);
+
+        perform(request, status().isBadRequest());
+
+        // 통과시키면 "고치려던 것이 회차 추가로 저장되는" 조합이 된다 — existing과 edit이 같은 노트를
+        // 가리켜도 의도가 반대라는 것이 D-14 ②의 요점이고, 그 경계가 여기서도 서야 한다.
+        assertThat(noteService.calls).isZero();
+    }
+
+    @Test
     @DisplayName("TΔ6b: 저장할 시음이 없는 본문은 400 — 폼이 아닌 것을 저장으로 받지 않는다")
     void bodyWithoutEntriesIsRejected() throws Exception {
         ObjectNode request = (ObjectNode) contract.get("request");

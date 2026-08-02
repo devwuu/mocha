@@ -179,6 +179,65 @@ class ToolCallbackProviderTest {
         assertThat(proposals.proposal()).isEmpty();
     }
 
+    // ---- match=edit (TΔ29a, delta 0029 D-14) ----
+
+    @Test
+    @DisplayName("TΔ29a: match=edit 통과 — 대상 노트·엔트리가 실존하면 수정 모드 draft가 수거함에 실린다(D-14)")
+    void proposeRecordAcceptsEditMatch() {
+        noteService.put(note(12L, "Ethiopia Chelbesa", "FroB", Aliases.empty(), LocalDate.of(2026, 7, 13)));
+
+        JsonNode result = mapper.readTree(execute("propose_record",
+                recordArgs("Ethiopia Chelbesa", "FroB", "\"맛은 있는데 내스타일은 아님\"", "2026-07-13",
+                        "{\"type\":\"edit\",\"note_id\":12,\"date\":\"2026-07-13\"}")));
+
+        assertThat(result.has("error")).isFalse();
+        TurnDraft proposed = proposals.proposal().orElseThrow();
+        // 모드는 응답이 정하고 폼은 따른다 — 클라이언트가 "이건 수정인가"를 추론하지 않는다(TΔ28a).
+        assertThat(proposed.match()).isEqualTo(MatchInfo.edit(12L, LocalDate.of(2026, 7, 13)));
+        // 대상 노트의 id를 딛는다 — existing과 갈리는 것은 저장 경로이지 식별자가 아니다.
+        assertThat(proposed.note().id()).isEqualTo(12L);
+        assertThat(result.get("note_id").asLong()).isEqualTo(12L);
+    }
+
+    @Test
+    @DisplayName("TΔ29a: match=edit의 유령 note_id는 거부 — existing과 같은 환각 필터를 지난다")
+    void proposeRecordRejectsUnknownEditNote() {
+        JsonNode result = mapper.readTree(execute("propose_record",
+                recordArgs("Ethiopia Chelbesa", "FroB", "null", "2026-07-13",
+                        "{\"type\":\"edit\",\"note_id\":999,\"date\":\"2026-07-13\"}")));
+
+        assertThat(result.get("error").asString()).contains("999", "list_notes");
+        assertThat(proposals.proposal()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("TΔ29a: 노트는 있어도 그 날짜 엔트리가 없으면 거부 — 없는 기록을 고치는 폼이 서지 않는다")
+    void proposeRecordRejectsEditOnMissingEntry() {
+        noteService.put(note(12L, "Ethiopia Chelbesa", "FroB", Aliases.empty(), LocalDate.of(2026, 7, 13)));
+
+        JsonNode result = mapper.readTree(execute("propose_record",
+                recordArgs("Ethiopia Chelbesa", "FroB", "null", "2026-07-20",
+                        "{\"type\":\"edit\",\"note_id\":12,\"date\":\"2026-07-20\"}")));
+
+        // 여기서 막지 않으면 실패가 [저장] 이후의 404로 미뤄진다 — 그때는 루프 안에서 정정할 자리가 없다.
+        assertThat(result.get("error").asString()).contains("2026-07-20", "get_note", "existing");
+        assertThat(proposals.proposal()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("V-9/AC-14: 수정 대상의 커피명을 바꾼 제안은 거부 — 폼의 잠금 뒤에 선 서버 최종 방어(TΔ29a)")
+    void proposeRecordRejectsEditRenamingCoffee() {
+        noteService.put(note(12L, "Ethiopia Chelbesa", "FroB", Aliases.empty(), LocalDate.of(2026, 7, 13)));
+
+        JsonNode result = mapper.readTree(execute("propose_record",
+                recordArgs("Ethiopia Chelbesaa", "FroB", "null", "2026-07-13",
+                        "{\"type\":\"edit\",\"note_id\":12,\"date\":\"2026-07-13\"}")));
+
+        // 폼이 커피명을 잠그지만(TΔ28a) 요청은 조작 가능하다 — 오타 정정도 예외가 아니다(V-9).
+        assertThat(result.get("error").asString()).contains("V-9", "Ethiopia Chelbesa");
+        assertThat(proposals.proposal()).isEmpty();
+    }
+
     // ---- 읽기·카드 tool (TΔ5) ----
 
     @Test

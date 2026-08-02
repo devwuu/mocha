@@ -3,6 +3,7 @@ package com.devwuu.mocha.web;
 import com.devwuu.mocha.SingleUser;
 import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
 import com.devwuu.mocha.domain.Entry;
+import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteCandidate;
 import com.devwuu.mocha.domain.NoteCursor;
@@ -100,6 +101,15 @@ public class NoteController {
         // match가 없으면 신규/기존 판정이 없다는 뜻이고, 관대하게 받으면 "신규인데 별칭 없이 저장"으로
         // 조용히 수렴한다(노트당 평생 1회인 생성 콜을 영영 놓친다, ADR-37). 받지 않는다.
         if (request == null || request.note() == null || request.match() == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        // POLICY: 수정 모드 폼은 이 경로로 저장하지 않는다 — 커밋은 회차를 **더하는** 일이라
+        //         match=edit이 여기 오면 "고치려던 것이 회차 추가로 저장되는" 조합이 된다.
+        //         수정의 저장 경로는 PATCH /api/notes/{id}/entries/{date}다
+        //         (ref: changes/0029 delta.md#D-14, tasks.md TΔ28b·TΔ29a).
+        if (request.match().type() == MatchInfo.MatchType.EDIT) {
+            log.warn("저장 거부(경로 불일치): match=edit은 엔트리 PATCH로 저장한다 — noteId={}",
+                    request.match().noteId());
             return ResponseEntity.badRequest().build();
         }
         try {
