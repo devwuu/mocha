@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import type { Draft } from '../api'
-import { postAgentCancel, postAgentTurn, postNoteCommit, postPhotos } from '../api'
-import { editPath, GALLERY } from '../routes'
+import { patchNoteEntry, postAgentCancel, postAgentTurn, postNoteCommit, postPhotos } from '../api'
+import { toEntryUpdate } from '../edit/noteEdits'
+import { editPath, GALLERY, notePath } from '../routes'
 import { DraftForm } from './DraftForm'
 
 /**
@@ -175,33 +176,81 @@ export function ChatScreen({ onNavigate }: ChatScreenProps) {
     }
   }
 
+  /**
+   * [저장] — **출구가 둘이다** (TΔ28b, D-14, AC-13).
+   *
+   * `match.type`이 `edit`이면 *"그때 그 기록이 틀렸다"*이므로 **있던 회차를 갈아끼우고**(엔트리 PATCH),
+   * `new`·`existing`이면 *"오늘 이걸 마셨다"*이므로 **회차가 는다**(`POST /api/notes`). 같은 노트를
+   * 가리켜도 결과가 반대라 축을 합칠 수 없다 — 수정하려던 사람이 `existing`으로 새면 고치려던 기록은
+   * 그대로 두고 회차만 하나 더 붙는다.
+   *
+   * **요청을 만드는 코드는 `edit/noteEdits.ts` 한 벌이다**(D-14 ③) — 수정 화면과 같은 PATCH를 이 화면이
+   * 따로 조립하면 한쪽만 고치는 순간 delta.md §1.2와 같은 조용한 어긋남이 난다.
+   *
+   * ⚠️ **수정 모드에 첨부한 사진은 노트에 닿지 않는다** — 사진 확정은 커밋 경로(`NoteService.commit`)의
+   * 일이고 PATCH에는 그 자리가 없다. 그 사진은 그 턴의 OCR 재료로만 쓰이고 아래 [취소] 통지가 폐기한다.
+   */
   async function save() {
     if (draft === null || busy) {
       return
     }
-    const merged = draft.match.type === 'existing'
+    const current = draft
+    const match = current.match
     setBusy(true)
     try {
-      const saved = await postNoteCommit(draft)
+      const notices = match.type === 'edit' ? await saveEdit(current, match.note_id) : await saveCommit(current)
       setDraft(null)
       // 보내지 않고 남은 첨부는 이 노트의 것이었다 — 저장이 끝났으니 화면에서도 내린다.
       setPhotos([])
       release(photos)
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'system',
-          text: savedNotice(saved.note_id, merged),
-          // 병합이면 폼에서 고친 커피 사실이 저장되지 않았다 — 그것을 고칠 수 있는 자리로 바로 보낸다.
-          // TΔ11 이월 (a)가 닫히는 지점이고, 안내만 있고 갈 곳이 없던 상태가 여기서 끝난다(TΔ13b).
-          action: merged ? { label: '커피 정보 고치기 ›', path: editPath(saved.note_id) } : undefined,
-        },
-      ])
+      setMessages((prev) => [...prev, ...notices])
     } catch (error) {
       setMessages((prev) => [...prev, { role: 'system', text: describe(error, '저장하지 못했어. 폼은 그대로 뒀어.') }])
     } finally {
       setBusy(false)
     }
+  }
+
+  /** 신규·병합 저장 — 서버가 접힘(SAVE_COMMIT)과 사진 확정을 겸한다(`NoteController.commit`). */
+  async function saveCommit(current: Draft): Promise<Message[]> {
+    const merged = current.match.type === 'existing'
+    const saved = await postNoteCommit(current)
+    return [
+      {
+        role: 'system',
+        text: savedNotice(saved.note_id, merged),
+        // 병합이면 폼에서 고친 커피 사실이 저장되지 않았다 — 그것을 고칠 수 있는 자리로 바로 보낸다.
+        // TΔ11 이월 (a)가 닫히는 지점이고, 안내만 있고 갈 곳이 없던 상태가 여기서 끝난다(TΔ13b).
+        action: merged ? { label: '커피 정보 고치기 ›', path: editPath(saved.note_id) } : undefined,
+      },
+    ]
+  }
+
+  /**
+   * 수정 저장 — 그 날짜의 회차를 갈아끼운다. **회차가 늘지 않는 것이 AC-13의 증명 지점이다.**
+   *
+   * 저장 뒤 [취소] 통지를 이어 부르는 것은 **뒷정리 때문이다**(사용자 확정 2026-08-02): `POST /api/notes`는
+   * 서버가 트랜스크립트 접힘(ADR-46 *"확정된 작업의 문맥은 버린다"*)과 사진 스테이징 정리를 겸하는데,
+   * PATCH는 수정 **화면**용으로 열린 경로라 그 자리가 없다. 알리지 않으면 끝난 작업의 대화 문맥이 TTL까지
+   * 남아 다음 커피의 첫 발화에 섞인다 — TΔ6b가 [취소] 통지를 만든 바로 그 이유다.
+   *
+   * **정리 실패를 저장 실패로 보고하지 않는다**: 노트는 이미 바뀌었으므로 되돌릴 것이 없고, 사용자가
+   * 재시도할 것도 없다. 그래도 조용히 삼키지는 않는다 — 다음 대화가 이상하면 이 줄이 단서다.
+   */
+  async function saveEdit(current: Draft, noteId: number): Promise<Message[]> {
+    const update = toEntryUpdate(current)
+    const saved = await patchNoteEntry(noteId, update.targetDate, update.value)
+    const notice: Message = {
+      role: 'system',
+      text: `${update.value.date} 기록을 고쳤어. (노트 #${saved.note_id})`,
+      action: { label: '기록 보기 ›', path: notePath(saved.note_id) },
+    }
+    try {
+      await postAgentCancel()
+    } catch (error) {
+      return [notice, { role: 'system', text: describe(error, '이전 대화 내용은 정리하지 못했어.') }]
+    }
+    return [notice]
   }
 
   async function cancel() {

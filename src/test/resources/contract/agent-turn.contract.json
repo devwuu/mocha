@@ -158,5 +158,7 @@
   "match_types": ["new", "existing", "edit"],
   "edit_target_axis": "note_id + date",
   "edit_locked_fields": ["coffee_name", "roastery", "beans", "roast_level", "official_notes", "sources"],
-  "edit_editable_fields": ["entries[].brews"]
+  "edit_editable_fields": ["entries[].brews"],
+  "commit_save_path": "POST /api/notes",
+  "edit_save_path": "PATCH /api/notes/{id}/entries/{date}"
 }

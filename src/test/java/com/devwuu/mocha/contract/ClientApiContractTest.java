@@ -757,6 +757,49 @@ class ClientApiContractTest {
     }
 
     @Test
+    @DisplayName("TΔ28b: 수정 모드의 [저장]은 커밋이 아니라 엔트리 PATCH로 나간다 — 회차를 늘리지 않는다(AC-13)")
+    void editModeSavesThroughTheEntryPatchInsteadOfTheCommit() throws IOException {
+        JsonNode turn = load(AGENT_TURN_CONTRACT);
+        JsonNode update = load(NOTE_UPDATE_CONTRACT);
+
+        // POLICY: 저장 경로는 폼의 «의도»에서 갈린다(delta.md D-14 ②) — existing은 "같은 커피를 또
+        //         마셨다"라 회차가 늘고(POST), edit은 "그때 그 기록이 틀렸다"라 있던 회차가 바뀐다(PATCH).
+        //         같은 노트를 가리켜도 결과가 반대다. edit이 POST로 새면 고치려던 기록은 그대로 남고
+        //         회차만 하나 더 붙는데, 그것이 조용한 오작동이라 화면에서 구분되지 않는다.
+        assertThat(turn.get("commit_save_path").stringValue()).isEqualTo("POST /api/notes");
+        // 경로 정본은 수정 화면이 도출한 계약이다 — 두 화면이 같은 엔드포인트를 쓰는 것이 "요청을 만드는
+        // 코드는 한 벌"(D-14 ③)의 전제다. 여기서 갈리면 프론트에서 두 벌이 된 것이 먼저 드러난다.
+        assertThat(turn.get("edit_save_path").stringValue())
+                .isEqualTo("PATCH " + update.get("entry_path").stringValue());
+
+        // 경로의 두 자리가 match에서 그대로 나온다 — 클라이언트가 대상을 다시 추측하는 코드가 0줄이다.
+        JsonNode match = turn.get("response_edit_mode").get("draft").get("match");
+        assertThat(match.get("note_id").isNumber()).isTrue();
+        assertThat(match.get("date").isString()).isTrue();
+    }
+
+    @Test
+    @DisplayName("TΔ28b: 수정 모드 폼 → 엔트리 PATCH 본문 — my_taste_original만 떨어진다(V-11 뒷문장)")
+    void editDraftEntryConvertsIntoTheEntryPatchBody() throws IOException {
+        JsonNode draftEntry = load(AGENT_TURN_CONTRACT)
+                .get("response_edit_mode").get("draft").get("note").get("entries").get(0);
+        JsonNode body = load(NOTE_UPDATE_CONTRACT).get("entry_request");
+
+        // 본문은 {date, brews}뿐이다 — draft 엔트리의 updated_at은 서버가 쓰는 값이라 실을 자리가 없다.
+        assertThat(fieldNames(body)).containsExactly("date", "brews");
+        assertThat(fieldNames(draftEntry)).containsExactly("date", "brews", "updated_at");
+
+        // POLICY: 감상 원문은 폼 편집으로 다시 쓰지 않는다(V-11) — 사용자가 고치는 것은 정규화본이고,
+        //         원문이 비면 서버가 정규화본을 양쪽에 담는다. 수정 모드 draft의 감상은 저장된 값이거나
+        //         모델이 요구를 반영해 다시 지은 값이라 어느 쪽도 "말한 그대로"가 아니다.
+        List<String> draftTasting = fieldNames(draftEntry.get("brews").get(0).get("tasting"));
+        assertThat(draftTasting).contains("my_taste_original");
+        assertThat(fieldNames(firstTasting(body)))
+                .as("변환이 떨구는 것은 my_taste_original 하나여야 한다")
+                .isEqualTo(draftTasting.stream().filter(field -> !field.equals("my_taste_original")).toList());
+    }
+
+    @Test
     @DisplayName("TΔ6b: 취소 통지는 본문이 없다 — 무엇을 취소하는지는 서버가 안다(사용자당 트랜스크립트 1건)")
     void cancelCarriesNoBodyInEitherDirection() throws IOException {
         JsonNode contract = load(AGENT_CANCEL_CONTRACT);
@@ -765,6 +808,15 @@ class ClientApiContractTest {
         assertThat(contract.get("request").isNull()).isTrue();
         assertThat(contract.get("response").isNull()).isTrue();
         assertThat(contract.get("response_status").intValue()).isEqualTo(204);
+    }
+
+    /** 엔트리 본문에서 감상이 실린 첫 회차 — 레시피만 있는 회차는 tasting이 null이다(V-15). */
+    private static JsonNode firstTasting(JsonNode entryBody) {
+        return entryBody.get("brews").valueStream()
+                .map(brew -> brew.get("tasting"))
+                .filter(tasting -> tasting != null && !tasting.isNull())
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("엔트리 계약 예시에 감상이 실린 회차가 없다"));
     }
 
     /** 상세 계약 예시에서 그 날짜의 엔트리 — 이동 전/후를 견주는 기준점이다. */

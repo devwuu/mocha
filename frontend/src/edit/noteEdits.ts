@@ -1,5 +1,7 @@
 import type {
   Bean,
+  Brew,
+  Draft,
   NoteDetail,
   NoteDetailBrew,
   NoteDetailTasting,
@@ -47,6 +49,45 @@ export function toEntryDrafts(note: NoteDetail): EntryDraft[] {
     targetDate: entry.date,
     value: { date: entry.date, brews: entry.brews },
   }))
+}
+
+/**
+ * 채팅 수정 모드 폼 → 엔트리 PATCH 본문 (changes/0029 TΔ28b, D-14, AC-13).
+ *
+ * **이 함수가 수정 화면 쪽 모듈에 사는 것이 요점이다**: 저장 요청을 만드는 코드는 한 벌이어야 한다
+ * (D-14 ③). 같은 `PATCH /api/notes/{id}/entries/{date}`를 두 화면이 각자 조립하면 한쪽만 고치는 순간
+ * delta.md §1.2와 같은 부류의 **조용한 어긋남**이 난다 — 그래서 입구는 둘이고(`NoteDetail`은
+ * `toEntryDrafts`, `Draft`는 여기) 출구는 이 모듈의 `EntryDraft` 하나다.
+ *
+ * **`targetDate`가 `match.date`에서 온다**: 경로의 대상은 *"고르던 시점의 그 기록"*이고 본문의 `date`는
+ * 폼이 든 결과 날짜다(위 `EntryDraft` 주석과 같은 갈래). 둘이 다르면 서버가 날짜 이동으로 읽고 이동처의
+ * 회차 뒤로 합친다(D-12) — 채팅 폼은 날짜 입력이 없으므로 지금 그 경로로 가는 것은 모델이 다른 날짜를
+ * 실어 왔을 때뿐이다.
+ *
+ * **`my_taste_original`을 떨군다** — PATCH 계약에 그 필드가 없고(`NoteEntryUpdate`), 비면 서버가
+ * 정규화본을 양쪽에 담는다(V-11 뒷문장). 수정 모드 draft의 감상은 저장된 값이거나 모델이 요구를 반영해
+ * 다시 지은 값이라 어느 쪽도 *"말한 그대로의 원문"*이 아니다.
+ */
+export function toEntryUpdate(draft: Draft): EntryDraft {
+  if (draft.match.type !== 'edit') {
+    // 호출부가 이미 갈라서 부르지만(ChatScreen의 저장 분기) 여기서도 막는다 — 다른 모드의 폼을 PATCH로
+    // 보내면 «새 기록을 남기려던 조작이 남의 기록을 덮는» 형태가 된다.
+    throw new Error('수정 모드가 아닌 폼이야')
+  }
+  // 폼의 단위는 엔트리 1건이다(TΔ28a) — 조용히 첫 건만 고르면 사용자가 보지 못한 회차가 저장되거나
+  // 사라진다. 계약이 깨진 것이므로 요청을 만들지 않는다.
+  if (draft.note.entries.length !== 1) {
+    throw new Error('수정 모드 폼은 기록 1건만 담아')
+  }
+  const entry = draft.note.entries[0]
+  return { targetDate: draft.match.date, value: { date: entry.date, brews: entry.brews.map(toUpdateBrew) } }
+}
+
+function toUpdateBrew(brew: Brew): NoteDetailBrew {
+  return {
+    recipe: brew.recipe,
+    tasting: brew.tasting === null ? null : { my_taste: brew.tasting.my_taste, rating: brew.tasting.rating },
+  }
 }
 
 /**
