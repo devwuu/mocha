@@ -13,7 +13,7 @@ import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.domain.Sourced;
-import com.devwuu.mocha.domain.Tasting;
+import com.devwuu.mocha.domain.Review;
 import com.devwuu.mocha.service.NoteTxService;
 import com.devwuu.mocha.service.NoteService;
 import com.devwuu.mocha.repository.NoteFolderName;
@@ -178,7 +178,7 @@ class RerenderFromDatabaseTest extends PostgresIntegrationTest {
                 List.of(new Brew(
                         new Recipe("핸드드립", 15.0, 240.0, null, 160.0, 92.5, "중간 (코만단테)", "V60",
                                 "뜸 40ml 30초 → 100ml → 100ml", "다음엔 더 굵게"),
-                        new Tasting("새콤하고 좋았다.", null, Rating.GOOD))),
+                        new Review("새콤하고 좋았다.", null, Rating.GOOD))),
                 IGNORED);
 
         return List.of(
@@ -187,7 +187,7 @@ class RerenderFromDatabaseTest extends PostgresIntegrationTest {
     }
 
     private static Entry tasteEntry(LocalDate date, String taste) {
-        return new Entry(date, List.of(new Brew(null, new Tasting(taste, null, Rating.PERFECT))), IGNORED);
+        return new Entry(date, List.of(new Brew(null, new Review(taste, null, Rating.PERFECT))), IGNORED);
     }
 
     /** 저장된 노트의 메타 — {@code upsertEntry} 재호출이 노트 단위 필드를 그대로 두게 한다. */

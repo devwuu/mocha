@@ -2,7 +2,7 @@ package com.devwuu.mocha.web;
 
 import com.devwuu.mocha.domain.Brew;
 import com.devwuu.mocha.domain.Entry;
-import com.devwuu.mocha.domain.Tasting;
+import com.devwuu.mocha.domain.Review;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -20,7 +20,7 @@ import java.util.List;
  * 고쳐 되돌려 보내는 자리라 두 벌로 나눌 이유가 없고, 나누면 <i>"응답에는 있는데 요청에는 없는 필드"</i>가
  * 조용히 생긴다. 그 타입에 {@code myTasteOriginal}이 없다는 사실이 여기서 한 번 더 값을 낸다(아래).
  *
- * <p>POLICY: 감상 원문은 요청에 싣지 않는다 — 폼이 고치는 것은 정규화본이고, 원문이 비면 {@link Tasting}이
+ * <p>POLICY: 감상 원문은 요청에 싣지 않는다 — 폼이 고치는 것은 정규화본이고, 원문이 비면 {@link Review}가
  * 정규화본을 양쪽에 담는다. 수정하면 <i>"말한 그대로"</i>가 편집본으로 수렴하는 것이 이 계약의 뜻이다
  * (ref: data-model.md#V-11 뒷문장).
  */
@@ -42,9 +42,9 @@ public record NoteEntryBody(LocalDate date, List<NoteDetailBody.DetailBrew> brew
         if (brew == null) {
             return null;
         }
-        NoteDetailBody.DetailTasting tasting = brew.tasting();
-        // 원문 자리는 비워 넘긴다 — Tasting이 정규화본을 양쪽에 담는다(V-11).
+        NoteDetailBody.DetailReview review = brew.review();
+        // 원문 자리는 비워 넘긴다 — Review가 정규화본을 양쪽에 담는다(V-11).
         return new Brew(brew.recipe(),
-                tasting == null ? null : new Tasting(tasting.myTaste(), null, tasting.rating()));
+                review == null ? null : new Review(review.myTaste(), null, review.rating()));
     }
 }

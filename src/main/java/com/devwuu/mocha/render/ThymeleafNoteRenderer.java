@@ -6,7 +6,7 @@ import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Sourced;
-import com.devwuu.mocha.domain.Tasting;
+import com.devwuu.mocha.domain.Review;
 import com.devwuu.mocha.service.NoteService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,7 +33,7 @@ import java.util.stream.Stream;
  * 파이프라인 [6] — Thymeleaf를 오프라인 실행해 JSON 원본을 회차 카드 JPG로 굽는다
  * (ref: plan.md §1 [6], ADR-1, ADR-7, ADR-10, ADR-54·59; changes/0021 TΔ5a).
  * <ul>
- *   <li>{@code artifact/cards/<접미>/<date>-taste-<n>.jpg} — 회차 n의 감상 카드(tasting 있는 회차만, AC-78).
+ *   <li>{@code artifact/cards/<접미>/<date>-taste-<n>.jpg} — 회차 n의 감상 카드(review 있는 회차만, AC-78).
  *       {@code templates/<theme>/taste.html}을 회차 파트 1건으로 렌더한 뒤
  *       {@link CardImageRenderer}(헤드리스 Chromium)로 래스터화한다(ADR-10/ADR-11).</li>
  *   <li>{@code artifact/cards/<접미>/<date>-recipe-<n>.jpg} — 회차 n의 레시피 카드(recipe 있는 회차만, AC-78).</li>
@@ -204,7 +204,7 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
 
     // --- 회차 카드 (회차 파트 1건 → JPG, ADR-54·59) ---
 
-    // 엔트리의 회차 카드 전부를 굽는다 — tasting 있는 회차는 감상 카드, recipe 있는 회차는 레시피 카드(AC-78).
+    // 엔트리의 회차 카드 전부를 굽는다 — review 있는 회차는 감상 카드, recipe 있는 회차는 레시피 카드(AC-78).
     // 산출 순서 = CardFiles.expectedCards와 동일(회차 오름차순, 감상 → 레시피).
     private List<Path> bakeEntryCards(EntryRef ref) {
         List<Path> out = new ArrayList<>();
@@ -212,8 +212,8 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
         for (int i = 0; i < brews.size(); i++) {
             int n = i + 1; // 배열 순서 = 회차 번호(ADR-59)
             Brew brew = brews.get(i);
-            if (brew.tasting() != null) {
-                out.add(bakeTasteCard(ref.note(), ref.entry(), brew.tasting(), n));
+            if (brew.review() != null) {
+                out.add(bakeTasteCard(ref.note(), ref.entry(), brew.review(), n));
             }
             if (brew.recipe() != null) {
                 out.add(bakeRecipeCard(ref.note(), ref.entry(), brew.recipe(), n));
@@ -223,7 +223,7 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
     }
 
     // taste.html을 회차 감상 파트 1건으로 렌더해 cards/<접미>/<date>-taste-<n>.jpg로 굽는다.
-    private Path bakeTasteCard(Note note, Entry entry, Tasting tasting, int brewNumber) {
+    private Path bakeTasteCard(Note note, Entry entry, Review review, int brewNumber) {
         NoteView.TasteCard card = new NoteView.TasteCard(
                 Sourced.valueOrNull(note.coffeeName()), // 제목은 값만 — 출처 무표기(제목=정체성, NoteView.TasteCard)
                 Sourced.valueOrNull(note.roastery()),
@@ -231,8 +231,8 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
                 Sourced.valueOrNull(note.roastLevel()),
                 Sourced.valuesOrEmpty(note.officialNotes()),
                 entry.date(),
-                tasting.myTaste(),
-                tasting.rating());
+                review.myTaste(),
+                review.rating());
         Path out = CardFiles.tasteCard(artifactDir, note, entry.date(), brewNumber);
         cardImageRenderer.render(render("taste", cardContext(card)), artifactDir, out);
         return out;

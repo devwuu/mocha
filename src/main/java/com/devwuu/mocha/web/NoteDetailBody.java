@@ -8,7 +8,9 @@ import com.devwuu.mocha.domain.NoteDetail;
 import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Sourced;
-import com.devwuu.mocha.domain.Tasting;
+import com.devwuu.mocha.domain.Review;
+
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -26,7 +28,7 @@ import java.util.Objects;
  *   <li><b>사진이 실린다</b> — 저장 전에는 스테이징 파일명뿐이고 저장 후에야 URL이 생긴다.</li>
  *   <li><b>절단 셋</b>: {@code aliases}(V-13 내부 전용) · {@code created_at}/{@code updated_at}(표시 자리
  *       없음) · <b>{@code my_taste_original}</b>. 마지막은 V-11의 뒷문장이 <i>"렌더는 {@code my_taste}만
- *       사용"</i>이고 상세도 렌더이기 때문이며, {@link Tasting}과 타입을 나눠 <b>컴파일러가 지키게</b> 했다.</li>
+ *       사용"</i>이고 상세도 렌더이기 때문이며, {@link Review}와 타입을 나눠 <b>컴파일러가 지키게</b> 했다.</li>
  * </ul>
  *
  * <p><b>출처는 그대로 싣는다</b>(사용자 확정 2026-08-01). 둘이 걸려 있다 — ① 화면이 캡처 폼과 같은 어휘로
@@ -60,11 +62,15 @@ public record NoteDetailBody(
     }
 
     /** 저장된 회차 1개 — 레시피·감상 중 최소 하나는 non-null이다(V-15). */
-    public record DetailBrew(Recipe recipe, DetailTasting tasting) {
+    public record DetailBrew(
+            Recipe recipe,
+            // 임시: JSON 키는 TΔ2가 옮긴다 — 계약 스냅샷·프론트를 개명 한복판에서 깨지 않기 위한 조치다
+            //       (ref: changes/0030 tasks.md TΔ1·TΔ2).
+            @JsonProperty("tasting") DetailReview review) {
     }
 
     /** 저장된 감상 — <b>원문이 없다</b>(위 절단 셋). */
-    public record DetailTasting(String myTaste, Rating rating) {
+    public record DetailReview(String myTaste, Rating rating) {
     }
 
     /** 사진 1장 — 목록의 {@code thumbnail_url}과 같은 접두를 쓴다({@link PhotoUrl}). */
@@ -95,8 +101,8 @@ public record NoteDetailBody(
     }
 
     private static DetailBrew toDetailBrew(Brew brew) {
-        Tasting tasting = brew.tasting();
+        Review review = brew.review();
         return new DetailBrew(brew.recipe(),
-                tasting == null ? null : new DetailTasting(tasting.myTaste(), tasting.rating()));
+                review == null ? null : new DetailReview(review.myTaste(), review.rating()));
     }
 }

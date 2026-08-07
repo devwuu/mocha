@@ -15,7 +15,7 @@ import com.devwuu.mocha.domain.NotePage;
 import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.domain.Sourced;
-import com.devwuu.mocha.domain.Tasting;
+import com.devwuu.mocha.domain.Review;
 import com.devwuu.mocha.repository.jpa.NoteEntityRepository;
 import com.devwuu.mocha.support.PostgresIntegrationTest;
 import jakarta.persistence.EntityManager;
@@ -383,6 +383,6 @@ class NoteTxServiceListTest extends PostgresIntegrationTest {
     }
 
     private static Brew brew(Rating rating) {
-        return new Brew(null, new Tasting("맛있었음", "맛있었음", rating));
+        return new Brew(null, new Review("맛있었음", "맛있었음", rating));
     }
 }

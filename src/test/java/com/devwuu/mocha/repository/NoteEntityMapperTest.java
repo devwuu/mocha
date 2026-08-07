@@ -9,7 +9,7 @@ import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.domain.Sourced;
-import com.devwuu.mocha.domain.Tasting;
+import com.devwuu.mocha.domain.Review;
 import com.devwuu.mocha.repository.entity.AliasKind;
 import com.devwuu.mocha.repository.entity.EntryEntity;
 import com.devwuu.mocha.repository.entity.NoteAliasEntity;
@@ -19,7 +19,7 @@ import com.devwuu.mocha.repository.entity.NoteOfficialNoteEntity;
 import com.devwuu.mocha.repository.entity.NoteSourceEntity;
 import com.devwuu.mocha.repository.entity.RecipeEntity;
 import com.devwuu.mocha.repository.entity.SourcedValue;
-import com.devwuu.mocha.repository.entity.TastingEntity;
+import com.devwuu.mocha.repository.entity.ReviewEntity;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -59,12 +59,12 @@ class NoteEntityMapperTest {
                 List.of(
                         new Brew(new Recipe("핸드드립", 15.0, 240.0, 220.0, 150.0, 92.5, "중간 (코만단테)",
                                 "V60", "뜸 40ml 30초 → 100ml → 100ml", "다음엔 더 굵게"),
-                                new Tasting("새콤하고 좋았음", "It was pleasantly bright", Rating.GOOD)),
+                                new Review("새콤하고 좋았음", "It was pleasantly bright", Rating.GOOD)),
                         new Brew(new Recipe(null, 16.0, null, null, null, null, null, null, null, null), null)),
                 CREATED);
         Entry second = new Entry(
                 LocalDate.of(2026, 7, 12),
-                List.of(new Brew(null, new Tasting("오늘은 밍밍했음", "오늘은 밍밍했음", Rating.OKAY_NOT_MINE))),
+                List.of(new Brew(null, new Review("오늘은 밍밍했음", "오늘은 밍밍했음", Rating.OKAY_NOT_MINE))),
                 UPDATED);
         return new Note(
                 NOTE_ID,
@@ -170,17 +170,17 @@ class NoteEntityMapperTest {
     @DisplayName("TΔ3c: 회차의 recipe·tasting 한쪽만 있는 경우 — 행 미생성으로 표현된다")
     void brewWithOnlyOneSide() {
         Brew recipeOnly = new Brew(new Recipe(null, 15.0, null, null, null, null, null, null, null, null), null);
-        Brew tastingOnly = new Brew(null, new Tasting("맛있었음", "맛있었음", Rating.PERFECT));
+        Brew tastingOnly = new Brew(null, new Review("맛있었음", "맛있었음", Rating.PERFECT));
 
-        assertThat(NoteEntityMapper.toTastingEntity(1L, recipeOnly.tasting())).isNull();
+        assertThat(NoteEntityMapper.toReviewEntity(1L, recipeOnly.review())).isNull();
         assertThat(NoteEntityMapper.toRecipeEntity(2L, tastingOnly.recipe())).isNull();
 
         assertThat(NoteEntityMapper.toBrew(
                 NoteEntityMapper.toRecipeEntity(1L, recipeOnly.recipe()),
-                NoteEntityMapper.toTastingEntity(1L, recipeOnly.tasting()))).isEqualTo(recipeOnly);
+                NoteEntityMapper.toReviewEntity(1L, recipeOnly.review()))).isEqualTo(recipeOnly);
         assertThat(NoteEntityMapper.toBrew(
                 NoteEntityMapper.toRecipeEntity(2L, tastingOnly.recipe()),
-                NoteEntityMapper.toTastingEntity(2L, tastingOnly.tasting()))).isEqualTo(tastingOnly);
+                NoteEntityMapper.toReviewEntity(2L, tastingOnly.review()))).isEqualTo(tastingOnly);
     }
 
     @Test
@@ -243,7 +243,7 @@ class NoteEntityMapperTest {
                 long id = ++brewId;
                 brews.add(NoteEntityMapper.toBrew(
                         NoteEntityMapper.toRecipeEntity(id, brew.recipe()),
-                        NoteEntityMapper.toTastingEntity(id, brew.tasting())));
+                        NoteEntityMapper.toReviewEntity(id, brew.review())));
             }
             entries.add(NoteEntityMapper.toEntry(entryEntity, brews));
         }

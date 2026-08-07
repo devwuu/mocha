@@ -31,7 +31,7 @@ import java.time.OffsetDateTime;
  * setter가 없다. 주체·시각의 공급자는 {@code JpaAuditingConfig}가 소유한다.
  *
  * <p>적용 대상은 {@code note}·{@code entry} 두 테이블뿐이다(delta §감사 컬럼). 하위(brew·recipe·
- * tasting·배열 테이블)는 부모를 통해 추적하며, 회차 단위 감사 요구가 실제로 관측되면 그때 확장한다
+ * review·배열 테이블)는 부모를 통해 추적하며, 회차 단위 감사 요구가 실제로 관측되면 그때 확장한다
  * (루트 CLAUDE.md §4).
  */
 @MappedSuperclass

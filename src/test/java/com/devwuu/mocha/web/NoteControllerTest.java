@@ -20,7 +20,7 @@ import com.devwuu.mocha.domain.NotePage;
 import com.devwuu.mocha.domain.NotePhoto;
 import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Source;
-import com.devwuu.mocha.domain.Tasting;
+import com.devwuu.mocha.domain.Review;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.service.NoteService;
 import org.junit.jupiter.api.BeforeEach;
@@ -131,7 +131,7 @@ class NoteControllerTest {
         assertThat(noteService.lastDraft.roastery().value()).isEqualTo("커피베라");
         assertThat(noteService.lastDraft.roastery().source()).isEqualTo(Source.USER);
         assertThat(noteService.lastDraft.entries()).hasSize(1);
-        assertThat(noteService.lastDraft.entries().getFirst().brews().getFirst().tasting().rating())
+        assertThat(noteService.lastDraft.entries().getFirst().brews().getFirst().review().rating())
                 .isEqualTo(Rating.GOOD);
         assertThat(noteService.lastMatch.type()).isEqualTo(MatchInfo.MatchType.NEW);
         assertThat(mapper.readTree(body)).isEqualTo(contract.get("response"));
@@ -510,9 +510,9 @@ class NoteControllerTest {
 
         patch("/api/notes/21/entries/2026-07-02", update.get("entry_request"), status().isOk());
 
-        Tasting tasting = noteService.lastEntry.brews().getLast().tasting();
-        assertThat(tasting.myTaste()).isEqualTo("온도 낮추니 떫은 맛이 사라졌다. 다음에도 90℃로.");
-        assertThat(tasting.myTasteOriginal()).isEqualTo(tasting.myTaste());
+        Review review = noteService.lastEntry.brews().getLast().review();
+        assertThat(review.myTaste()).isEqualTo("온도 낮추니 떫은 맛이 사라졌다. 다음에도 90℃로.");
+        assertThat(review.myTasteOriginal()).isEqualTo(review.myTaste());
     }
 
     @Test
@@ -605,9 +605,9 @@ class NoteControllerTest {
     }
 
     private static Brew toBrew(NoteDetailBody.DetailBrew brew) {
-        NoteDetailBody.DetailTasting tasting = brew.tasting();
-        return new Brew(brew.recipe(), tasting == null ? null
-                : new Tasting(tasting.myTaste(), LEAKED_ORIGINAL, tasting.rating()));
+        NoteDetailBody.DetailReview review = brew.review();
+        return new Brew(brew.recipe(), review == null ? null
+                : new Review(review.myTaste(), LEAKED_ORIGINAL, review.rating()));
     }
 
     /** {@code /api/photos/…} → V-4 상대 경로({@code photos/…}). {@code PhotoUrl}의 역방향이다. */

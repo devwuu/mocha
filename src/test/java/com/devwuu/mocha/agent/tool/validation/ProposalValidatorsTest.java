@@ -15,7 +15,7 @@ import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.domain.Sourced;
-import com.devwuu.mocha.domain.Tasting;
+import com.devwuu.mocha.domain.Review;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -318,10 +318,10 @@ class ProposalValidatorsTest {
             RecordProposal withNull = okOf(validateRecord(
                     recordArgs("예가체프", null, TASTED.toString(),
                             new ProposeRecordArgs.MatchArg("new", null, null))));
-            assertThat(withNull.brews().getFirst().tasting().rating()).isNull();
+            assertThat(withNull.brews().getFirst().review().rating()).isNull();
 
             RecordProposal withLabel = okOf(validateRecord(recordArgs()));
-            assertThat(withLabel.brews().getFirst().tasting().rating()).isEqualTo(Rating.GOOD);
+            assertThat(withLabel.brews().getFirst().review().rating()).isEqualTo(Rating.GOOD);
         }
     }
 
@@ -435,7 +435,7 @@ class ProposalValidatorsTest {
                     null, List.of(new BrewArg(new Recipe(null, -1.0, 240.0, null, null, null, "  ", null, null, null), null)))));
             // 감상 없는 recipe만의 발화 = recipe만 담긴 회차 1개(V-15 허용).
             assertThat(proposal.brews().getFirst().recipe()).isEqualTo(new Recipe(null, null, 240.0, null, null, null, null, null, null, null));
-            assertThat(proposal.brews().getFirst().tasting()).isNull();
+            assertThat(proposal.brews().getFirst().review()).isNull();
         }
 
         @Test
@@ -488,9 +488,9 @@ class ProposalValidatorsTest {
                     new BrewArg(new Recipe(null, 15.0, 240.0, null, null, null, "220클릭 (매버릭 2.0)", null, null, null),
                             new BrewArg.TastingArg("부드러웠음", "부드러웠다", "맛있다"))))));
             assertThat(proposal.brews()).containsExactly(
-                    new Brew(new Recipe(null, 15.0, 240.0, null, null, null, "210클릭 (매버릭 2.0)", null, null, null), new Tasting("떫었음", "떫었다", null)),
+                    new Brew(new Recipe(null, 15.0, 240.0, null, null, null, "210클릭 (매버릭 2.0)", null, null, null), new Review("떫었음", "떫었다", null)),
                     new Brew(new Recipe(null, 15.0, 240.0, null, null, null, "220클릭 (매버릭 2.0)", null, null, null),
-                            new Tasting("부드러웠음", "부드러웠다", Rating.GOOD)));
+                            new Review("부드러웠음", "부드러웠다", Rating.GOOD)));
         }
 
         @Test
@@ -498,7 +498,7 @@ class ProposalValidatorsTest {
         void emptyBrewElementDropped() {
             RecordProposal proposal = okOf(validateRecord(recordArgsWith(
                     null, List.of(new BrewArg(null, null), tastingBrew("좋았음", null, null)))));
-            assertThat(proposal.brews()).containsExactly(new Brew(null, new Tasting("좋았음", null, null)));
+            assertThat(proposal.brews()).containsExactly(new Brew(null, new Review("좋았음", null, null)));
         }
 
         @Test
@@ -507,7 +507,7 @@ class ProposalValidatorsTest {
             RecordProposal proposal = okOf(validateRecord(recordArgs()));
             assertThat(proposal.brews()).containsExactly(new Brew(
                     new Recipe(null, 15.0, 240.0, null, null, null, null, null, null, null),
-                    new Tasting("새콤하고 좋았음", "새콤하고 좋았다", Rating.GOOD)));
+                    new Review("새콤하고 좋았음", "새콤하고 좋았다", Rating.GOOD)));
         }
     }
 
@@ -521,18 +521,18 @@ class ProposalValidatorsTest {
         void missingOriginalFallsBackToNormalized() {
             RecordProposal proposal = okOf(validateRecord(recordArgsWith(
                     null, List.of(tastingBrew("맛있었음", null, null)))));
-            Tasting tasting = proposal.brews().getFirst().tasting();
-            assertThat(tasting.myTaste()).isEqualTo("맛있었음");
-            assertThat(tasting.myTasteOriginal()).isEqualTo("맛있었음");
+            Review review = proposal.brews().getFirst().review();
+            assertThat(review.myTaste()).isEqualTo("맛있었음");
+            assertThat(review.myTasteOriginal()).isEqualTo("맛있었음");
         }
 
         @Test
         @DisplayName("V-11: 원문이 오면 정규화본과 함께 보존된다(AC-47)")
         void originalPreservedWhenPresent() {
             RecordProposal proposal = okOf(validateRecord(recordArgs()));
-            Tasting tasting = proposal.brews().getFirst().tasting();
-            assertThat(tasting.myTaste()).isEqualTo("새콤하고 좋았음");
-            assertThat(tasting.myTasteOriginal()).isEqualTo("새콤하고 좋았다");
+            Review review = proposal.brews().getFirst().review();
+            assertThat(review.myTaste()).isEqualTo("새콤하고 좋았음");
+            assertThat(review.myTasteOriginal()).isEqualTo("새콤하고 좋았다");
         }
     }
 

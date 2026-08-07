@@ -19,7 +19,7 @@ import com.devwuu.mocha.repository.entity.EntryEntity;
 import com.devwuu.mocha.repository.entity.NoteEntity;
 import com.devwuu.mocha.repository.entity.NotePhotoEntity;
 import com.devwuu.mocha.repository.entity.RecipeEntity;
-import com.devwuu.mocha.repository.entity.TastingEntity;
+import com.devwuu.mocha.repository.entity.ReviewEntity;
 import com.devwuu.mocha.repository.jpa.NoteEntityRepository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -279,8 +279,8 @@ public class NoteTxService {
             Brew brew = brews.get(i);
             // 레시피·감상이 없는 회차는 행을 만들지 않는다 — 1:1 짝은 brew_id PK 공유로만 표현된다(V-15).
             RecipeEntity recipe = NoteEntityMapper.toRecipeEntity(brewId, brew.recipe());
-            TastingEntity tasting = NoteEntityMapper.toTastingEntity(brewId, brew.tasting());
-            notes.insertAll(Stream.of(recipe, tasting).filter(Objects::nonNull).toList());
+            ReviewEntity review = NoteEntityMapper.toReviewEntity(brewId, brew.review());
+            notes.insertAll(Stream.of(recipe, review).filter(Objects::nonNull).toList());
         }
     }
 

@@ -14,7 +14,7 @@ import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.domain.Sourced;
-import com.devwuu.mocha.domain.Tasting;
+import com.devwuu.mocha.domain.Review;
 import com.devwuu.mocha.repository.jpa.NoteEntityRepository;
 import com.devwuu.mocha.support.PostgresIntegrationTest;
 import jakarta.persistence.EntityManager;
@@ -349,7 +349,7 @@ class NoteTxServiceEditTest extends PostgresIntegrationTest {
         assertThat(rowCount("entry")).isOne();
         assertThat(rowCount("brew")).isEqualTo(2);
         assertThat(rowCount("recipe")).isEqualTo(2);
-        assertThat(rowCount("tasting")).isEqualTo(2);
+        assertThat(rowCount("review")).isEqualTo(2);
     }
 
     // ─────────────────────── 소실 (plan §7) ───────────────────────
@@ -431,7 +431,7 @@ class NoteTxServiceEditTest extends PostgresIntegrationTest {
     }
 
     private static Entry entry(LocalDate date, String taste) {
-        return entry(date, List.of(new Brew(null, new Tasting(taste, taste, Rating.GOOD))));
+        return entry(date, List.of(new Brew(null, new Review(taste, taste, Rating.GOOD))));
     }
 
     // updatedAt은 감사 컬럼이 발급하므로 인자값은 버려진다(Q-5) — 표본에서는 자리만 채운다.
@@ -440,17 +440,17 @@ class NoteTxServiceEditTest extends PostgresIntegrationTest {
     }
 
     private static Brew brew(double doseG, String taste) {
-        return new Brew(recipe(doseG), new Tasting(taste, taste, Rating.GOOD));
+        return new Brew(recipe(doseG), new Review(taste, taste, Rating.GOOD));
     }
 
     /** 이 테스트의 감상 접근 헬퍼 — 회차 1개 전제. */
     private static String tasteOf(Entry entry) {
-        return entry.brews().getFirst().tasting().myTaste();
+        return entry.brews().getFirst().review().myTaste();
     }
 
     /** 회차 순서대로의 감상 — 병합이 무엇을 앞에 두는지가 단언 대상이라 목록으로 본다(D-12). */
     private static List<String> tastesOf(Entry entry) {
-        return entry.brews().stream().map(brew -> brew.tasting().myTaste()).toList();
+        return entry.brews().stream().map(brew -> brew.review().myTaste()).toList();
     }
 
     /**

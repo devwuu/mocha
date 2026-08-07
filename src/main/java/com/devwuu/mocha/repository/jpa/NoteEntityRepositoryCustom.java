@@ -113,7 +113,7 @@ public interface NoteEntityRepositoryCustom {
      */
     <T> T insertAndFlush(T row);
 
-    /** 생성 id를 쓰지 않는 행들 — 배열 4종·{@code recipe}·{@code tasting}. flush는 트랜잭션에 맡긴다. */
+    /** 생성 id를 쓰지 않는 행들 — 배열 4종·{@code recipe}·{@code review}. flush는 트랜잭션에 맡긴다. */
     void insertAll(Collection<?> rows);
 
     /**
@@ -148,7 +148,7 @@ public interface NoteEntityRepositoryCustom {
     void deleteNoteArraysExceptAliases(long noteId);
 
     /**
-     * 엔트리의 <b>회차만</b> 지운다 — {@code tasting}·{@code recipe} → {@code brew}. 엔트리 행은 남는다.
+     * 엔트리의 <b>회차만</b> 지운다 — {@code review}·{@code recipe} → {@code brew}. 엔트리 행은 남는다.
      *
      * <p>수정 세션이 엔트리를 <b>살려 둔 채</b> 회차를 갈아끼우는 자리다(TΔ5c) — 회차는 통째 교체가
      * 정책이라(ADR-59) 부분 갱신 개념이 없고, {@code UNIQUE(entry_id, seq)} 때문에 새 회차를 넣기 전에
@@ -211,7 +211,7 @@ public interface NoteEntityRepositoryCustom {
     long countPhotos(long noteId, LocalDate tastedOn);
 
     /**
-     * 노트 한 건을 <b>하위부터</b> 통째로 지운다 — tasting·recipe → brew → entry → 배열 4종 + 사진 → note
+     * 노트 한 건을 <b>하위부터</b> 통째로 지운다 — review·recipe → brew → entry → 배열 4종 + 사진 → note
      * (ref: changes/0028-rdb-storage/tasks.md TΔ5d, AC-Δ8; 사진은 changes/0029 TΔ8b).
      *
      * <p>{@code cascade}·{@code orphanRemoval}을 쓰지 않으므로(ADR-75) 이 순서를 <b>코드가 소유한다</b> —

@@ -52,7 +52,7 @@ public interface NoteRenderer {
     Optional<Path> entryCard(long noteId, LocalDate date, CardType type, int brewNumber);
 
     /**
-     * 대상 엔트리의 회차 카드 전부(tasting 있는 회차의 감상 카드 + recipe 있는 회차의 레시피 카드 —
+     * 대상 엔트리의 회차 카드 전부(review 있는 회차의 감상 카드 + recipe 있는 회차의 레시피 카드 —
      * AC-78)를 굽고 경로 목록을 반환한다(회차 오름차순, 회차 안에서는 감상 → 레시피). 재생성 전
      * 그 엔트리의 옛 카드 파일을 정리해 회차 감소·파트 소멸 재저장의 잔존 카드를 없앤다(changes/0021 TΔ5a).
      *

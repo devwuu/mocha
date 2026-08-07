@@ -3,7 +3,7 @@ package com.devwuu.mocha.agent.tool.validation;
 import com.devwuu.mocha.agent.tool.BrewArg;
 import com.devwuu.mocha.domain.Brew;
 import com.devwuu.mocha.domain.Rating;
-import com.devwuu.mocha.domain.Tasting;
+import com.devwuu.mocha.domain.Review;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -20,7 +20,7 @@ final class BrewRules {
     }
 
     // V-15: brews 인자 → 도메인 Brew 배열(배열 순서 = 회차 번호). rating은 V-1로 검증(위반은 거부)하고,
-    // recipe V-8 정규화·빈 감상 tasting 드롭·빈 회차 드롭은 Brew.normalize가 맡는다. 드롭 후 0개 처리
+    // recipe V-8 정규화·빈 감상 review 드롭·빈 회차 드롭은 Brew.normalize가 맡는다. 드롭 후 0개 처리
     // (record 거부·edit patch 거부)는 호출부의 몫이다.
     static List<Brew> brews(List<BrewArg> raw) {
         if (raw == null) {
@@ -32,7 +32,7 @@ final class BrewRules {
                 continue;
             }
             BrewArg.TastingArg tasting = arg.tasting();
-            converted.add(new Brew(arg.recipe(), tasting == null ? null : Tasting.normalize(
+            converted.add(new Brew(arg.recipe(), tasting == null ? null : Review.normalize(
                     ValidationSupport.blankToNull(tasting.myTaste()),
                     ValidationSupport.blankToNull(tasting.myTasteOriginal()),
                     parseRating(tasting.rating()))));

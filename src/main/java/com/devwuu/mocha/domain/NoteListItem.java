@@ -7,7 +7,7 @@ import java.time.LocalDate;
  * (ref: changes/0029 tasks.md TΔ5a·TΔ12, 계약 정본 {@code contract/note-list.contract.json}).
  *
  * <p>필드가 {@link NoteCandidate} + 사진 하나인 것은 우연이 아니다: 두 화면 다 노트를 <i>고르는</i> 자리라
- * 3단 중첩({@code entries → brews → recipe/tasting})을 한 줄도 쓰지 않는다. 그래서 이 조회는 자식 8질의
+ * 3단 중첩({@code entries → brews → recipe/review})을 한 줄도 쓰지 않는다. 그래서 이 조회는 자식 8질의
  * ({@code findChildRows})를 통째로 지나지 않는다 — 실으면 노트마다 따라오고 결과의 대부분이 버려진다.
  *
  * <p><b>{@code photoPath}는 URL이 아니라 V-4 상대 경로다</b>({@code photos/…}). 도메인은 HTTP를 모르고,

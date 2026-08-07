@@ -14,7 +14,7 @@ import com.devwuu.mocha.domain.NoteMeta;
 import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.domain.Sourced;
-import com.devwuu.mocha.domain.Tasting;
+import com.devwuu.mocha.domain.Review;
 import com.devwuu.mocha.llm.AliasGenerator;
 import com.devwuu.mocha.repository.NoteFolderName;
 import com.devwuu.mocha.repository.RecordingPhotoStore;
@@ -476,7 +476,7 @@ class NoteServiceTest {
     }
 
     private static Entry entry() {
-        return new Entry(day(10), List.of(new Brew(null, new Tasting("감상", "감상", Rating.GOOD))),
+        return new Entry(day(10), List.of(new Brew(null, new Review("감상", "감상", Rating.GOOD))),
                 OffsetDateTime.parse("2026-07-10T10:00:00+09:00"));
     }
 

@@ -32,7 +32,7 @@ public record NoteListBody(
 
     /**
      * 그리드 한 칸 — 노트 1건의 납작한 사영.
-     * <p>3단 중첩({@code entries → brews → recipe/tasting})이 한 줄도 없다: 갤러리는 노트를 <i>고르는</i>
+     * <p>3단 중첩({@code entries → brews → recipe/review})이 한 줄도 없다: 갤러리는 노트를 <i>고르는</i>
      * 화면이고, 무엇을 보여줄지는 {@code GET /api/notes/{id}}가 따로 답한다.
      */
     public record Item(

@@ -28,9 +28,13 @@ class SchemaMigrationTest extends PostgresIntegrationTest {
     /** TΔ2 §스키마의 10개 테이블. 복수형 → 단수형 개정(사용자 확정 2026-07-31)이 반영된 이름이다. */
     // 0029 TΔ4: V2가 pending_note를 드롭했다 — 작성 중 데이터는 클라이언트 폼이 소유한다(delta 0029 D-2).
     // 0029 TΔ8b: V3가 note_photo를 들였다 — 노트↔사진 연결이 폴더 규약에서 행으로 옮겨왔다(ADR-79).
+    // 0030 TΔ1: V4가 tasting을 review로 개명했다 — 테이블 수는 그대로고 이름만 옮겨갔다(ADR-85, AC-Δ1).
     private static final List<String> TABLES = List.of(
             "note", "note_bean", "note_official_note", "note_alias", "note_source",
-            "entry", "brew", "recipe", "tasting", "note_photo");
+            "entry", "brew", "recipe", "review", "note_photo");
+
+    /** 0030 개명이 걷어낸 이름 — 「이름만 옮긴다」는 «신 이름이 있다»와 «구 이름이 없다»가 함께 서야 성립한다. */
+    private static final List<String> RENAMED_AWAY = List.of("tasting");
 
     @Autowired
     JdbcTemplate jdbc;
@@ -47,7 +51,7 @@ class SchemaMigrationTest extends PostgresIntegrationTest {
                         + " WHERE success = true AND version IS NOT NULL ORDER BY installed_rank",
                 String.class);
 
-        assertThat(versions).containsExactly("1", "2", "3");
+        assertThat(versions).containsExactly("1", "2", "3", "4");
     }
 
     @Test
@@ -59,6 +63,26 @@ class SchemaMigrationTest extends PostgresIntegrationTest {
                 String.class);
 
         assertThat(tables).containsExactlyInAnyOrderElementsOf(TABLES);
+        assertThat(tables).doesNotContainAnyElementsOf(RENAMED_AWAY);
+    }
+
+    @Test
+    @DisplayName("AC-Δ1(TΔ1): tasting → review 개명 — 컬럼·제약은 그대로 따라왔다")
+    void reviewTableCarriesTheRenamedColumns() {
+        // 개명은 이름만 옮긴다. 컬럼 4종이 그대로 따라오지 않았다면 rename이 아니라 재생성이 일어난 것이다.
+        List<String> columns = jdbc.queryForList(
+                "SELECT column_name FROM information_schema.columns"
+                        + " WHERE table_schema = 'test' AND table_name = 'review'",
+                String.class);
+
+        assertThat(columns).containsExactlyInAnyOrder("brew_id", "my_taste", "my_taste_original", "rating");
+
+        // V-1 4범주 CHECK가 살아 있다 — 제약 이름(tasting_rating_check)은 rename 대상이 아니라 그대로다.
+        assertThat(jdbc.queryForObject(
+                "SELECT count(*) FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid"
+                        + " JOIN pg_namespace n ON n.oid = c.connamespace"
+                        + " WHERE n.nspname = 'test' AND t.relname = 'review' AND c.contype = 'c'",
+                Long.class)).isEqualTo(1L);
     }
 
     @Test

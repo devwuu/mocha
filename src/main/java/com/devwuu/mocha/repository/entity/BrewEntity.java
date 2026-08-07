@@ -15,8 +15,8 @@ import jakarta.persistence.Table;
  * 없으므로({@link NoteEntity} POLICY) {@code @OrderBy}를 쓸 자리가 없고, 조회 순서가 삽입 순서에 의존하지
  * 않아야 한다는 요구는 질의 수준에서 닫힌다.
  *
- * <p>레시피·감상은 이 테이블에 없다 — {@code recipe}·{@code tasting}이 {@code brew_id}를 PK로 가지는 것으로
- * 1:1 짝이 표현된다({@link RecipeEntity}·{@link TastingEntity}). 도메인 {@link com.devwuu.mocha.domain.Brew}가
+ * <p>레시피·감상은 이 테이블에 없다 — {@code recipe}·{@code review}가 {@code brew_id}를 PK로 가지는 것으로
+ * 1:1 짝이 표현된다({@link RecipeEntity}·{@link ReviewEntity}). 도메인 {@link com.devwuu.mocha.domain.Brew}가
  * 두 값을 직접 품는 것과 달리, 영속 형태에서는 회차가 <b>식별자만 가진 행</b>이 된다.
  *
  * <p>{@code entryId}는 연관 매핑이 아니라 평범한 컬럼이다(ADR-75 — FK 없음).

@@ -11,7 +11,7 @@ import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Sourced;
-import com.devwuu.mocha.domain.Tasting;
+import com.devwuu.mocha.domain.Review;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import com.devwuu.mocha.llm.VisionExtraction;
 import org.junit.jupiter.api.BeforeEach;
@@ -51,7 +51,7 @@ class TurnPromptAssemblerTest {
 
     private static Note draft() {
         Entry entry = new Entry(LocalDate.of(2026, 7, 16),
-                List.of(new Brew(null, new Tasting("새콤하고 좋았음", "새콤하고 좋았다", Rating.GOOD))), NOW);
+                List.of(new Brew(null, new Review("새콤하고 좋았음", "새콤하고 좋았다", Rating.GOOD))), NOW);
         return new Note(7L,
                 new Sourced<>("Ethiopia Chelbesa", Source.USER), new Sourced<>("FroB", Source.USER),
                 List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), null)),

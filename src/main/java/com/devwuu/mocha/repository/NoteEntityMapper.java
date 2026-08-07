@@ -9,7 +9,7 @@ import com.devwuu.mocha.domain.NoteMeta;
 import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.domain.Sourced;
-import com.devwuu.mocha.domain.Tasting;
+import com.devwuu.mocha.domain.Review;
 import com.devwuu.mocha.repository.entity.AliasKind;
 import com.devwuu.mocha.repository.entity.BrewEntity;
 import com.devwuu.mocha.repository.entity.EntryEntity;
@@ -20,7 +20,7 @@ import com.devwuu.mocha.repository.entity.NoteOfficialNoteEntity;
 import com.devwuu.mocha.repository.entity.NoteSourceEntity;
 import com.devwuu.mocha.repository.entity.RecipeEntity;
 import com.devwuu.mocha.repository.entity.SourcedValue;
-import com.devwuu.mocha.repository.entity.TastingEntity;
+import com.devwuu.mocha.repository.entity.ReviewEntity;
 import com.devwuu.mocha.repository.jpa.NoteChildRows;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,7 +38,7 @@ import java.util.stream.Collectors;
  *
  * <p>POLICY: 변환은 <b>저장소 쪽에만</b> 있다 — 도메인 record는 영속 타입을 모른다(백엔드 CLAUDE.md §4,
  * REVIEW.md §2). 엔티티도 도메인 타입을 조립하지 않는다: 엔티티는 행 하나를 표현하고, 3단 중첩
- * ({@code Note → entries → brews → recipe/tasting})과 배열 6종의 분해·재조립은 전부 여기서 일어난다.
+ * ({@code Note → entries → brews → recipe/review})과 배열 6종의 분해·재조립은 전부 여기서 일어난다.
  *
  * <p><b>조립은 아래에서 위로</b> 한다 — 엔티티에 연관 매핑이 없으므로({@link NoteEntity} POLICY) 부모가
  * 자식 행을 알지 못한다. 평면 행 목록({@link NoteChildRows})을 부모별로 그룹핑해
@@ -191,12 +191,12 @@ public final class NoteEntityMapper {
                 recipe.grind(), recipe.machine(), recipe.pouring(), recipe.feedback());
     }
 
-    /** 감상 행 — 회차의 {@code tasting}이 없으면 {@code null}(행 미생성, V-15). */
-    public static TastingEntity toTastingEntity(Long brewId, Tasting tasting) {
-        if (tasting == null) {
+    /** 감상 행 — 회차의 {@code review}가 없으면 {@code null}(행 미생성, V-15). */
+    public static ReviewEntity toReviewEntity(Long brewId, Review review) {
+        if (review == null) {
             return null;
         }
-        return new TastingEntity(brewId, tasting.myTaste(), tasting.myTasteOriginal(), tasting.rating());
+        return new ReviewEntity(brewId, review.myTaste(), review.myTasteOriginal(), review.rating());
     }
 
     /** 출처 표시 필드 → (value, source) 두 컬럼. */
@@ -247,13 +247,13 @@ public final class NoteEntityMapper {
         Map<Long, List<BrewEntity>> brewsByEntry = groupBy(children.brews(), BrewEntity::getEntryId);
         Map<Long, RecipeEntity> recipeByBrew = children.recipes().stream()
                 .collect(Collectors.toMap(RecipeEntity::getBrewId, Function.identity()));
-        Map<Long, TastingEntity> tastingByBrew = children.tastings().stream()
-                .collect(Collectors.toMap(TastingEntity::getBrewId, Function.identity()));
+        Map<Long, ReviewEntity> reviewByBrew = children.reviews().stream()
+                .collect(Collectors.toMap(ReviewEntity::getBrewId, Function.identity()));
 
         Map<Long, List<Entry>> byNote = new LinkedHashMap<>();
         for (EntryEntity entry : children.entries()) {
             List<Brew> brews = brewsByEntry.getOrDefault(entry.getId(), List.<BrewEntity>of()).stream()
-                    .map(brew -> toBrew(recipeByBrew.get(brew.getId()), tastingByBrew.get(brew.getId())))
+                    .map(brew -> toBrew(recipeByBrew.get(brew.getId()), reviewByBrew.get(brew.getId())))
                     .toList();
             byNote.computeIfAbsent(entry.getNoteId(), key -> new ArrayList<>())
                     .add(toEntry(entry, brews));
@@ -320,8 +320,8 @@ public final class NoteEntityMapper {
      * 회차 조립 — {@code brew} 행은 식별자만 갖고, 실체는 {@code brew_id}를 PK로 공유하는 두 행이다.
      * 도메인 {@link Brew}가 레시피·감상을 직접 품는 형태로 되돌린다(짝은 구조가 표현한다, ADR-59).
      */
-    public static Brew toBrew(RecipeEntity recipe, TastingEntity tasting) {
-        return new Brew(toRecipe(recipe), toTasting(tasting));
+    public static Brew toBrew(RecipeEntity recipe, ReviewEntity review) {
+        return new Brew(toRecipe(recipe), toReview(review));
     }
 
     /** 원두 1종 — description·process가 각각 출처를 갖는다(V-6 요소 서브필드 단위). */
@@ -352,11 +352,11 @@ public final class NoteEntityMapper {
                 recipe.getGrind(), recipe.getMachine(), recipe.getPouring(), recipe.getFeedback());
     }
 
-    public static Tasting toTasting(TastingEntity tasting) {
-        if (tasting == null) {
+    public static Review toReview(ReviewEntity review) {
+        if (review == null) {
             return null;
         }
-        return new Tasting(tasting.getMyTaste(), tasting.getMyTasteOriginal(), tasting.getRating());
+        return new Review(review.getMyTaste(), review.getMyTasteOriginal(), review.getRating());
     }
 
     /**

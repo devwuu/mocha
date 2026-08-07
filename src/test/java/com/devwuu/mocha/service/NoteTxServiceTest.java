@@ -11,7 +11,7 @@ import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.domain.Sourced;
-import com.devwuu.mocha.domain.Tasting;
+import com.devwuu.mocha.domain.Review;
 import com.devwuu.mocha.repository.entity.NoteBeanEntity;
 import com.devwuu.mocha.repository.entity.NoteEntity;
 import com.devwuu.mocha.repository.entity.SourcedValue;
@@ -238,7 +238,7 @@ class NoteTxServiceTest extends PostgresIntegrationTest {
                 List.of(
                         new Brew(new Recipe("핸드드립", 15.0, 240.0, 220.0, 150.0, 92.5, "중간 (코만단테)",
                                 "V60", "뜸 40ml 30초 → 100ml → 100ml", "다음엔 더 굵게"),
-                                new Tasting("새콤하고 좋았음", "It was pleasantly bright", Rating.GOOD)),
+                                new Review("새콤하고 좋았음", "It was pleasantly bright", Rating.GOOD)),
                         new Brew(new Recipe(null, 16.0, null, null, null, null, null, null, null, null), null)),
                 IGNORED);
     }
@@ -246,7 +246,7 @@ class NoteTxServiceTest extends PostgresIntegrationTest {
     private static Entry secondEntry() {
         return new Entry(
                 LocalDate.of(2026, 7, 12),
-                List.of(new Brew(null, new Tasting("오늘은 밍밍했음", "오늘은 밍밍했음", Rating.OKAY_NOT_MINE))),
+                List.of(new Brew(null, new Review("오늘은 밍밍했음", "오늘은 밍밍했음", Rating.OKAY_NOT_MINE))),
                 IGNORED);
     }
 

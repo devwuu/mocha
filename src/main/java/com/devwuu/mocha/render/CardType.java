@@ -14,7 +14,7 @@ import com.devwuu.mocha.domain.Brew;
  */
 public enum CardType {
 
-    /** 감상 카드 — {@code tasting}이 있는 회차만 산출된다(AC-78). */
+    /** 감상 카드 — {@code review}가 있는 회차만 산출된다(AC-78). */
     TASTE("taste"),
 
     /** 레시피 카드 — {@code recipe}가 있는 회차만 산출된다(AC-78). */
@@ -53,6 +53,6 @@ public enum CardType {
      * 갈리면 온디맨드가 <i>"있다"</i>고 답한 카드를 렌더러가 굽지 않는 조합이 생긴다.
      */
     public boolean presentIn(Brew brew) {
-        return this == TASTE ? brew.tasting() != null : brew.recipe() != null;
+        return this == TASTE ? brew.review() != null : brew.recipe() != null;
     }
 }

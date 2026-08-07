@@ -16,7 +16,7 @@ import com.devwuu.mocha.domain.Recipe;
 public record BrewArg(Recipe recipe, TastingArg tasting) {
 
     /**
-     * 회차 감상 인자 — 도메인 {@link com.devwuu.mocha.domain.Tasting}의 미검증 원시 형태.
+     * 회차 감상 인자 — 도메인 {@link com.devwuu.mocha.domain.Review}의 미검증 원시 형태.
      *
      * @param myTaste         내 느낌(한국어 음슴체 정규화본, ADR-30) — 비어 있으면 tasting이 드롭된다(V-15).
      * @param myTasteOriginal 말한 그대로의 감상 원문 — {@code myTaste}와 병존(V-11, 누락 시 정규화본 폴백).

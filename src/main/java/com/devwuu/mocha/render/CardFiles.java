@@ -40,7 +40,7 @@ public final class CardFiles {
                 : recipeCard(artifactDir, note, date, brewNumber);
     }
 
-    /** 감상 카드 경로 — tasting 있는 회차만 산출된다(AC-78). */
+    /** 감상 카드 경로 — review 있는 회차만 산출된다(AC-78). */
     public static Path tasteCard(Path artifactDir, Note note, LocalDate date, int brewNumber) {
         return noteCardsDir(artifactDir, note).resolve(date + "-taste-" + brewNumber + ".jpg");
     }
@@ -59,7 +59,7 @@ public final class CardFiles {
         List<Brew> brews = entry.brews();
         for (int i = 0; i < brews.size(); i++) {
             int n = i + 1; // 배열 순서 = 회차 번호(ADR-59)
-            if (brews.get(i).tasting() != null) {
+            if (brews.get(i).review() != null) {
                 expected.add(tasteCard(artifactDir, note, entry.date(), n));
             }
             if (brews.get(i).recipe() != null) {

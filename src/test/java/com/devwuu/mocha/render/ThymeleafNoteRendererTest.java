@@ -11,7 +11,7 @@ import com.devwuu.mocha.domain.NoteMeta;
 import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Sourced;
-import com.devwuu.mocha.domain.Tasting;
+import com.devwuu.mocha.domain.Review;
 import com.devwuu.mocha.service.NoteService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -67,12 +67,12 @@ class ThymeleafNoteRendererTest {
 
     // 회차 구조(changes/0021 ADR-59) 픽스처 — 단일 감상(+레시피)을 회차 1개로 담는다.
     private static Entry entry(LocalDate date, String taste, Rating rating, Recipe recipe, OffsetDateTime ts) {
-        return new Entry(date, List.of(new Brew(recipe, new Tasting(taste, null, rating))), ts);
+        return new Entry(date, List.of(new Brew(recipe, new Review(taste, null, rating))), ts);
     }
 
     private static Entry entry(LocalDate date, String taste, String original, Rating rating, Recipe recipe,
                                OffsetDateTime ts) {
-        return new Entry(date, List.of(new Brew(recipe, new Tasting(taste, original, rating))), ts);
+        return new Entry(date, List.of(new Brew(recipe, new Review(taste, original, rating))), ts);
     }
 
     // 실사용 샘플(ideas/sample.md 07-18) 수준의 회차 2개 엔트리 — 시도별 레시피·감상이 갈린다(AC-Δ6).
@@ -80,10 +80,10 @@ class ThymeleafNoteRendererTest {
         Brew first = new Brew(
                 new Recipe("핸드드립", 15.0, 240.0, null, 160.0, 92.0, "210클릭 (매버릭 2.0)", null,
                         "뜸 40ml 30초 → 100ml → 100ml", "다음엔 분쇄를 더 굵게 갈 것"),
-                new Tasting("첫 시도는 새콤함", null, Rating.GOOD));
+                new Review("첫 시도는 새콤함", null, Rating.GOOD));
         Brew second = new Brew(
                 new Recipe(null, 18.0, 250.0, null, null, null, "중간", null, null, null),
-                new Tasting("두 번째는 부드러움", null, Rating.PERFECT));
+                new Review("두 번째는 부드러움", null, Rating.PERFECT));
         return new Entry(date, List.of(first, second), ts);
     }
 
@@ -186,7 +186,7 @@ class ThymeleafNoteRendererTest {
         // 1회차 = 레시피만(감상 없음), 2회차 = 감상만(레시피 없음).
         Entry entry = new Entry(LocalDate.parse("2026-07-18"), List.of(
                 new Brew(new Recipe(null, 15.0, 240.0, null, null, null, "중간", null, null, null), null),
-                new Brew(null, new Tasting("두 번째 잔이 더 달다", null, Rating.GOOD))), now);
+                new Brew(null, new Review("두 번째 잔이 더 달다", null, Rating.GOOD))), now);
         NoteService repo = new InMemoryNoteService().put(noteOf(1, meta, Aliases.empty(), entry));
 
         FakeCardImageRenderer cards = new FakeCardImageRenderer();

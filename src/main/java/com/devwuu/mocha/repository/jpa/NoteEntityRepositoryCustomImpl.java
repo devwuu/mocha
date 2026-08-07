@@ -9,7 +9,7 @@ import static com.devwuu.mocha.repository.entity.QNoteOfficialNoteEntity.noteOff
 import static com.devwuu.mocha.repository.entity.QNotePhotoEntity.notePhotoEntity;
 import static com.devwuu.mocha.repository.entity.QNoteSourceEntity.noteSourceEntity;
 import static com.devwuu.mocha.repository.entity.QRecipeEntity.recipeEntity;
-import static com.devwuu.mocha.repository.entity.QTastingEntity.tastingEntity;
+import static com.devwuu.mocha.repository.entity.QReviewEntity.reviewEntity;
 
 import com.devwuu.mocha.domain.NoteCandidate;
 import com.devwuu.mocha.domain.NoteCursor;
@@ -21,7 +21,7 @@ import com.devwuu.mocha.repository.entity.BrewEntity;
 import com.devwuu.mocha.repository.entity.EntryEntity;
 import com.devwuu.mocha.repository.entity.NotePhotoEntity;
 import com.devwuu.mocha.repository.entity.RecipeEntity;
-import com.devwuu.mocha.repository.entity.TastingEntity;
+import com.devwuu.mocha.repository.entity.ReviewEntity;
 import com.querydsl.core.BooleanBuilder;
 import com.querydsl.core.Tuple;
 import com.querydsl.core.types.Predicate;
@@ -96,11 +96,11 @@ class NoteEntityRepositoryCustomImpl implements NoteEntityRepositoryCustom {
                         .orderBy(noteSourceEntity.noteId.asc(), noteSourceEntity.seq.asc()).fetch(),
                 entries,
                 brews,
-                // recipe·tasting은 brew_id가 곧 PK라 짝짓기가 조회 조건 그 자체다(TΔ3b의 PK 공유 1:1).
+                // recipe·review는 brew_id가 곧 PK라 짝짓기가 조회 조건 그 자체다(TΔ3b의 PK 공유 1:1).
                 brewIds.isEmpty() ? List.<RecipeEntity>of()
                         : query.selectFrom(recipeEntity).where(recipeEntity.brewId.in(brewIds)).fetch(),
-                brewIds.isEmpty() ? List.<TastingEntity>of()
-                        : query.selectFrom(tastingEntity).where(tastingEntity.brewId.in(brewIds)).fetch());
+                brewIds.isEmpty() ? List.<ReviewEntity>of()
+                        : query.selectFrom(reviewEntity).where(reviewEntity.brewId.in(brewIds)).fetch());
     }
 
     @Override
@@ -281,12 +281,12 @@ class NoteEntityRepositoryCustomImpl implements NoteEntityRepositoryCustom {
                     .exists());
         }
         if (!filter.rating().isEmpty()) {
-            // entry → brew → tasting 세 단을 exists 하나로 — 연관 매핑이 없어 조인 조건을 값으로 적는다.
-            where.and(JPAExpressions.selectOne().from(tastingEntity, brewEntity, entryEntity)
-                    .where(brewEntity.id.eq(tastingEntity.brewId),
+            // entry → brew → review 세 단을 exists 하나로 — 연관 매핑이 없어 조인 조건을 값으로 적는다.
+            where.and(JPAExpressions.selectOne().from(reviewEntity, brewEntity, entryEntity)
+                    .where(brewEntity.id.eq(reviewEntity.brewId),
                             entryEntity.id.eq(brewEntity.entryId),
                             entryEntity.noteId.eq(noteEntity.id),
-                            tastingEntity.rating.in(filter.rating()))
+                            reviewEntity.rating.in(filter.rating()))
                     .exists());
         }
         return where.getValue();
@@ -371,14 +371,14 @@ class NoteEntityRepositoryCustomImpl implements NoteEntityRepositoryCustom {
 
     @Override
     public void deleteBrews(long entryId) {
-        // 회차 id를 먼저 집는다 — recipe·tasting은 brew_id로만 걸려 있어(1:1 PK 공유) 부모가 사라진 뒤에는
+        // 회차 id를 먼저 집는다 — recipe·review는 brew_id로만 걸려 있어(1:1 PK 공유) 부모가 사라진 뒤에는
         // 지울 근거가 없어진다. FK가 없으므로 이 순서를 잃으면 고아 행이 조용히 남는다(ADR-75).
         List<Long> brewIds = query.select(brewEntity.id).from(brewEntity)
                 .where(brewEntity.entryId.eq(entryId)).fetch();
         if (brewIds.isEmpty()) {
             return;
         }
-        query.delete(tastingEntity).where(tastingEntity.brewId.in(brewIds)).execute();
+        query.delete(reviewEntity).where(reviewEntity.brewId.in(brewIds)).execute();
         query.delete(recipeEntity).where(recipeEntity.brewId.in(brewIds)).execute();
         query.delete(brewEntity).where(brewEntity.id.in(brewIds)).execute();
     }
@@ -417,7 +417,7 @@ class NoteEntityRepositoryCustomImpl implements NoteEntityRepositoryCustom {
         List<Long> brewIds = query.select(brewEntity.id).from(brewEntity)
                 .where(brewEntity.entryId.in(entryIds)).fetch();
         if (!brewIds.isEmpty()) {
-            query.delete(tastingEntity).where(tastingEntity.brewId.in(brewIds)).execute();
+            query.delete(reviewEntity).where(reviewEntity.brewId.in(brewIds)).execute();
             query.delete(recipeEntity).where(recipeEntity.brewId.in(brewIds)).execute();
             query.delete(brewEntity).where(brewEntity.id.in(brewIds)).execute();
         }

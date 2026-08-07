@@ -1,5 +1,7 @@
 package com.devwuu.mocha.domain;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -7,16 +9,21 @@ import java.util.List;
  * 회차 1개(한 번 내려서 마신 단위) — {@code Entry.brews} 배열의 요소 (ref: data-model.md#2.2,
  * changes/0021 ADR-59).
  * <p>레시피와 그 결과물의 감상은 회차 안에서 <b>1:1</b>이며 참조 필드가 없다 — 짝은 구조 자체가 표현한다.
- * 배열 순서 = 회차 번호(별도 필드 없음). recipe만(감상 없는 시도), tasting만(레시피 없이 마신 날 — 카페 등)
+ * 배열 순서 = 회차 번호(별도 필드 없음). recipe만(감상 없는 시도), review만(레시피 없이 마신 날 — 카페 등)
  * 모두 허용하되, 둘 다 null인 요소는 드롭한다(V-15).
  *
- * @param recipe  그 시도의 추출 레시피 또는 null — 사용자 발화 전용(V-8).
- * @param tasting 그 회차의 맛 감상 또는 null (V-11·V-15).
+ * @param recipe 그 시도의 추출 레시피 또는 null — 사용자 발화 전용(V-8).
+ * @param review 그 회차의 맛 감상 또는 null (V-11·V-15).
  */
-public record Brew(Recipe recipe, Tasting tasting) {
+public record Brew(
+        Recipe recipe,
+        // 임시: 개명은 서버 안쪽부터 간다 — JSON 키를 여기서 함께 옮기면 계약 스냅샷·프론트·eval 코퍼스가
+        //       같은 커밋에서 깨져 «빌드 그린»이 완료 신호가 되지 못한다. TΔ2가 이 애너테이션을 걷어내며
+        //       키를 review로 옮긴다 (ref: changes/0030 tasks.md TΔ1·TΔ2).
+        @JsonProperty("tasting") Review review) {
 
     /**
-     * V-15 정규화: null 배열은 빈 배열로, 각 요소는 recipe(V-8)·tasting(V-15 빈 감상 드롭)을 정규화한 뒤
+     * V-15 정규화: null 배열은 빈 배열로, 각 요소는 recipe(V-8)·review(V-15 빈 감상 드롭)을 정규화한 뒤
      * <b>둘 다 null인 요소를 드롭</b>한다. 드롭 후 회차 0개인 엔트리의 저장 거부(오류 사유 tool 결과 반환)는
      * 쓰기 경로(검증 진입점 RecordProposalValidator)의 몫이다
      * (ref: data-model.md#V-15, plan#ADR-59).
@@ -31,12 +38,12 @@ public record Brew(Recipe recipe, Tasting tasting) {
                 continue;
             }
             Recipe recipe = Recipe.normalize(brew.recipe());
-            Tasting tasting = brew.tasting() == null ? null : Tasting.normalize(
-                    brew.tasting().myTaste(), brew.tasting().myTasteOriginal(), brew.tasting().rating());
-            if (recipe == null && tasting == null) {
+            Review review = brew.review() == null ? null : Review.normalize(
+                    brew.review().myTaste(), brew.review().myTasteOriginal(), brew.review().rating());
+            if (recipe == null && review == null) {
                 continue; // V-15: 빈 회차 드롭
             }
-            normalized.add(new Brew(recipe, tasting));
+            normalized.add(new Brew(recipe, review));
         }
         return List.copyOf(normalized);
     }

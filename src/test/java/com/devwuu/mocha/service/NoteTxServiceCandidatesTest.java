@@ -10,7 +10,7 @@ import com.devwuu.mocha.domain.NoteCandidate;
 import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.domain.Sourced;
-import com.devwuu.mocha.domain.Tasting;
+import com.devwuu.mocha.domain.Review;
 import com.devwuu.mocha.repository.jpa.NoteEntityRepository;
 import com.devwuu.mocha.support.PostgresIntegrationTest;
 import jakarta.persistence.EntityManager;
@@ -246,6 +246,6 @@ class NoteTxServiceCandidatesTest extends PostgresIntegrationTest {
     }
 
     private static Entry entry(LocalDate date) {
-        return new Entry(date, List.of(new Brew(null, new Tasting("맛있었음", "맛있었음", Rating.GOOD))), IGNORED);
+        return new Entry(date, List.of(new Brew(null, new Review("맛있었음", "맛있었음", Rating.GOOD))), IGNORED);
     }
 }

@@ -13,7 +13,7 @@ import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.domain.Sourced;
-import com.devwuu.mocha.domain.Tasting;
+import com.devwuu.mocha.domain.Review;
 import com.devwuu.mocha.repository.jpa.NoteEntityRepository;
 import com.devwuu.mocha.support.PostgresIntegrationTest;
 import jakarta.persistence.EntityManager;
@@ -51,7 +51,7 @@ class NoteTxServiceDeleteTest extends PostgresIntegrationTest {
     // 0029 TΔ8b: note_photo가 늘었다. 사진 색인은 이 테스트의 표본이 만들지 않으므로(사진은 파일 경로다)
     // 잔존 0 판정에는 넣지 않고 NoteTxServicePhotoTest가 따로 소유한다.
     private static final List<String> CHILD_TABLES =
-            List.of("entry", "brew", "recipe", "tasting", "note_bean", "note_official_note", "note_alias", "note_source");
+            List.of("entry", "brew", "recipe", "review", "note_bean", "note_official_note", "note_alias", "note_source");
 
     @Autowired
     EntityManager em;
@@ -173,8 +173,8 @@ class NoteTxServiceDeleteTest extends PostgresIntegrationTest {
     // updatedAt은 감사 컬럼이 발급하므로 인자값은 버려진다(Q-5) — 표본에서는 자리만 채운다.
     private static Entry entry(LocalDate date) {
         return new Entry(date, List.of(
-                new Brew(recipe(15.0), new Tasting("첫 잔", "첫 잔", Rating.GOOD)),
-                new Brew(recipe(16.0), new Tasting("둘째 잔", "둘째 잔", Rating.PERFECT))),
+                new Brew(recipe(15.0), new Review("첫 잔", "첫 잔", Rating.GOOD)),
+                new Brew(recipe(16.0), new Review("둘째 잔", "둘째 잔", Rating.PERFECT))),
                 OffsetDateTime.of(2000, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC));
     }
 

@@ -7,7 +7,7 @@ import com.devwuu.mocha.repository.entity.NoteBeanEntity;
 import com.devwuu.mocha.repository.entity.NoteOfficialNoteEntity;
 import com.devwuu.mocha.repository.entity.NoteSourceEntity;
 import com.devwuu.mocha.repository.entity.RecipeEntity;
-import com.devwuu.mocha.repository.entity.TastingEntity;
+import com.devwuu.mocha.repository.entity.ReviewEntity;
 
 import java.util.List;
 
@@ -18,7 +18,7 @@ import java.util.List;
  * {@code NoteEntityMapper}가 한다 — 이 층은 "어떤 행이 어떤 순서로 있는가"까지만 안다.
  *
  * <p>각 목록의 순서가 곧 도메인 순서다: 배열 3종·회차는 {@code seq} 오름차순, 엔트리는 {@code tasted_on}
- * 오름차순, 별칭은 {@code id} 오름차순(= 첫 등장 순서, V-13). {@code recipe}·{@code tasting}은
+ * 오름차순, 별칭은 {@code id} 오름차순(= 첫 등장 순서, V-13). {@code recipe}·{@code review}는
  * {@code brew_id}로 짝지어지므로 순서 개념이 없다.
  */
 public record NoteChildRows(
@@ -29,7 +29,7 @@ public record NoteChildRows(
         List<EntryEntity> entries,
         List<BrewEntity> brews,
         List<RecipeEntity> recipes,
-        List<TastingEntity> tastings
+        List<ReviewEntity> reviews
 ) {
 
     public static NoteChildRows empty() {
