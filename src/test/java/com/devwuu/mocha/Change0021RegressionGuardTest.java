@@ -45,21 +45,22 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 class Change0021RegressionGuardTest {
 
     /**
-     * design/ 시안 9종의 SHA-256. 시안은 디자인 source of truth(ADR-54)로 수정 금지 — 이모티콘 제거 등
+     * design/ 시안 8종의 SHA-256. 시안은 디자인 source of truth(ADR-54)로 수정 금지 — 이모티콘 제거 등
      * 편차는 이식 템플릿에만 허용된다. 파일명 대신 체크섬 집합으로 대조한다(macOS 유니코드 정규화 차이로
      * 인한 한글 파일명 오탐 방지).
      * <p>카드 6종이 2026-07-22 확정본이고, <b>앱 화면 3종은 changes/0029에서 편입됐다</b>(2026-08-01,
      * 사용자 확정) — 앱이 인터페이스를 가져가며 카드 밖 화면에도 시안이 생겼고, 같은 규율("시안은 수정
      * 금지")을 적용한다. 집합 <b>동등성</b> 단언이라 추가도 레드가 되는데, 그것이 의도다: 시안 추가는
      * 디자인 source of truth가 늘어나는 일이므로 이 목록을 함께 고치는 것이 정상 경로다.
+     * <p><b>changes/0030 TΔ0에서 레시피 시안이 4종 → 2종으로 통합됐다</b>(2026-08-02, 사용자 확정) —
+     * 방식별(에스프레소·핸드드립) 시안이 갈려 있던 것이 단일 레이아웃 1종으로 합쳐졌고, 이 통합이 곧
+     * ADR-87(카드 방식 분기 폐기)의 디자인 근거다. 갱신된 2종은 TΔ20·TΔ21의 이식 원본이다.
      */
     private static final Set<String> DESIGN_SHA256 = Set.of(
             "792a3d45c2be3cf1c435718a4644c51316a480c005e6a632689d54344151454a", // 귀여운 - 1 감상
-            "0539bd2d2afe6c78691aa076203ad585a31c53ea0db1619894728c022455a432", // 귀여운 - 2 레시피 에스프레소
-            "8fcda4458f6bf90c208a66de9eb63caa6b4070a29f7c0904a15a8efe81ed1577", // 귀여운 - 2 레시피 핸드드립
+            "c4027980e36840e15e221da48fec10ab33624b7858bc0eb0924f40073b15d219", // 귀여운 - 2 레시피 (0030 통합본)
             "6a9b2e3a6f9e61869030b9a1be77798b85cae9b1619de3d6582676dfb0567ffb", // 세리프 - 1 감상
-            "7c9abc2d33d8777a0e320a01a25231a2f42ffd82402c53d0c0ff35de9661cb6b", // 세리프 - 2 레시피 에스프레소
-            "9be63b0b842019ed10c2cb5599421d741546b74c76f38fe48457045db2490b59", // 세리프 - 2 레시피 핸드드립
+            "4d277b21f8cf29bd5ab539c0866484e5c2030296c69233b6ab745a1213ea29f5", // 세리프 - 2 레시피 (0030 통합본)
             "f235e2186b7dfd6a7cedabb12131c65b2e3f027ae637c600d18525c2fff829cf", // 리스트 - 갤러리 (0029 S2)
             "9895f4492386faafd77d613054e85bfe2b08406f338ff27a488570b641b78947", // 채팅 - 말풍선 (0029 S1)
             "f5304f6128403fc695af6c89d3db6ebbadf4ca88f6043c2df0572db0efe8a961", // 노트 상세 (0029 S2, TΔ13a)
@@ -67,7 +68,7 @@ class Change0021RegressionGuardTest {
     );
 
     @Test
-    @DisplayName("AC-Δ10: design/ 시안 원본 10종이 확정본에서 변경되지 않았다(체크섬 대조)")
+    @DisplayName("AC-Δ10: design/ 시안 원본 8종이 확정본에서 변경되지 않았다(체크섬 대조)")
     void designMockupsUnchanged() throws IOException {
         Path designDir = Path.of("design");
         // design/은 gitignore된 로컬 전용 자산 — 없는 환경(fresh clone)에서는 대조 불가라 건너뛴다.
