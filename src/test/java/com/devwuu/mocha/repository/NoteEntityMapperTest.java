@@ -2,7 +2,7 @@ package com.devwuu.mocha.repository;
 
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Bean;
-import com.devwuu.mocha.domain.Brew;
+import com.devwuu.mocha.domain.Cup;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.Rating;
@@ -57,14 +57,14 @@ class NoteEntityMapperTest {
         Entry first = new Entry(
                 LocalDate.of(2026, 7, 10),
                 List.of(
-                        new Brew(new Recipe("핸드드립", 15.0, 240.0, 220.0, 150.0, 92.5, "중간 (코만단테)",
+                        new Cup(new Recipe("핸드드립", 15.0, 240.0, 220.0, 150.0, 92.5, "중간 (코만단테)",
                                 "V60", "뜸 40ml 30초 → 100ml → 100ml", "다음엔 더 굵게"),
                                 new Review("새콤하고 좋았음", "It was pleasantly bright", Rating.GOOD)),
-                        new Brew(new Recipe(null, 16.0, null, null, null, null, null, null, null, null), null)),
+                        new Cup(new Recipe(null, 16.0, null, null, null, null, null, null, null, null), null)),
                 CREATED);
         Entry second = new Entry(
                 LocalDate.of(2026, 7, 12),
-                List.of(new Brew(null, new Review("오늘은 밍밍했음", "오늘은 밍밍했음", Rating.OKAY_NOT_MINE))),
+                List.of(new Cup(null, new Review("오늘은 밍밍했음", "오늘은 밍밍했음", Rating.OKAY_NOT_MINE))),
                 UPDATED);
         return new Note(
                 NOTE_ID,
@@ -155,7 +155,7 @@ class NoteEntityMapperTest {
 
         RecipeEntity entity = NoteEntityMapper.toRecipeEntity(7L, original);
 
-        assertThat(entity.getBrewId()).isEqualTo(7L);
+        assertThat(entity.getCupId()).isEqualTo(7L);
         // BigDecimal.valueOf는 Double.toString 기반이라 십진 표기가 그대로 간다. 이진 생성자
         // (new BigDecimal(18.1))였다면 18.100000000000001421...로 numeric에 50여 자리가 저장된다 —
         // 왕복만 보면 doubleValue()가 되돌려 놓아 드러나지 않으므로 표기 자체를 단언한다.
@@ -168,17 +168,17 @@ class NoteEntityMapperTest {
 
     @Test
     @DisplayName("TΔ3c: 회차의 recipe·review 한쪽만 있는 경우 — 행 미생성으로 표현된다")
-    void brewWithOnlyOneSide() {
-        Brew recipeOnly = new Brew(new Recipe(null, 15.0, null, null, null, null, null, null, null, null), null);
-        Brew reviewOnly = new Brew(null, new Review("맛있었음", "맛있었음", Rating.PERFECT));
+    void cupWithOnlyOneSide() {
+        Cup recipeOnly = new Cup(new Recipe(null, 15.0, null, null, null, null, null, null, null, null), null);
+        Cup reviewOnly = new Cup(null, new Review("맛있었음", "맛있었음", Rating.PERFECT));
 
         assertThat(NoteEntityMapper.toReviewEntity(1L, recipeOnly.review())).isNull();
         assertThat(NoteEntityMapper.toRecipeEntity(2L, reviewOnly.recipe())).isNull();
 
-        assertThat(NoteEntityMapper.toBrew(
+        assertThat(NoteEntityMapper.toCup(
                 NoteEntityMapper.toRecipeEntity(1L, recipeOnly.recipe()),
                 NoteEntityMapper.toReviewEntity(1L, recipeOnly.review()))).isEqualTo(recipeOnly);
-        assertThat(NoteEntityMapper.toBrew(
+        assertThat(NoteEntityMapper.toCup(
                 NoteEntityMapper.toRecipeEntity(2L, reviewOnly.recipe()),
                 NoteEntityMapper.toReviewEntity(2L, reviewOnly.review()))).isEqualTo(reviewOnly);
     }
@@ -233,19 +233,19 @@ class NoteEntityMapperTest {
         List<NoteSourceEntity> sources = NoteEntityMapper.toSourceEntities(NOTE_ID, original.sources());
 
         List<Entry> entries = new ArrayList<>();
-        long brewId = 0;
+        long cupId = 0;
         for (Entry entry : original.entries()) {
             EntryEntity entryEntity = NoteEntityMapper.toEntryEntity(NOTE_ID, entry);
             ReflectionTestUtils.setField(entryEntity, "modifiedAt", entry.updatedAt());
 
-            List<Brew> brews = new ArrayList<>();
-            for (Brew brew : entry.brews()) {
-                long id = ++brewId;
-                brews.add(NoteEntityMapper.toBrew(
-                        NoteEntityMapper.toRecipeEntity(id, brew.recipe()),
-                        NoteEntityMapper.toReviewEntity(id, brew.review())));
+            List<Cup> cups = new ArrayList<>();
+            for (Cup cup : entry.cups()) {
+                long id = ++cupId;
+                cups.add(NoteEntityMapper.toCup(
+                        NoteEntityMapper.toRecipeEntity(id, cup.recipe()),
+                        NoteEntityMapper.toReviewEntity(id, cup.review())));
             }
-            entries.add(NoteEntityMapper.toEntry(entryEntity, brews));
+            entries.add(NoteEntityMapper.toEntry(entryEntity, cups));
         }
 
         return NoteEntityMapper.toNote(noteEntity, beans, officialNotes, aliases, sources, entries);

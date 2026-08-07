@@ -12,7 +12,7 @@ import jakarta.persistence.Table;
  * {@code review} 테이블 매핑 — 회차 맛 감상 (ref: data-model.md#2.2, V-1·V-11·V-15,
  * 어휘는 changes/0030 ADR-85가 단일 소유).
  *
- * <p>PK가 {@code brew_id}인 것이 {@link BrewEntity}와의 1:1을 표현한다 — <b>FK 제약도 {@code @OneToOne}
+ * <p>PK가 {@code cup_id}인 것이 {@link CupEntity}와의 1:1을 표현한다 — <b>FK 제약도 {@code @OneToOne}
  * 매핑도 없다</b>(ADR-75 + {@link NoteEntity} POLICY).
  *
  * <p>두 감상 컬럼이 NOT NULL인 것은 정규화가 이미 걸러 주기 때문이다: V-15가 빈 감상 review를 드롭하므로
@@ -29,8 +29,8 @@ public class ReviewEntity {
 
     // 1:1 표현이자 PK — 생성 전략이 없다(회차 id를 애플리케이션이 그대로 넣는다).
     @Id
-    @Column(name = "brew_id")
-    private Long brewId;
+    @Column(name = "cup_id")
+    private Long cupId;
 
     @Column(name = "my_taste", nullable = false)
     private String myTaste;
@@ -46,15 +46,15 @@ public class ReviewEntity {
         // JPA 전용.
     }
 
-    public ReviewEntity(Long brewId, String myTaste, String myTasteOriginal, Rating rating) {
-        this.brewId = brewId;
+    public ReviewEntity(Long cupId, String myTaste, String myTasteOriginal, Rating rating) {
+        this.cupId = cupId;
         this.myTaste = myTaste;
         this.myTasteOriginal = myTasteOriginal;
         this.rating = rating;
     }
 
-    public Long getBrewId() {
-        return brewId;
+    public Long getCupId() {
+        return cupId;
     }
 
     public String getMyTaste() {

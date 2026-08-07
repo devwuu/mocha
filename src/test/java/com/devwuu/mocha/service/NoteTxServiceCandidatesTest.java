@@ -3,7 +3,7 @@ package com.devwuu.mocha.service;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.devwuu.mocha.domain.Aliases;
-import com.devwuu.mocha.domain.Brew;
+import com.devwuu.mocha.domain.Cup;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteCandidate;
@@ -246,6 +246,6 @@ class NoteTxServiceCandidatesTest extends PostgresIntegrationTest {
     }
 
     private static Entry entry(LocalDate date) {
-        return new Entry(date, List.of(new Brew(null, new Review("맛있었음", "맛있었음", Rating.GOOD))), IGNORED);
+        return new Entry(date, List.of(new Cup(null, new Review("맛있었음", "맛있었음", Rating.GOOD))), IGNORED);
     }
 }

@@ -40,7 +40,7 @@ public class EntryEntity extends BaseEntity {
 
     // 감사 컬럼 4종(Q-5)은 BaseEntity가 소유한다 — modifiedAt이 도메인 Entry.updatedAt을 겸한다.
 
-    // 회차 컬렉션은 여기 없다 — brew는 entry_id로 각자 서 있고, 조립과 seq 오름차순 정렬은 질의가 소유한다.
+    // 회차 컬렉션은 여기 없다 — cup는 entry_id로 각자 서 있고, 조립과 seq 오름차순 정렬은 질의가 소유한다.
 
     protected EntryEntity() {
         // JPA 전용.

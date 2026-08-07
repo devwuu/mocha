@@ -1,6 +1,6 @@
 package com.devwuu.mocha.repository.jpa;
 
-import static com.devwuu.mocha.repository.entity.QBrewEntity.brewEntity;
+import static com.devwuu.mocha.repository.entity.QCupEntity.cupEntity;
 import static com.devwuu.mocha.repository.entity.QEntryEntity.entryEntity;
 import static com.devwuu.mocha.repository.entity.QNoteAliasEntity.noteAliasEntity;
 import static com.devwuu.mocha.repository.entity.QNoteBeanEntity.noteBeanEntity;
@@ -17,7 +17,7 @@ import com.devwuu.mocha.domain.NoteFacets;
 import com.devwuu.mocha.domain.NoteFilter;
 import com.devwuu.mocha.domain.NoteListItem;
 import com.devwuu.mocha.domain.NotePhoto;
-import com.devwuu.mocha.repository.entity.BrewEntity;
+import com.devwuu.mocha.repository.entity.CupEntity;
 import com.devwuu.mocha.repository.entity.EntryEntity;
 import com.devwuu.mocha.repository.entity.NotePhotoEntity;
 import com.devwuu.mocha.repository.entity.RecipeEntity;
@@ -71,13 +71,13 @@ class NoteEntityRepositoryCustomImpl implements NoteEntityRepositoryCustom {
                 .fetch();
         List<Long> entryIds = entries.stream().map(EntryEntity::getId).toList();
 
-        List<BrewEntity> brews = entryIds.isEmpty() ? List.of()
-                : query.selectFrom(brewEntity)
-                        .where(brewEntity.entryId.in(entryIds))
+        List<CupEntity> cups = entryIds.isEmpty() ? List.of()
+                : query.selectFrom(cupEntity)
+                        .where(cupEntity.entryId.in(entryIds))
                         // AC-Δ4: seq가 회차 번호를 소유한다 — 구 "배열 순서 = 회차"의 암묵 의존을 대체.
-                        .orderBy(brewEntity.entryId.asc(), brewEntity.seq.asc())
+                        .orderBy(cupEntity.entryId.asc(), cupEntity.seq.asc())
                         .fetch();
-        List<Long> brewIds = brews.stream().map(BrewEntity::getId).toList();
+        List<Long> cupIds = cups.stream().map(CupEntity::getId).toList();
 
         return new NoteChildRows(
                 query.selectFrom(noteBeanEntity)
@@ -95,12 +95,12 @@ class NoteEntityRepositoryCustomImpl implements NoteEntityRepositoryCustom {
                         .where(noteSourceEntity.noteId.in(noteIds))
                         .orderBy(noteSourceEntity.noteId.asc(), noteSourceEntity.seq.asc()).fetch(),
                 entries,
-                brews,
-                // recipe·review는 brew_id가 곧 PK라 짝짓기가 조회 조건 그 자체다(TΔ3b의 PK 공유 1:1).
-                brewIds.isEmpty() ? List.<RecipeEntity>of()
-                        : query.selectFrom(recipeEntity).where(recipeEntity.brewId.in(brewIds)).fetch(),
-                brewIds.isEmpty() ? List.<ReviewEntity>of()
-                        : query.selectFrom(reviewEntity).where(reviewEntity.brewId.in(brewIds)).fetch());
+                cups,
+                // recipe·review는 cup_id가 곧 PK라 짝짓기가 조회 조건 그 자체다(TΔ3b의 PK 공유 1:1).
+                cupIds.isEmpty() ? List.<RecipeEntity>of()
+                        : query.selectFrom(recipeEntity).where(recipeEntity.cupId.in(cupIds)).fetch(),
+                cupIds.isEmpty() ? List.<ReviewEntity>of()
+                        : query.selectFrom(reviewEntity).where(reviewEntity.cupId.in(cupIds)).fetch());
     }
 
     @Override
@@ -281,10 +281,10 @@ class NoteEntityRepositoryCustomImpl implements NoteEntityRepositoryCustom {
                     .exists());
         }
         if (!filter.rating().isEmpty()) {
-            // entry → brew → review 세 단을 exists 하나로 — 연관 매핑이 없어 조인 조건을 값으로 적는다.
-            where.and(JPAExpressions.selectOne().from(reviewEntity, brewEntity, entryEntity)
-                    .where(brewEntity.id.eq(reviewEntity.brewId),
-                            entryEntity.id.eq(brewEntity.entryId),
+            // entry → cup → review 세 단을 exists 하나로 — 연관 매핑이 없어 조인 조건을 값으로 적는다.
+            where.and(JPAExpressions.selectOne().from(reviewEntity, cupEntity, entryEntity)
+                    .where(cupEntity.id.eq(reviewEntity.cupId),
+                            entryEntity.id.eq(cupEntity.entryId),
                             entryEntity.noteId.eq(noteEntity.id),
                             reviewEntity.rating.in(filter.rating()))
                     .exists());
@@ -330,9 +330,9 @@ class NoteEntityRepositoryCustomImpl implements NoteEntityRepositoryCustom {
     }
 
     @Override
-    public long countBrews(long entryId) {
-        Long count = query.select(brewEntity.count()).from(brewEntity)
-                .where(brewEntity.entryId.eq(entryId))
+    public long countCups(long entryId) {
+        Long count = query.select(cupEntity.count()).from(cupEntity)
+                .where(cupEntity.entryId.eq(entryId))
                 .fetchOne();
         return count == null ? 0L : count;
     }
@@ -370,22 +370,22 @@ class NoteEntityRepositoryCustomImpl implements NoteEntityRepositoryCustom {
     }
 
     @Override
-    public void deleteBrews(long entryId) {
-        // 회차 id를 먼저 집는다 — recipe·review는 brew_id로만 걸려 있어(1:1 PK 공유) 부모가 사라진 뒤에는
+    public void deleteCups(long entryId) {
+        // 회차 id를 먼저 집는다 — recipe·review는 cup_id로만 걸려 있어(1:1 PK 공유) 부모가 사라진 뒤에는
         // 지울 근거가 없어진다. FK가 없으므로 이 순서를 잃으면 고아 행이 조용히 남는다(ADR-75).
-        List<Long> brewIds = query.select(brewEntity.id).from(brewEntity)
-                .where(brewEntity.entryId.eq(entryId)).fetch();
-        if (brewIds.isEmpty()) {
+        List<Long> cupIds = query.select(cupEntity.id).from(cupEntity)
+                .where(cupEntity.entryId.eq(entryId)).fetch();
+        if (cupIds.isEmpty()) {
             return;
         }
-        query.delete(reviewEntity).where(reviewEntity.brewId.in(brewIds)).execute();
-        query.delete(recipeEntity).where(recipeEntity.brewId.in(brewIds)).execute();
-        query.delete(brewEntity).where(brewEntity.id.in(brewIds)).execute();
+        query.delete(reviewEntity).where(reviewEntity.cupId.in(cupIds)).execute();
+        query.delete(recipeEntity).where(recipeEntity.cupId.in(cupIds)).execute();
+        query.delete(cupEntity).where(cupEntity.id.in(cupIds)).execute();
     }
 
     @Override
     public void deleteEntry(long entryId) {
-        deleteBrews(entryId);
+        deleteCups(entryId);
         query.delete(entryEntity).where(entryEntity.id.eq(entryId)).execute();
     }
 
@@ -405,7 +405,7 @@ class NoteEntityRepositoryCustomImpl implements NoteEntityRepositoryCustom {
     }
 
     /**
-     * 노트의 엔트리 <b>전부</b>를 하위부터 — {@link #deleteBrews}를 엔트리마다 부르지 않고 id를 모아 한 번에
+     * 노트의 엔트리 <b>전부</b>를 하위부터 — {@link #deleteCups}를 엔트리마다 부르지 않고 id를 모아 한 번에
      * 지운다. 엔트리가 몇 건이든 질의 수가 고정된다(수집 2 + 삭제 4).
      */
     private void deleteEntries(long noteId) {
@@ -414,12 +414,12 @@ class NoteEntityRepositoryCustomImpl implements NoteEntityRepositoryCustom {
         if (entryIds.isEmpty()) {
             return;
         }
-        List<Long> brewIds = query.select(brewEntity.id).from(brewEntity)
-                .where(brewEntity.entryId.in(entryIds)).fetch();
-        if (!brewIds.isEmpty()) {
-            query.delete(reviewEntity).where(reviewEntity.brewId.in(brewIds)).execute();
-            query.delete(recipeEntity).where(recipeEntity.brewId.in(brewIds)).execute();
-            query.delete(brewEntity).where(brewEntity.id.in(brewIds)).execute();
+        List<Long> cupIds = query.select(cupEntity.id).from(cupEntity)
+                .where(cupEntity.entryId.in(entryIds)).fetch();
+        if (!cupIds.isEmpty()) {
+            query.delete(reviewEntity).where(reviewEntity.cupId.in(cupIds)).execute();
+            query.delete(recipeEntity).where(recipeEntity.cupId.in(cupIds)).execute();
+            query.delete(cupEntity).where(cupEntity.id.in(cupIds)).execute();
         }
         query.delete(entryEntity).where(entryEntity.id.in(entryIds)).execute();
     }

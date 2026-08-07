@@ -27,7 +27,7 @@ class DomainSerializationTest {
         OffsetDateTime ts = OffsetDateTime.of(2026, 7, 10, 9, 30, 0, 0, ZoneOffset.ofHours(9));
         Entry entry = new Entry(
                 LocalDate.of(2026, 7, 10),
-                List.of(new Brew(
+                List.of(new Cup(
                         new Recipe(null, 15.0, 240.0, null, null, null, "중간", null, null, null),   // 레시피 포함 — Note 왕복에 회차 recipe도 실린다(FR-18)
                         new Review("새콤하고 좋았다", null, Rating.GOOD))),
                 ts
@@ -99,12 +99,12 @@ class DomainSerializationTest {
     @DisplayName("V-1: rating null 허용(미언급) — 회차 review 안에서")
     void nullRatingAllowed() throws Exception {
         Entry entry = new Entry(LocalDate.of(2026, 7, 10),
-                List.of(new Brew(null, new Review("무난", null, null))), null);
+                List.of(new Cup(null, new Review("무난", null, null))), null);
 
         String json = mapper.writeValueAsString(entry);
         Entry restored = mapper.readValue(json, Entry.class);
 
-        assertThat(restored.brews().getFirst().review().rating()).isNull();
+        assertThat(restored.cups().getFirst().review().rating()).isNull();
         assertThat(restored).isEqualTo(entry);
     }
 
@@ -121,8 +121,8 @@ class DomainSerializationTest {
         String reserialized = mapper.writeValueAsString(restored);
 
         assertThat(reserialized).doesNotContain("photos");
-        assertThat(restored.brews().getFirst().review().myTaste()).isEqualTo("새콤");
-        assertThat(restored.brews().getFirst().review().rating()).isEqualTo(Rating.GOOD);
+        assertThat(restored.cups().getFirst().review().myTaste()).isEqualTo("새콤");
+        assertThat(restored.cups().getFirst().review().rating()).isEqualTo(Rating.GOOD);
     }
 
     // --- TΔ4(changes/0013) → 0021 TΔ1b: my_taste 정규화 + 원문 병존 — review 요소 단위(V-11 개정) ---
@@ -131,15 +131,15 @@ class DomainSerializationTest {
     @DisplayName("AC-Δ5: my_taste(정규화)·my_taste_original(원문)이 review 안에 snake_case로 영속·왕복된다")
     void myTasteOriginalRoundTrip() throws Exception {
         Entry entry = new Entry(LocalDate.of(2026, 7, 10),
-                List.of(new Brew(null, new Review("새콤하고 좋았음", "새콤하고 좋았다", Rating.GOOD))), null);
+                List.of(new Cup(null, new Review("새콤하고 좋았음", "새콤하고 좋았다", Rating.GOOD))), null);
 
         String json = mapper.writeValueAsString(entry);
         Entry restored = mapper.readValue(json, Entry.class);
 
         assertThat(json).contains("\"my_taste\":\"새콤하고 좋았음\"")
                 .contains("\"my_taste_original\":\"새콤하고 좋았다\"");
-        assertThat(restored.brews().getFirst().review().myTaste()).isEqualTo("새콤하고 좋았음");
-        assertThat(restored.brews().getFirst().review().myTasteOriginal()).isEqualTo("새콤하고 좋았다");
+        assertThat(restored.cups().getFirst().review().myTaste()).isEqualTo("새콤하고 좋았음");
+        assertThat(restored.cups().getFirst().review().myTasteOriginal()).isEqualTo("새콤하고 좋았다");
         assertThat(restored).isEqualTo(entry);
     }
 
@@ -163,12 +163,12 @@ class DomainSerializationTest {
         Entry entry = new Entry(
                 LocalDate.of(2026, 7, 18),
                 List.of(
-                        new Brew(
+                        new Cup(
                                 new Recipe("에스프레소", 18.0, null, 10.0, 28.0, 93.0,
                                         "210클릭 (매버릭 2.0)", "게이지아 클래식", null,
                                         "퍽은 물퍽, 다음엔 220클릭으로"),
                                 new Review("새콤하고 좋았음", "새콤하고 좋았다", Rating.GOOD)),
-                        new Brew(
+                        new Cup(
                                 new Recipe("핸드드립", 15.0, 240.0, null, 160.0, 92.0,
                                         null, null, "뜸 40ml 30초 → 100ml → 100ml", null),
                                 null)),                             // 감상 없는 시도(recipe만) 허용(V-15)
@@ -182,9 +182,9 @@ class DomainSerializationTest {
                 .contains("\"grind\":\"210클릭 (매버릭 2.0)\"")
                 .contains("\"pouring\":\"뜸 40ml 30초 → 100ml → 100ml\"");
         assertThat(restored).isEqualTo(entry);
-        assertThat(restored.brews()).hasSize(2);
-        assertThat(restored.brews().getFirst().recipe().feedback()).isEqualTo("퍽은 물퍽, 다음엔 220클릭으로");
-        assertThat(restored.brews().getLast().review()).isNull();
+        assertThat(restored.cups()).hasSize(2);
+        assertThat(restored.cups().getFirst().recipe().feedback()).isEqualTo("퍽은 물퍽, 다음엔 220클릭으로");
+        assertThat(restored.cups().getLast().review()).isNull();
     }
 
     @Test
@@ -193,23 +193,23 @@ class DomainSerializationTest {
         String withoutBrews = "{\"date\":\"2026-07-10\",\"updated_at\":null}";
         String nullBrews = "{\"date\":\"2026-07-10\",\"brews\":null,\"updated_at\":null}";
 
-        assertThat(mapper.readValue(withoutBrews, Entry.class).brews()).isEmpty();
-        assertThat(mapper.readValue(nullBrews, Entry.class).brews()).isEmpty();
+        assertThat(mapper.readValue(withoutBrews, Entry.class).cups()).isEmpty();
+        assertThat(mapper.readValue(nullBrews, Entry.class).cups()).isEmpty();
     }
 
     @Test
     @DisplayName("0021-TΔ1b/V-15: normalize — recipe·review 둘 다 null인 회차와 빈 감상 review을 드롭한다")
     void brewsNormalizeDropsEmptyElements() {
-        List<Brew> normalized = Brew.normalize(Arrays.asList(
-                new Brew(new Recipe(null, 15.0, 240.0, null, null, null, "중간", null, null, null), new Review("새콤", null, Rating.GOOD)),
-                new Brew(null, null),                                          // 빈 회차 → 드롭
+        List<Cup> normalized = Cup.normalize(Arrays.asList(
+                new Cup(new Recipe(null, 15.0, 240.0, null, null, null, "중간", null, null, null), new Review("새콤", null, Rating.GOOD)),
+                new Cup(null, null),                                          // 빈 회차 → 드롭
                 null,                                                          // null 요소 → 드롭
-                new Brew(null, Review.normalize("  ", null, Rating.GOOD)),    // 빈 감상 review → null → 드롭
-                new Brew(new Recipe(null, 0.0, null, null, null, null, "  ", null, null, null), null)));                 // recipe 전무 정규화 → null → 드롭
+                new Cup(null, Review.normalize("  ", null, Rating.GOOD)),    // 빈 감상 review → null → 드롭
+                new Cup(new Recipe(null, 0.0, null, null, null, null, "  ", null, null, null), null)));                 // recipe 전무 정규화 → null → 드롭
 
         assertThat(normalized).containsExactly(
-                new Brew(new Recipe(null, 15.0, 240.0, null, null, null, "중간", null, null, null), new Review("새콤", "새콤", Rating.GOOD)));
-        assertThat(Brew.normalize(null)).isEmpty(); // null 배열은 빈 배열
+                new Cup(new Recipe(null, 15.0, 240.0, null, null, null, "중간", null, null, null), new Review("새콤", "새콤", Rating.GOOD)));
+        assertThat(Cup.normalize(null)).isEmpty(); // null 배열은 빈 배열
     }
 
     @Test

@@ -5,7 +5,7 @@ import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
 import com.devwuu.mocha.agent.conversation.TranscriptTurn;
 import com.devwuu.mocha.config.CommonConfig;
 import com.devwuu.mocha.domain.Aliases;
-import com.devwuu.mocha.domain.Brew;
+import com.devwuu.mocha.domain.Cup;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
@@ -131,7 +131,7 @@ class NoteControllerTest {
         assertThat(noteService.lastDraft.roastery().value()).isEqualTo("커피베라");
         assertThat(noteService.lastDraft.roastery().source()).isEqualTo(Source.USER);
         assertThat(noteService.lastDraft.entries()).hasSize(1);
-        assertThat(noteService.lastDraft.entries().getFirst().brews().getFirst().review().rating())
+        assertThat(noteService.lastDraft.entries().getFirst().cups().getFirst().review().rating())
                 .isEqualTo(Rating.GOOD);
         assertThat(noteService.lastMatch.type()).isEqualTo(MatchInfo.MatchType.NEW);
         assertThat(mapper.readTree(body)).isEqualTo(contract.get("response"));
@@ -483,7 +483,7 @@ class NoteControllerTest {
         assertThat(noteService.lastEntryId).isEqualTo(21L);
         assertThat(noteService.lastTargetDate).isEqualTo(LocalDate.of(2026, 7, 2));
         assertThat(noteService.lastEntry.date()).isEqualTo(LocalDate.of(2026, 7, 2));
-        assertThat(noteService.lastEntry.brews()).hasSize(2);
+        assertThat(noteService.lastEntry.cups()).hasSize(2);
     }
 
     @Test
@@ -510,14 +510,14 @@ class NoteControllerTest {
 
         patch("/api/notes/21/entries/2026-07-02", update.get("entry_request"), status().isOk());
 
-        Review review = noteService.lastEntry.brews().getLast().review();
+        Review review = noteService.lastEntry.cups().getLast().review();
         assertThat(review.myTaste()).isEqualTo("온도 낮추니 떫은 맛이 사라졌다. 다음에도 90℃로.");
         assertThat(review.myTasteOriginal()).isEqualTo(review.myTaste());
     }
 
     @Test
     @DisplayName("TΔ5b-3/V-15: 회차가 하나도 남지 않는 본문은 400 — 화면에 없는 엔트리 삭제 경로를 만들지 않는다")
-    void entryUpdateWithoutBrewsIsRejected() throws Exception {
+    void entryUpdateWithoutCupsIsRejected() throws Exception {
         ObjectNode empty = (ObjectNode) load(UPDATE_CONTRACT).get("entry_request");
         // 빈 회차(레시피도 감상도 없음)는 V-15 정규화가 드롭한다 — 그 결과가 0건이면 저장할 시음이 없다.
         empty.set("brews", mapper.createArrayNode().add(
@@ -596,7 +596,7 @@ class NoteControllerTest {
         List<Entry> entries = new ArrayList<>();
         List<NotePhoto> photos = new ArrayList<>();
         for (NoteDetailBody.DetailEntry entry : body.entries()) {
-            entries.add(new Entry(entry.date(), entry.brews().stream().map(NoteControllerTest::toBrew).toList(), null));
+            entries.add(new Entry(entry.date(), entry.cups().stream().map(NoteControllerTest::toCup).toList(), null));
             entry.photos().forEach(photo -> photos.add(new NotePhoto(entry.date(), toArchivePath(photo.url()))));
         }
         Note note = new Note(body.noteId(), body.coffeeName(), body.roastery(), body.beans(),
@@ -604,9 +604,9 @@ class NoteControllerTest {
         return new NoteDetail(note, photos);
     }
 
-    private static Brew toBrew(NoteDetailBody.DetailBrew brew) {
-        NoteDetailBody.DetailReview review = brew.review();
-        return new Brew(brew.recipe(), review == null ? null
+    private static Cup toCup(NoteDetailBody.DetailCup cup) {
+        NoteDetailBody.DetailReview review = cup.review();
+        return new Cup(cup.recipe(), review == null ? null
                 : new Review(review.myTaste(), LEAKED_ORIGINAL, review.rating()));
     }
 

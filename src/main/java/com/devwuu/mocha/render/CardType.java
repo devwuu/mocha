@@ -1,6 +1,6 @@
 package com.devwuu.mocha.render;
 
-import com.devwuu.mocha.domain.Brew;
+import com.devwuu.mocha.domain.Cup;
 
 /**
  * 회차 카드의 종류 — 감상·레시피 (ref: plan.md#ADR-54·59, changes/0029 tasks.md TΔ9).
@@ -52,7 +52,7 @@ public enum CardType {
      * <p>산출 규칙({@code ThymeleafNoteRenderer.bakeEntryCards})과 <b>같은 판정</b>이라 여기 둔다:
      * 갈리면 온디맨드가 <i>"있다"</i>고 답한 카드를 렌더러가 굽지 않는 조합이 생긴다.
      */
-    public boolean presentIn(Brew brew) {
-        return this == TASTE ? brew.review() != null : brew.recipe() != null;
+    public boolean presentIn(Cup cup) {
+        return this == TASTE ? cup.review() != null : cup.recipe() != null;
     }
 }

@@ -1,7 +1,7 @@
 package com.devwuu.mocha.service;
 
 import com.devwuu.mocha.domain.Aliases;
-import com.devwuu.mocha.domain.Brew;
+import com.devwuu.mocha.domain.Cup;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteCandidate;
@@ -14,7 +14,7 @@ import com.devwuu.mocha.domain.NotePage;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.repository.NoteEntityMapper;
 import com.devwuu.mocha.repository.NoteFolderName;
-import com.devwuu.mocha.repository.entity.BrewEntity;
+import com.devwuu.mocha.repository.entity.CupEntity;
 import com.devwuu.mocha.repository.entity.EntryEntity;
 import com.devwuu.mocha.repository.entity.NoteEntity;
 import com.devwuu.mocha.repository.entity.NotePhotoEntity;
@@ -171,10 +171,10 @@ public class NoteTxService {
      *   <li>{@code noteId}가 {@code null}이면 {@code meta}로 새 노트를 만들고 {@code entry}를 첫 엔트리로 둔다
      *       — id는 INSERT가 발급하므로 저장 전 draft는 식별자를 갖지 않는다(0028 D-1).</li>
      *   <li>있으면 같은 date 엔트리는 갱신(엔트리 통째 교체), 다른 date는 추가 후 날짜 오름차순 정렬한다.</li>
-     *   <li>같은 date 갱신에서 회차 append·기존 회차 지칭 병합은 에이전트가 구성한 {@code entry.brews}
+     *   <li>같은 date 갱신에서 회차 append·기존 회차 지칭 병합은 에이전트가 구성한 {@code entry.cups}
      *       배열(V-15 검증 통과분)을 신뢰한다 — 서버는 회차 단위 병합을 하지 않는다(changes/0021 ADR-59).</li>
      * </ul>
-     * POLICY: 같은 날짜 엔트리는 갱신만 — 하루 2엔트리 금지, 다회 시도는 brews 회차로
+     * POLICY: 같은 날짜 엔트리는 갱신만 — 하루 2엔트리 금지, 다회 시도는 cups 회차로
      * (ref: data-model.md#2.2, AC-14, ADR-4·59).
      * <p>POLICY: 노트 단위 메타는 갱신하지 않는다 — 기존 노트면 {@code meta}에서 쓰는 것이 없다. 원두 구성·
      * 로스팅·공식 노트는 보존한다. 재기록은 그날의 엔트리를 쌓는 일이지 커피의 사실을 다시 쓰는 일이
@@ -264,22 +264,22 @@ public class NoteTxService {
     //         (ref: data-model.md#2.2, changes/0028-rdb-storage/delta.md#동기, AC-Δ4).
     private void insertEntry(long noteId, Entry entry) {
         long entryId = notes.insertAndFlush(NoteEntityMapper.toEntryEntity(noteId, entry)).getId();
-        insertBrews(entryId, entry.brews());
+        insertCups(entryId, entry.cups());
     }
 
-    private void insertBrews(long entryId, List<Brew> brews) {
-        appendBrews(entryId, brews, 0);
+    private void insertCups(long entryId, List<Cup> cups) {
+        appendCups(entryId, cups, 0);
     }
 
     // 시작 seq를 받는 것은 날짜 이동 병합 하나 때문이다 — 그때만 이동처의 기존 회차 뒤로 이어 붙는다(D-12).
-    private void appendBrews(long entryId, List<Brew> brews, int startSeq) {
-        for (int i = 0; i < brews.size(); i++) {
+    private void appendCups(long entryId, List<Cup> cups, int startSeq) {
+        for (int i = 0; i < cups.size(); i++) {
             int seq = startSeq + i;
-            long brewId = notes.insertAndFlush(new BrewEntity(entryId, seq)).getId();
-            Brew brew = brews.get(i);
-            // 레시피·감상이 없는 회차는 행을 만들지 않는다 — 1:1 짝은 brew_id PK 공유로만 표현된다(V-15).
-            RecipeEntity recipe = NoteEntityMapper.toRecipeEntity(brewId, brew.recipe());
-            ReviewEntity review = NoteEntityMapper.toReviewEntity(brewId, brew.review());
+            long cupId = notes.insertAndFlush(new CupEntity(entryId, seq)).getId();
+            Cup cup = cups.get(i);
+            // 레시피·감상이 없는 회차는 행을 만들지 않는다 — 1:1 짝은 cup_id PK 공유로만 표현된다(V-15).
+            RecipeEntity recipe = NoteEntityMapper.toRecipeEntity(cupId, cup.recipe());
+            ReviewEntity review = NoteEntityMapper.toReviewEntity(cupId, cup.review());
             notes.insertAll(Stream.of(recipe, review).filter(Objects::nonNull).toList());
         }
     }
@@ -436,12 +436,12 @@ public class NoteTxService {
                 : notes.findEntryId(noteId, movedTo);
 
         if (collision.isPresent()) {
-            mergeIntoExisting(collision.get(), requireEntryId(noteId, targetDate), entry.brews());
+            mergeIntoExisting(collision.get(), requireEntryId(noteId, targetDate), entry.cups());
         } else {
             EntryEntity target = notes.findEntry(noteId, targetDate)
                     .orElseThrow(() -> missingEntry(noteId, targetDate));
             target.updateTastedOn(movedTo);
-            replaceBrews(target.getId(), entry.brews());
+            replaceCups(target.getId(), entry.cups());
         }
         if (!movedTo.equals(targetDate)) {
             movePhotoRows(noteId, targetDate, movedTo, movedPhotoPaths);
@@ -485,9 +485,9 @@ public class NoteTxService {
     // 만들어진 시각이다. 옮겨 온 쪽은 회차로 흡수되므로 엔트리 행으로 남을 자리가 없다.
     // UNIQUE(note_id, tasted_on)를 지나지 않는다는 점도 갈린다: 병합에는 tasted_on UPDATE가 없어
     // 중간 상태 자체가 생기지 않는다(무충돌 이동만이 그 순서를 지는 갈래다).
-    private void mergeIntoExisting(long destinationId, long sourceId, List<Brew> brews) {
+    private void mergeIntoExisting(long destinationId, long sourceId, List<Cup> cups) {
         notes.deleteEntry(sourceId);
-        appendBrews(destinationId, brews, (int) notes.countBrews(destinationId));
+        appendCups(destinationId, cups, (int) notes.countCups(destinationId));
     }
 
     private long requireEntryId(long noteId, LocalDate targetDate) {
@@ -504,9 +504,9 @@ public class NoteTxService {
      * <p>회차에는 필드 단위 갱신 개념이 없다(ADR-59 — 서버는 회차 단위 병합을 하지 않고 에이전트가 구성한
      * 배열을 신뢰한다). 삭제가 벌크라 즉시 나가므로 {@code UNIQUE(entry_id, seq)}가 새 회차보다 먼저 풀린다.
      */
-    private void replaceBrews(long entryId, List<Brew> brews) {
-        notes.deleteBrews(entryId);
-        insertBrews(entryId, brews);
+    private void replaceCups(long entryId, List<Cup> cups) {
+        notes.deleteCups(entryId);
+        insertCups(entryId, cups);
     }
 
     // ────────────────────────────── 삭제 ──────────────────────────────

@@ -265,7 +265,7 @@ public class NoteController {
             return ResponseEntity.badRequest().build();
         }
         Entry entry = request.toEntry();
-        if (entry.brews().isEmpty()) {
+        if (entry.cups().isEmpty()) {
             log.warn("엔트리 수정 거부(회차 없음): noteId={} date={}", id, date);
             return ResponseEntity.badRequest().build();
         }

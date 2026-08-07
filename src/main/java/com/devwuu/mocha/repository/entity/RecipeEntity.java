@@ -12,7 +12,7 @@ import java.math.BigDecimal;
  * <p>방식별 분기 없는 flat 스키마이고 전 필드 nullable이다. 사용자 발화 전용이라 {@code source} 개념이
  * 없어 {@link SourcedValue}가 하나도 없다(ADR-22·59 승계).
  *
- * <p>PK가 {@code brew_id}인 것이 {@link BrewEntity}와의 1:1을 표현한다 — <b>FK 제약도 {@code @OneToOne}
+ * <p>PK가 {@code cup_id}인 것이 {@link CupEntity}와의 1:1을 표현한다 — <b>FK 제약도 {@code @OneToOne}
  * 매핑도 없다</b>(ADR-75 + {@link NoteEntity} POLICY). 값은 애플리케이션이 회차 INSERT 후 받은 id로 채운다.
  *
  * <p>수치가 {@link BigDecimal}인 것은 스키마가 {@code numeric}이기 때문이다 — 도메인
@@ -26,8 +26,8 @@ public class RecipeEntity {
 
     // 1:1 표현이자 PK — 생성 전략이 없다(회차 id를 애플리케이션이 그대로 넣는다).
     @Id
-    @Column(name = "brew_id")
-    private Long brewId;
+    @Column(name = "cup_id")
+    private Long cupId;
 
     @Column(name = "method")
     private String method;
@@ -63,10 +63,10 @@ public class RecipeEntity {
         // JPA 전용.
     }
 
-    public RecipeEntity(Long brewId, String method, BigDecimal doseG, BigDecimal waterMl, BigDecimal yieldMl,
+    public RecipeEntity(Long cupId, String method, BigDecimal doseG, BigDecimal waterMl, BigDecimal yieldMl,
                         BigDecimal timeSec, BigDecimal tempC, String grind, String machine, String pouring,
                         String feedback) {
-        this.brewId = brewId;
+        this.cupId = cupId;
         this.method = method;
         this.doseG = doseG;
         this.waterMl = waterMl;
@@ -79,8 +79,8 @@ public class RecipeEntity {
         this.feedback = feedback;
     }
 
-    public Long getBrewId() {
-        return brewId;
+    public Long getCupId() {
+        return cupId;
     }
 
     public String getMethod() {

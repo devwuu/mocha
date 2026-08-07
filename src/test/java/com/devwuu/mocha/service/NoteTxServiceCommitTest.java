@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Bean;
-import com.devwuu.mocha.domain.Brew;
+import com.devwuu.mocha.domain.Cup;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
@@ -120,45 +120,45 @@ class NoteTxServiceCommitTest extends PostgresIntegrationTest {
 
     @Test
     @DisplayName("ADR-59/AC-14: 같은 날 회차 append — 에이전트 구성 배열로 통째 교체, 엔트리 수 불변·회차 증가")
-    void sameDayCommitAppendsBrewRound() {
-        Brew first = new Brew(
+    void sameDayCommitAppendsCupRound() {
+        Cup first = new Cup(
                 new Recipe("핸드드립", 15.0, 240.0, null, 160.0, 92.0, "210클릭 (매버릭 2.0)", null, null,
                         "첫 모금이 살짝 떫었으니 다음엔 220클릭으로"),
                 new Review("새콤하고 좋았음", "새콤하고 좋았다", Rating.GOOD));
         long noteId = seed(entry(day(18), List.of(first)));
 
         // 같은 날 2번째 시도 — 에이전트가 기존 회차를 포함해 append한 전체 배열을 구성한다(V-15 검증 통과분).
-        Brew second = new Brew(
+        Cup second = new Cup(
                 new Recipe("핸드드립", 15.0, 240.0, null, 150.0, 92.0, "220클릭 (매버릭 2.0)", null, null, null),
                 new Review("떫은맛 사라지고 단맛 올라옴", "떫은맛이 사라지고 단맛이 올라온다", Rating.PERFECT));
         Note note = repo.commit(noteId, fullMeta(), entry(day(18), List.of(first, second)), Aliases.empty());
 
         assertThat(note.entries()).hasSize(1);
-        assertThat(note.entries().getFirst().brews()).hasSize(2);
+        assertThat(note.entries().getFirst().cups()).hasSize(2);
 
         // 왕복 후에도 회차 순서(= 회차 번호)가 유지된다 — 교체로 행이 새로 발급돼도 seq가 순서를 진다.
         em.clear();
-        assertThat(repo.findById(noteId).orElseThrow().entries().getFirst().brews())
+        assertThat(repo.findById(noteId).orElseThrow().entries().getFirst().cups())
                 .extracting(b -> b.review().myTaste())
                 .containsExactly("새콤하고 좋았음", "떫은맛 사라지고 단맛 올라옴");
     }
 
     @Test
     @DisplayName("ADR-59/AC-79: 기존 회차 지칭 병합 — 그 회차 review만 바뀐 배열로 교체, 회차 수 불변")
-    void sameDayCommitMergesIntoReferredBrewRound() {
+    void sameDayCommitMergesIntoReferredCupRound() {
         Recipe recipe = new Recipe("핸드드립", 15.0, 240.0, null, 160.0, 92.0, "210클릭 (매버릭 2.0)", null, null, null);
         long noteId = seed(entry(day(18),
-                List.of(new Brew(recipe, new Review("새콤하고 좋았음", "새콤하고 좋았다", Rating.GOOD)))));
+                List.of(new Cup(recipe, new Review("새콤하고 좋았음", "새콤하고 좋았다", Rating.GOOD)))));
 
         // "아까 내린 거 식으니까 더 맛있네" — 병합은 에이전트가 하고 서버는 append 없이 그대로 교체한다.
         Note note = repo.commit(noteId, fullMeta(), entry(day(18),
-                List.of(new Brew(recipe, new Review(
+                List.of(new Cup(recipe, new Review(
                         "새콤하고 좋았음. 식으니까 더 맛있음",
                         "새콤하고 좋았다 / 식으니까 더 맛있네", Rating.GOOD)))), Aliases.empty());
 
         assertThat(note.entries()).hasSize(1);
-        assertThat(note.entries().getFirst().brews()).hasSize(1);
-        Brew merged = note.entries().getFirst().brews().getFirst();
+        assertThat(note.entries().getFirst().cups()).hasSize(1);
+        Cup merged = note.entries().getFirst().cups().getFirst();
         assertThat(merged.review().myTaste()).isEqualTo("새콤하고 좋았음. 식으니까 더 맛있음");
         assertThat(merged.review().rating()).isEqualTo(Rating.GOOD);
         assertThat(merged.recipe().grind()).isEqualTo("210클릭 (매버릭 2.0)");
@@ -167,22 +167,22 @@ class NoteTxServiceCommitTest extends PostgresIntegrationTest {
     @Test
     @DisplayName("ADR-75: 엔트리 교체가 하위 행을 남기지 않는다 — FK가 없어 고아는 조용히 쌓인다")
     void entryReplacementLeavesNoOrphanRows() {
-        // 교체는 삭제 후 재삽입이고, 그 삭제는 코드가 순서를 지고 있다(review·recipe → brew → entry).
+        // 교체는 삭제 후 재삽입이고, 그 삭제는 코드가 순서를 지고 있다(review·recipe → cup → entry).
         // 한 단이라도 빠지면 DB는 아무 말도 하지 않고 재저장마다 고아가 늘어난다 — 여기가 유일한 안전망이다.
         long noteId = seed(entry(day(10), List.of(
-                new Brew(new Recipe("핸드드립", 15.0, null, null, null, null, null, null, null, null),
+                new Cup(new Recipe("핸드드립", 15.0, null, null, null, null, null, null, null, null),
                         new Review("첫 잔", "첫 잔", Rating.GOOD)),
-                new Brew(new Recipe("핸드드립", 16.0, null, null, null, null, null, null, null, null),
+                new Cup(new Recipe("핸드드립", 16.0, null, null, null, null, null, null, null, null),
                         new Review("둘째 잔", "둘째 잔", Rating.PERFECT)))));
 
         // 같은 날, 회차 1개짜리로 교체 — 옛 회차 2개와 그 recipe·review가 전부 사라져야 한다.
         repo.commit(noteId, fullMeta(), entry(day(10), List.of(
-                new Brew(new Recipe("에스프레소", 18.0, null, null, null, null, null, null, null, null),
+                new Cup(new Recipe("에스프레소", 18.0, null, null, null, null, null, null, null, null),
                         new Review("다시 내림", "다시 내림", Rating.GOOD)))), Aliases.empty());
         em.clear();
 
         assertThat(rowCount("entry")).isOne();
-        assertThat(rowCount("brew")).isOne();
+        assertThat(rowCount("cup")).isOne();
         assertThat(rowCount("recipe")).isOne();
         assertThat(rowCount("review")).isOne();
     }
@@ -293,21 +293,21 @@ class NoteTxServiceCommitTest extends PostgresIntegrationTest {
 
     @Test
     @DisplayName("AC-Δ4: 조회 순서가 seq를 따른다 — seq를 밀면 삽입 순서·id와 무관하게 순서가 바뀐다")
-    void brewOrderFollowsSeqNotInsertionOrder() {
+    void cupOrderFollowsSeqNotInsertionOrder() {
         long noteId = seed(entry(day(10), List.of(
-                new Brew(null, new Review("첫 잔", "첫 잔", Rating.GOOD)),
-                new Brew(null, new Review("둘째 잔", "둘째 잔", Rating.PERFECT)))));
+                new Cup(null, new Review("첫 잔", "첫 잔", Rating.GOOD)),
+                new Cup(null, new Review("둘째 잔", "둘째 잔", Rating.PERFECT)))));
         long entryId = notes.findEntryId(noteId, day(10)).orElseThrow();
 
         // 먼저 심은 회차(seq 0, 낮은 id)를 seq 2로 민다 — 순서가 id·삽입 순서에 걸려 있으면 그대로일 것이고,
         // seq에 걸려 있으면 뒤로 간다. UNIQUE(entry_id, seq) 때문에 빈 자리로 옮긴다.
-        int moved = nativeQuery("UPDATE %s.brew SET seq = 2 WHERE entry_id = :entryId AND seq = 0")
+        int moved = nativeQuery("UPDATE %s.cup SET seq = 2 WHERE entry_id = :entryId AND seq = 0")
                 .setParameter("entryId", entryId)
                 .executeUpdate();
         assertThat(moved).isOne(); // 대조를 실제로 만들었는지 — 0건이면 아래 단언이 무의미해진다.
         em.clear();
 
-        assertThat(repo.findById(noteId).orElseThrow().entries().getFirst().brews())
+        assertThat(repo.findById(noteId).orElseThrow().entries().getFirst().cups())
                 .extracting(b -> b.review().myTaste())
                 .containsExactly("둘째 잔", "첫 잔");
     }
@@ -317,12 +317,12 @@ class NoteTxServiceCommitTest extends PostgresIntegrationTest {
     @Test
     @DisplayName("AC-Δ3/V-8: recipe 수치 0은 CHECK가 거부한다 — 저장 경로 정규화가 빠져도 DB에 남지 않는다")
     void violationV8IsRejectedByCheck() {
-        // Recipe.normalize가 0을 드롭하지만 그 정규화는 검증기(BrewRules)의 몫이고 저장소는 걸지 않는다 —
+        // Recipe.normalize가 0을 드롭하지만 그 정규화는 검증기(CupRules)의 몫이고 저장소는 걸지 않는다 —
         // 여기 도달하면 삼키지 않고 거부한다(TΔ3c toRecipeEntity 계약).
         Recipe zeroDose = new Recipe("핸드드립", 0.0, 240.0, null, null, null, null, null, null, null);
 
         assertThatThrownBy(() -> repo.commit(null, fullMeta(),
-                entry(day(10), List.of(new Brew(zeroDose, null))), Aliases.empty()))
+                entry(day(10), List.of(new Cup(zeroDose, null))), Aliases.empty()))
                 .hasStackTraceContaining("recipe_dose_g_check");
     }
 
@@ -340,19 +340,19 @@ class NoteTxServiceCommitTest extends PostgresIntegrationTest {
     @Test
     @DisplayName("AC-Δ3/V-1: 4범주 밖 rating은 CHECK가 거부한다 — enum 타입 밖에서 들어와도")
     void violationV1IsRejectedByCheck() {
-        // 감상 없는 회차로 심는다 — brew 행만 서고 review 자리가 비어 있어야 아래 네이티브 삽입이
+        // 감상 없는 회차로 심는다 — cup 행만 서고 review 자리가 비어 있어야 아래 네이티브 삽입이
         // PK 충돌이 아니라 CHECK에 걸린다.
         Recipe recipe = new Recipe("핸드드립", 15.0, null, null, null, null, null, null, null, null);
-        long noteId = seed(entry(day(10), List.of(new Brew(recipe, null))));
+        long noteId = seed(entry(day(10), List.of(new Cup(recipe, null))));
         long entryId = notes.findEntryId(noteId, day(10)).orElseThrow();
-        Number brewId = (Number) nativeQuery("SELECT id FROM %s.brew WHERE entry_id = :entryId")
+        Number cupId = (Number) nativeQuery("SELECT id FROM %s.cup WHERE entry_id = :entryId")
                 .setParameter("entryId", entryId).getSingleResult();
 
         assertThatThrownBy(() -> nativeQuery("""
-                        INSERT INTO %s.review (brew_id, my_taste, my_taste_original, rating)
-                        VALUES (:brewId, '감상', '감상', 'AWESOME')
+                        INSERT INTO %s.review (cup_id, my_taste, my_taste_original, rating)
+                        VALUES (:cupId, '감상', '감상', 'AWESOME')
                         """)
-                        .setParameter("brewId", brewId.longValue())
+                        .setParameter("cupId", cupId.longValue())
                         .executeUpdate())
                 .hasStackTraceContaining("tasting_rating_check");
     }
@@ -418,16 +418,16 @@ class NoteTxServiceCommitTest extends PostgresIntegrationTest {
     }
 
     private static Entry entry(LocalDate date, String taste) {
-        return entry(date, List.of(new Brew(null, new Review(taste, taste, Rating.GOOD))));
+        return entry(date, List.of(new Cup(null, new Review(taste, taste, Rating.GOOD))));
     }
 
     // updatedAt은 감사 컬럼이 발급하므로 인자값은 버려진다(Q-5) — 표본에서는 자리만 채운다.
-    private static Entry entry(LocalDate date, List<Brew> brews) {
-        return new Entry(date, brews, OffsetDateTime.of(2000, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC));
+    private static Entry entry(LocalDate date, List<Cup> cups) {
+        return new Entry(date, cups, OffsetDateTime.of(2000, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC));
     }
 
     /** 이 테스트의 감상 접근 헬퍼 — 회차 1개 전제. */
     private static String tasteOf(Entry entry) {
-        return entry.brews().getFirst().review().myTaste();
+        return entry.cups().getFirst().review().myTaste();
     }
 }

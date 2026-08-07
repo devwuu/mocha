@@ -8,7 +8,7 @@ import com.devwuu.mocha.agent.tool.SourcedArg;
 import com.devwuu.mocha.agent.turn.TurnDraft;
 import com.devwuu.mocha.agent.turn.TurnUserMessage;
 import com.devwuu.mocha.domain.Bean;
-import com.devwuu.mocha.domain.Brew;
+import com.devwuu.mocha.domain.Cup;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.Rating;
@@ -488,8 +488,8 @@ class ProposalValidatorsTest {
                     new BrewArg(new Recipe(null, 15.0, 240.0, null, null, null, "220클릭 (매버릭 2.0)", null, null, null),
                             new BrewArg.ReviewArg("부드러웠음", "부드러웠다", "맛있다"))))));
             assertThat(proposal.brews()).containsExactly(
-                    new Brew(new Recipe(null, 15.0, 240.0, null, null, null, "210클릭 (매버릭 2.0)", null, null, null), new Review("떫었음", "떫었다", null)),
-                    new Brew(new Recipe(null, 15.0, 240.0, null, null, null, "220클릭 (매버릭 2.0)", null, null, null),
+                    new Cup(new Recipe(null, 15.0, 240.0, null, null, null, "210클릭 (매버릭 2.0)", null, null, null), new Review("떫었음", "떫었다", null)),
+                    new Cup(new Recipe(null, 15.0, 240.0, null, null, null, "220클릭 (매버릭 2.0)", null, null, null),
                             new Review("부드러웠음", "부드러웠다", Rating.GOOD)));
         }
 
@@ -498,14 +498,14 @@ class ProposalValidatorsTest {
         void emptyBrewElementDropped() {
             RecordProposal proposal = okOf(validateRecord(recordArgsWith(
                     null, List.of(new BrewArg(null, null), reviewBrew("좋았음", null, null)))));
-            assertThat(proposal.brews()).containsExactly(new Brew(null, new Review("좋았음", null, null)));
+            assertThat(proposal.brews()).containsExactly(new Cup(null, new Review("좋았음", null, null)));
         }
 
         @Test
         @DisplayName("V-15: 감상 발화 1건은 review을 담은 회차 1개로 정규화된다(V-11 원문 병존 포함)")
         void tasteBecomesSingleBrew() {
             RecordProposal proposal = okOf(validateRecord(recordArgs()));
-            assertThat(proposal.brews()).containsExactly(new Brew(
+            assertThat(proposal.brews()).containsExactly(new Cup(
                     new Recipe(null, 15.0, 240.0, null, null, null, null, null, null, null),
                     new Review("새콤하고 좋았음", "새콤하고 좋았다", Rating.GOOD)));
         }

@@ -121,8 +121,8 @@ class BrewRulesSmokeTest {
             Entry latest = entries.get(entries.size() - 1);
             System.out.println("draft 최신 엔트리 date = " + latest.date()
                     + " (순차 제안 시나리오 기대: active_date=가장 이른 날짜)");
-            System.out.println("draft.brews(" + latest.brews().size() + "개) = "
-                    + mapper.writeValueAsString(latest.brews()));
+            System.out.println("draft.brews(" + latest.cups().size() + "개) = "
+                    + mapper.writeValueAsString(latest.cups()));
         }
         System.out.println("=== END ===");
     }

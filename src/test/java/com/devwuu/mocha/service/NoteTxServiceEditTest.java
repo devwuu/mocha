@@ -6,7 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Bean;
-import com.devwuu.mocha.domain.Brew;
+import com.devwuu.mocha.domain.Cup;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
@@ -105,7 +105,7 @@ class NoteTxServiceEditTest extends PostgresIntegrationTest {
         flushAndClear();
 
         assertThat(notes.findEntryId(saved.id(), day(10))).contains(entryIdBefore);
-        assertThat(rowCount("brew")).isOne();
+        assertThat(rowCount("cup")).isOne();
     }
 
     @Test
@@ -209,7 +209,7 @@ class NoteTxServiceEditTest extends PostgresIntegrationTest {
 
     @Test
     @DisplayName("이관: replaceEntry — 대상 date의 회차가 새 내용으로 갈린다")
-    void replaceEntryUpdatesBrews() {
+    void replaceEntryUpdatesCups() {
         Note saved = seed(entry(day(10), "새콤하고 좋았다"));
 
         Note updated = repo.replaceEntry(saved.id(), day(10), entry(day(10), "다시 보니 복숭아향"), Map.of()).note();
@@ -242,7 +242,7 @@ class NoteTxServiceEditTest extends PostgresIntegrationTest {
 
     @Test
     @DisplayName("D-12: 날짜 이동 충돌은 덮어쓰기가 아니라 회차 병합 — 기존이 앞, 옮겨 온 것이 뒤")
-    void replaceEntryMergesBrewsOnDateConflict() {
+    void replaceEntryMergesCupsOnDateConflict() {
         // 구 V-10은 이동처를 통째로 대체했다. 회차 도입(ADR-59) 이전 규칙이 재편에서 갱신되지 않아
         // 회차 배열 위에서는 "그날의 N회차를 전부 지운다"는 뜻이 돼 있었다(delta.md#D-12 ①).
         Note saved = seed(entry(day(9), "9일 원본"));
@@ -267,19 +267,19 @@ class NoteTxServiceEditTest extends PostgresIntegrationTest {
 
     @Test
     @DisplayName("D-12: 병합은 이동처 회차 뒤로 seq를 이어 발급한다 — 빈 칸도 겹침도 없다")
-    void mergeContinuesSeqFromExistingBrews() {
+    void mergeContinuesSeqFromExistingCups() {
         // UNIQUE(entry_id, seq)라 겹치면 제약이 잡지만, 0부터 다시 발급해 기존 것을 밀어내는 갈래는
         // 제약이 잡지 못한다 — 번호가 곧 회차라(V-15) 값으로 확인한다.
         Note saved = seed(entry(day(9), List.of(
-                brew(15.0, "9일 첫 잔"),
-                brew(16.0, "9일 둘째 잔"))));
+                cup(15.0, "9일 첫 잔"),
+                cup(16.0, "9일 둘째 잔"))));
         saved = repo.commit(saved.id(), fullMeta(), entry(day(10), List.of(
-                brew(17.0, "10일 첫 잔"),
-                brew(18.0, "10일 둘째 잔"))), Aliases.empty());
+                cup(17.0, "10일 첫 잔"),
+                cup(18.0, "10일 둘째 잔"))), Aliases.empty());
 
         repo.replaceEntry(saved.id(), day(9), entry(day(10), List.of(
-                brew(19.0, "옮겨 온 첫 잔"),
-                brew(20.0, "옮겨 온 둘째 잔"))), Map.of());
+                cup(19.0, "옮겨 온 첫 잔"),
+                cup(20.0, "옮겨 온 둘째 잔"))), Map.of());
         flushAndClear();
 
         long entryId = notes.findEntryId(saved.id(), day(10)).orElseThrow();
@@ -337,17 +337,17 @@ class NoteTxServiceEditTest extends PostgresIntegrationTest {
         // 병합은 삭제 하나(원본 엔트리 + 그 회차)와 삽입 하나(이동처 뒤로 잇는 회차)다. 삭제가 하위를
         // 빠뜨리면 DB는 아무 말도 하지 않고 고아가 쌓인다 — FK가 없어 이 단언이 유일한 안전망이다.
         Note saved = seed(entry(day(9), List.of(
-                brew(15.0, "9일 첫 잔"),
-                brew(16.0, "9일 둘째 잔"))));
+                cup(15.0, "9일 첫 잔"),
+                cup(16.0, "9일 둘째 잔"))));
         saved = repo.commit(saved.id(), fullMeta(),
-                entry(day(10), List.of(brew(17.0, "10일"))), Aliases.empty());
+                entry(day(10), List.of(cup(17.0, "10일"))), Aliases.empty());
 
-        repo.replaceEntry(saved.id(), day(9), entry(day(10), List.of(brew(18.0, "이동"))), Map.of());
+        repo.replaceEntry(saved.id(), day(9), entry(day(10), List.of(cup(18.0, "이동"))), Map.of());
         flushAndClear();
 
         // 남는 것은 이동처 엔트리 하나이고, 그 아래 회차는 기존 1 + 옮겨 온 1 = 2다(구 규칙에서는 1이었다).
         assertThat(rowCount("entry")).isOne();
-        assertThat(rowCount("brew")).isEqualTo(2);
+        assertThat(rowCount("cup")).isEqualTo(2);
         assertThat(rowCount("recipe")).isEqualTo(2);
         assertThat(rowCount("review")).isEqualTo(2);
     }
@@ -431,26 +431,26 @@ class NoteTxServiceEditTest extends PostgresIntegrationTest {
     }
 
     private static Entry entry(LocalDate date, String taste) {
-        return entry(date, List.of(new Brew(null, new Review(taste, taste, Rating.GOOD))));
+        return entry(date, List.of(new Cup(null, new Review(taste, taste, Rating.GOOD))));
     }
 
     // updatedAt은 감사 컬럼이 발급하므로 인자값은 버려진다(Q-5) — 표본에서는 자리만 채운다.
-    private static Entry entry(LocalDate date, List<Brew> brews) {
-        return new Entry(date, brews, OffsetDateTime.of(2000, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC));
+    private static Entry entry(LocalDate date, List<Cup> cups) {
+        return new Entry(date, cups, OffsetDateTime.of(2000, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC));
     }
 
-    private static Brew brew(double doseG, String taste) {
-        return new Brew(recipe(doseG), new Review(taste, taste, Rating.GOOD));
+    private static Cup cup(double doseG, String taste) {
+        return new Cup(recipe(doseG), new Review(taste, taste, Rating.GOOD));
     }
 
     /** 이 테스트의 감상 접근 헬퍼 — 회차 1개 전제. */
     private static String tasteOf(Entry entry) {
-        return entry.brews().getFirst().review().myTaste();
+        return entry.cups().getFirst().review().myTaste();
     }
 
     /** 회차 순서대로의 감상 — 병합이 무엇을 앞에 두는지가 단언 대상이라 목록으로 본다(D-12). */
     private static List<String> tastesOf(Entry entry) {
-        return entry.brews().stream().map(brew -> brew.review().myTaste()).toList();
+        return entry.cups().stream().map(cup -> cup.review().myTaste()).toList();
     }
 
     /**
@@ -460,7 +460,7 @@ class NoteTxServiceEditTest extends PostgresIntegrationTest {
      */
     private List<Integer> seqsOf(long entryId) {
         @SuppressWarnings("unchecked")
-        List<Integer> seqs = nativeQuery("SELECT seq FROM %s.brew WHERE entry_id = " + entryId + " ORDER BY seq")
+        List<Integer> seqs = nativeQuery("SELECT seq FROM %s.cup WHERE entry_id = " + entryId + " ORDER BY seq")
                 .getResultList();
         return seqs;
     }

@@ -4,7 +4,7 @@ import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.config.RenderConfig;
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Bean;
-import com.devwuu.mocha.domain.Brew;
+import com.devwuu.mocha.domain.Cup;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
@@ -67,21 +67,21 @@ class ThymeleafNoteRendererTest {
 
     // 회차 구조(changes/0021 ADR-59) 픽스처 — 단일 감상(+레시피)을 회차 1개로 담는다.
     private static Entry entry(LocalDate date, String taste, Rating rating, Recipe recipe, OffsetDateTime ts) {
-        return new Entry(date, List.of(new Brew(recipe, new Review(taste, null, rating))), ts);
+        return new Entry(date, List.of(new Cup(recipe, new Review(taste, null, rating))), ts);
     }
 
     private static Entry entry(LocalDate date, String taste, String original, Rating rating, Recipe recipe,
                                OffsetDateTime ts) {
-        return new Entry(date, List.of(new Brew(recipe, new Review(taste, original, rating))), ts);
+        return new Entry(date, List.of(new Cup(recipe, new Review(taste, original, rating))), ts);
     }
 
     // 실사용 샘플(ideas/sample.md 07-18) 수준의 회차 2개 엔트리 — 시도별 레시피·감상이 갈린다(AC-Δ6).
-    private static Entry twoBrewEntry(LocalDate date, OffsetDateTime ts) {
-        Brew first = new Brew(
+    private static Entry twoCupEntry(LocalDate date, OffsetDateTime ts) {
+        Cup first = new Cup(
                 new Recipe("핸드드립", 15.0, 240.0, null, 160.0, 92.0, "210클릭 (매버릭 2.0)", null,
                         "뜸 40ml 30초 → 100ml → 100ml", "다음엔 분쇄를 더 굵게 갈 것"),
                 new Review("첫 시도는 새콤함", null, Rating.GOOD));
-        Brew second = new Brew(
+        Cup second = new Cup(
                 new Recipe(null, 18.0, 250.0, null, null, null, "중간", null, null, null),
                 new Review("두 번째는 부드러움", null, Rating.PERFECT));
         return new Entry(date, List.of(first, second), ts);
@@ -122,14 +122,14 @@ class ThymeleafNoteRendererTest {
 
     @Test
     @DisplayName("AC-Δ6/AC-74: 회차 2개(각 레시피+감상) 엔트리 → 카드 4장, <date>-taste-<n>·<date>-recipe-<n> 파일명 규칙")
-    void twoBrewEntryBakesFourCardsWithBrewNumberedNames(@TempDir Path artifactDir) {
+    void twoCupEntryBakesFourCardsWithCupNumberedNames(@TempDir Path artifactDir) {
         OffsetDateTime now = OffsetDateTime.parse("2026-07-18T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
                 new Sourced<>("레인보우 블렌드", Source.USER), new Sourced<>("커피가게 동경", Source.USER),
                 List.of(new Bean(new Sourced<>("에티오피아 예가체프", Source.USER), new Sourced<>("워시드", Source.USER))),
                 null, new Sourced<>(List.of(), Source.SEARCH), List.of());
         NoteService repo = seedRepository()
-                .put(noteOf(3, meta, Aliases.empty(), twoBrewEntry(LocalDate.parse("2026-07-18"), now)));
+                .put(noteOf(3, meta, Aliases.empty(), twoCupEntry(LocalDate.parse("2026-07-18"), now)));
 
         FakeCardImageRenderer cards = new FakeCardImageRenderer();
         ThymeleafNoteRenderer renderer = new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_A, cards);
@@ -177,7 +177,7 @@ class ThymeleafNoteRendererTest {
 
     @Test
     @DisplayName("AC-78: 레시피만/감상만 있는 회차는 해당 카드만 생성된다(없는 파트 카드 미생성)")
-    void partialBrewsBakeOnlyPresentPartCards(@TempDir Path artifactDir) {
+    void partialCupsBakeOnlyPresentPartCards(@TempDir Path artifactDir) {
         OffsetDateTime now = OffsetDateTime.parse("2026-07-18T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
                 new Sourced<>("예가체프 G1", Source.USER), new Sourced<>("커피베라", Source.USER),
@@ -185,8 +185,8 @@ class ThymeleafNoteRendererTest {
                 null, new Sourced<>(List.of(), Source.SEARCH), List.of());
         // 1회차 = 레시피만(감상 없음), 2회차 = 감상만(레시피 없음).
         Entry entry = new Entry(LocalDate.parse("2026-07-18"), List.of(
-                new Brew(new Recipe(null, 15.0, 240.0, null, null, null, "중간", null, null, null), null),
-                new Brew(null, new Review("두 번째 잔이 더 달다", null, Rating.GOOD))), now);
+                new Cup(new Recipe(null, 15.0, 240.0, null, null, null, "중간", null, null, null), null),
+                new Cup(null, new Review("두 번째 잔이 더 달다", null, Rating.GOOD))), now);
         NoteService repo = new InMemoryNoteService().put(noteOf(1, meta, Aliases.empty(), entry));
 
         FakeCardImageRenderer cards = new FakeCardImageRenderer();
@@ -206,7 +206,7 @@ class ThymeleafNoteRendererTest {
 
     @Test
     @DisplayName("TΔ5a: 회차 감소 재저장 후 renderEntryCard → 옛 번호 카드가 잔존하지 않는다")
-    void rerenderAfterBrewShrinkLeavesNoStaleCards(@TempDir Path artifactDir) {
+    void rerenderAfterCupShrinkLeavesNoStaleCards(@TempDir Path artifactDir) {
         OffsetDateTime now = OffsetDateTime.parse("2026-07-18T09:00:00+09:00");
         NoteMeta meta = new NoteMeta(
                 new Sourced<>("레인보우 블렌드", Source.USER), new Sourced<>("커피가게 동경", Source.USER),
@@ -214,7 +214,7 @@ class ThymeleafNoteRendererTest {
                 null, new Sourced<>(List.of(), Source.SEARCH), List.of());
         LocalDate date = LocalDate.parse("2026-07-18");
         InMemoryNoteService repo = new InMemoryNoteService()
-                .put(noteOf(3, meta, Aliases.empty(), twoBrewEntry(date, now)));
+                .put(noteOf(3, meta, Aliases.empty(), twoCupEntry(date, now)));
 
         FakeCardImageRenderer cards = new FakeCardImageRenderer();
         ThymeleafNoteRenderer renderer = new ThymeleafNoteRenderer(repo, engine, artifactDir, Theme.TYPE_A, cards);
@@ -222,9 +222,9 @@ class ThymeleafNoteRendererTest {
         assertTrue(Files.exists(artifactDir.resolve("cards/" + RAINBOW + "/2026-07-18-taste-2.jpg")),
                 "감소 전 2회차 카드 존재");
 
-        // 수정 커밋으로 회차가 2개 → 1개로 줄었다(brews 통째 교체 — ADR-59 patch 의미론).
+        // 수정 커밋으로 회차가 2개 → 1개로 줄었다(cups 통째 교체 — ADR-59 patch 의미론).
         Note origin = repo.findById(3).orElseThrow();
-        Entry shrunk = new Entry(date, List.of(origin.entries().getFirst().brews().getFirst()), now);
+        Entry shrunk = new Entry(date, List.of(origin.entries().getFirst().cups().getFirst()), now);
         repo.put(withOnlyEntry(origin, shrunk));
 
         List<Path> baked = renderer.renderEntryCard(3, date);
@@ -543,7 +543,7 @@ class ThymeleafNoteRendererTest {
 
     @Test
     @DisplayName("ADR-54·59: recipe 있는 회차는 두 테마 모두 레시피 카드가 별도로 구워지고 수치가 렌더된다")
-    void recipeBrewBakesRecipeCard(@TempDir Path artA, @TempDir Path artB) {
+    void recipeCupBakesRecipeCard(@TempDir Path artA, @TempDir Path artB) {
         Recipe recipe = new Recipe(null, 15.0, 240.0, null, null, null, "중간", null, null, null);
         for (Theme theme : new Theme[]{Theme.TYPE_A, Theme.TYPE_B}) {
             NoteService repo = seedWithRecipe(new Sourced<>("예가체프 G1 워시드", Source.USER), recipe);
@@ -644,7 +644,7 @@ class ThymeleafNoteRendererTest {
 
     private static Note movedDate(Note origin, LocalDate newDate) {
         Entry e = origin.entries().get(0);
-        return withOnlyEntry(origin, new Entry(newDate, e.brews(), e.updatedAt()));
+        return withOnlyEntry(origin, new Entry(newDate, e.cups(), e.updatedAt()));
     }
 
     @Test
@@ -656,7 +656,7 @@ class ThymeleafNoteRendererTest {
                 List.of(new Bean(new Sourced<>("에티오피아", Source.USER), null)),
                 null, new Sourced<>(List.of(), Source.SEARCH), List.of());
         LocalDate date = LocalDate.parse("2026-07-18");
-        NoteService repo = new InMemoryNoteService().put(noteOf(3, meta, Aliases.empty(), twoBrewEntry(date, now)));
+        NoteService repo = new InMemoryNoteService().put(noteOf(3, meta, Aliases.empty(), twoCupEntry(date, now)));
 
         FakeCardImageRenderer cards = new FakeCardImageRenderer();
         ThymeleafNoteRenderer renderer =

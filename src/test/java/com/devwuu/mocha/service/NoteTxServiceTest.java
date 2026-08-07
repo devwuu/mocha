@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Bean;
-import com.devwuu.mocha.domain.Brew;
+import com.devwuu.mocha.domain.Cup;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.Rating;
@@ -107,7 +107,7 @@ class NoteTxServiceTest extends PostgresIntegrationTest {
         assertThat(restored.entries()).extracting(Entry::date)
                 .containsExactly(LocalDate.of(2026, 7, 10), LocalDate.of(2026, 7, 12));
         // 회차는 seq 오름차순 — 첫 엔트리의 두 회차가 뒤집히지 않았다(AC-Δ4의 저장소 쪽 최소 확인).
-        assertThat(restored.entries().getFirst().brews()).extracting(b -> b.recipe().doseG())
+        assertThat(restored.entries().getFirst().cups()).extracting(b -> b.recipe().doseG())
                 .containsExactly(15.0, 16.0);
     }
 
@@ -236,17 +236,17 @@ class NoteTxServiceTest extends PostgresIntegrationTest {
         return new Entry(
                 LocalDate.of(2026, 7, 10),
                 List.of(
-                        new Brew(new Recipe("핸드드립", 15.0, 240.0, 220.0, 150.0, 92.5, "중간 (코만단테)",
+                        new Cup(new Recipe("핸드드립", 15.0, 240.0, 220.0, 150.0, 92.5, "중간 (코만단테)",
                                 "V60", "뜸 40ml 30초 → 100ml → 100ml", "다음엔 더 굵게"),
                                 new Review("새콤하고 좋았음", "It was pleasantly bright", Rating.GOOD)),
-                        new Brew(new Recipe(null, 16.0, null, null, null, null, null, null, null, null), null)),
+                        new Cup(new Recipe(null, 16.0, null, null, null, null, null, null, null, null), null)),
                 IGNORED);
     }
 
     private static Entry secondEntry() {
         return new Entry(
                 LocalDate.of(2026, 7, 12),
-                List.of(new Brew(null, new Review("오늘은 밍밍했음", "오늘은 밍밍했음", Rating.OKAY_NOT_MINE))),
+                List.of(new Cup(null, new Review("오늘은 밍밍했음", "오늘은 밍밍했음", Rating.OKAY_NOT_MINE))),
                 IGNORED);
     }
 
@@ -258,7 +258,7 @@ class NoteTxServiceTest extends PostgresIntegrationTest {
         return new Note(
                 (Long) null, note.coffeeName(), note.roastery(), note.beans(), note.roastLevel(), note.officialNotes(),
                 note.aliases(), note.sources(),
-                note.entries().stream().map(e -> new Entry(e.date(), e.brews(), null)).toList(),
+                note.entries().stream().map(e -> new Entry(e.date(), e.cups(), null)).toList(),
                 null, null);
     }
 }

@@ -1,6 +1,6 @@
 package com.devwuu.mocha.render;
 
-import com.devwuu.mocha.domain.Brew;
+import com.devwuu.mocha.domain.Cup;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.repository.NoteFolderName;
@@ -12,7 +12,7 @@ import java.util.List;
 
 /**
  * 회차 카드 JPG 파일 경로 규약 — {@code artifact/cards/<접미>/<date>-taste-<n>.jpg}·{@code <date>-recipe-<n>.jpg},
- * n = 회차 번호(= brews 배열 순서, 1부터) (ref: data-model.md §2.4, plan.md#ADR-54·59, changes/0021 TΔ5a).
+ * n = 회차 번호(= cups 배열 순서, 1부터) (ref: data-model.md §2.4, plan.md#ADR-54·59, changes/0021 TΔ5a).
  * <p>렌더러(산출·정리)와 카드 파생물 재사용 판정(data-model §3.5)이 같은 규약을
  * 공유하도록 한곳에 모은다. 카드 위에 회차를 표기하지 않으므로 파일명이 회차 구분의 유일한 표현이다(ADR-54 POLICY).
  * <p>폴더 접미({@code <id>-<로스터리>-<커피명>})는 <b>노트에서 여기가 직접 만든다</b> — 인자로 문자열을 받으면
@@ -34,20 +34,20 @@ public final class CardFiles {
      * 것은 산출 쪽({@code bakeEntryCards})이 여전히 파트별로 부르기 때문이다 — 여기서 문자열을 이어
      * 붙이면 규약이 <i>"이름을 만드는 규칙"</i>과 <i>"이름을 고르는 규칙"</i>으로 갈린다.
      */
-    public static Path card(Path artifactDir, Note note, LocalDate date, CardType type, int brewNumber) {
+    public static Path card(Path artifactDir, Note note, LocalDate date, CardType type, int cupNumber) {
         return type == CardType.TASTE
-                ? tasteCard(artifactDir, note, date, brewNumber)
-                : recipeCard(artifactDir, note, date, brewNumber);
+                ? tasteCard(artifactDir, note, date, cupNumber)
+                : recipeCard(artifactDir, note, date, cupNumber);
     }
 
     /** 감상 카드 경로 — review 있는 회차만 산출된다(AC-78). */
-    public static Path tasteCard(Path artifactDir, Note note, LocalDate date, int brewNumber) {
-        return noteCardsDir(artifactDir, note).resolve(date + "-taste-" + brewNumber + ".jpg");
+    public static Path tasteCard(Path artifactDir, Note note, LocalDate date, int cupNumber) {
+        return noteCardsDir(artifactDir, note).resolve(date + "-taste-" + cupNumber + ".jpg");
     }
 
     /** 레시피 카드 경로 — recipe 있는 회차만 산출된다(AC-78). */
-    public static Path recipeCard(Path artifactDir, Note note, LocalDate date, int brewNumber) {
-        return noteCardsDir(artifactDir, note).resolve(date + "-recipe-" + brewNumber + ".jpg");
+    public static Path recipeCard(Path artifactDir, Note note, LocalDate date, int cupNumber) {
+        return noteCardsDir(artifactDir, note).resolve(date + "-recipe-" + cupNumber + ".jpg");
     }
 
     /**
@@ -56,13 +56,13 @@ public final class CardFiles {
      */
     public static List<Path> expectedCards(Path artifactDir, Note note, Entry entry) {
         List<Path> expected = new ArrayList<>();
-        List<Brew> brews = entry.brews();
-        for (int i = 0; i < brews.size(); i++) {
+        List<Cup> cups = entry.cups();
+        for (int i = 0; i < cups.size(); i++) {
             int n = i + 1; // 배열 순서 = 회차 번호(ADR-59)
-            if (brews.get(i).review() != null) {
+            if (cups.get(i).review() != null) {
                 expected.add(tasteCard(artifactDir, note, entry.date(), n));
             }
-            if (brews.get(i).recipe() != null) {
+            if (cups.get(i).recipe() != null) {
                 expected.add(recipeCard(artifactDir, note, entry.date(), n));
             }
         }

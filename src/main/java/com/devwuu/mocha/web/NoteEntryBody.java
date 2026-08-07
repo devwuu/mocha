@@ -1,8 +1,9 @@
 package com.devwuu.mocha.web;
 
-import com.devwuu.mocha.domain.Brew;
+import com.devwuu.mocha.domain.Cup;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Review;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -16,7 +17,7 @@ import java.util.List;
  * 제자리 수정이다. 한 필드가 두 뜻을 지지 않게 자리를 나눈 것이라 요청만 보고 어느 쪽인지 알 수 있고,
  * {@code NoteTxService.replaceEntry(noteId, targetDate, entry, …)}가 이미 그 모양이다(TΔ4a).
  *
- * <p><b>회차 타입은 상세 응답의 것을 그대로 쓴다</b>({@link NoteDetailBody.DetailBrew}) — 폼이 받은 것을
+ * <p><b>회차 타입은 상세 응답의 것을 그대로 쓴다</b>({@link NoteDetailBody.DetailCup}) — 폼이 받은 것을
  * 고쳐 되돌려 보내는 자리라 두 벌로 나눌 이유가 없고, 나누면 <i>"응답에는 있는데 요청에는 없는 필드"</i>가
  * 조용히 생긴다. 그 타입에 {@code myTasteOriginal}이 없다는 사실이 여기서 한 번 더 값을 낸다(아래).
  *
@@ -24,7 +25,8 @@ import java.util.List;
  * 정규화본을 양쪽에 담는다. 수정하면 <i>"말한 그대로"</i>가 편집본으로 수렴하는 것이 이 계약의 뜻이다
  * (ref: data-model.md#V-11 뒷문장).
  */
-public record NoteEntryBody(LocalDate date, List<NoteDetailBody.DetailBrew> brews) {
+// TΔ3 임시 조치: JSON 키는 아직 brews다 — 계약 표면 개명은 TΔ4가 하고 이 애너테이션을 걷어낸다.
+public record NoteEntryBody(LocalDate date, @JsonProperty("brews") List<NoteDetailBody.DetailCup> cups) {
 
     /**
      * 도메인 엔트리로 되돌린다 — 회차는 <b>V-15 정규화를 거친다</b>(빈 감상 드롭 · 레시피·감상 둘 다 없는
@@ -34,17 +36,17 @@ public record NoteEntryBody(LocalDate date, List<NoteDetailBody.DetailBrew> brew
      * <p>{@code updatedAt}은 {@code null}이다 — 엔트리 행의 시각은 감사 리스너가 채운다(0028 TΔ4).
      */
     public Entry toEntry() {
-        List<Brew> raw = brews == null ? List.of() : brews.stream().map(NoteEntryBody::toBrew).toList();
-        return new Entry(date, Brew.normalize(raw), null);
+        List<Cup> raw = cups == null ? List.of() : cups.stream().map(NoteEntryBody::toCup).toList();
+        return new Entry(date, Cup.normalize(raw), null);
     }
 
-    private static Brew toBrew(NoteDetailBody.DetailBrew brew) {
-        if (brew == null) {
+    private static Cup toCup(NoteDetailBody.DetailCup cup) {
+        if (cup == null) {
             return null;
         }
-        NoteDetailBody.DetailReview review = brew.review();
+        NoteDetailBody.DetailReview review = cup.review();
         // 원문 자리는 비워 넘긴다 — Review가 정규화본을 양쪽에 담는다(V-11).
-        return new Brew(brew.recipe(),
+        return new Cup(cup.recipe(),
                 review == null ? null : new Review(review.myTaste(), null, review.rating()));
     }
 }

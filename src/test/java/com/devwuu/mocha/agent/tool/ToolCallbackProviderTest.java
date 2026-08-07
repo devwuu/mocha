@@ -9,7 +9,7 @@ import com.devwuu.mocha.agent.turn.TurnProposalSink;
 import com.devwuu.mocha.agent.turn.TurnUserMessage;
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Bean;
-import com.devwuu.mocha.domain.Brew;
+import com.devwuu.mocha.domain.Cup;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
@@ -113,7 +113,7 @@ class ToolCallbackProviderTest {
         assertThat(proposed.note().id()).isNull(); // 신규는 아직 저장 전 — id는 INSERT가 발급한다(D-1)
         assertThat(proposed.note().entries()).hasSize(1);
         assertThat(proposed.note().entries().get(0).date()).isEqualTo(LocalDate.of(2026, 7, 16));
-        assertThat(proposed.note().entries().get(0).brews().getFirst().review().rating()).isEqualTo(Rating.GOOD);
+        assertThat(proposed.note().entries().get(0).cups().getFirst().review().rating()).isEqualTo(Rating.GOOD);
         assertThat(proposed.match().type()).isEqualTo(MatchInfo.MatchType.NEW);
         assertThat(result.get("proposed").asBoolean()).isTrue();
         // 신규 제안 결과에는 식별자가 실리지 않는다 — 없는 값을 null로 실어 보내지 않는다(D-1).
@@ -137,7 +137,7 @@ class ToolCallbackProviderTest {
                 recordArgs("커피베라 예가체프 G1", "커피베라", "\"완전 내스타일\"", "2026-07-16", "{\"type\":\"new\",\"note_id\":null,\"date\":null}")));
 
         TurnDraft updated = proposals.proposal().orElseThrow();
-        assertThat(updated.note().entries().get(0).brews().getFirst().review().rating()).isEqualTo(Rating.PERFECT); // 수정 반영
+        assertThat(updated.note().entries().get(0).cups().getFirst().review().rating()).isEqualTo(Rating.PERFECT); // 수정 반영
         assertThat(updated.note().id()).isNull();                     // 저장 전 — 여전히 식별자 없음
         assertThat(result.get("updated_draft").asBoolean()).isTrue();
     }
@@ -319,12 +319,12 @@ class ToolCallbackProviderTest {
                   "match": %s,
                   "sources": []
                 }
-                """.formatted(coffeeName, roastery, reviewBrewJson("새콤하고 좋았음", "새콤하고 좋았다", ratingJson),
+                """.formatted(coffeeName, roastery, reviewCupJson("새콤하고 좋았음", "새콤하고 좋았다", ratingJson),
                 targetDate, matchJson);
     }
 
-    /** 감상만 담은 회차 1개 JSON 조각 — brews 배열 요소(data-model §3.3, changes/0021). */
-    private static String reviewBrewJson(String myTaste, String original, String ratingJson) {
+    /** 감상만 담은 회차 1개 JSON 조각 — cups 배열 요소(data-model §3.3, changes/0021). */
+    private static String reviewCupJson(String myTaste, String original, String ratingJson) {
         return """
                 {"recipe": null, "review": {"my_taste": "%s", "my_taste_original": "%s", "rating": %s}}"""
                 .formatted(myTaste, original, ratingJson);
@@ -339,7 +339,7 @@ class ToolCallbackProviderTest {
         List<Entry> entries = new ArrayList<>();
         for (LocalDate date : entryDates) {
             entries.add(new Entry(date,
-                    List.of(new Brew(null, new Review("새콤하고 좋았음", null, Rating.GOOD))),
+                    List.of(new Cup(null, new Review("새콤하고 좋았음", null, Rating.GOOD))),
                     OffsetDateTime.parse("2026-07-14T10:00:00+09:00")));
         }
         return new Note(id, new Sourced<>(coffeeName, Source.USER), new Sourced<>(roastery, Source.USER),

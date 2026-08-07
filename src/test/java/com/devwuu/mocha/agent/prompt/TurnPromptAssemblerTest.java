@@ -5,7 +5,7 @@ import com.devwuu.mocha.agent.conversation.TranscriptTurn;
 import com.devwuu.mocha.agent.turn.TurnDraft;
 import com.devwuu.mocha.agent.turn.TurnUserMessage;
 import com.devwuu.mocha.domain.Bean;
-import com.devwuu.mocha.domain.Brew;
+import com.devwuu.mocha.domain.Cup;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
@@ -51,7 +51,7 @@ class TurnPromptAssemblerTest {
 
     private static Note draft() {
         Entry entry = new Entry(LocalDate.of(2026, 7, 16),
-                List.of(new Brew(null, new Review("새콤하고 좋았음", "새콤하고 좋았다", Rating.GOOD))), NOW);
+                List.of(new Cup(null, new Review("새콤하고 좋았음", "새콤하고 좋았다", Rating.GOOD))), NOW);
         return new Note(7L,
                 new Sourced<>("Ethiopia Chelbesa", Source.USER), new Sourced<>("FroB", Source.USER),
                 List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), null)),

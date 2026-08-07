@@ -1,7 +1,7 @@
 package com.devwuu.mocha.domain;
 
 /**
- * 회차 추출 레시피 — {@link Brew}에 내장 (ref: data-model.md#2.2, FR-18, changes/0010 도입 · 0021 회차 확장).
+ * 회차 추출 레시피 — {@link Cup}에 내장 (ref: data-model.md#2.2, FR-18, changes/0010 도입 · 0021 회차 확장).
  * <p>방식별 분기 없는 단일 flat 스키마, 전 필드 nullable(V-8). 비율(도징:추출량)·시간 표기("2분 40초")는
  * 파생값이라 저장하지 않고 렌더 시 계산한다(ADR-1 POLICY).
  * <b>사용자 발화 전용</b> — {@code source} 개념 없음(항상 사용자 것), 검색·OCR 보강 금지(ADR-22, ADR-59 승계).

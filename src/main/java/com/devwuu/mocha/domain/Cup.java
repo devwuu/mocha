@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 회차 1개(한 번 내려서 마신 단위) — {@code Entry.brews} 배열의 요소 (ref: data-model.md#2.2,
+ * 회차 1개(한 번 내려서 마신 단위) — {@code Entry.cups} 배열의 요소 (ref: data-model.md#2.2,
  * changes/0021 ADR-59).
  * <p>레시피와 그 결과물의 감상은 회차 안에서 <b>1:1</b>이며 참조 필드가 없다 — 짝은 구조 자체가 표현한다.
  * 배열 순서 = 회차 번호(별도 필드 없음). recipe만(감상 없는 시도), review만(레시피 없이 마신 날 — 카페 등)
@@ -13,7 +13,7 @@ import java.util.List;
  * @param recipe 그 시도의 추출 레시피 또는 null — 사용자 발화 전용(V-8).
  * @param review 그 회차의 맛 감상 또는 null (V-11·V-15).
  */
-public record Brew(
+public record Cup(
         Recipe recipe,
         Review review) {
 
@@ -23,22 +23,22 @@ public record Brew(
      * 쓰기 경로(검증 진입점 RecordProposalValidator)의 몫이다
      * (ref: data-model.md#V-15, plan#ADR-59).
      */
-    public static List<Brew> normalize(List<Brew> raw) {
+    public static List<Cup> normalize(List<Cup> raw) {
         if (raw == null) {
             return List.of();
         }
-        List<Brew> normalized = new ArrayList<>();
-        for (Brew brew : raw) {
-            if (brew == null) {
+        List<Cup> normalized = new ArrayList<>();
+        for (Cup cup : raw) {
+            if (cup == null) {
                 continue;
             }
-            Recipe recipe = Recipe.normalize(brew.recipe());
-            Review review = brew.review() == null ? null : Review.normalize(
-                    brew.review().myTaste(), brew.review().myTasteOriginal(), brew.review().rating());
+            Recipe recipe = Recipe.normalize(cup.recipe());
+            Review review = cup.review() == null ? null : Review.normalize(
+                    cup.review().myTaste(), cup.review().myTasteOriginal(), cup.review().rating());
             if (recipe == null && review == null) {
                 continue; // V-15: 빈 회차 드롭
             }
-            normalized.add(new Brew(recipe, review));
+            normalized.add(new Cup(recipe, review));
         }
         return List.copyOf(normalized);
     }

@@ -100,7 +100,7 @@ class CardControllerTest {
 
     @Test
     @DisplayName("TΔ9: n을 안 주면 1회차다 — 회차가 하나뿐인 기록이 대다수다")
-    void brewNumberDefaultsToOne() throws Exception {
+    void cupNumberDefaultsToOne() throws Exception {
         renderer.card = write("2026-07-18-taste-1.jpg", new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF});
 
         mockMvc.perform(get("/api/notes/42/entries/2026-07-18/card").param("type", "taste"))
@@ -180,8 +180,8 @@ class CardControllerTest {
         }
 
         @Override
-        public Optional<Path> entryCard(long noteId, LocalDate date, CardType type, int brewNumber) {
-            calls.add(noteId + " " + date + " " + type + " " + brewNumber);
+        public Optional<Path> entryCard(long noteId, LocalDate date, CardType type, int cupNumber) {
+            calls.add(noteId + " " + date + " " + type + " " + cupNumber);
             if (failure != null) {
                 throw failure;
             }

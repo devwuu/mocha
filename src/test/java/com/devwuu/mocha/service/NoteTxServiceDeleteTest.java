@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Bean;
-import com.devwuu.mocha.domain.Brew;
+import com.devwuu.mocha.domain.Cup;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
@@ -51,7 +51,7 @@ class NoteTxServiceDeleteTest extends PostgresIntegrationTest {
     // 0029 TΔ8b: note_photo가 늘었다. 사진 색인은 이 테스트의 표본이 만들지 않으므로(사진은 파일 경로다)
     // 잔존 0 판정에는 넣지 않고 NoteTxServicePhotoTest가 따로 소유한다.
     private static final List<String> CHILD_TABLES =
-            List.of("entry", "brew", "recipe", "review", "note_bean", "note_official_note", "note_alias", "note_source");
+            List.of("entry", "cup", "recipe", "review", "note_bean", "note_official_note", "note_alias", "note_source");
 
     @Autowired
     EntityManager em;
@@ -98,7 +98,7 @@ class NoteTxServiceDeleteTest extends PostgresIntegrationTest {
 
         Note loaded = repo.findById(survivor.id()).orElseThrow();
         assertThat(loaded.entries()).hasSize(2);
-        assertThat(loaded.entries().getFirst().brews()).hasSize(2);
+        assertThat(loaded.entries().getFirst().cups()).hasSize(2);
         assertThat(loaded.beans()).hasSize(1);
         assertThat(loaded.officialNotes().value()).containsExactly("자스민", "베르가못");
         assertThat(loaded.sources()).hasSize(1);
@@ -148,7 +148,7 @@ class NoteTxServiceDeleteTest extends PostgresIntegrationTest {
 
     /**
      * 8개 하위 테이블에 전부 행이 생기는 노트 하나 — 엔트리 2건 × 회차 2개, 각 회차에 레시피·감상.
-     * <p>회차를 둘 두는 것은 {@code brew} 삭제가 한 건만 지우고 나머지를 남기는 갈래를 가르기 위해서다.
+     * <p>회차를 둘 두는 것은 {@code cup} 삭제가 한 건만 지우고 나머지를 남기는 갈래를 가르기 위해서다.
      */
     private Note seedFullyPopulated() {
         Note saved = repo.commit(null, fullMeta(), entry(day(9)),
@@ -173,8 +173,8 @@ class NoteTxServiceDeleteTest extends PostgresIntegrationTest {
     // updatedAt은 감사 컬럼이 발급하므로 인자값은 버려진다(Q-5) — 표본에서는 자리만 채운다.
     private static Entry entry(LocalDate date) {
         return new Entry(date, List.of(
-                new Brew(recipe(15.0), new Review("첫 잔", "첫 잔", Rating.GOOD)),
-                new Brew(recipe(16.0), new Review("둘째 잔", "둘째 잔", Rating.PERFECT))),
+                new Cup(recipe(15.0), new Review("첫 잔", "첫 잔", Rating.GOOD)),
+                new Cup(recipe(16.0), new Review("둘째 잔", "둘째 잔", Rating.PERFECT))),
                 OffsetDateTime.of(2000, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC));
     }
 

@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.tuple;
 
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Bean;
-import com.devwuu.mocha.domain.Brew;
+import com.devwuu.mocha.domain.Cup;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteCursor;
@@ -212,9 +212,9 @@ class NoteTxServiceListTest extends PostgresIntegrationTest {
 
     @Test
     @DisplayName("TΔ5a: 평가는 회차 하나라도 그 값이면 남는다 — 같은 날 두 번 내려 평가가 갈릴 수 있다")
-    void ratingMatchesAnyBrew() {
+    void ratingMatchesAnyCup() {
         insert("A", "프릳츠", List.of(), new Entry(LocalDate.of(2026, 7, 3), List.of(
-                brew(Rating.BAD), brew(Rating.PERFECT)), IGNORED));
+                cup(Rating.BAD), cup(Rating.PERFECT)), IGNORED));
         insert("B", "프릳츠", List.of(), entry(date(2026, 7, 2), Rating.BAD));
         em.clear();
 
@@ -379,10 +379,10 @@ class NoteTxServiceListTest extends PostgresIntegrationTest {
     }
 
     private static Entry entry(LocalDate date, Rating rating) {
-        return new Entry(date, List.of(brew(rating)), IGNORED);
+        return new Entry(date, List.of(cup(rating)), IGNORED);
     }
 
-    private static Brew brew(Rating rating) {
-        return new Brew(null, new Review("맛있었음", "맛있었음", rating));
+    private static Cup cup(Rating rating) {
+        return new Cup(null, new Review("맛있었음", "맛있었음", rating));
     }
 }

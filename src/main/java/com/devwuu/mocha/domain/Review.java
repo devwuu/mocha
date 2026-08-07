@@ -1,7 +1,7 @@
 package com.devwuu.mocha.domain;
 
 /**
- * 회차 맛 감상 — {@link Brew}에 내장 (ref: data-model.md#2.2, changes/0021 ADR-59,
+ * 회차 맛 감상 — {@link Cup}에 내장 (ref: data-model.md#2.2, changes/0021 ADR-59,
  * 어휘는 changes/0030 ADR-85가 단일 소유).
  * <p>구 엔트리 레벨 {@code my_taste}/{@code my_taste_original}/{@code rating}의 이동처 — 감상마다 평가가
  * 다를 수 있어 rating도 회차 review 안에 둔다. 감상↔피드백 분리: 커피 맛의 감상·평가는 여기,

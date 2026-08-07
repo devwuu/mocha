@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.devwuu.mocha.config.RenderConfig;
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Bean;
-import com.devwuu.mocha.domain.Brew;
+import com.devwuu.mocha.domain.Cup;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
@@ -175,7 +175,7 @@ class RerenderFromDatabaseTest extends PostgresIntegrationTest {
 
         Entry withRecipe = new Entry(
                 LocalDate.of(2026, 7, 10),
-                List.of(new Brew(
+                List.of(new Cup(
                         new Recipe("핸드드립", 15.0, 240.0, null, 160.0, 92.5, "중간 (코만단테)", "V60",
                                 "뜸 40ml 30초 → 100ml → 100ml", "다음엔 더 굵게"),
                         new Review("새콤하고 좋았다.", null, Rating.GOOD))),
@@ -187,7 +187,7 @@ class RerenderFromDatabaseTest extends PostgresIntegrationTest {
     }
 
     private static Entry tasteEntry(LocalDate date, String taste) {
-        return new Entry(date, List.of(new Brew(null, new Review(taste, null, Rating.PERFECT))), IGNORED);
+        return new Entry(date, List.of(new Cup(null, new Review(taste, null, Rating.PERFECT))), IGNORED);
     }
 
     /** 저장된 노트의 메타 — {@code upsertEntry} 재호출이 노트 단위 필드를 그대로 두게 한다. */

@@ -29,12 +29,13 @@ class SchemaMigrationTest extends PostgresIntegrationTest {
     // 0029 TΔ4: V2가 pending_note를 드롭했다 — 작성 중 데이터는 클라이언트 폼이 소유한다(delta 0029 D-2).
     // 0029 TΔ8b: V3가 note_photo를 들였다 — 노트↔사진 연결이 폴더 규약에서 행으로 옮겨왔다(ADR-79).
     // 0030 TΔ1: V4가 tasting을 review로 개명했다 — 테이블 수는 그대로고 이름만 옮겨갔다(ADR-85, AC-Δ1).
+    // 0030 TΔ3: V5가 brew를 cup으로 개명했다 — 자식의 조인 컬럼 brew_id도 cup_id로 함께 옮겨갔다.
     private static final List<String> TABLES = List.of(
             "note", "note_bean", "note_official_note", "note_alias", "note_source",
-            "entry", "brew", "recipe", "review", "note_photo");
+            "entry", "cup", "recipe", "review", "note_photo");
 
     /** 0030 개명이 걷어낸 이름 — 「이름만 옮긴다」는 «신 이름이 있다»와 «구 이름이 없다»가 함께 서야 성립한다. */
-    private static final List<String> RENAMED_AWAY = List.of("tasting");
+    private static final List<String> RENAMED_AWAY = List.of("tasting", "brew");
 
     @Autowired
     JdbcTemplate jdbc;
@@ -51,7 +52,7 @@ class SchemaMigrationTest extends PostgresIntegrationTest {
                         + " WHERE success = true AND version IS NOT NULL ORDER BY installed_rank",
                 String.class);
 
-        assertThat(versions).containsExactly("1", "2", "3", "4");
+        assertThat(versions).containsExactly("1", "2", "3", "4", "5");
     }
 
     @Test
@@ -75,7 +76,7 @@ class SchemaMigrationTest extends PostgresIntegrationTest {
                         + " WHERE table_schema = 'test' AND table_name = 'review'",
                 String.class);
 
-        assertThat(columns).containsExactlyInAnyOrder("brew_id", "my_taste", "my_taste_original", "rating");
+        assertThat(columns).containsExactlyInAnyOrder("cup_id", "my_taste", "my_taste_original", "rating");
 
         // V-1 4범주 CHECK가 살아 있다 — 제약 이름(tasting_rating_check)은 rename 대상이 아니라 그대로다.
         assertThat(jdbc.queryForObject(
@@ -83,6 +84,44 @@ class SchemaMigrationTest extends PostgresIntegrationTest {
                         + " JOIN pg_namespace n ON n.oid = c.connamespace"
                         + " WHERE n.nspname = 'test' AND t.relname = 'review' AND c.contype = 'c'",
                 Long.class)).isEqualTo(1L);
+    }
+
+    @Test
+    @DisplayName("AC-Δ1(TΔ3): brew → cup 개명 — 회차 행의 컬럼·UNIQUE가 그대로 따라왔다")
+    void cupTableCarriesTheRenamedColumns() {
+        // entry_id는 아직 옛 이름이다 — 심볼 ③(entry → tasting_day)의 몫이라 V6가 옮긴다.
+        assertThat(columnsOf("cup")).containsExactlyInAnyOrder("id", "entry_id", "seq");
+
+        // UNIQUE(entry_id, seq)가 살아 있다 — 회차 번호의 유일성이 rename을 건너뛰지 않았다는 증거다.
+        // 제약 이름(brew_entry_id_seq_key)은 rename 대상이 아니라 그대로이므로 개수로 센다.
+        assertThat(jdbc.queryForObject(
+                "SELECT count(*) FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid"
+                        + " JOIN pg_namespace n ON n.oid = c.connamespace"
+                        + " WHERE n.nspname = 'test' AND t.relname = 'cup' AND c.contype = 'u'",
+                Long.class)).isEqualTo(1L);
+    }
+
+    @Test
+    @DisplayName("AC-Δ1(TΔ3): 1:1 자식의 조인 컬럼이 brew_id → cup_id로 함께 옮겨갔다")
+    void oneToOneChildrenJoinOnCupId() {
+        // recipe·review는 조인 컬럼이 곧 PK다(ADR-75 — FK 없는 1:1 표현). 한쪽만 옮겨가면 조립이 조용히
+        // 깨지므로 «신 이름이 있다»와 «구 이름이 없다»를 두 테이블 모두에 건다.
+        assertThat(columnsOf("recipe")).contains("cup_id").doesNotContain("brew_id");
+        assertThat(columnsOf("review")).contains("cup_id").doesNotContain("brew_id");
+
+        assertThat(jdbc.queryForList(
+                "SELECT a.attname FROM pg_index i JOIN pg_class t ON t.oid = i.indrelid"
+                        + " JOIN pg_namespace n ON n.oid = t.relnamespace"
+                        + " JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY (i.indkey)"
+                        + " WHERE n.nspname = 'test' AND t.relname = 'recipe' AND i.indisprimary",
+                String.class)).containsExactly("cup_id");
+    }
+
+    private List<String> columnsOf(String table) {
+        return jdbc.queryForList(
+                "SELECT column_name FROM information_schema.columns"
+                        + " WHERE table_schema = 'test' AND table_name = ?",
+                String.class, table);
     }
 
     @Test

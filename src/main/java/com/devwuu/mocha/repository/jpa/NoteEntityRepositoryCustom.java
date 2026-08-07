@@ -30,7 +30,7 @@ public interface NoteEntityRepositoryCustom {
      *
      * <p>노트가 몇 건이든 질의 수가 고정된다(배열 4 + 엔트리 1 + 회차 1 + 레시피 1 + 감상 1 = 8) — 엔티티에
      * 연관이 없어(TΔ3a) 지연 로딩이 없고, 따라서 N+1이 생길 자리도 없다. 내부의 id 사슬
-     * ({@code noteIds → entryIds → brewIds})은 질의 배관이라 여기서 닫는다.
+     * ({@code noteIds → entryIds → cupIds})은 질의 배관이라 여기서 닫는다.
      */
     NoteChildRows findChildRows(Collection<Long> noteIds);
 
@@ -108,7 +108,7 @@ public interface NoteEntityRepositoryCustom {
     List<NotePhoto> findPhotos(long noteId);
 
     /**
-     * 생성 id가 <b>즉시 필요한</b> 행 하나를 넣는다 — {@code entry}·{@code brew}처럼 자식이 그 id를 컬럼으로
+     * 생성 id가 <b>즉시 필요한</b> 행 하나를 넣는다 — {@code entry}·{@code cup}처럼 자식이 그 id를 컬럼으로
      * 받아야 하는 경우다(FK가 없으므로 애플리케이션이 값을 옮긴다, ADR-75). flush가 곧 id 확정이다.
      */
     <T> T insertAndFlush(T row);
@@ -148,16 +148,16 @@ public interface NoteEntityRepositoryCustom {
     void deleteNoteArraysExceptAliases(long noteId);
 
     /**
-     * 엔트리의 <b>회차만</b> 지운다 — {@code review}·{@code recipe} → {@code brew}. 엔트리 행은 남는다.
+     * 엔트리의 <b>회차만</b> 지운다 — {@code review}·{@code recipe} → {@code cup}. 엔트리 행은 남는다.
      *
      * <p>수정 세션이 엔트리를 <b>살려 둔 채</b> 회차를 갈아끼우는 자리다(TΔ5c) — 회차는 통째 교체가
      * 정책이라(ADR-59) 부분 갱신 개념이 없고, {@code UNIQUE(entry_id, seq)} 때문에 새 회차를 넣기 전에
      * 옛 seq가 비어 있어야 한다.
      */
-    void deleteBrews(long entryId);
+    void deleteCups(long entryId);
 
     /**
-     * 엔트리 한 건을 하위부터 지운다 — {@link #deleteBrews} 뒤에 {@code entry} 행까지.
+     * 엔트리 한 건을 하위부터 지운다 — {@link #deleteCups} 뒤에 {@code entry} 행까지.
      * FK가 없으므로 순서를 코드가 소유한다(ADR-75).
      *
      * <p><b>벌크 DML이라 즉시 DB에 나간다</b> — 같은 {@code (note_id, tasted_on)}을 다시 쓰기 전에 UNIQUE가
@@ -177,7 +177,7 @@ public interface NoteEntityRepositoryCustom {
      *
      * <p>{@code seq}가 0부터 빈 칸 없이 발급되므로 개수가 곧 다음 번호다({@link #countPhotos}와 같은 성질).
      */
-    long countBrews(long entryId);
+    long countCups(long entryId);
 
     /**
      * 그 노트에 딸린 사진 경로 전부 — {@code (tasted_on, seq)} 오름차순, 없으면 빈 목록
@@ -211,7 +211,7 @@ public interface NoteEntityRepositoryCustom {
     long countPhotos(long noteId, LocalDate tastedOn);
 
     /**
-     * 노트 한 건을 <b>하위부터</b> 통째로 지운다 — review·recipe → brew → entry → 배열 4종 + 사진 → note
+     * 노트 한 건을 <b>하위부터</b> 통째로 지운다 — review·recipe → cup → entry → 배열 4종 + 사진 → note
      * (ref: changes/0028-rdb-storage/tasks.md TΔ5d, AC-Δ8; 사진은 changes/0029 TΔ8b).
      *
      * <p>{@code cascade}·{@code orphanRemoval}을 쓰지 않으므로(ADR-75) 이 순서를 <b>코드가 소유한다</b> —

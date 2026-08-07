@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.devwuu.mocha.SingleUser;
 import com.devwuu.mocha.domain.Aliases;
-import com.devwuu.mocha.domain.Brew;
+import com.devwuu.mocha.domain.Cup;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
@@ -168,7 +168,7 @@ class NotePhotoMoveIntegrationTest extends PostgresIntegrationTest {
     }
 
     private static Entry entry(LocalDate date) {
-        return new Entry(date, List.of(new Brew(null, new Review("감상", "감상", Rating.GOOD))),
+        return new Entry(date, List.of(new Cup(null, new Review("감상", "감상", Rating.GOOD))),
                 OffsetDateTime.of(2000, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC));
     }
 

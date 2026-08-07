@@ -6,7 +6,7 @@ import com.devwuu.mocha.agent.turn.TastingDateDetector;
 import com.devwuu.mocha.agent.turn.TurnDraft;
 import com.devwuu.mocha.agent.turn.TurnUserMessage;
 import com.devwuu.mocha.domain.Bean;
-import com.devwuu.mocha.domain.Brew;
+import com.devwuu.mocha.domain.Cup;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
@@ -82,7 +82,7 @@ public class RecordProposalValidator {
             requireSingleDateOrSegmented(utterance, targetDate);
             MatchInfo match = toMatchInfo(args.match());
 
-            List<Brew> brews = BrewRules.brews(args.brews());
+            List<Cup> brews = BrewRules.brews(args.brews());
             // V-15: 드롭 후 회차 0개인 엔트리는 저장을 거부한다 — 기록할 내용이 없음(사유는 tool 결과로).
             if (brews.isEmpty()) {
                 throw new RejectedException("기록할 회차 내용이 없다 — brews에 감상(review)이나 레시피(recipe) 중 "

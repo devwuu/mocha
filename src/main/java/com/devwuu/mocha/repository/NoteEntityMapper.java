@@ -2,7 +2,7 @@ package com.devwuu.mocha.repository;
 
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Bean;
-import com.devwuu.mocha.domain.Brew;
+import com.devwuu.mocha.domain.Cup;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
@@ -11,7 +11,7 @@ import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.domain.Review;
 import com.devwuu.mocha.repository.entity.AliasKind;
-import com.devwuu.mocha.repository.entity.BrewEntity;
+import com.devwuu.mocha.repository.entity.CupEntity;
 import com.devwuu.mocha.repository.entity.EntryEntity;
 import com.devwuu.mocha.repository.entity.NoteAliasEntity;
 import com.devwuu.mocha.repository.entity.NoteBeanEntity;
@@ -38,11 +38,11 @@ import java.util.stream.Collectors;
  *
  * <p>POLICY: 변환은 <b>저장소 쪽에만</b> 있다 — 도메인 record는 영속 타입을 모른다(백엔드 CLAUDE.md §4,
  * REVIEW.md §2). 엔티티도 도메인 타입을 조립하지 않는다: 엔티티는 행 하나를 표현하고, 3단 중첩
- * ({@code Note → entries → brews → recipe/review})과 배열 6종의 분해·재조립은 전부 여기서 일어난다.
+ * ({@code Note → entries → cups → recipe/review})과 배열 6종의 분해·재조립은 전부 여기서 일어난다.
  *
  * <p><b>조립은 아래에서 위로</b> 한다 — 엔티티에 연관 매핑이 없으므로({@link NoteEntity} POLICY) 부모가
  * 자식 행을 알지 못한다. 평면 행 목록({@link NoteChildRows})을 부모별로 그룹핑해
- * {@link #toBrew} → {@link #toEntry} → {@link #toNote} 순으로 올리는 것이 {@link #assemble}이다.
+ * {@link #toCup} → {@link #toEntry} → {@link #toNote} 순으로 올리는 것이 {@link #assemble}이다.
  * <b>정렬은 질의가 소유한다</b>: seq 있는 3종은 {@code seq} 오름차순, 별칭은 {@code id} 오름차순
  * (= 첫 등장 순서, V-13). 이 클래스는 받은 목록의 순서를 그대로 보존할 뿐 재정렬하지 않는다.
  *
@@ -170,7 +170,7 @@ public final class NoteEntityMapper {
         return rows;
     }
 
-    /** 엔트리 행. 회차는 {@link BrewEntity}로 따로 나가고, {@code updatedAt}은 감사 컬럼이 겸한다(Q-5). */
+    /** 엔트리 행. 회차는 {@link CupEntity}로 따로 나가고, {@code updatedAt}은 감사 컬럼이 겸한다(Q-5). */
     public static EntryEntity toEntryEntity(Long noteId, Entry entry) {
         return new EntryEntity(noteId, entry.date());
     }
@@ -181,22 +181,22 @@ public final class NoteEntityMapper {
      * ({@link Recipe#normalize})가 저장 경계에서 이미 드롭하므로 여기 도달하지 않고, 도달한다면
      * DB CHECK와 같은 방향(거부)이라 삼키지 않는다.
      */
-    public static RecipeEntity toRecipeEntity(Long brewId, Recipe recipe) {
+    public static RecipeEntity toRecipeEntity(Long cupId, Recipe recipe) {
         if (recipe == null) {
             return null;
         }
-        return new RecipeEntity(brewId, recipe.method(),
+        return new RecipeEntity(cupId, recipe.method(),
                 toNumeric(recipe.doseG()), toNumeric(recipe.waterMl()), toNumeric(recipe.yieldMl()),
                 toNumeric(recipe.timeSec()), toNumeric(recipe.tempC()),
                 recipe.grind(), recipe.machine(), recipe.pouring(), recipe.feedback());
     }
 
     /** 감상 행 — 회차의 {@code review}가 없으면 {@code null}(행 미생성, V-15). */
-    public static ReviewEntity toReviewEntity(Long brewId, Review review) {
+    public static ReviewEntity toReviewEntity(Long cupId, Review review) {
         if (review == null) {
             return null;
         }
-        return new ReviewEntity(brewId, review.myTaste(), review.myTasteOriginal(), review.rating());
+        return new ReviewEntity(cupId, review.myTaste(), review.myTasteOriginal(), review.rating());
     }
 
     /** 출처 표시 필드 → (value, source) 두 컬럼. */
@@ -244,19 +244,19 @@ public final class NoteEntityMapper {
 
     /** 엔트리 → 회차 → 레시피/감상 세 단을 노트별로 되묶는다. 짝짓기는 전부 부모 id 조회다(연관 없음). */
     private static Map<Long, List<Entry>> assembleEntries(NoteChildRows children) {
-        Map<Long, List<BrewEntity>> brewsByEntry = groupBy(children.brews(), BrewEntity::getEntryId);
-        Map<Long, RecipeEntity> recipeByBrew = children.recipes().stream()
-                .collect(Collectors.toMap(RecipeEntity::getBrewId, Function.identity()));
-        Map<Long, ReviewEntity> reviewByBrew = children.reviews().stream()
-                .collect(Collectors.toMap(ReviewEntity::getBrewId, Function.identity()));
+        Map<Long, List<CupEntity>> cupsByEntry = groupBy(children.cups(), CupEntity::getEntryId);
+        Map<Long, RecipeEntity> recipeByCup = children.recipes().stream()
+                .collect(Collectors.toMap(RecipeEntity::getCupId, Function.identity()));
+        Map<Long, ReviewEntity> reviewByCup = children.reviews().stream()
+                .collect(Collectors.toMap(ReviewEntity::getCupId, Function.identity()));
 
         Map<Long, List<Entry>> byNote = new LinkedHashMap<>();
         for (EntryEntity entry : children.entries()) {
-            List<Brew> brews = brewsByEntry.getOrDefault(entry.getId(), List.<BrewEntity>of()).stream()
-                    .map(brew -> toBrew(recipeByBrew.get(brew.getId()), reviewByBrew.get(brew.getId())))
+            List<Cup> cups = cupsByEntry.getOrDefault(entry.getId(), List.<CupEntity>of()).stream()
+                    .map(cup -> toCup(recipeByCup.get(cup.getId()), reviewByCup.get(cup.getId())))
                     .toList();
             byNote.computeIfAbsent(entry.getNoteId(), key -> new ArrayList<>())
-                    .add(toEntry(entry, brews));
+                    .add(toEntry(entry, cups));
         }
         return byNote;
     }
@@ -311,17 +311,17 @@ public final class NoteEntityMapper {
                 note.getModifiedAt());
     }
 
-    /** 엔트리 조립 — 회차는 {@link #toBrew}로 올라온 것을 받는다. 순서는 질의({@code seq} 오름차순)가 소유. */
-    public static Entry toEntry(EntryEntity entry, List<Brew> brews) {
-        return new Entry(entry.getTastedOn(), brews, entry.getModifiedAt());
+    /** 엔트리 조립 — 회차는 {@link #toCup}로 올라온 것을 받는다. 순서는 질의({@code seq} 오름차순)가 소유. */
+    public static Entry toEntry(EntryEntity entry, List<Cup> cups) {
+        return new Entry(entry.getTastedOn(), cups, entry.getModifiedAt());
     }
 
     /**
-     * 회차 조립 — {@code brew} 행은 식별자만 갖고, 실체는 {@code brew_id}를 PK로 공유하는 두 행이다.
-     * 도메인 {@link Brew}가 레시피·감상을 직접 품는 형태로 되돌린다(짝은 구조가 표현한다, ADR-59).
+     * 회차 조립 — {@code cup} 행은 식별자만 갖고, 실체는 {@code cup_id}를 PK로 공유하는 두 행이다.
+     * 도메인 {@link Cup}가 레시피·감상을 직접 품는 형태로 되돌린다(짝은 구조가 표현한다, ADR-59).
      */
-    public static Brew toBrew(RecipeEntity recipe, ReviewEntity review) {
-        return new Brew(toRecipe(recipe), toReview(review));
+    public static Cup toCup(RecipeEntity recipe, ReviewEntity review) {
+        return new Cup(toRecipe(recipe), toReview(review));
     }
 
     /** 원두 1종 — description·process가 각각 출처를 갖는다(V-6 요소 서브필드 단위). */

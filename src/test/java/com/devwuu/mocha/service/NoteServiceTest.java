@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Bean;
-import com.devwuu.mocha.domain.Brew;
+import com.devwuu.mocha.domain.Cup;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
@@ -476,7 +476,7 @@ class NoteServiceTest {
     }
 
     private static Entry entry() {
-        return new Entry(day(10), List.of(new Brew(null, new Review("감상", "감상", Rating.GOOD))),
+        return new Entry(day(10), List.of(new Cup(null, new Review("감상", "감상", Rating.GOOD))),
                 OffsetDateTime.parse("2026-07-10T10:00:00+09:00"));
     }
 

@@ -1,6 +1,6 @@
 package com.devwuu.mocha.agent.tool;
 
-import com.devwuu.mocha.domain.Brew;
+import com.devwuu.mocha.domain.Cup;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.NoteMeta;
 
@@ -21,7 +21,7 @@ import java.util.List;
 public record RecordProposal(
         NoteMeta meta,
         LocalDate targetDate,
-        List<Brew> brews,
+        List<Cup> brews,
         MatchInfo match
 ) {
 }

@@ -1,7 +1,7 @@
 package com.devwuu.mocha.web;
 
 import com.devwuu.mocha.domain.Bean;
-import com.devwuu.mocha.domain.Brew;
+import com.devwuu.mocha.domain.Cup;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteDetail;
@@ -9,6 +9,7 @@ import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.domain.Review;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -56,11 +57,12 @@ public record NoteDetailBody(
      * 이기 때문이고, 계약 하나로 히어로와 날짜별 스트립이 <b>둘 다</b> 나온다 — 노트 레벨 배열을 따로 두면
      * 같은 사진이 두 자리에 실린다.
      */
-    public record DetailEntry(LocalDate date, List<DetailBrew> brews, List<Photo> photos) {
+    // TΔ3 임시 조치: JSON 키는 아직 brews다 — 계약 표면 개명은 TΔ4가 하고 이 애너테이션을 걷어낸다.
+    public record DetailEntry(LocalDate date, @JsonProperty("brews") List<DetailCup> cups, List<Photo> photos) {
     }
 
     /** 저장된 회차 1개 — 레시피·감상 중 최소 하나는 non-null이다(V-15). */
-    public record DetailBrew(Recipe recipe, DetailReview review) {
+    public record DetailCup(Recipe recipe, DetailReview review) {
     }
 
     /** 저장된 감상 — <b>원문이 없다</b>(위 절단 셋). */
@@ -90,13 +92,13 @@ public record NoteDetailBody(
     private static DetailEntry toDetailEntry(Entry entry, List<String> paths) {
         return new DetailEntry(
                 entry.date(),
-                entry.brews().stream().map(NoteDetailBody::toDetailBrew).toList(),
+                entry.cups().stream().map(NoteDetailBody::toDetailCup).toList(),
                 paths.stream().map(PhotoUrl::of).filter(Objects::nonNull).map(Photo::new).toList());
     }
 
-    private static DetailBrew toDetailBrew(Brew brew) {
-        Review review = brew.review();
-        return new DetailBrew(brew.recipe(),
+    private static DetailCup toDetailCup(Cup cup) {
+        Review review = cup.review();
+        return new DetailCup(cup.recipe(),
                 review == null ? null : new DetailReview(review.myTaste(), review.rating()));
     }
 }

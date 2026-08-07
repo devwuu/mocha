@@ -45,11 +45,11 @@ public interface NoteRenderer {
      * @param noteId     대상 노트 id.
      * @param date       대상 엔트리 날짜.
      * @param type       카드 종류.
-     * @param brewNumber 회차 번호(1부터 — 배열 순서가 곧 번호다, ADR-59).
+     * @param cupNumber 회차 번호(1부터 — 배열 순서가 곧 번호다, ADR-59).
      * @return 카드 JPG 경로. 노트·엔트리·회차가 없거나 그 회차에 해당 파트가 없으면 빈 Optional
      *         (AC-78 — 없는 파트는 카드가 없는 것이 정상이다).
      */
-    Optional<Path> entryCard(long noteId, LocalDate date, CardType type, int brewNumber);
+    Optional<Path> entryCard(long noteId, LocalDate date, CardType type, int cupNumber);
 
     /**
      * 대상 엔트리의 회차 카드 전부(review 있는 회차의 감상 카드 + recipe 있는 회차의 레시피 카드 —

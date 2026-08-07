@@ -1,7 +1,7 @@
 package com.devwuu.mocha.render;
 
 import com.devwuu.mocha.domain.Bean;
-import com.devwuu.mocha.domain.Brew;
+import com.devwuu.mocha.domain.Cup;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.Recipe;
@@ -102,7 +102,7 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
     }
 
     @Override
-    public Optional<Path> entryCard(long noteId, LocalDate date, CardType type, int brewNumber) {
+    public Optional<Path> entryCard(long noteId, LocalDate date, CardType type, int cupNumber) {
         Note note = noteService.findById(noteId).orElse(null);
         if (note == null) {
             return Optional.empty();
@@ -110,12 +110,12 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
         Entry entry = entryOf(note, date);
         // 없는 대상은 예외가 아니라 빈 결과다 — 그 판정을 상태 코드로 옮기는 것은 전송 계층의 몫이고,
         // 여기서 예외로 던지면 "카드가 없다"와 "굽다 실패했다"가 같은 형태로 올라간다(뜻이 다르다).
-        if (entry == null || brewNumber < 1 || brewNumber > entry.brews().size()
-                || !type.presentIn(entry.brews().get(brewNumber - 1))) {
+        if (entry == null || cupNumber < 1 || cupNumber > entry.cups().size()
+                || !type.presentIn(entry.cups().get(cupNumber - 1))) {
             return Optional.empty();
         }
 
-        Path card = CardFiles.card(artifactDir, note, date, type, brewNumber);
+        Path card = CardFiles.card(artifactDir, note, date, type, cupNumber);
         if (Files.isRegularFile(card)) {
             return Optional.of(card); // 캐시 히트 — 쓰기가 무효화하지 않은 카드는 최신이다(NoteService).
         }
@@ -208,22 +208,22 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
     // 산출 순서 = CardFiles.expectedCards와 동일(회차 오름차순, 감상 → 레시피).
     private List<Path> bakeEntryCards(EntryRef ref) {
         List<Path> out = new ArrayList<>();
-        List<Brew> brews = ref.entry().brews();
-        for (int i = 0; i < brews.size(); i++) {
+        List<Cup> cups = ref.entry().cups();
+        for (int i = 0; i < cups.size(); i++) {
             int n = i + 1; // 배열 순서 = 회차 번호(ADR-59)
-            Brew brew = brews.get(i);
-            if (brew.review() != null) {
-                out.add(bakeTasteCard(ref.note(), ref.entry(), brew.review(), n));
+            Cup cup = cups.get(i);
+            if (cup.review() != null) {
+                out.add(bakeTasteCard(ref.note(), ref.entry(), cup.review(), n));
             }
-            if (brew.recipe() != null) {
-                out.add(bakeRecipeCard(ref.note(), ref.entry(), brew.recipe(), n));
+            if (cup.recipe() != null) {
+                out.add(bakeRecipeCard(ref.note(), ref.entry(), cup.recipe(), n));
             }
         }
         return out;
     }
 
     // taste.html을 회차 감상 파트 1건으로 렌더해 cards/<접미>/<date>-taste-<n>.jpg로 굽는다.
-    private Path bakeTasteCard(Note note, Entry entry, Review review, int brewNumber) {
+    private Path bakeTasteCard(Note note, Entry entry, Review review, int cupNumber) {
         NoteView.TasteCard card = new NoteView.TasteCard(
                 Sourced.valueOrNull(note.coffeeName()), // 제목은 값만 — 출처 무표기(제목=정체성, NoteView.TasteCard)
                 Sourced.valueOrNull(note.roastery()),
@@ -233,16 +233,16 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
                 entry.date(),
                 review.myTaste(),
                 review.rating());
-        Path out = CardFiles.tasteCard(artifactDir, note, entry.date(), brewNumber);
+        Path out = CardFiles.tasteCard(artifactDir, note, entry.date(), cupNumber);
         cardImageRenderer.render(render("taste", cardContext(card)), artifactDir, out);
         return out;
     }
 
     // recipe.html을 회차 레시피 파트 1건으로 렌더해 cards/<접미>/<date>-recipe-<n>.jpg로 굽는다.
-    private Path bakeRecipeCard(Note note, Entry entry, Recipe recipe, int brewNumber) {
+    private Path bakeRecipeCard(Note note, Entry entry, Recipe recipe, int cupNumber) {
         NoteView.RecipeCard card = new NoteView.RecipeCard(
                 Sourced.valueOrNull(note.coffeeName()), Sourced.valueOrNull(note.roastery()), entry.date(), recipe);
-        Path out = CardFiles.recipeCard(artifactDir, note, entry.date(), brewNumber);
+        Path out = CardFiles.recipeCard(artifactDir, note, entry.date(), cupNumber);
         cardImageRenderer.render(render("recipe", cardContext(card)), artifactDir, out);
         return out;
     }

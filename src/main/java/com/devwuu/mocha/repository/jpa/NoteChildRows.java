@@ -1,6 +1,6 @@
 package com.devwuu.mocha.repository.jpa;
 
-import com.devwuu.mocha.repository.entity.BrewEntity;
+import com.devwuu.mocha.repository.entity.CupEntity;
 import com.devwuu.mocha.repository.entity.EntryEntity;
 import com.devwuu.mocha.repository.entity.NoteAliasEntity;
 import com.devwuu.mocha.repository.entity.NoteBeanEntity;
@@ -19,7 +19,7 @@ import java.util.List;
  *
  * <p>각 목록의 순서가 곧 도메인 순서다: 배열 3종·회차는 {@code seq} 오름차순, 엔트리는 {@code tasted_on}
  * 오름차순, 별칭은 {@code id} 오름차순(= 첫 등장 순서, V-13). {@code recipe}·{@code review}는
- * {@code brew_id}로 짝지어지므로 순서 개념이 없다.
+ * {@code cup_id}로 짝지어지므로 순서 개념이 없다.
  */
 public record NoteChildRows(
         List<NoteBeanEntity> beans,
@@ -27,7 +27,7 @@ public record NoteChildRows(
         List<NoteAliasEntity> aliases,
         List<NoteSourceEntity> sources,
         List<EntryEntity> entries,
-        List<BrewEntity> brews,
+        List<CupEntity> cups,
         List<RecipeEntity> recipes,
         List<ReviewEntity> reviews
 ) {
