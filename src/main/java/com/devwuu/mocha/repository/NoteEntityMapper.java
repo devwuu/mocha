@@ -80,7 +80,7 @@ public final class NoteEntityMapper {
     // ────────────────────────────── 도메인 → 엔티티 ──────────────────────────────
 
     /**
-     * 노트 본문 행. 하위 배열(beans·official_notes·aliases·sources)과 엔트리는 각자의 메서드가 만든다 —
+     * 노트 본문 행. 하위 배열(beans·official_notes·aliases·sources)과 시음일은 각자의 메서드가 만든다 —
      * 자식이 부모 id를 컬럼으로 들기 때문에 노트 INSERT로 id를 받은 뒤에야 만들 수 있다(ADR-75).
      */
     public static NoteEntity toNoteEntity(Note note) {
@@ -170,7 +170,7 @@ public final class NoteEntityMapper {
         return rows;
     }
 
-    /** 엔트리 행. 회차는 {@link CupEntity}로 따로 나가고, {@code updatedAt}은 감사 컬럼이 겸한다(Q-5). */
+    /** 시음일 행. 회차는 {@link CupEntity}로 따로 나가고, {@code updatedAt}은 감사 컬럼이 겸한다(Q-5). */
     public static TastingDayEntity toTastingDayEntity(Long noteId, TastingDay tastingDay) {
         return new TastingDayEntity(noteId, tastingDay.date());
     }
@@ -242,7 +242,7 @@ public final class NoteEntityMapper {
         return List.copyOf(assembled);
     }
 
-    /** 엔트리 → 회차 → 레시피/감상 세 단을 노트별로 되묶는다. 짝짓기는 전부 부모 id 조회다(연관 없음). */
+    /** 시음일 → 회차 → 레시피/감상 세 단을 노트별로 되묶는다. 짝짓기는 전부 부모 id 조회다(연관 없음). */
     private static Map<Long, List<TastingDay>> assembleTastingDays(NoteChildRows children) {
         Map<Long, List<CupEntity>> cupsByTastingDay = groupBy(children.cups(), CupEntity::getTastingDayId);
         Map<Long, RecipeEntity> recipeByCup = children.recipes().stream()
@@ -292,7 +292,7 @@ public final class NoteEntityMapper {
         return sanitized;
     }
 
-    /** 노트 조립 — 자식 행 목록과 <b>이미 조립된</b> 엔트리를 받는다({@link #toTastingDay}). */
+    /** 노트 조립 — 자식 행 목록과 <b>이미 조립된</b> 시음일을 받는다({@link #toTastingDay}). */
     public static Note toNote(NoteEntity note, List<NoteBeanEntity> beans,
                               List<NoteOfficialNoteEntity> officialNotes, List<NoteAliasEntity> aliases,
                               List<NoteSourceEntity> sources, List<TastingDay> tastingDays) {
@@ -311,7 +311,7 @@ public final class NoteEntityMapper {
                 note.getModifiedAt());
     }
 
-    /** 엔트리 조립 — 회차는 {@link #toCup}로 올라온 것을 받는다. 순서는 질의({@code seq} 오름차순)가 소유. */
+    /** 시음일 조립 — 회차는 {@link #toCup}로 올라온 것을 받는다. 순서는 질의({@code seq} 오름차순)가 소유. */
     public static TastingDay toTastingDay(TastingDayEntity tastingDay, List<Cup> cups) {
         return new TastingDay(tastingDay.getTastedOn(), cups, tastingDay.getModifiedAt());
     }

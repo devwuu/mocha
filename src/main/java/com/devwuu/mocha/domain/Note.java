@@ -7,7 +7,7 @@ import java.util.List;
 
 /**
  * 노트 = 커피 1종 — {@code note} 테이블 1행 + 자식 행들 (ref: data-model.md#2.1, ADR-4, changes/0028 ADR-73).
- * <p>파생 값(엔트리 수 등)은 저장하지 않고 렌더 시 계산(POLICY, ADR-1).
+ * <p>파생 값(시음일 수 등)은 저장하지 않고 렌더 시 계산(POLICY, ADR-1).
  *
  * @param id            DB가 발급한 대체키({@code BIGSERIAL}). 구 slug를 대체한다 — 파일명이자 식별자라는
  *                      slug의 존재 이유가 파일 폐기와 함께 사라졌다(ADR-75, V-2 폐기).

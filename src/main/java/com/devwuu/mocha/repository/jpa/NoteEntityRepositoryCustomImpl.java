@@ -110,13 +110,13 @@ class NoteEntityRepositoryCustomImpl implements NoteEntityRepositoryCustom {
                         noteEntity.id,
                         noteEntity.coffeeName.value,
                         noteEntity.roastery.value,
-                        // 엔트리가 없는 노트는 여기가 null이다 — 그래서 join이 left다(inner면 그 노트가
+                        // 시음일이 없는 노트는 여기가 null이다 — 그래서 join이 left다(inner면 그 노트가
                         // 후보에서 통째로 빠지는데, 삭제 직후가 정확히 그 상태다).
                         tastingDayEntity.tastedOn.max()))
                 .from(noteEntity)
                 .leftJoin(tastingDayEntity).on(tastingDayEntity.noteId.eq(noteEntity.id))
                 .where(matches(normalizedQuery))
-                // 노트마다 엔트리 수만큼 행이 불어난 것을 다시 접는다. 별칭 축을 join이 아니라 exists로
+                // 노트마다 시음일 수만큼 행이 불어난 것을 다시 접는다. 별칭 축을 join이 아니라 exists로
                 // 둔 것도 같은 이유고(아래), 그쪽은 접을 필요조차 없게 만든 것이다.
                 .groupBy(noteEntity.id, noteEntity.coffeeName.value, noteEntity.roastery.value,
                         noteEntity.coffeeNameNormalized, noteEntity.roasteryNormalized)
@@ -157,7 +157,7 @@ class NoteEntityRepositoryCustomImpl implements NoteEntityRepositoryCustom {
     @Override
     public List<NoteListItem> findNoteItems(NoteFilter filter, NoteCursor cursor, int limit) {
         // 최근 시음일은 집계값이라 leftJoin + groupBy로 낸다(findCandidates와 같은 형태). left인 이유도
-        // 같다 — 엔트리가 없는 노트는 inner join에서 목록 자체에서 빠지는데, 삭제 직후가 그 상태다.
+        // 같다 — 시음일이 없는 노트는 inner join에서 목록 자체에서 빠지는데, 삭제 직후가 그 상태다.
         List<Tuple> rows = query
                 .select(noteEntity.id, noteEntity.coffeeName.value, noteEntity.roastery.value,
                         tastingDayEntity.tastedOn.max())
@@ -211,7 +211,7 @@ class NoteEntityRepositoryCustomImpl implements NoteEntityRepositoryCustom {
 
     @Override
     public long countNotes(NoteFilter filter) {
-        // 엔트리 join이 없다 — 필터 축 어디에도 최근 시음일이 없으므로 노트 행만 세면 된다(집계·중복 제거
+        // 시음일 join이 없다 — 필터 축 어디에도 최근 시음일이 없으므로 노트 행만 세면 된다(집계·중복 제거
         // 없이 정확하다). 필터가 실제로 거는 축은 전부 exists거나 노트 본문 컬럼이다.
         Long count = query.select(noteEntity.count()).from(noteEntity).where(filters(filter)).fetchOne();
         return count == null ? 0L : count;
@@ -405,8 +405,8 @@ class NoteEntityRepositoryCustomImpl implements NoteEntityRepositoryCustom {
     }
 
     /**
-     * 노트의 엔트리 <b>전부</b>를 하위부터 — {@link #deleteCups}를 엔트리마다 부르지 않고 id를 모아 한 번에
-     * 지운다. 엔트리가 몇 건이든 질의 수가 고정된다(수집 2 + 삭제 4).
+     * 노트의 시음일 <b>전부</b>를 하위부터 — {@link #deleteCups}를 시음일마다 부르지 않고 id를 모아 한 번에
+     * 지운다. 시음일이 몇 건이든 질의 수가 고정된다(수집 2 + 삭제 4).
      */
     private void deleteTastingDays(long noteId) {
         List<Long> tastingDayIds = query.select(tastingDayEntity.id).from(tastingDayEntity)

@@ -119,7 +119,7 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
         if (Files.isRegularFile(card)) {
             return Optional.of(card); // 캐시 히트 — 쓰기가 무효화하지 않은 카드는 최신이다(NoteService).
         }
-        // 미스는 엔트리 단위로 채운다 — 공유가 그 회차의 감상·레시피를 함께 집으므로 두 번째 요청이 곧
+        // 미스는 시음일 단위로 채운다 — 공유가 그 회차의 감상·레시피를 함께 집으므로 두 번째 요청이 곧
         // 이어지고, 브라우저 기동이 카드 장수보다 비싸다(NoteRenderer#tastingDayCard).
         return bakeTastingDay(note, tastingDay).stream().filter(card::equals).findFirst();
     }
@@ -130,20 +130,20 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
                 .orElseThrow(() -> new IllegalArgumentException("카드 렌더 대상 노트 없음: noteId=" + noteId));
         TastingDay tastingDay = tastingDayOf(note, date);
         if (tastingDay == null) {
-            throw new IllegalArgumentException("카드 렌더 대상 엔트리 없음: noteId=" + noteId + " date=" + date);
+            throw new IllegalArgumentException("카드 렌더 대상 시음일 없음: noteId=" + noteId + " date=" + date);
         }
         return bakeTastingDay(note, tastingDay);
     }
 
-    // 그 엔트리의 회차 카드를 굽고 옛 카드를 정리한다 — renderTastingDayCard와 온디맨드 미스의 공용 지점.
+    // 그 시음일의 회차 카드를 굽고 옛 카드를 정리한다 — renderTastingDayCard와 온디맨드 미스의 공용 지점.
     private List<Path> bakeTastingDay(Note note, TastingDay tastingDay) {
         // 한 장만 굽는 길이어도 base 자산은 최신 상태여야 한다 — 카드가 참조하는 폰트·이미지의 해석 기준(AC-Δ7).
         copyMascot();
         copyFonts();
         List<Path> cards = bakeTastingDayCards(new TastingDayRef(note, tastingDay));
-        // 회차 감소·파트 소멸 재저장의 옛 번호 카드가 남지 않게, 방금 산출 집합 외의 그 엔트리 카드를 지운다(TΔ5a).
+        // 회차 감소·파트 소멸 재저장의 옛 번호 카드가 남지 않게, 방금 산출 집합 외의 그 시음일 카드를 지운다(TΔ5a).
         pruneTastingDayCards(note, tastingDay.date(), Set.copyOf(cards));
-        log.info("엔트리 카드 렌더: noteId={} date={} → {}장", note.id(), tastingDay.date(), cards.size());
+        log.info("시음일 카드 렌더: noteId={} date={} → {}장", note.id(), tastingDay.date(), cards.size());
         return cards;
     }
 
@@ -152,7 +152,7 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
         return note.tastingDays().stream().filter(e -> e.date().equals(date)).findFirst().orElse(null);
     }
 
-    // 그 엔트리(노트,date)의 카드 파일 중 keep에 없는 것을 지운다 — 회차 감소·파트 소멸로 남은
+    // 그 시음일(노트,date)의 카드 파일 중 keep에 없는 것을 지운다 — 회차 감소·파트 소멸로 남은
     // 옛 번호 카드의 정리 지점이다(노트 단위 캐시 무효화는 쓰기 경로가 진다, NoteService).
     private void pruneTastingDayCards(Note note, LocalDate date, Set<Path> keep) {
         Path noteDir = CardFiles.noteCardsDir(artifactDir, note);
@@ -163,11 +163,11 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
             for (Path card : cards) {
                 if (!keep.contains(card)) {
                     Files.delete(card);
-                    log.info("엔트리 카드 삭제: noteId={} date={} file={}", note.id(), date, card.getFileName());
+                    log.info("시음일 카드 삭제: noteId={} date={} file={}", note.id(), date, card.getFileName());
                 }
             }
         } catch (IOException e) {
-            throw new UncheckedIOException("엔트리 카드 삭제 실패: noteId=" + note.id() + " date=" + date, e);
+            throw new UncheckedIOException("시음일 카드 삭제 실패: noteId=" + note.id() + " date=" + date, e);
         }
     }
 
@@ -204,7 +204,7 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
 
     // --- 회차 카드 (회차 파트 1건 → JPG, ADR-54·59) ---
 
-    // 엔트리의 회차 카드 전부를 굽는다 — review 있는 회차는 감상 카드, recipe 있는 회차는 레시피 카드(AC-78).
+    // 시음일의 회차 카드 전부를 굽는다 — review 있는 회차는 감상 카드, recipe 있는 회차는 레시피 카드(AC-78).
     // 산출 순서 = CardFiles.expectedCards와 동일(회차 오름차순, 감상 → 레시피).
     private List<Path> bakeTastingDayCards(TastingDayRef ref) {
         List<Path> out = new ArrayList<>();
@@ -265,7 +265,7 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
 
     // --- 공통 ---
 
-    // 모든 (노트,엔트리)를 엔트리 date 내림차순 + 노트 id 오름차순으로 평탄화한다(결정론적 재현성, AC-Δ7).
+    // 모든 (노트,시음일)을 시음일 date 내림차순 + 노트 id 오름차순으로 평탄화한다(결정론적 재현성, AC-Δ7).
     // 2차 키는 저장소 findAll의 정렬 키(id 오름차순)와 같아야 한다 — 두 곳이 갈리면 같은 DB에서
     // 산출 순서가 달라진다(E-1, changes/0028 TΔ6c. 파일 시절엔 둘 다 slug였다).
     private static List<TastingDayRef> orderedTastingDays(List<Note> notes) {
@@ -327,7 +327,7 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
         }
     }
 
-    /** 평탄화된 (노트, 엔트리) 한 쌍 — 카드 산출의 단위. */
+    /** 평탄화된 (노트, 시음일) 한 쌍 — 카드 산출의 단위. */
     private record TastingDayRef(Note note, TastingDay tastingDay) {
     }
 }

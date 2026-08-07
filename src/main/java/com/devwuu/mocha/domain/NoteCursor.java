@@ -14,7 +14,7 @@ import java.time.LocalDate;
  * 그래야 정렬 축이 바뀌어도 클라이언트가 따라 바뀌지 않는다. 문자열 ↔ 이 값의 변환은 전송 표현이라
  * {@code web/NoteCursorCodec}이 소유하고, 이 record는 값만 안다.
  *
- * @param latestDate 그 노트의 최근 시음일. <b>{@code null}이 정상값</b>이다 — 엔트리가 없는 노트는
+ * @param latestDate 그 노트의 최근 시음일. <b>{@code null}이 정상값</b>이다 — 시음일이 없는 노트는
  *                   정렬에서 맨 뒤에 서고, 그 지점도 커서가 될 수 있다.
  * @param noteId     같은 날짜 안의 순서를 가르는 축.
  */

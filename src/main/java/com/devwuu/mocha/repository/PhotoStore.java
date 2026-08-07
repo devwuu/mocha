@@ -66,7 +66,7 @@ public interface PhotoStore {
     void deletePhotos(List<String> relativePaths);
 
     /**
-     * 날짜 이동 시 그 엔트리의 아카이브 폴더를 새 날짜로 동반 이동한다(FR-10·FR-21, D-12 ③).
+     * 날짜 이동 시 그 시음일의 아카이브 폴더를 새 날짜로 동반 이동한다(FR-10·FR-21, D-12 ③).
      * <p>{@code photos/<noteFolder>/<fromDate>/}의 파일 전부를 {@code photos/<noteFolder>/<toDate>/}로 옮기고
      * 빈 옛 폴더를 제거한다 — 폴더=진실 불변식을 유지하기 위함이다. 대상 폴더에 같은 이름 파일이 있으면
      * {@code -N} 접미로 유일화해 병합하고(유실 없음), 원본 폴더가 아예 없으면 아무 일도 하지 않는다(no-op).

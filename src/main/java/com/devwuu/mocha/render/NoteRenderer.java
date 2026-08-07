@@ -31,36 +31,36 @@ import java.util.Optional;
  */
 public interface NoteRenderer {
 
-    /** 모든 엔트리의 회차 카드 JPG 전체 리렌더 + 고아 정리(AC-Δ7). {@code --rerender}가 쓴다. */
+    /** 모든 시음일의 회차 카드 JPG 전체 리렌더 + 고아 정리(AC-Δ7). {@code --rerender}가 쓴다. */
     void renderAll();
 
     /**
      * 카드 1장을 돌려준다 — <b>캐시에 있으면 그대로, 없으면 그때 굽는다</b>(TΔ9, OQ-3 ㉡).
      *
-     * <p><b>미스는 엔트리 단위로 채운다</b>: 요청은 카드 1장이지만 굽는 것은 그 엔트리의 회차 카드
+     * <p><b>미스는 시음일 단위로 채운다</b>: 요청은 카드 1장이지만 굽는 것은 그 시음일의 회차 카드
      * 전부다({@link #renderTastingDayCard}). 근거는 호출 패턴이다 — 공유는 그 회차의 감상·레시피를 함께
      * 집으므로 두 번째 요청이 곧 이어지고, 브라우저 기동이 카드 장수보다 비싸다. 덤으로 회차 감소·파트
      * 소멸로 남은 옛 번호 카드가 그 정리 경로에서 함께 걷힌다.
      *
      * @param noteId     대상 노트 id.
-     * @param date       대상 엔트리 날짜.
+     * @param date       대상 시음일 날짜.
      * @param type       카드 종류.
      * @param cupNumber 회차 번호(1부터 — 배열 순서가 곧 번호다, ADR-59).
-     * @return 카드 JPG 경로. 노트·엔트리·회차가 없거나 그 회차에 해당 파트가 없으면 빈 Optional
+     * @return 카드 JPG 경로. 노트·시음일·회차가 없거나 그 회차에 해당 파트가 없으면 빈 Optional
      *         (AC-78 — 없는 파트는 카드가 없는 것이 정상이다).
      */
     Optional<Path> tastingDayCard(long noteId, LocalDate date, CardType type, int cupNumber);
 
     /**
-     * 대상 엔트리의 회차 카드 전부(review 있는 회차의 감상 카드 + recipe 있는 회차의 레시피 카드 —
+     * 대상 시음일의 회차 카드 전부(review 있는 회차의 감상 카드 + recipe 있는 회차의 레시피 카드 —
      * AC-78)를 굽고 경로 목록을 반환한다(회차 오름차순, 회차 안에서는 감상 → 레시피). 재생성 전
-     * 그 엔트리의 옛 카드 파일을 정리해 회차 감소·파트 소멸 재저장의 잔존 카드를 없앤다(changes/0021 TΔ5a).
+     * 그 시음일의 옛 카드 파일을 정리해 회차 감소·파트 소멸 재저장의 잔존 카드를 없앤다(changes/0021 TΔ5a).
      *
      * <p><b>부르는 것은 {@link #tastingDayCard}의 캐시 미스뿐이다</b>(TΔ9) — 구 호출부인 저장 커밋 직후
      * 증분 렌더는 온디맨드 전환으로 사라졌다.
      *
      * @param noteId 대상 노트 id.
-     * @param date   대상 엔트리 날짜.
+     * @param date   대상 시음일 날짜.
      * @return 구워진 회차 카드 JPG 경로 목록.
      */
     List<Path> renderTastingDayCard(long noteId, LocalDate date);

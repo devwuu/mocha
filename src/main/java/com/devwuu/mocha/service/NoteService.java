@@ -155,10 +155,10 @@ public class NoteService {
      * <p>POLICY: 별칭 생성 콜 실패는 저장을 되돌리지 않는다 — 빈 별칭으로 수렴하고 저장은 유지한다.
      * 이후 관측 표기 축적이 보완한다 ({@link AliasGenerator} 내부 처리, plan.md §7, V-13, ADR-37).
      *
-     * @param draft 확정된 폼 내용 — 이번 시음 엔트리 1건을 포함한다. {@code id}가 있으면 그 노트에 병합.
+     * @param draft 확정된 폼 내용 — 이번 시음일 1건을 포함한다. {@code id}가 있으면 그 노트에 병합.
      * @param match 신규/기존 판정 — 별칭 <b>생성</b> 콜 여부가 여기서 갈린다.
      * @return 저장된 최종 노트.
-     * @throws IllegalArgumentException {@code draft}에 엔트리가 없으면(저장할 시음이 없다).
+     * @throws IllegalArgumentException {@code draft}에 시음일이 없으면(저장할 시음이 없다).
      */
     public Note commit(Note draft, MatchInfo match) {
         // 입력 검증은 트랜잭션을 열기 전에 — 저장할 것이 없는 요청으로 쓰기 구간에 들어가지 않는다.
@@ -234,7 +234,7 @@ public class NoteService {
     }
 
     /**
-     * 엔트리 수정 — 대상 회차를 갈아끼우고, {@code tastingDay.date()}가 다르면 <b>사진까지 데리고</b> 날짜를
+     * 시음일 수정 — 대상 회차를 갈아끼우고, {@code tastingDay.date()}가 다르면 <b>사진까지 데리고</b> 날짜를
      * 옮긴다 (ref: V-10 개정본, changes/0029 delta.md#D-12 ③, spec FR-10·FR-21, tasks TΔ5b-2).
      *
      * <p><b>이 메서드가 지는 것은 순서다</b>: 아카이브 폴더 이동(외부 IO) → 저장. {@link #commit}이
@@ -252,7 +252,7 @@ public class NoteService {
      * 사진 바이트는 아카이브 안에 있다.
      *
      * @return 갱신된 노트 전문 + 사진 — 이동 후의 사진 URL까지 서버가 답한다(TΔ5b-3).
-     * @throws IllegalStateException 대상 노트 또는 {@code targetDate} 엔트리 소실 시.
+     * @throws IllegalStateException 대상 노트 또는 {@code targetDate} 시음일 소실 시.
      */
     public NoteDetail replaceTastingDay(long noteId, LocalDate targetDate, TastingDay tastingDay) {
         Map<String, String> movedPhotos = movePhotoFiles(noteId, targetDate, tastingDay.date());
@@ -324,7 +324,7 @@ public class NoteService {
     /**
      * 카드 캐시 무효화 — 그 노트의 카드를 통째로 걷는다 (ref: changes/0029 tasks.md TΔ9, OQ-3 ㉡·OQ-10).
      *
-     * <p><b>무효화 축은 노트 하나다</b>(엔트리도 회차도 아니다). 셋으로 갈라도 되지만 그러면 규칙이
+     * <p><b>무효화 축은 노트 하나다</b>(시음일도 회차도 아니다). 셋으로 갈라도 되지만 그러면 규칙이
      * 셋이 되고, 그중 하나만 틀려도 <i>낡은 카드를 공유하는</i> 형태로 조용히 새는데 — 그것을 알아채는
      * 자리는 이미 공유한 뒤다. 하나로 두면 대가는 안 낡은 카드까지 다시 굽는 것뿐이고, 온디맨드에서
      * 캐시는 대개 0~2장이라(공유한 것만 있다) 그 대가가 실질적으로 없다.
@@ -373,7 +373,7 @@ public class NoteService {
 
     // ────────────────────────────── 도메인 조각 ──────────────────────────────
 
-    /** draft(Note)에서 노트 단위 메타만 뽑는다 — 엔트리·식별자·타임스탬프는 아래 층이 다룬다. */
+    /** draft(Note)에서 노트 단위 메타만 뽑는다 — 시음일·식별자·타임스탬프는 아래 층이 다룬다. */
     private static NoteMeta metaOf(Note draft) {
         return new NoteMeta(
                 draft.coffeeName(),
@@ -384,11 +384,11 @@ public class NoteService {
                 draft.sources());
     }
 
-    /** 이번 시음 엔트리 — draft.tastingDays는 1건 전제(폼과 동일 가정). 마지막 엔트리를 취한다. */
+    /** 이번 시음일 — draft.tastingDays는 1건 전제(폼과 동일 가정). 마지막 시음일을 취한다. */
     private static TastingDay latestTastingDay(Note draft) {
         List<TastingDay> tastingDays = draft.tastingDays();
         if (tastingDays == null || tastingDays.isEmpty()) {
-            throw new IllegalArgumentException("저장할 시음 엔트리가 없다: noteId=" + draft.id());
+            throw new IllegalArgumentException("저장할 시음일이 없다: noteId=" + draft.id());
         }
         return tastingDays.getLast();
     }

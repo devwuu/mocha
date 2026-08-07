@@ -17,7 +17,7 @@ import java.time.LocalDate;
  * @param noteId     식별자.
  * @param coffeeName 커피명 — 저장된 노트에는 반드시 있다(V-9, {@code note.coffee_name NOT NULL}).
  * @param roastery   로스터리 또는 {@code null}(모르는 노트).
- * @param latestDate 최근 시음일 또는 {@code null}(엔트리가 없는 노트 — 삭제 직후가 그 상태다).
+ * @param latestDate 최근 시음일 또는 {@code null}(시음일이 없는 노트 — 삭제 직후가 그 상태다).
  * @param photoPath  썸네일이 될 사진의 상대 경로 또는 {@code null}(사진 없이 발화만으로 기록한 노트).
  *                   <b>가장 최근 날짜의 첫 장</b>이라 상세 화면의 히어로와 같은 사진이다.
  */

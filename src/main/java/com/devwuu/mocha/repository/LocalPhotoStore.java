@@ -177,7 +177,7 @@ public class LocalPhotoStore implements PhotoStore {
     @Override
     public Map<String, String> moveTastingDayPhotos(String noteFolder, String fromDate, String toDate) {
         Path source = photosDir.resolve(noteFolder).resolve(fromDate);
-        // 원본 폴더 부재 = 옮길 사진 없음 → no-op(사진 없이 날짜만 이동한 엔트리도 정상 경로).
+        // 원본 폴더 부재 = 옮길 사진 없음 → no-op(사진 없이 날짜만 이동한 시음일도 정상 경로).
         if (!Files.isDirectory(source)) {
             return Map.of();
         }

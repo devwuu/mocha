@@ -46,10 +46,10 @@ import java.util.stream.Stream;
  * <p><b>여기 사는 것</b> — 원자적이어야 하는 규칙 전부:
  * <ul>
  *   <li><b>V-9</b> 커피명 불변 — 저장된 값과 대조하고 다르면 거부({@link #updateMeta})</li>
- *   <li><b>V-10</b> 개정본(D-12) 날짜 이동 시 이동처와 <b>회차 병합</b> = 엔트리 총수 1 감소, 사진 색인
+ *   <li><b>V-10</b> 개정본(D-12) 날짜 이동 시 이동처와 <b>회차 병합</b> = 시음일 총수 1 감소, 사진 색인
  *       동반 이동({@link #replaceTastingDay})</li>
  *   <li><b>V-13</b> 관측 표기 축적 — 기존 별칭을 읽어 더할 것만 계산({@link #commit})</li>
- *   <li><b>ADR-4·59</b> 같은 날짜는 갱신만(하루 2엔트리 금지, AC-14), 엔트리 통째 교체</li>
+ *   <li><b>ADR-4·59</b> 같은 날짜는 갱신만(하루 시음일 2건 금지, AC-14), 시음일 통째 교체</li>
  *   <li>대상 소실 검사 — 쓰기를 시작하기 전에 던져 부분 반영을 남기지 않는다</li>
  *   <li>날짜 이동의 UNIQUE 중간 상태 등 행 순서 조율(FK 부재 — ADR-75)</li>
  * </ul>
@@ -60,7 +60,7 @@ import java.util.stream.Stream;
  * 순수 함수라 트랜잭션과 무관해 {@link NoteEntityMapper}가 소유한다(TΔ4c).
  *
  * <p><b>트랜잭션 경계는 이 클래스가 소유한다.</b> 공개 메서드 하나가 한 트랜잭션이고, 노트 행·배열 4종·
- * 엔트리·회차·레시피·감상이 전부 심기거나 전부 안 심긴다. 위({@link NoteService}·컨트롤러)에
+ * 시음일·회차·레시피·감상이 전부 심기거나 전부 안 심긴다. 위({@link NoteService}·컨트롤러)에
  * {@code @Transactional}을 걸어 경계를 늘리지 않는다 — 늘리는 순간 외부 호출이 들어올 수 있는 구간이 생긴다.
  *
  * <p>아래로는 {@link NoteEntityRepository} <b>하나만</b> 의존한다. 엔티티에 연관 매핑이 없고(0028 TΔ3a)
@@ -155,7 +155,7 @@ public class NoteTxService {
      * <p>{@link #findById}와 갈라 두는 이유는 <b>사진이 딸려 오는가</b>다. 노트만 필요한 자리(커밋 직후
      * 재조회·삭제 전 폴더 접미 읽기)가 사진 색인 질의를 이유 없이 지불하지 않게 한다.
      *
-     * <p>둘을 한 트랜잭션에서 읽는 것이 이 자리의 값이다 — 나눠 부르면 그 사이의 저장이 "엔트리는 새
+     * <p>둘을 한 트랜잭션에서 읽는 것이 이 자리의 값이다 — 나눠 부르면 그 사이의 저장이 "시음일은 새
      * 날짜인데 사진은 옛 목록"인 조합을 만든다.
      */
     @Transactional(readOnly = true)
@@ -166,18 +166,18 @@ public class NoteTxService {
     // ────────────────────────────── 커밋 ──────────────────────────────
 
     /**
-     * 폼 확정 저장 — 날짜 엔트리 병합 (ref: plan.md#ADR-4·37·59, changes/0016, AC-4).
+     * 폼 확정 저장 — 같은 날짜 시음일 병합 (ref: plan.md#ADR-4·37·59, changes/0016, AC-4).
      * <ul>
-     *   <li>{@code noteId}가 {@code null}이면 {@code meta}로 새 노트를 만들고 {@code tasting_day}를 첫 엔트리로 둔다
+     *   <li>{@code noteId}가 {@code null}이면 {@code meta}로 새 노트를 만들고 {@code tasting_day}를 첫 시음일로 둔다
      *       — id는 INSERT가 발급하므로 저장 전 draft는 식별자를 갖지 않는다(0028 D-1).</li>
-     *   <li>있으면 같은 date 엔트리는 갱신(엔트리 통째 교체), 다른 date는 추가 후 날짜 오름차순 정렬한다.</li>
+     *   <li>있으면 같은 date 시음일은 갱신(시음일 통째 교체), 다른 date는 추가 후 날짜 오름차순 정렬한다.</li>
      *   <li>같은 date 갱신에서 회차 append·기존 회차 지칭 병합은 에이전트가 구성한 {@code tastingDay.cups}
      *       배열(V-15 검증 통과분)을 신뢰한다 — 서버는 회차 단위 병합을 하지 않는다(changes/0021 ADR-59).</li>
      * </ul>
-     * POLICY: 같은 날짜 엔트리는 갱신만 — 하루 2엔트리 금지, 다회 시도는 cups 회차로
+     * POLICY: 같은 날짜 시음일은 갱신만 — 하루 시음일 2건 금지, 다회 시도는 cups 회차로
      * (ref: data-model.md#2.2, AC-14, ADR-4·59).
      * <p>POLICY: 노트 단위 메타는 갱신하지 않는다 — 기존 노트면 {@code meta}에서 쓰는 것이 없다. 원두 구성·
-     * 로스팅·공식 노트는 보존한다. 재기록은 그날의 엔트리를 쌓는 일이지 커피의 사실을 다시 쓰는 일이
+     * 로스팅·공식 노트는 보존한다. 재기록은 그날의 시음일을 쌓는 일이지 커피의 사실을 다시 쓰는 일이
      * 아니다(ADR-4). 사실을 고치는 경로는 {@link #updateMeta}다.
      *
      * <p><b>별칭(V-13)은 두 갈래이고 그 판정이 여기 있다</b>(0029 TΔ4c): {@code generated}가 있으면 그것을
@@ -229,7 +229,7 @@ public class NoteTxService {
     }
 
     /**
-     * 신규 노트 INSERT — 노트 행·배열 4종·엔트리·회차·레시피·감상을 한 트랜잭션 안에서 심는다.
+     * 신규 노트 INSERT — 노트 행·배열 4종·시음일·회차·레시피·감상을 한 트랜잭션 안에서 심는다.
      *
      * <p>인자 {@code note}의 <b>식별자와 타임스탬프는 무시된다</b>: {@code id}는 {@code BIGSERIAL}이
      * 발급하고 {@code created_at}/{@code modified_at}은 Spring Data Auditing이 채운다(0028 Q-5).
@@ -284,7 +284,7 @@ public class NoteTxService {
         }
     }
 
-    // 행 재사용이 아니라 삭제 후 재삽입인 것은 "통째 교체"의 직역이다 — 엔트리에는 필드 단위 갱신 개념이
+    // 행 재사용이 아니라 삭제 후 재삽입인 것은 "통째 교체"의 직역이다 — 시음일에는 필드 단위 갱신 개념이
     // 없어 수정 메서드도 두지 않았다(0028 TΔ3b). 날짜 오름차순 정렬은 조회 질의가 소유한다(재정렬하지 않는다).
     private void replaceTastingDayRows(long noteId, TastingDay tastingDay) {
         notes.findTastingDayId(noteId, tastingDay.date()).ifPresent(notes::deleteTastingDay);
@@ -302,7 +302,7 @@ public class NoteTxService {
      * 트랜잭션 안에 넣으려면 §3이 금지하는 것을 해야 한다. 그래서 <b>커밋 다음 트랜잭션</b>이고, 그 사이
      * 실패는 "파일은 아카이브에 있는데 색인이 없다"로 수렴한다(파일이 정본이라 사진 유실이 아니다).
      *
-     * <p>{@code seq}는 그 (노트, 날짜)에 이미 붙은 수에서 이어진다 — 같은 날짜 재저장은 엔트리를 통째로
+     * <p>{@code seq}는 그 (노트, 날짜)에 이미 붙은 수에서 이어진다 — 같은 날짜 재저장은 시음일을 통째로
      * 교체하지만(ADR-4·59) <b>사진은 쌓는다</b>. 파일이 아카이브에 그대로 남아 있고 그것을 지우는 것은
      * 재기록의 뜻이 아니다.
      *
@@ -336,7 +336,7 @@ public class NoteTxService {
 
     /**
      * 노트 단위 메타 갱신 — <b>커피명을 제외한 전부</b>가 대상이다(FR-21, AC-5). 배열 3종(원두·공식 노트·
-     * 참조 링크)은 통째 교체하고, <b>별칭과 엔트리는 건드리지 않는다</b>.
+     * 참조 링크)은 통째 교체하고, <b>별칭과 시음일은 건드리지 않는다</b>.
      *
      * <p>POLICY: coffee_name은 노트 생성 후 불변 — 다른 값을 실은 요청은 거부한다
      * (ref: data-model.md#V-9). <b>이 검사가 이 델타에서 V-9의 유일한 자동 가드</b>다: 구 가드는
@@ -347,16 +347,16 @@ public class NoteTxService {
      * <p>아래 층에는 커피명을 덮어쓸 수단이 아예 없다({@code NoteEntity}에 setter 부재) — 구조 차단 한 겹은
      * 그대로 남아 이 검사와 이중이다.
      *
-     * <p>0029 TΔ4a: 구 {@code applyEdit}이 "노트 메타 + 대상 엔트리 1건"을 한 번에 받던 것을 둘로 갈랐다
-     * — 수정 세션(pending mode=edit)이 폐기되며 "엔트리를 반드시 1건 실어야 한다"는 전제가 근거를 잃었고,
-     * 로스터리만 고치는 데 엔트리를 딸려 보내면 그 회차 행이 이유 없이 재발급됐다.
+     * <p>0029 TΔ4a: 구 {@code applyEdit}이 "노트 메타 + 대상 시음일 1건"을 한 번에 받던 것을 둘로 갈랐다
+     * — 수정 세션(pending mode=edit)이 폐기되며 "시음일을 반드시 1건 실어야 한다"는 전제가 근거를 잃었고,
+     * 로스터리만 고치는 데 시음일을 딸려 보내면 그 회차 행이 이유 없이 재발급됐다.
      *
      * <p><b>수정은 지우고 다시 넣는 것이 아니라 고치는 것이다.</b> 노트 본문을 관리되는 엔티티로 꺼내
      * 필드를 바꾸면 flush가 UPDATE로 내보낸다 — 그래서 {@code created_at}이 보존되고 {@code modified_at}이
      * 실제 수정 시각으로 움직인다. 배열 자식만 별도 테이블이라 통째 교체된다.
      *
      * <p><b>돌려주는 것은 노트 전문 + 사진이다</b>(TΔ5b-3) — 쓰기 직후의 최종 상태를 <b>같은 트랜잭션
-     * 안에서</b> 읽는다. 나눠 부르면 그 사이의 저장이 "엔트리는 새 날짜인데 사진은 옛 목록"인 조합을
+     * 안에서</b> 읽는다. 나눠 부르면 그 사이의 저장이 "시음일은 새 날짜인데 사진은 옛 목록"인 조합을
      * 만든다는 {@link NoteDetail}의 근거가 쓰기 뒤에도 그대로 걸린다. 메타 수정은 사진을 옮기지 않지만
      * {@link #replaceTastingDay}는 옮기므로, 두 쓰기의 반환형을 갈라 둘 이유가 없다.
      *
@@ -393,35 +393,35 @@ public class NoteTxService {
     }
 
     /**
-     * 엔트리 교체 — {@code targetDate} 엔트리의 회차를 {@code tasting_day}의 것으로 갈아끼우고, 필요하면 날짜를
+     * 시음일 교체 — {@code targetDate} 시음일의 회차를 {@code tasting_day}의 것으로 갈아끼우고, 필요하면 날짜를
      * 옮긴다 (ref: plan.md#ADR-27·ADR-59, V-10 개정본, changes/0029 delta.md#D-12).
      * <ul>
      *   <li>{@code tastingDay.date()}가 {@code targetDate}와 다르면 날짜 이동 — 이동처 date가 <b>비어 있으면</b>
-     *       {@code tasted_on} 갱신이고, <b>이미 기록이 있으면</b> 그날의 회차 뒤로 합친다(엔트리 총수 1 감소).
+     *       {@code tasted_on} 갱신이고, <b>이미 기록이 있으면</b> 그날의 회차 뒤로 합친다(시음일 총수 1 감소).
      *       날짜 오름차순 정렬은 유지된다.</li>
-     *   <li>이동처가 빈 경우 엔트리 <b>행은 살아남는다</b> — 삭제 후 재삽입이 아니라 {@code tasted_on}
+     *   <li>이동처가 빈 경우 시음일 <b>행은 살아남는다</b> — 삭제 후 재삽입이 아니라 {@code tasted_on}
      *       갱신이라 {@code created_at}이 보존된다(재기록 경로 {@link #commit}과 갈리는 지점).</li>
      * </ul>
      *
-     * <p><b>검증 셋을 먼저 통과시킨다</b>(노트 존재 → 대상 엔트리 존재). 어느 하나라도 걸리면 <b>쓰기를
+     * <p><b>검증 셋을 먼저 통과시킨다</b>(노트 존재 → 대상 시음일 존재). 어느 하나라도 걸리면 <b>쓰기를
      * 시작하기 전에</b> 던지므로 부분 반영이 남지 않는다.
      *
-     * <p>대상 엔트리 존재는 조회한 도메인이 아니라 <b>행으로</b> 확인한다. 로드 경계 위생(ADR-66)이 회차
-     * 0개 엔트리를 드롭할 수 있어(V-15) 도메인으로 판정하면 <b>행은 있는데 소실로 보이는</b> 갈래가 생긴다
+     * <p>대상 시음일 존재는 조회한 도메인이 아니라 <b>행으로</b> 확인한다. 로드 경계 위생(ADR-66)이 회차
+     * 0개 시음일을 드롭할 수 있어(V-15) 도메인으로 판정하면 <b>행은 있는데 소실로 보이는</b> 갈래가 생긴다
      * — 고칠 대상이 무엇인지는 행이 답한다.
      *
-     * <p>갈래에 따라 대상 엔트리를 <b>다른 접근자로</b> 집는 것은 {@code findTastingDayId}·{@code findTastingDay}의
+     * <p>갈래에 따라 대상 시음일을 <b>다른 접근자로</b> 집는 것은 {@code findTastingDayId}·{@code findTastingDay}의
      * 계약 그대로다: 병합에서 원본은 <b>지울 것</b>이고(id만), 그 밖에서는 <b>고칠 것</b>이다(관리되는 엔티티).
      *
      * <p><b>사진 색인이 같은 트랜잭션에서 따라온다</b>(TΔ5b-2, D-12 ③) — {@code note_photo}의 참조 축이
-     * {@code (note_id, tasted_on)}이라 엔트리만 옮기면 사진이 옛 날짜에 남아 어느 화면에도 보이지 않는다.
-     * 갈라 두면 <i>"엔트리는 옮겨졌는데 사진은 안 옮겨진"</i> 중간 상태가 커밋될 수 있어 한 경계 안이다.
+     * {@code (note_id, tasted_on)}이라 시음일만 옮기면 사진이 옛 날짜에 남아 어느 화면에도 보이지 않는다.
+     * 갈라 두면 <i>"시음일은 옮겨졌는데 사진은 안 옮겨진"</i> 중간 상태가 커밋될 수 있어 한 경계 안이다.
      *
      * @param movedPhotoPaths 파일 이동이 실제로 만든 {@code 옛 경로 → 새 경로}
      *                        ({@code PhotoStore.moveTastingDayPhotos}의 반환값). 날짜가 그대로거나 옮긴 사진이
      *                        없으면 빈 맵. <b>계산하지 않고 받는</b> 이유는 병합에서 파일명이 유일화로
      *                        바뀌기 때문이다 — 실제 자리는 파일을 옮긴 쪽만 안다.
-     * @throws IllegalStateException 대상 노트 또는 {@code targetDate} 엔트리 소실 시
+     * @throws IllegalStateException 대상 노트 또는 {@code targetDate} 시음일 소실 시
      *                               (호출부가 안내로 수렴, plan §7).
      */
     @Transactional
@@ -474,15 +474,15 @@ public class NoteTxService {
         }
     }
 
-    // POLICY: 날짜 이동으로 이동처 date에 기존 엔트리가 있으면 덮어쓰지 않고 그날의 회차 뒤로 합친다 —
-    //         기존이 앞, 옮겨 온 것이 뒤이고 seq는 이어서 발급된다. 엔트리 총수는 1 감소하고,
+    // POLICY: 날짜 이동으로 이동처 date에 기존 시음일이 있으면 덮어쓰지 않고 그날의 회차 뒤로 합친다 —
+    //         기존이 앞, 옮겨 온 것이 뒤이고 seq는 이어서 발급된다. 시음일 총수는 1 감소하고,
     //         화면은 경고가 아니라 안내를 띄운다(잃는 것이 없다)
     //         (ref: specs/coffee-note-agent/changes/0029-app-interface/delta.md#D-12, data-model.md#V-10).
     // 구 규칙(이동처를 통째로 대체)은 회차 도입(ADR-59) 이전에 쓰인 것이고 그 재편에서 갱신되지 않았다 —
     // 회차 배열 위에서는 "그날의 N회차를 전부 지운다"는 뜻이 돼 있었다. 캡처 경로가 같은 상황("이 날짜에
     // 이미 기록이 있다")에 append로 답하는 것과 갈릴 이유가 없다(ADR-4·59).
-    // 살아남는 행은 이동처 엔트리다 — 합쳐지는 자리는 그날의 기록이고, 그 created_at이 그날 첫 기록이
-    // 만들어진 시각이다. 옮겨 온 쪽은 회차로 흡수되므로 엔트리 행으로 남을 자리가 없다.
+    // 살아남는 행은 이동처 시음일이다 — 합쳐지는 자리는 그날의 기록이고, 그 created_at이 그날 첫 기록이
+    // 만들어진 시각이다. 옮겨 온 쪽은 회차로 흡수되므로 시음일 행으로 남을 자리가 없다.
     // UNIQUE(note_id, tasted_on)를 지나지 않는다는 점도 갈린다: 병합에는 tasted_on UPDATE가 없어
     // 중간 상태 자체가 생기지 않는다(무충돌 이동만이 그 순서를 지는 갈래다).
     private void mergeIntoExisting(long destinationId, long sourceId, List<Cup> cups) {
@@ -495,11 +495,11 @@ public class NoteTxService {
     }
 
     private static IllegalStateException missingTastingDay(long noteId, LocalDate targetDate) {
-        return new IllegalStateException("수정 대상 엔트리 소실: " + noteId + " " + targetDate);
+        return new IllegalStateException("수정 대상 시음일 소실: " + noteId + " " + targetDate);
     }
 
     /**
-     * 회차 통째 교체 — 엔트리 행은 살려 두고 그 아래만 갈아끼운다.
+     * 회차 통째 교체 — 시음일 행은 살려 두고 그 아래만 갈아끼운다.
      *
      * <p>회차에는 필드 단위 갱신 개념이 없다(ADR-59 — 서버는 회차 단위 병합을 하지 않고 에이전트가 구성한
      * 배열을 신뢰한다). 삭제가 벌크라 즉시 나가므로 {@code UNIQUE(tasting_day_id, seq)}가 새 회차보다 먼저 풀린다.
@@ -512,7 +512,7 @@ public class NoteTxService {
     // ────────────────────────────── 삭제 ──────────────────────────────
 
     /**
-     * 노트 한 건 삭제 — 하위 행(엔트리·회차·레시피·감상·배열 4종)을 <b>남기지 않는다</b>
+     * 노트 한 건 삭제 — 하위 행(시음일·회차·레시피·감상·배열 4종)을 <b>남기지 않는다</b>
      * (ref: changes/0028-rdb-storage/delta.md#삭제-정책, AC-Δ8).
      *
      * <p>POLICY: hard delete — {@code deleted_at} 계열 컬럼을 두지 않는다. 1인용 개인 기록이라 복구 요구가

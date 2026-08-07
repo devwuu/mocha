@@ -242,7 +242,7 @@ class ProposalTools {
     //         여기서 막으면 애초에 폼이 다른 커피명을 달고 서지 않는다
     //         (ref: specs/coffee-note-agent/data-model.md#V-9, changes/0029 tasks.md TΔ29a).
     private static String editTargetRejection(Note target, MatchInfo match, RecordProposal proposal) {
-        // 대상 엔트리가 실존해야 한다 — 없는 날짜를 고치겠다는 제안은 PATCH 단계에서 404로 죽고, 그때는
+        // 대상 시음일이 실존해야 한다 — 없는 날짜를 고치겠다는 제안은 PATCH 단계에서 404로 죽고, 그때는
         // 사용자가 [저장]을 누른 뒤라 정정할 자리가 없다. 루프 안에서 되돌린다.
         boolean hasTastingDay = target.tastingDays().stream().anyMatch(tastingDay -> match.date().equals(tastingDay.date()));
         if (!hasTastingDay) {

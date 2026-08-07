@@ -51,7 +51,7 @@ public final class CardFiles {
     }
 
     /**
-     * 엔트리의 기대 카드 경로 전부 — 회차 오름차순, 회차 안에서는 감상 → 레시피.
+     * 시음일의 기대 카드 경로 전부 — 회차 오름차순, 회차 안에서는 감상 → 레시피.
      * 렌더 산출 순서·재사용 판정("전부 존재")·배달 순서의 기준 집합이다.
      */
     public static List<Path> expectedCards(Path artifactDir, Note note, TastingDay tastingDay) {
@@ -69,7 +69,7 @@ public final class CardFiles {
         return expected;
     }
 
-    /** 그 엔트리(날짜)의 카드 파일 글롭 — 날짜 이동·회차 감소 시 옛 카드 전부 정리에 쓴다(AC-39). */
+    /** 그 시음일(날짜)의 카드 파일 글롭 — 날짜 이동·회차 감소 시 옛 카드 전부 정리에 쓴다(AC-39). */
     static String tastingDayCardGlob(LocalDate date) {
         return date + "-*.jpg";
     }

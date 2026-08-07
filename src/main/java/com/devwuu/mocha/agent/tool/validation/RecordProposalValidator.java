@@ -83,7 +83,7 @@ public class RecordProposalValidator {
             MatchInfo match = toMatchInfo(args.match());
 
             List<Cup> cups = CupRules.cups(args.cups());
-            // V-15: 드롭 후 회차 0개인 엔트리는 저장을 거부한다 — 기록할 내용이 없음(사유는 tool 결과로).
+            // V-15: 드롭 후 회차 0개인 시음일은 저장을 거부한다 — 기록할 내용이 없음(사유는 tool 결과로).
             if (cups.isEmpty()) {
                 throw new RejectedException("기록할 회차 내용이 없다 — cups에 감상(review)이나 레시피(recipe) 중 "
                         + "최소 하나를 담은 회차를 채워야 저장할 수 있다(V-15). 사용자에게 그날의 감상이나 레시피를 물어봐라.");
@@ -195,9 +195,9 @@ public class RecordProposalValidator {
     }
 
     // POLICY: existing과 edit은 같은 (note_id, date)를 요구하지만 뜻이 반대다 — 전자는 그 노트에 회차를
-    //         더하는 것이고 후자는 그 날짜의 엔트리를 갈아끼우는 것이다. 축을 합치면 "수정하려던 것이
+    //         더하는 것이고 후자는 그 날짜의 시음일을 갈아끼우는 것이다. 축을 합치면 "수정하려던 것이
     //         회차 추가로 저장되는" 조합이 생긴다 (ref: changes/0029 delta.md#D-14 ②).
-    // 대상 실존 검사(노트·엔트리)와 V-9 최종 방어는 여기 없다 — 저장소를 읽어야 하고 이 클래스는
+    // 대상 실존 검사(노트·시음일)와 V-9 최종 방어는 여기 없다 — 저장소를 읽어야 하고 이 클래스는
     // 순수 도메인 계층이다(위 클래스 주석). 그 몫은 ProposalTools의 환각 필터가 진다(TΔ29a).
     private static MatchInfo toMatchInfo(ProposeRecordArgs.MatchArg match) {
         if (match == null || match.type() == null) {
@@ -224,7 +224,7 @@ public class RecordProposalValidator {
         return noteId;
     }
 
-    // edit의 date는 "고칠 엔트리"를 가리키는 대상 키다 — 없으면 무엇을 고칠지 정해지지 않고, 추측으로
+    // edit의 date는 "고칠 시음일"를 가리키는 대상 키다 — 없으면 무엇을 고칠지 정해지지 않고, 추측으로
     // 메우면 사용자가 보지 못한 회차가 갈린다(TΔ28a — 폼도 같은 이유로 date를 필수로 잡는다).
     private static LocalDate requireDate(ProposeRecordArgs.MatchArg match, String type) {
         LocalDate date = ValidationSupport.parseDate("match.date", match.date());

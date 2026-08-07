@@ -27,11 +27,11 @@ import java.util.List;
 public record NoteEntryBody(LocalDate date, List<NoteDetailBody.DetailCup> cups) {
 
     /**
-     * 도메인 엔트리로 되돌린다 — 회차는 <b>V-15 정규화를 거친다</b>(빈 감상 드롭 · 레시피·감상 둘 다 없는
+     * 도메인 시음일로 되돌린다 — 회차는 <b>V-15 정규화를 거친다</b>(빈 감상 드롭 · 레시피·감상 둘 다 없는
      * 회차 드롭). 정규화 결과가 빈 배열이면 저장할 것이 없다는 뜻이고, 그 거부는 쓰기 경로의 진입점인
      * 컨트롤러가 진다(data-model.md#V-15).
      *
-     * <p>{@code updatedAt}은 {@code null}이다 — 엔트리 행의 시각은 감사 리스너가 채운다(0028 TΔ4).
+     * <p>{@code updatedAt}은 {@code null}이다 — 시음일 행의 시각은 감사 리스너가 채운다(0028 TΔ4).
      */
     public TastingDay toTastingDay() {
         List<Cup> raw = cups == null ? List.of() : cups.stream().map(NoteEntryBody::toCup).toList();

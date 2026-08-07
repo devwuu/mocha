@@ -36,7 +36,7 @@ import java.util.Objects;
  * (V-6이 막으려는 방향의 반대편 사고).
  *
  * <p>중첩 타입 중 {@link Sourced}·{@link Bean}·{@link Recipe}는 도메인 record를 그대로 재사용한다 —
- * 계약과 도메인이 갈라질 여지를 <b>실제로 갈리는 곳</b>(감상·엔트리·최상위)으로 한정한다({@link NoteBody}와
+ * 계약과 도메인이 갈라질 여지를 <b>실제로 갈리는 곳</b>(감상·시음일·최상위)으로 한정한다({@link NoteBody}와
  * 같은 규율, REVIEW.md §4 뷰 전용 가공 예외).
  *
  * <p>필드 순서가 곧 JSON 필드 순서이고 계약 파일과 짝이다.
@@ -55,7 +55,7 @@ public record NoteDetailBody(
 
     /**
      * 날짜별 시음 기록 + <b>그 날의 사진</b>.
-     * <p>사진이 노트가 아니라 엔트리에 붙는 것은 {@code note_photo}의 참조 축이 {@code (note_id, tasted_on)}
+     * <p>사진이 노트가 아니라 시음일에 붙는 것은 {@code note_photo}의 참조 축이 {@code (note_id, tasted_on)}
      * 이기 때문이고, 계약 하나로 히어로와 날짜별 스트립이 <b>둘 다</b> 나온다 — 노트 레벨 배열을 따로 두면
      * 같은 사진이 두 자리에 실린다.
      */

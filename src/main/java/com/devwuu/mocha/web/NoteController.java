@@ -39,12 +39,12 @@ import java.util.Optional;
  *   <li>{@code GET /api/notes} — 갤러리 목록(TΔ5a·TΔ12, {@code note-list})</li>
  *   <li>{@code GET /api/notes/&#123;id&#125;} — 상세(TΔ5a·TΔ13a, {@code note-detail})</li>
  *   <li>{@code PATCH /api/notes/&#123;id&#125;} — 메타 수정(TΔ5b-3·TΔ13b, {@code note-update})</li>
- *   <li>{@code PATCH /api/notes/&#123;id&#125;/entries/&#123;date&#125;} — 엔트리 수정·날짜 이동(같은 계약)</li>
+ *   <li>{@code PATCH /api/notes/&#123;id&#125;/entries/&#123;date&#125;} — 시음일 수정·날짜 이동(같은 계약)</li>
  *   <li>{@code DELETE /api/notes/&#123;id&#125;} — 노트 삭제(같은 계약)</li>
  * </ul>
  *
  * <p><b>PATCH가 둘인 것은 TΔ4a의 분리를 그대로 노출한 것이다</b> — 구 {@code applyEdit}은 "노트 메타 +
- * 대상 엔트리 1건"을 한 번에 받아, 로스터리만 고쳐도 그 엔트리의 회차 행이 이유 없이 재발급됐다. 여기서
+ * 대상 시음일 1건"을 한 번에 받아, 로스터리만 고쳐도 그 시음일의 회차 행이 이유 없이 재발급됐다. 여기서
  * 다시 합치면 그 계약이 되살아난다.
  *
  * <p><b>세 쓰기가 실패를 갈라 말한다</b>: {@code POST}의 대상 소실은 <b>409</b>(폼은 유효한데 병합할
@@ -108,7 +108,7 @@ public class NoteController {
         //         수정의 저장 경로는 PATCH /api/notes/{id}/entries/{date}다
         //         (ref: changes/0029 delta.md#D-14, tasks.md TΔ28b·TΔ29a).
         if (request.match().type() == MatchInfo.MatchType.EDIT) {
-            log.warn("저장 거부(경로 불일치): match=edit은 엔트리 PATCH로 저장한다 — noteId={}",
+            log.warn("저장 거부(경로 불일치): match=edit은 시음일 PATCH로 저장한다 — noteId={}",
                     request.match().noteId());
             return ResponseEntity.badRequest().build();
         }
@@ -120,7 +120,7 @@ public class NoteController {
             transcript.clear(SingleUser.ID, FoldingChatMemory.FoldTrigger.SAVE_COMMIT);
             return ResponseEntity.ok(new Response(saved.id()));
         } catch (IllegalArgumentException e) {
-            // 저장할 시음 엔트리가 없다 — 클라이언트가 보낸 것이 폼이 아니다(NoteService 입력 검증).
+            // 저장할 시음일이 없다 — 클라이언트가 보낸 것이 폼이 아니다(NoteService 입력 검증).
             log.warn("저장 거부(요청 결손): {}", e.getMessage());
             return ResponseEntity.badRequest().build();
         } catch (IllegalStateException e) {
@@ -195,7 +195,7 @@ public class NoteController {
      * 노트 상세 — 전문 + 날짜별 사진 (ref: TΔ5a·TΔ13a).
      *
      * <p><b>없는 id는 404다</b> — 삭제된 노트를 텅 빈 상세로 그리지 않는다. 그 화면은 <i>"기록은 있는데
-     * 아무것도 안 적혔다"</i>로 읽혀서, 실제로 그런 노트(엔트리 없는 노트)와 구분되지 않는다.
+     * 아무것도 안 적혔다"</i>로 읽혀서, 실제로 그런 노트(시음일 없는 노트)와 구분되지 않는다.
      *
      * <p>경로 변수를 숫자로 제약하는 것은 {@code /candidates}와의 충돌 회피가 아니라(리터럴이 먼저 매칭된다)
      * <b>{@code /notes/abc}를 상세로 보지 않기</b> 위해서다 — 클라이언트 라우터도 같은 판정을 한다
@@ -245,7 +245,7 @@ public class NoteController {
     }
 
     /**
-     * 엔트리 수정 — 그 날짜의 회차를 갈아끼우고, 본문의 {@code date}가 다르면 <b>사진까지 데리고</b>
+     * 시음일 수정 — 그 날짜의 회차를 갈아끼우고, 본문의 {@code date}가 다르면 <b>사진까지 데리고</b>
      * 날짜를 옮긴다 (ref: TΔ13b·TΔ5b-3, V-10 개정본 delta.md#D-12, AC-5).
      *
      * <p>경로의 {@code date}가 <b>대상</b>이고 본문의 {@code date}가 <b>결과</b>다. 이동처에 이미 기록이
@@ -253,7 +253,7 @@ public class NoteController {
      * 하는 일은 파싱·위임·응답 변환뿐이다(백엔드 CLAUDE.md §2).
      *
      * <p><b>회차 0개는 400이다</b>(V-15). 정규화가 빈 회차를 드롭한 결과 하나도 남지 않았다는 것은
-     * 저장할 시음이 없다는 뜻이고, 그대로 쓰면 <i>화면에 없는 엔트리 삭제 경로</i>가 생긴다 — 엔트리 삭제는
+     * 저장할 시음이 없다는 뜻이고, 그대로 쓰면 <i>화면에 없는 시음일 삭제 경로</i>가 생긴다 — 시음일 삭제는
      * spec에 없다(TΔ13b 편차 ⑤).
      */
     @PatchMapping("/{id:\\d+}/entries/{date}")
@@ -266,14 +266,14 @@ public class NoteController {
         }
         TastingDay tastingDay = request.toTastingDay();
         if (tastingDay.cups().isEmpty()) {
-            log.warn("엔트리 수정 거부(회차 없음): noteId={} date={}", id, date);
+            log.warn("시음일 수정 거부(회차 없음): noteId={} date={}", id, date);
             return ResponseEntity.badRequest().build();
         }
         try {
             return ResponseEntity.ok(NoteDetailBody.of(noteService.replaceTastingDay(id, date, tastingDay)));
         } catch (IllegalStateException e) {
-            // 노트도 대상 엔트리도 "고칠 것이 URL에 없다"는 같은 사실이다.
-            log.warn("엔트리 수정 거부(대상 소실): {}", e.getMessage());
+            // 노트도 대상 시음일도 "고칠 것이 URL에 없다"는 같은 사실이다.
+            log.warn("시음일 수정 거부(대상 소실): {}", e.getMessage());
             return ResponseEntity.notFound().build();
         }
     }

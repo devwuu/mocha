@@ -19,7 +19,7 @@ public record Cup(
 
     /**
      * V-15 정규화: null 배열은 빈 배열로, 각 요소는 recipe(V-8)·review(V-15 빈 감상 드롭)을 정규화한 뒤
-     * <b>둘 다 null인 요소를 드롭</b>한다. 드롭 후 회차 0개인 엔트리의 저장 거부(오류 사유 tool 결과 반환)는
+     * <b>둘 다 null인 요소를 드롭</b>한다. 드롭 후 회차 0개인 시음일의 저장 거부(오류 사유 tool 결과 반환)는
      * 쓰기 경로(검증 진입점 RecordProposalValidator)의 몫이다
      * (ref: data-model.md#V-15, plan#ADR-59).
      */

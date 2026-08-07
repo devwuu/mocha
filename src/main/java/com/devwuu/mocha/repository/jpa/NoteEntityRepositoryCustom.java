@@ -28,7 +28,7 @@ public interface NoteEntityRepositoryCustom {
     /**
      * 부모 id 목록에 걸린 자식 행 전부를 <b>정렬된 채로</b> 가져온다.
      *
-     * <p>노트가 몇 건이든 질의 수가 고정된다(배열 4 + 엔트리 1 + 회차 1 + 레시피 1 + 감상 1 = 8) — 엔티티에
+     * <p>노트가 몇 건이든 질의 수가 고정된다(배열 4 + 시음일 1 + 회차 1 + 레시피 1 + 감상 1 = 8) — 엔티티에
      * 연관이 없어(TΔ3a) 지연 로딩이 없고, 따라서 N+1이 생길 자리도 없다. 내부의 id 사슬
      * ({@code noteIds → tastingDayIds → cupIds})은 질의 배관이라 여기서 닫는다.
      */
@@ -102,7 +102,7 @@ public interface NoteEntityRepositoryCustom {
      * 그 노트의 사진 전부 — {@code (날짜, seq)} 오름차순, 없으면 빈 목록.
      *
      * <p>{@link #findPhotoPaths}와 갈라 두는 이유는 <b>날짜가 필요한가</b>다. 저쪽은 파일을 지우거나 폴더
-     * 접미를 되읽는 자리라 경로만 있으면 되고, 이쪽은 상세 화면이 사진을 <b>엔트리에 붙이는</b> 자리라
+     * 접미를 되읽는 자리라 경로만 있으면 되고, 이쪽은 상세 화면이 사진을 <b>시음일에 붙이는</b> 자리라
      * {@code note_photo}의 참조 축({@code (note_id, tasted_on)})이 그대로 필요하다.
      */
     List<NotePhoto> findPhotos(long noteId);
@@ -117,7 +117,7 @@ public interface NoteEntityRepositoryCustom {
     void insertAll(Collection<?> rows);
 
     /**
-     * 노트 안에서 그 날짜의 엔트리 id — 없으면 빈 Optional. {@code UNIQUE(note_id, tasted_on)}가 하루
+     * 노트 안에서 그 날짜의 시음일 id — 없으면 빈 Optional. {@code UNIQUE(note_id, tasted_on)}가 하루
      * 한 건을 보장하므로(V-10) 답은 최대 하나다.
      *
      * <p>행이 아니라 <b>id만</b> 돌려주는 것은 곧 지울 대상이기 때문이다 — 엔티티로 실어 오면 벌크 삭제
@@ -148,16 +148,16 @@ public interface NoteEntityRepositoryCustom {
     void deleteNoteArraysExceptAliases(long noteId);
 
     /**
-     * 엔트리의 <b>회차만</b> 지운다 — {@code review}·{@code recipe} → {@code cup}. 엔트리 행은 남는다.
+     * 시음일의 <b>회차만</b> 지운다 — {@code review}·{@code recipe} → {@code cup}. 시음일 행은 남는다.
      *
-     * <p>수정 세션이 엔트리를 <b>살려 둔 채</b> 회차를 갈아끼우는 자리다(TΔ5c) — 회차는 통째 교체가
+     * <p>수정 세션이 시음일을 <b>살려 둔 채</b> 회차를 갈아끼우는 자리다(TΔ5c) — 회차는 통째 교체가
      * 정책이라(ADR-59) 부분 갱신 개념이 없고, {@code UNIQUE(tasting_day_id, seq)} 때문에 새 회차를 넣기 전에
      * 옛 seq가 비어 있어야 한다.
      */
     void deleteCups(long tastingDayId);
 
     /**
-     * 엔트리 한 건을 하위부터 지운다 — {@link #deleteCups} 뒤에 {@code tasting_day} 행까지.
+     * 시음일 한 건을 하위부터 지운다 — {@link #deleteCups} 뒤에 {@code tasting_day} 행까지.
      * FK가 없으므로 순서를 코드가 소유한다(ADR-75).
      *
      * <p><b>벌크 DML이라 즉시 DB에 나간다</b> — 같은 {@code (note_id, tasted_on)}을 다시 쓰기 전에 UNIQUE가
@@ -168,7 +168,7 @@ public interface NoteEntityRepositoryCustom {
     void deleteTastingDay(long tastingDayId);
 
     /**
-     * 그 엔트리에 이미 붙어 있는 회차 수 — <b>이어붙일 다음 {@code seq}의 시작점</b>
+     * 그 시음일에 이미 붙어 있는 회차 수 — <b>이어붙일 다음 {@code seq}의 시작점</b>
      * (ref: changes/0029 tasks.md TΔ5b-1, delta.md#D-12).
      *
      * <p>회차를 <b>더하는</b> 경로는 날짜 이동 병합 하나뿐이다 — 재기록(ADR-4·59)도 수정({@code
@@ -205,7 +205,7 @@ public interface NoteEntityRepositoryCustom {
     /**
      * 그 (노트, 날짜)에 이미 붙어 있는 사진 수 — 다음 {@code seq}의 시작점.
      *
-     * <p>같은 날짜를 다시 저장하면 엔트리는 통째로 교체되지만(ADR-4·59) <b>사진은 쌓인다</b> — 파일이
+     * <p>같은 날짜를 다시 저장하면 시음일은 통째로 교체되지만(ADR-4·59) <b>사진은 쌓인다</b> — 파일이
      * 아카이브에 그대로 남아 있고, 그것을 지우는 것은 재기록의 뜻이 아니기 때문이다.
      */
     long countPhotos(long noteId, LocalDate tastedOn);
@@ -215,13 +215,13 @@ public interface NoteEntityRepositoryCustom {
      * (ref: changes/0028-rdb-storage/tasks.md TΔ5d, AC-Δ8; 사진은 changes/0029 TΔ8b).
      *
      * <p>{@code cascade}·{@code orphanRemoval}을 쓰지 않으므로(ADR-75) 이 순서를 <b>코드가 소유한다</b> —
-     * {@link #deleteTastingDay}가 엔트리 하나에 대해 지는 책임을 애그리거트 전체로 넓힌 자리다. 부모를 먼저
+     * {@link #deleteTastingDay}가 시음일 하나에 대해 지는 책임을 애그리거트 전체로 넓힌 자리다. 부모를 먼저
      * 지우면 자식은 걸릴 곳을 잃고 DB는 아무 말도 하지 않는다(FK가 없다).
      *
      * <p><b>별칭도 함께 지운다</b> — {@link #deleteNoteArraysExceptAliases}가 별칭을 남기는 것은 수정 세션이
      * 원본을 존치하기 때문이고(V-13), 노트 자체가 사라지는 자리에서는 그 근거가 없다.
      *
-     * <p>엔트리·회차를 <b>집합으로</b> 지운다 — 엔트리가 몇 건이든 질의 수가 고정된다(파생
+     * <p>시음일·회차를 <b>집합으로</b> 지운다 — 시음일이 몇 건이든 질의 수가 고정된다(파생
      * {@code deleteAllBy…}는 엔티티를 로드한 뒤 한 건씩 지운다).
      *
      * <p><b>노트 행이 지워진 건수를 돌려준다</b>(changes/0029 TΔ5b-3) — 없는 id를 404로 가르는 데 필요한

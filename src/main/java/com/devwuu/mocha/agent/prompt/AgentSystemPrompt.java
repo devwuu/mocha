@@ -31,10 +31,10 @@ package com.devwuu.mocha.agent.prompt;
  * 만들지 않는 것</b>과 draft에 실려 온 search 값을 유실 없이 되싣는 것뿐이다
  * (ref: delta 0029 D-16 ③ — {@code plan.md#ADR-49}·{@code spec FR-3/FR-22/AC-58}은 TΔ30이 개정한다).
  * <p>POLICY: 저장된 기록도 대화로 고친다 — 구 금지 규칙(<i>"저장이 끝난 기록은 대화로 고치지 않는다"</i>)이
- * 걷히고 그 자리에 <b>수정 흐름</b>이 들어왔다: 대상 지목 → {@code get_note} → 그 엔트리를 초안으로 구성 +
+ * 걷히고 그 자리에 <b>수정 흐름</b>이 들어왔다: 대상 지목 → {@code get_note} → 그 시음일을 초안으로 구성 +
  * 요구 반영 → {@code match.type=edit}. 자연어가 하는 일은 <b>어느 기록인가</b>와 초안까지이고
  * <i>"어떤 필드를 무슨 값으로"</i>의 확정은 여전히 폼이 소유한다(D-1이 폐기한 축과 갈리는 지점).
- * <p>POLICY: 수정 제안은 <b>대상 엔트리의 회차를 전부</b> 싣는다 — {@code PATCH .../entries/{date}}가
+ * <p>POLICY: 수정 제안은 <b>대상 시음일의 회차를 전부</b> 싣는다 — {@code PATCH .../entries/{date}}가
  * 회차 배열을 통째로 교체하므로({@code NoteTxService.replaceTastingDay}) 빠뜨린 회차는 [저장] 순간 소실된다.
  * 프롬프트와 tool description 양쪽에 같은 이유로 인코딩돼 있다
  * (ref: delta 0029 D-14/AC-13·14 — {@code plan.md#ADR-45}·{@code spec FR-21}은 TΔ30이 개정한다;
