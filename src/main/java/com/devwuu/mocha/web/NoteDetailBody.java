@@ -9,7 +9,6 @@ import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.domain.Review;
-import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -57,8 +56,7 @@ public record NoteDetailBody(
      * 이기 때문이고, 계약 하나로 히어로와 날짜별 스트립이 <b>둘 다</b> 나온다 — 노트 레벨 배열을 따로 두면
      * 같은 사진이 두 자리에 실린다.
      */
-    // TΔ3 임시 조치: JSON 키는 아직 brews다 — 계약 표면 개명은 TΔ4가 하고 이 애너테이션을 걷어낸다.
-    public record DetailEntry(LocalDate date, @JsonProperty("brews") List<DetailCup> cups, List<Photo> photos) {
+    public record DetailEntry(LocalDate date, List<DetailCup> cups, List<Photo> photos) {
     }
 
     /** 저장된 회차 1개 — 레시피·감상 중 최소 하나는 non-null이다(V-15). */

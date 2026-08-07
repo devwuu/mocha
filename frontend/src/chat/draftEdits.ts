@@ -1,12 +1,12 @@
 import type {
   Bean,
-  Brew,
+  Cup,
   Draft,
   DraftNote,
   Entry,
   NoteCandidate,
   NoteDetail,
-  NoteDetailBrew,
+  NoteDetailCup,
   Recipe,
   Review,
 } from '../api/contract'
@@ -99,7 +99,7 @@ export function selectEditTarget(detail: NoteDetail, date: string): Draft {
       roast_level: detail.roast_level,
       official_notes: detail.official_notes,
       sources: detail.sources,
-      entries: [{ date: entry.date, brews: entry.brews.map(toDraftBrew), updated_at: null }],
+      entries: [{ date: entry.date, cups: entry.cups.map(toDraftCup), updated_at: null }],
       // 감사 컬럼은 상세 계약에 없다 — 화면이 쓰지 않는 값이라 잘려 있고(TΔ13a) 폼도 쓰지 않는다.
       created_at: null,
       updated_at: null,
@@ -108,12 +108,12 @@ export function selectEditTarget(detail: NoteDetail, date: string): Draft {
   }
 }
 
-function toDraftBrew(brew: NoteDetailBrew): Brew {
+function toDraftCup(cup: NoteDetailCup): Cup {
   return {
-    recipe: brew.recipe,
-    review: brew.review === null
+    recipe: cup.recipe,
+    review: cup.review === null
       ? null
-      : { my_taste: brew.review.my_taste, my_taste_original: null, rating: brew.review.rating },
+      : { my_taste: cup.review.my_taste, my_taste_original: null, rating: cup.review.rating },
   }
 }
 
@@ -125,23 +125,23 @@ export function patchEntry(draft: Draft, entryIndex: number, patch: Partial<Entr
   return patchNote(draft, { entries: replaceAt(draft.note.entries, entryIndex, (entry) => ({ ...entry, ...patch })) })
 }
 
-export function patchBrew(draft: Draft, entryIndex: number, brewIndex: number, patch: Partial<Brew>): Draft {
+export function patchCup(draft: Draft, entryIndex: number, cupIndex: number, patch: Partial<Cup>): Draft {
   const entry = draft.note.entries[entryIndex]
   return patchEntry(draft, entryIndex, {
-    brews: replaceAt(entry.brews, brewIndex, (brew) => ({ ...brew, ...patch })),
+    cups: replaceAt(entry.cups, cupIndex, (cup) => ({ ...cup, ...patch })),
   })
 }
 
 /** 레시피가 없던 회차에 값을 넣으면 레시피가 생긴다 — 전 필드 null인 레시피는 서버가 드롭한다(V-8). */
-export function patchRecipe(draft: Draft, entryIndex: number, brewIndex: number, patch: Partial<Recipe>): Draft {
-  const current = draft.note.entries[entryIndex].brews[brewIndex].recipe ?? EMPTY_RECIPE
-  return patchBrew(draft, entryIndex, brewIndex, { recipe: { ...current, ...patch } })
+export function patchRecipe(draft: Draft, entryIndex: number, cupIndex: number, patch: Partial<Recipe>): Draft {
+  const current = draft.note.entries[entryIndex].cups[cupIndex].recipe ?? EMPTY_RECIPE
+  return patchCup(draft, entryIndex, cupIndex, { recipe: { ...current, ...patch } })
 }
 
 /** 감상이 없던 회차도 같다 — `my_taste`가 빈 review은 서버가 드롭한다(V-15). */
-export function patchReview(draft: Draft, entryIndex: number, brewIndex: number, patch: Partial<Review>): Draft {
-  const current = draft.note.entries[entryIndex].brews[brewIndex].review ?? EMPTY_REVIEW
-  return patchBrew(draft, entryIndex, brewIndex, { review: { ...current, ...patch } })
+export function patchReview(draft: Draft, entryIndex: number, cupIndex: number, patch: Partial<Review>): Draft {
+  const current = draft.note.entries[entryIndex].cups[cupIndex].review ?? EMPTY_REVIEW
+  return patchCup(draft, entryIndex, cupIndex, { review: { ...current, ...patch } })
 }
 
 const EMPTY_RECIPE: Recipe = {

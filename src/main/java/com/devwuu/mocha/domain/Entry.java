@@ -1,7 +1,5 @@
 package com.devwuu.mocha.domain;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
-
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -22,10 +20,7 @@ import java.util.List;
  */
 public record Entry(
         LocalDate date,
-        // TΔ3 임시 조치: JSON 키는 아직 brews다 — 이 타입은 TurnDraft를 통해 그대로 직렬화되므로
-        // (agent-turn·turn-draft 계약) 키를 여기서 옮기면 계약 스냅샷·프론트가 함께 깨진다.
-        // 계약 표면 개명은 TΔ4가 한 번에 하고 이 애너테이션을 걷어낸다(tasks.md#Phase 1의 분할 축).
-        @JsonProperty("brews") List<Cup> cups,
+        List<Cup> cups,
         OffsetDateTime updatedAt
 ) {
 

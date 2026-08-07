@@ -16,7 +16,7 @@ import java.util.List;
  *                      changes/0021 ADR-53, V-14).
  * @param roastLevel    로스팅 정도.
  * @param officialNotes 로스터리 전시 테이스팅 노트 — 로스터리 출처 한정(FR-3/FR-7).
- * @param brews         회차 배열 — 배열 순서 = 회차 번호(구 my_taste/rating/recipe 단일 필드 대체,
+ * @param cups         회차 배열 — 배열 순서 = 회차 번호(구 my_taste/rating/recipe 단일 필드 대체,
  *                      changes/0021 ADR-59, V-15).
  * @param targetDate    시음일(YYYY-MM-DD) — 상대 날짜는 에이전트가 컨텍스트의 today 기준으로 해석해 절대화.
  * @param match         신규/기존 판정 — 미리보기 표기(AC-15)·커밋 대상 근거.
@@ -28,7 +28,7 @@ public record ProposeRecordArgs(
         List<BeanArg> beans,
         SourcedArg<String> roastLevel,
         SourcedArg<List<String>> officialNotes,
-        List<BrewArg> brews,
+        List<CupArg> cups,
         String targetDate,
         MatchArg match,
         List<String> sources

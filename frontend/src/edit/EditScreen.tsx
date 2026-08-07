@@ -2,7 +2,7 @@ import { Fragment, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type {
   NoteDetail,
-  NoteDetailBrew,
+  NoteDetailCup,
   NoteDetailReview,
   NoteEntryUpdate,
   NoteMetaUpdate,
@@ -150,7 +150,7 @@ export function EditScreen({ noteId, onNavigate }: EditScreenProps) {
         text:
           merged === null
             ? `${draft.value.date} 기록을 고쳤어요.`
-            : `${draft.value.date} 기록에 합쳤어요. 회차가 ${merged.value.brews.length + draft.value.brews.length}개가 됐어요.`,
+            : `${draft.value.date} 기록에 합쳤어요. 회차가 ${merged.value.cups.length + draft.value.cups.length}개가 됐어요.`,
       })
     } catch (error) {
       setNotice({ tone: 'error', text: describe(error, '기록을 고치지 못했어요. 입력한 값은 그대로 두었어요.') })
@@ -502,9 +502,9 @@ function DateSection({
 
       {collapsed ? (
         <div className="edit__section-body">
-          {entry.brews.map((brew, index) => (
+          {entry.cups.map((cup, index) => (
             <div className="edit__summary" key={index}>
-              {summarize(brew) || `${index + 1}회차`}
+              {summarize(cup) || `${index + 1}회차`}
             </div>
           ))}
         </div>
@@ -518,17 +518,17 @@ function DateSection({
           */}
           {merged !== null && (
             <p className="edit__merge">
-              {entry.date}에 이미 기록이 있어요. 그날 기록에 {merged.value.brews.length + 1}회차부터 합쳐집니다.
+              {entry.date}에 이미 기록이 있어요. 그날 기록에 {merged.value.cups.length + 1}회차부터 합쳐집니다.
             </p>
           )}
 
-          {entry.brews.map((brew, brewIndex) => (
-            <BrewCard
-              key={brewIndex}
-              brew={brew}
-              no={brewIndex + 1}
-              onRecipe={(patch) => onChange(withRecipe(entry, brewIndex, patch))}
-              onReview={(patch) => onChange(withReview(entry, brewIndex, patch))}
+          {entry.cups.map((cup, cupIndex) => (
+            <CupCard
+              key={cupIndex}
+              cup={cup}
+              no={cupIndex + 1}
+              onRecipe={(patch) => onChange(withRecipe(entry, cupIndex, patch))}
+              onReview={(patch) => onChange(withReview(entry, cupIndex, patch))}
             />
           ))}
 
@@ -548,27 +548,27 @@ function DateSection({
  * 구획 머리와 부제(*"어떻게 내렸는지"* / *"마셔보니 어땠는지"*)는 시안 그대로다. 레시피·감상이 회차 안에서
  * 1:1로 묶이는 구조(ADR-59)를 화면이 두 구획으로 드러내는 형태이고, **방식별 분기는 없다**(flat 스키마 V-8).
  */
-function BrewCard({
-  brew,
+function CupCard({
+  cup,
   no,
   onRecipe,
   onReview,
 }: {
-  brew: NoteDetailBrew
+  cup: NoteDetailCup
   no: number
   onRecipe: (patch: Partial<Recipe>) => void
   onReview: (patch: Partial<NoteDetailReview>) => void
 }) {
-  const recipe = brew.recipe
+  const recipe = cup.recipe
 
   return (
-    <div className="ebrew">
-      <div className="ebrew__head">
-        <span className="ebrew__no">{no}회차</span>
+    <div className="ecup">
+      <div className="ecup__head">
+        <span className="ecup__no">{no}회차</span>
         {/* 시안은 `핸드드립 ▾` 드롭다운 칩인데 `method`는 자유 문자열이다(FR-18) — 열거할 값 집합이 없어
             칩 모양만 살리고 입력으로 둔다(갤러리 원산지 축이 칩 대신 입력인 것과 같은 사정, TΔ12). */}
         <input
-          className="ebrew__method"
+          className="ecup__method"
           value={recipe?.method ?? ''}
           placeholder="방식"
           aria-label="추출 방식"
@@ -576,12 +576,12 @@ function BrewCard({
         />
       </div>
 
-      <div className="ebrew__band">
-        <span className="ebrew__band-title">레시피</span>
+      <div className="ecup__band">
+        <span className="ecup__band-title">레시피</span>
         <span className="edit__hint">어떻게 내렸는지</span>
       </div>
 
-      <div className="ebrew__stats">
+      <div className="ecup__stats">
         <NumberInput label="원두 g" value={recipe?.dose_g ?? null} onChange={(next) => onRecipe({ dose_g: next })} />
         <NumberInput label="물 ml" value={recipe?.water_ml ?? null} onChange={(next) => onRecipe({ water_ml: next })} />
         {/* 시안과 갈린 것 ② — 시안 격자에 `추출 ml`(yield_ml) 자리가 없다. 핸드드립 예시만 그려서 생긴
@@ -602,7 +602,7 @@ function BrewCard({
         />
       </div>
 
-      <div className="ebrew__block">
+      <div className="ecup__block">
         <TextArea
           label="푸어링"
           rows={2}
@@ -620,12 +620,12 @@ function BrewCard({
         />
       </div>
 
-      <div className="ebrew__band">
-        <span className="ebrew__band-title">평가</span>
+      <div className="ecup__band">
+        <span className="ecup__band-title">평가</span>
         <span className="edit__hint">마셔보니 어땠는지</span>
       </div>
 
-      <div className="ebrew__block">
+      <div className="ecup__block">
         {/*
           고치는 것은 정규화본(`my_taste`)뿐이다 — 원문(`my_taste_original`)은 계약에 없고, 저장하면
           서버가 정규화본을 양쪽에 담는다(V-11 뒷문장). "말한 그대로"가 편집본으로 수렴하는 것이
@@ -634,14 +634,14 @@ function BrewCard({
         <TextArea
           label="감상"
           rows={5}
-          value={brew.review?.my_taste ?? ''}
+          value={cup.review?.my_taste ?? ''}
           onChange={(next) => onReview({ my_taste: textValue(next) })}
         />
         <label className="efield">
           <span className="efield__label">평가</span>
           <select
             className="efield__select"
-            value={brew.review?.rating ?? ''}
+            value={cup.review?.rating ?? ''}
             onChange={(event) =>
               onReview({ rating: event.target.value === '' ? null : (event.target.value as Rating) })
             }
@@ -781,10 +781,10 @@ function TextArea({
 }
 
 /** 접힌 날짜의 한 줄 요약(시안) — `핸드드립 · 15g / 240ml · 92℃ · 매버릭 2.0 210클릭`. */
-function summarize(brew: NoteDetailBrew): string {
-  const recipe = brew.recipe
+function summarize(cup: NoteDetailCup): string {
+  const recipe = cup.recipe
   if (recipe === null) {
-    return brew.review?.my_taste ?? ''
+    return cup.review?.my_taste ?? ''
   }
   const amounts = [unit(recipe.dose_g, 'g'), unit(recipe.water_ml ?? recipe.yield_ml, 'ml')].filter((v) => v !== null)
   const gear = [recipe.machine, recipe.grind].filter((v) => v !== null).join(' ')

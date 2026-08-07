@@ -276,7 +276,7 @@ public final class EvalCaseLoader {
     private static void validateAssertion(String at, EvalCase.PathAssertion assertion) {
         if (assertion == null || isBlank(assertion.path())) {
             throw new EvalCaseFormatException(at + ".path — 필수 필드가 비었다"
-                    + " (예: entries[0].brews[0].recipe.grind)");
+                    + " (예: entries[0].cups[0].recipe.grind)");
         }
         try {
             EvalPath.parse(assertion.path());

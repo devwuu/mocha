@@ -36,7 +36,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * TΔ3b(changes/0021)·TΔ3d(changes/0023) — 실 OpenAI 호출 스모크(수동, 비용 발생): 시스템 프롬프트의
- * 회차(brews) 규칙·수치 정규화·다중 날짜 순차 제안(ADR-59·61, FR-15/18/22)이 실 에이전트 루프에서
+ * 회차(cups) 규칙·수치 정규화·다중 날짜 순차 제안(ADR-59·61, FR-15/18/22)이 실 에이전트 루프에서
  * 지켜지는지 관측한다.
  * <ul>
  *   <li>AC-74·75: {@code ideas/sample.md} 07-18 발화 → 회차 2개, 시도별 레시피·feedback과 맛 감상(review) 분리</li>
@@ -45,20 +45,20 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  *       나머지(07-19) "저장 후 이어서" 안내. 세그먼트 부재(분해 실패 폴백) 턴은 제안 미생성 + 분리 안내</li>
  * </ul>
  * <p>단언하지 않는다 — 모델 출력이라 판정은 로그로 한다(CLAUDE.md §5.3 관측). 협력자는 인메모리 fake라
- * 파일·Slack 접촉이 없고, 제안 결과 draft의 brews 배열이 관측 대상이다.
+ * 파일·Slack 접촉이 없고, 제안 결과 draft의 cups 배열이 관측 대상이다.
  * 기본 test 제외(@Tag("openai")), 실행은 온디맨드 Test 태스크로만.
  */
 @Tag("openai")
-class BrewRulesSmokeTest {
+class CupRulesSmokeTest {
 
     private static final String USER = "U-smoke";
 
     /** AC-74·75 — 같은 날 2회 시도 실사용 샘플(07-18 부분) → 회차 2개·감상/피드백 분리 관측. */
     @Test
-    void printsBrewSplitForSampleTwoAttemptUtterance() throws Exception {
-        // 기대: brews 요소 2개 — 각 회차에 그 시도의 recipe(도징·클릭·추출량)와 feedback(퍽·크레마 관찰·다음 계획),
+    void printsCupSplitForSampleTwoAttemptUtterance() throws Exception {
+        // 기대: cups 요소 2개 — 각 회차에 그 시도의 recipe(도징·클릭·추출량)와 feedback(퍽·크레마 관찰·다음 계획),
         //       맛 코멘트(라떼 지방맛·단맛·개맛있다)는 1회차 review으로. 마시는 방식(진하게/연하게/라떼)은 회차 분리 ❌.
-        runProposalSmoke("BREW SPLIT (AC-74·75)", sampleSection0718(), null);
+        runProposalSmoke("CUP SPLIT (AC-74·75)", sampleSection0718(), null);
     }
 
     /** AC-66·76 — grind 형식·대략 표기 숫자화·총 시간 초 환산 관측. */
@@ -110,7 +110,7 @@ class BrewRulesSmokeTest {
                         mapper, Clock.systemUTC())
                 .runTurn(input, toolkit.forTurn(USER, new TurnUserMessage(message, segments), null, proposals));
 
-        System.out.println("=== BREW RULES SMOKE (" + label + ") model=" + model + " ===");
+        System.out.println("=== CUP RULES SMOKE (" + label + ") model=" + model + " ===");
         System.out.println("입력      = " + message);
         System.out.println("최종 응답 = " + reply);
         Optional<TurnDraft> proposed = proposals.proposal();
@@ -121,7 +121,7 @@ class BrewRulesSmokeTest {
             Entry latest = entries.get(entries.size() - 1);
             System.out.println("draft 최신 엔트리 date = " + latest.date()
                     + " (순차 제안 시나리오 기대: active_date=가장 이른 날짜)");
-            System.out.println("draft.brews(" + latest.cups().size() + "개) = "
+            System.out.println("draft.cups(" + latest.cups().size() + "개) = "
                     + mapper.writeValueAsString(latest.cups()));
         }
         System.out.println("=== END ===");

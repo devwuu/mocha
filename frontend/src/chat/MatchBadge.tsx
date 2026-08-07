@@ -309,10 +309,10 @@ function EntryPicker({ target, onPick }: { target: NoteCandidate; onPick: (draft
  * 잡힌다 — 갤러리·후보 목록이 로스터리로 동명 후보를 가르는 것과 같은 자리다.
  */
 function summarize(entry: NoteDetailEntry): string {
-  const parts = [`${entry.brews.length}회차`]
-  const rating = entry.brews.map((brew) => brew.review?.rating).find((value) => value != null)
-  const taste = entry.brews
-    .map((brew) => brew.review?.my_taste)
+  const parts = [`${entry.cups.length}회차`]
+  const rating = entry.cups.map((cup) => cup.review?.rating).find((value) => value != null)
+  const taste = entry.cups
+    .map((cup) => cup.review?.my_taste)
     .find((value) => value != null && value !== '')
   if (rating != null) {
     parts.push(rating)

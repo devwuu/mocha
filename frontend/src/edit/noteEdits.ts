@@ -1,9 +1,9 @@
 import type {
   Bean,
-  Brew,
+  Cup,
   Draft,
   NoteDetail,
-  NoteDetailBrew,
+  NoteDetailCup,
   NoteDetailReview,
   NoteEntryUpdate,
   NoteMetaUpdate,
@@ -47,7 +47,7 @@ export function toMetaUpdate(note: NoteDetail): NoteMetaUpdate {
 export function toEntryDrafts(note: NoteDetail): EntryDraft[] {
   return note.entries.map((entry) => ({
     targetDate: entry.date,
-    value: { date: entry.date, brews: entry.brews },
+    value: { date: entry.date, cups: entry.cups },
   }))
 }
 
@@ -80,13 +80,13 @@ export function toEntryUpdate(draft: Draft): EntryDraft {
     throw new Error('수정 모드 폼은 기록 1건만 담아')
   }
   const entry = draft.note.entries[0]
-  return { targetDate: draft.match.date, value: { date: entry.date, brews: entry.brews.map(toUpdateBrew) } }
+  return { targetDate: draft.match.date, value: { date: entry.date, cups: entry.cups.map(toUpdateCup) } }
 }
 
-function toUpdateBrew(brew: Brew): NoteDetailBrew {
+function toUpdateCup(cup: Cup): NoteDetailCup {
   return {
-    recipe: brew.recipe,
-    review: brew.review === null ? null : { my_taste: brew.review.my_taste, rating: brew.review.rating },
+    recipe: cup.recipe,
+    review: cup.review === null ? null : { my_taste: cup.review.my_taste, rating: cup.review.rating },
   }
 }
 
@@ -129,17 +129,17 @@ export function trimBeans(meta: NoteMetaUpdate): NoteMetaUpdate {
 }
 
 /** 레시피가 없던 회차에 값을 넣으면 레시피가 생긴다 — 전 필드 null인 레시피는 서버가 드롭한다(V-8). */
-export function withRecipe(entry: NoteEntryUpdate, brewIndex: number, patch: Partial<Recipe>): NoteEntryUpdate {
-  return withBrew(entry, brewIndex, (brew) => ({ ...brew, recipe: { ...(brew.recipe ?? EMPTY_RECIPE), ...patch } }))
+export function withRecipe(entry: NoteEntryUpdate, cupIndex: number, patch: Partial<Recipe>): NoteEntryUpdate {
+  return withCup(entry, cupIndex, (cup) => ({ ...cup, recipe: { ...(cup.recipe ?? EMPTY_RECIPE), ...patch } }))
 }
 
 /** 감상이 없던 회차도 같다 — `my_taste`가 빈 review은 서버가 드롭한다(V-15). */
 export function withReview(
   entry: NoteEntryUpdate,
-  brewIndex: number,
+  cupIndex: number,
   patch: Partial<NoteDetailReview>,
 ): NoteEntryUpdate {
-  return withBrew(entry, brewIndex, (brew) => ({ ...brew, review: { ...(brew.review ?? EMPTY_REVIEW), ...patch } }))
+  return withCup(entry, cupIndex, (cup) => ({ ...cup, review: { ...(cup.review ?? EMPTY_REVIEW), ...patch } }))
 }
 
 /** 결과 날짜 변경 — `targetDate`는 건드리지 않는다(위 `EntryDraft` 주석). */
@@ -166,12 +166,12 @@ export function changed(before: unknown, after: unknown): boolean {
   return JSON.stringify(before) !== JSON.stringify(after)
 }
 
-function withBrew(
+function withCup(
   entry: NoteEntryUpdate,
-  brewIndex: number,
-  update: (brew: NoteDetailBrew) => NoteDetailBrew,
+  cupIndex: number,
+  update: (cup: NoteDetailCup) => NoteDetailCup,
 ): NoteEntryUpdate {
-  return { ...entry, brews: entry.brews.map((brew, i) => (i === brewIndex ? update(brew) : brew)) }
+  return { ...entry, cups: entry.cups.map((cup, i) => (i === cupIndex ? update(cup) : cup)) }
 }
 
 const EMPTY_BEAN: Bean = { description: { value: '', source: 'user' }, process: null }

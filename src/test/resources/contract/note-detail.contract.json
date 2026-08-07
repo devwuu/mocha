@@ -23,7 +23,7 @@
     "entries": [
       {
         "date": "2026-06-28",
-        "brews": [
+        "cups": [
           {
             "recipe": {
               "method": "핸드드립",
@@ -47,7 +47,7 @@
       },
       {
         "date": "2026-07-02",
-        "brews": [
+        "cups": [
           {
             "recipe": {
               "method": "핸드드립",
@@ -89,7 +89,7 @@
     "entries": [
       {
         "date": "2026-07-02",
-        "brews": [
+        "cups": [
           {
             "recipe": null,
             "review": { "my_taste": "그냥 무난했다.", "rating": null }

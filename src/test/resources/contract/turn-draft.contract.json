@@ -34,7 +34,7 @@
     "sources" : [ "https://example.test/chelbesa" ],
     "entries" : [ {
       "date" : "2026-07-16",
-      "brews" : [ {
+      "cups" : [ {
         "recipe" : {
           "method" : "핸드드립",
           "dose_g" : 15.0,

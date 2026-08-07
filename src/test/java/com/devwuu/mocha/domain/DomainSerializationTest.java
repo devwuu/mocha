@@ -70,7 +70,7 @@ class DomainSerializationTest {
                 .contains("\"coffee_name\"")
                 .contains("\"roast_level\"")
                 .contains("\"official_notes\"")
-                .contains("\"brews\"")              // 회차 배열(changes/0021 ADR-59)
+                .contains("\"cups\"")              // 회차 배열(changes/0021 ADR-59)
                 .contains("\"review\"")
                 .contains("\"my_taste\"")
                 .contains("\"my_taste_original\"")  // 감상 원문 병존(V-11 — review 요소 단위)
@@ -112,7 +112,7 @@ class DomainSerializationTest {
     @DisplayName("AC-Δ1(changes/0014): photos 키가 든 JSON도 오류 없이 로드되고 재저장 시 photos 키가 사라진다")
     void legacyPhotosKeyIgnoredOnRoundTrip() throws Exception {
         // 사진 아카이브 전용화(ADR-32) 이전에 저장된 엔트리 JSON — photos 배열을 품고 있다.
-        String legacy = "{\"date\":\"2026-07-10\",\"brews\":[{\"recipe\":null,"
+        String legacy = "{\"date\":\"2026-07-10\",\"cups\":[{\"recipe\":null,"
                 + "\"review\":{\"my_taste\":\"새콤\",\"my_taste_original\":\"새콤\",\"rating\":\"맛있다\"}}],"
                 + "\"photos\":[\"photos/coffeevera/2026-07-10/a.jpg\"],\"updated_at\":null}";
 
@@ -153,12 +153,12 @@ class DomainSerializationTest {
         assertThat(restored.myTasteOriginal()).isEqualTo("맛있었음"); // JSON에도 병존
     }
 
-    // --- 0021 TΔ1b: brews 회차 구조 + Recipe 10필드 (ADR-59, V-8·V-15) ---
+    // --- 0021 TΔ1b: cups 회차 구조 + Recipe 10필드 (ADR-59, V-8·V-15) ---
     // 기존 노트 JSON은 삭제·재등록하므로(ADR-28 관례) 구 엔트리 레벨 필드 로드 호환 테스트는 두지 않는다.
 
     @Test
-    @DisplayName("0021-TΔ1b: brews(회차 배열 — recipe 10필드·review)가 snake_case로 직렬화·왕복된다")
-    void brewsRoundTrip() throws Exception {
+    @DisplayName("0021-TΔ1b: cups(회차 배열 — recipe 10필드·review)가 snake_case로 직렬화·왕복된다")
+    void cupsRoundTrip() throws Exception {
         // ideas/sample.md 패턴: 같은 날 2회 시도 — 회차별 레시피·피드백·감상이 갈린다(배열 순서 = 회차 번호).
         Entry entry = new Entry(
                 LocalDate.of(2026, 7, 18),
@@ -177,7 +177,7 @@ class DomainSerializationTest {
         String json = mapper.writeValueAsString(entry);
         Entry restored = mapper.readValue(json, Entry.class);
 
-        assertThat(json).contains("\"brews\"")
+        assertThat(json).contains("\"cups\"")
                 .contains("\"yield_ml\":10").contains("\"time_sec\":28")   // 신설 수치 필드 snake_case·number
                 .contains("\"grind\":\"210클릭 (매버릭 2.0)\"")
                 .contains("\"pouring\":\"뜸 40ml 30초 → 100ml → 100ml\"");
@@ -188,18 +188,18 @@ class DomainSerializationTest {
     }
 
     @Test
-    @DisplayName("0021-TΔ1b/V-15: brews 키 부재·null JSON도 빈 배열로 로드된다(null 불가 기본값)")
-    void brewsDefaultsToEmptyList() throws Exception {
-        String withoutBrews = "{\"date\":\"2026-07-10\",\"updated_at\":null}";
-        String nullBrews = "{\"date\":\"2026-07-10\",\"brews\":null,\"updated_at\":null}";
+    @DisplayName("0021-TΔ1b/V-15: cups 키 부재·null JSON도 빈 배열로 로드된다(null 불가 기본값)")
+    void cupsDefaultsToEmptyList() throws Exception {
+        String withoutCups = "{\"date\":\"2026-07-10\",\"updated_at\":null}";
+        String nullCups = "{\"date\":\"2026-07-10\",\"cups\":null,\"updated_at\":null}";
 
-        assertThat(mapper.readValue(withoutBrews, Entry.class).cups()).isEmpty();
-        assertThat(mapper.readValue(nullBrews, Entry.class).cups()).isEmpty();
+        assertThat(mapper.readValue(withoutCups, Entry.class).cups()).isEmpty();
+        assertThat(mapper.readValue(nullCups, Entry.class).cups()).isEmpty();
     }
 
     @Test
     @DisplayName("0021-TΔ1b/V-15: normalize — recipe·review 둘 다 null인 회차와 빈 감상 review을 드롭한다")
-    void brewsNormalizeDropsEmptyElements() {
+    void cupsNormalizeDropsEmptyElements() {
         List<Cup> normalized = Cup.normalize(Arrays.asList(
                 new Cup(new Recipe(null, 15.0, 240.0, null, null, null, "중간", null, null, null), new Review("새콤", null, Rating.GOOD)),
                 new Cup(null, null),                                          // 빈 회차 → 드롭

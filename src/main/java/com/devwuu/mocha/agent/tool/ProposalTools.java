@@ -77,7 +77,7 @@ class ProposalTools {
             .formatted(
                     sourcedSchema("원산지·품종 등을 묶은 자유 텍스트(한국어 표기) — 품종은 알면 포함", true),
                     sourcedSchema("그 원두의 가공방식(한국어 관용 표기) — 모르면 null", true));
-    private static final String BREW_SCHEMA = """
+    private static final String CUP_SCHEMA = """
             {"type":"object","description":"회차 1개(한 번 내려 마신 단위) — recipe·review 중 최소 하나를 채운다(V-15)","properties":{
               "recipe":%s,
               "review":%s
@@ -90,7 +90,7 @@ class ProposalTools {
               "beans":{"type":"array","description":"원두 구성 — 요소=원두 1종. 정보 전무면 빈 배열(V-14)","items":%s},
               "roast_level":%s,
               "official_notes":%s,
-              "brews":{"type":"array","description":"회차 배열 — 배열 순서 = 회차 번호. 시도를 나눠 말했으면 시도마다 요소(V-15). target_date 하루의 시도만 담는다 — 다른 날짜의 시도를 이 날짜의 회차로 합치지 않는다(다중 날짜 발화는 active_date 세그먼트의 내용만 — ADR-59·61)","items":%s},
+              "cups":{"type":"array","description":"회차 배열 — 배열 순서 = 회차 번호. 시도를 나눠 말했으면 시도마다 요소(V-15). target_date 하루의 시도만 담는다 — 다른 날짜의 시도를 이 날짜의 회차로 합치지 않는다(다중 날짜 발화는 active_date 세그먼트의 내용만 — ADR-59·61)","items":%s},
               "target_date":{"type":"string","description":"시음일 YYYY-MM-DD — 상대 날짜(\\"어제\\")는 컨텍스트의 today 기준으로 절대화해 보낸다. 발화에 시음 날짜가 2개 이상 섞여 있으면 컨텍스트의 자동 분해 세그먼트 중 active_date(가장 이른 날짜)로만 제안한다 — 세그먼트 컨텍스트가 없으면(분해 실패) 이 tool을 호출하지 말고 한 날짜씩 나눠 보내달라고 안내한다(FR-15, ADR-61)"},
               "match":{"type":"object","description":"이 제안이 무엇인지 — new(새 커피) · existing(기존 노트를 또 마신 새 시음 = 회차 추가) · edit(이미 저장된 기록을 고침 = 그 날짜 엔트리 교체). existing과 edit은 인자 모양이 같지만 뜻이 반대다: \\"또 마셨다\\"면 existing, \\"그때 기록이 틀렸다\\"면 edit. 기존 노트 대조는 list_notes로 한다","properties":{
                 "type":{"type":"string","enum":["new","existing","edit"]},
@@ -98,14 +98,14 @@ class ProposalTools {
                 "date":{"type":["string","null"],"description":"existing·edit일 때 대상 날짜 YYYY-MM-DD. edit에서는 고칠 엔트리를 가리키는 키라 실제로 있는 날짜여야 한다(get_note로 확인) — 날짜를 바꾸려면 여기는 원래 날짜를 두고 target_date에 새 날짜를 넣어라"}
               },"required":["type","note_id","date"],"additionalProperties":false},
               "sources":{"type":"array","items":{"type":"string"},"description":"검색 참조 링크 — 동일성 가드를 통과한 출처만(AC-58)"}
-            },"required":["coffee_name","roastery","beans","roast_level","official_notes","brews","target_date","match","sources"],"additionalProperties":false}"""
+            },"required":["coffee_name","roastery","beans","roast_level","official_notes","cups","target_date","match","sources"],"additionalProperties":false}"""
             .formatted(
                     sourcedSchema("커피 이름 — 기록의 정체성이자 검색 앵커(검색 보강 금지)", false),
                     sourcedSchema("로스터리", true),
                     BEAN_SCHEMA,
                     sourcedSchema("로스팅 정도", true),
                     sourcedNotesSchema("로스터리 전시 테이스팅 노트 — 로스터리 공식 출처 한정(FR-3)"),
-                    BREW_SCHEMA);
+                    CUP_SCHEMA);
 
     private final NoteService noteService;
     private final RecordProposalValidator recordValidator;
@@ -193,7 +193,7 @@ class ProposalTools {
         }
 
         OffsetDateTime now = OffsetDateTime.now(clock);
-        Entry entry = new Entry(proposal.targetDate(), proposal.brews(), now);
+        Entry entry = new Entry(proposal.targetDate(), proposal.cups(), now);
         // POLICY: 제안 노트의 식별자는 기존 노트면 그 id, 신규면 null이다 — id는 INSERT가 발급하므로 저장 전
         //         draft가 식별자를 가질 방법이 없고, 이 null이 그대로 커밋의 신규/기존 분기가 된다
         //         (ref: changes/0028 D-1, ADR-75 — 구 recordSlug 대체키 발급은 근거와 함께 소멸했다).

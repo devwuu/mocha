@@ -156,56 +156,56 @@ export function DraftForm({ draft, busy, onChange, onSave, onCancel }: DraftForm
               )}
             </div>
           )}
-          {entry.brews.map((brew, brewIndex) => (
-            <div className="draft__brew" key={brewIndex}>
-              <div className="draft__brew-no">{brewIndex + 1}회차</div>
+          {entry.cups.map((cup, cupIndex) => (
+            <div className="draft__cup" key={cupIndex}>
+              <div className="draft__cup-no">{cupIndex + 1}회차</div>
               <div className="draft__grid">
                 <Field label="방식">
                   <input
-                    value={brew.recipe?.method ?? ''}
+                    value={cup.recipe?.method ?? ''}
                     onChange={(event) =>
-                      onChange(patchRecipe(draft, entryIndex, brewIndex, { method: textValue(event.target.value) }))
+                      onChange(patchRecipe(draft, entryIndex, cupIndex, { method: textValue(event.target.value) }))
                     }
                   />
                 </Field>
                 <Field label="분쇄도">
                   <input
-                    value={brew.recipe?.grind ?? ''}
+                    value={cup.recipe?.grind ?? ''}
                     onChange={(event) =>
-                      onChange(patchRecipe(draft, entryIndex, brewIndex, { grind: textValue(event.target.value) }))
+                      onChange(patchRecipe(draft, entryIndex, cupIndex, { grind: textValue(event.target.value) }))
                     }
                   />
                 </Field>
                 <NumberField
                   label="원두 g"
-                  value={brew.recipe?.dose_g ?? null}
-                  onChange={(next) => onChange(patchRecipe(draft, entryIndex, brewIndex, { dose_g: next }))}
+                  value={cup.recipe?.dose_g ?? null}
+                  onChange={(next) => onChange(patchRecipe(draft, entryIndex, cupIndex, { dose_g: next }))}
                 />
                 <NumberField
                   label="물 ml"
-                  value={brew.recipe?.water_ml ?? null}
-                  onChange={(next) => onChange(patchRecipe(draft, entryIndex, brewIndex, { water_ml: next }))}
+                  value={cup.recipe?.water_ml ?? null}
+                  onChange={(next) => onChange(patchRecipe(draft, entryIndex, cupIndex, { water_ml: next }))}
                 />
                 <NumberField
                   label="추출 ml"
-                  value={brew.recipe?.yield_ml ?? null}
-                  onChange={(next) => onChange(patchRecipe(draft, entryIndex, brewIndex, { yield_ml: next }))}
+                  value={cup.recipe?.yield_ml ?? null}
+                  onChange={(next) => onChange(patchRecipe(draft, entryIndex, cupIndex, { yield_ml: next }))}
                 />
                 <NumberField
                   label="시간 초"
-                  value={brew.recipe?.time_sec ?? null}
-                  onChange={(next) => onChange(patchRecipe(draft, entryIndex, brewIndex, { time_sec: next }))}
+                  value={cup.recipe?.time_sec ?? null}
+                  onChange={(next) => onChange(patchRecipe(draft, entryIndex, cupIndex, { time_sec: next }))}
                 />
                 <NumberField
                   label="온도 ℃"
-                  value={brew.recipe?.temp_c ?? null}
-                  onChange={(next) => onChange(patchRecipe(draft, entryIndex, brewIndex, { temp_c: next }))}
+                  value={cup.recipe?.temp_c ?? null}
+                  onChange={(next) => onChange(patchRecipe(draft, entryIndex, cupIndex, { temp_c: next }))}
                 />
                 <Field label="기구">
                   <input
-                    value={brew.recipe?.machine ?? ''}
+                    value={cup.recipe?.machine ?? ''}
                     onChange={(event) =>
-                      onChange(patchRecipe(draft, entryIndex, brewIndex, { machine: textValue(event.target.value) }))
+                      onChange(patchRecipe(draft, entryIndex, cupIndex, { machine: textValue(event.target.value) }))
                     }
                   />
                 </Field>
@@ -213,36 +213,36 @@ export function DraftForm({ draft, busy, onChange, onSave, onCancel }: DraftForm
               <Field label="푸어링">
                 <textarea
                   rows={2}
-                  value={brew.recipe?.pouring ?? ''}
+                  value={cup.recipe?.pouring ?? ''}
                   onChange={(event) =>
-                    onChange(patchRecipe(draft, entryIndex, brewIndex, { pouring: textValue(event.target.value) }))
+                    onChange(patchRecipe(draft, entryIndex, cupIndex, { pouring: textValue(event.target.value) }))
                   }
                 />
               </Field>
               <Field label="관찰·다음 계획">
                 <textarea
                   rows={2}
-                  value={brew.recipe?.feedback ?? ''}
+                  value={cup.recipe?.feedback ?? ''}
                   onChange={(event) =>
-                    onChange(patchRecipe(draft, entryIndex, brewIndex, { feedback: textValue(event.target.value) }))
+                    onChange(patchRecipe(draft, entryIndex, cupIndex, { feedback: textValue(event.target.value) }))
                   }
                 />
               </Field>
               <Field label="감상">
                 <textarea
                   rows={2}
-                  value={brew.review?.my_taste ?? ''}
+                  value={cup.review?.my_taste ?? ''}
                   onChange={(event) =>
-                    onChange(patchReview(draft, entryIndex, brewIndex, { my_taste: textValue(event.target.value) }))
+                    onChange(patchReview(draft, entryIndex, cupIndex, { my_taste: textValue(event.target.value) }))
                   }
                 />
               </Field>
               <Field label="평가">
                 <select
-                  value={brew.review?.rating ?? ''}
+                  value={cup.review?.rating ?? ''}
                   onChange={(event) =>
                     onChange(
-                      patchReview(draft, entryIndex, brewIndex, {
+                      patchReview(draft, entryIndex, cupIndex, {
                         rating: event.target.value === '' ? null : (event.target.value as Rating),
                       }),
                     )

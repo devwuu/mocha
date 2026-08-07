@@ -1,6 +1,6 @@
 package com.devwuu.mocha.agent.tool.validation;
 
-import com.devwuu.mocha.agent.tool.BrewArg;
+import com.devwuu.mocha.agent.tool.CupArg;
 import com.devwuu.mocha.domain.Cup;
 import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Review;
@@ -9,29 +9,29 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 회차 규칙 패밀리(V-1·V-8·V-15) — brews 인자를 도메인 {@link Cup} 배열로 정규화한다(배열 순서 = 회차
+ * 회차 규칙 패밀리(V-1·V-8·V-15) — cups 인자를 도메인 {@link Cup} 배열로 정규화한다(배열 순서 = 회차
  * 번호). record·edit 양 진입점이 공유한다 — 드롭 후 회차 0개 처리와 그 거부 문안은 진입점의 몫이라
  * record/edit가 다르다 (ref: specs/coffee-note-agent/data-model.md#5, plan.md#ADR-64 — 추출은 배치
  * 변경, 판정·문안 불변).
  */
-final class BrewRules {
+final class CupRules {
 
-    private BrewRules() {
+    private CupRules() {
     }
 
-    // V-15: brews 인자 → 도메인 Cup 배열(배열 순서 = 회차 번호). rating은 V-1로 검증(위반은 거부)하고,
+    // V-15: cups 인자 → 도메인 Cup 배열(배열 순서 = 회차 번호). rating은 V-1로 검증(위반은 거부)하고,
     // recipe V-8 정규화·빈 감상 review 드롭·빈 회차 드롭은 Cup.normalize가 맡는다. 드롭 후 0개 처리
     // (record 거부·edit patch 거부)는 호출부의 몫이다.
-    static List<Cup> brews(List<BrewArg> raw) {
+    static List<Cup> cups(List<CupArg> raw) {
         if (raw == null) {
             return List.of();
         }
         List<Cup> converted = new ArrayList<>();
-        for (BrewArg arg : raw) {
+        for (CupArg arg : raw) {
             if (arg == null) {
                 continue;
             }
-            BrewArg.ReviewArg review = arg.review();
+            CupArg.ReviewArg review = arg.review();
             converted.add(new Cup(arg.recipe(), review == null ? null : Review.normalize(
                     ValidationSupport.blankToNull(review.myTaste()),
                     ValidationSupport.blankToNull(review.myTasteOriginal()),

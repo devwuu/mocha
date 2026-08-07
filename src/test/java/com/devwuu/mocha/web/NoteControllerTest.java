@@ -520,7 +520,7 @@ class NoteControllerTest {
     void entryUpdateWithoutCupsIsRejected() throws Exception {
         ObjectNode empty = (ObjectNode) load(UPDATE_CONTRACT).get("entry_request");
         // 빈 회차(레시피도 감상도 없음)는 V-15 정규화가 드롭한다 — 그 결과가 0건이면 저장할 시음이 없다.
-        empty.set("brews", mapper.createArrayNode().add(
+        empty.set("cups", mapper.createArrayNode().add(
                 mapper.createObjectNode().putNull("recipe").putNull("review")));
 
         patch("/api/notes/21/entries/2026-07-02", empty, status().isBadRequest());

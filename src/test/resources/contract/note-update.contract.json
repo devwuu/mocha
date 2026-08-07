@@ -5,7 +5,7 @@
   "missing_status": 404,
   "delete_status": 204,
   "date_move": "entry_request.date != path {date} 이면 그 엔트리가 그 날짜로 옮겨간다",
-  "date_conflict": "merge_brews",
+  "date_conflict": "merge_cups",
   "meta_request": {
     "roastery": { "value": "프릳츠커피", "source": "user" },
     "beans": [
@@ -24,7 +24,7 @@
   },
   "entry_request": {
     "date": "2026-07-02",
-    "brews": [
+    "cups": [
       {
         "recipe": {
           "method": "핸드드립",
@@ -51,7 +51,7 @@
   },
   "entry_request_moved": {
     "date": "2026-06-28",
-    "brews": [
+    "cups": [
       {
         "recipe": {
           "method": "핸드드립",
@@ -96,7 +96,7 @@
     "entries": [
       {
         "date": "2026-06-28",
-        "brews": [
+        "cups": [
           {
             "recipe": {
               "method": "핸드드립",
@@ -120,7 +120,7 @@
       },
       {
         "date": "2026-07-02",
-        "brews": [
+        "cups": [
           {
             "recipe": {
               "method": "핸드드립",
@@ -171,7 +171,7 @@
     "entries": [
       {
         "date": "2026-06-28",
-        "brews": [
+        "cups": [
           {
             "recipe": {
               "method": "핸드드립",

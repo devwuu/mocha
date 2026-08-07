@@ -1,4 +1,4 @@
-import type { CardType, NoteDetailBrew } from '../api'
+import type { CardType, NoteDetailCup } from '../api'
 import { getNoteCard } from '../api'
 
 /**
@@ -14,12 +14,12 @@ import { getNoteCard } from '../api'
  */
 
 /** 그 회차에 있는 카드 종류 — 없는 파트는 카드가 없다(AC-78). 순서는 감상 → 레시피(렌더 순서와 같다). */
-export function cardTypesOf(brew: NoteDetailBrew): CardType[] {
+export function cardTypesOf(cup: NoteDetailCup): CardType[] {
   const types: CardType[] = []
-  if (brew.review !== null) {
+  if (cup.review !== null) {
     types.push('taste')
   }
-  if (brew.recipe !== null) {
+  if (cup.recipe !== null) {
     types.push('recipe')
   }
   return types
@@ -35,16 +35,16 @@ export function cardTypesOf(brew: NoteDetailBrew): CardType[] {
  * @returns 공유 시트가 실제로 열렸으면 `true`, 내려받기로 폴백했으면 `false`.
  * @throws 카드를 받지 못했을 때. 사용자가 공유 시트를 닫은 것(`AbortError`)은 실패가 아니라 정상 종료다.
  */
-export async function shareBrewCards(
+export async function shareCupCards(
   noteId: number,
   date: string,
-  brew: NoteDetailBrew,
-  brewNumber: number,
+  cup: NoteDetailCup,
+  cupNumber: number,
 ): Promise<boolean> {
   const files: File[] = []
-  for (const type of cardTypesOf(brew)) {
-    const blob = await getNoteCard(noteId, date, type, brewNumber)
-    files.push(new File([blob], `${date}-${type}-${brewNumber}.jpg`, { type: 'image/jpeg' }))
+  for (const type of cardTypesOf(cup)) {
+    const blob = await getNoteCard(noteId, date, type, cupNumber)
+    files.push(new File([blob], `${date}-${type}-${cupNumber}.jpg`, { type: 'image/jpeg' }))
   }
   if (files.length === 0) {
     return false

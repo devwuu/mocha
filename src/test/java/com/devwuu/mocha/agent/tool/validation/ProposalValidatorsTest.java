@@ -1,7 +1,7 @@
 package com.devwuu.mocha.agent.tool.validation;
 
 import com.devwuu.mocha.agent.tool.BeanArg;
-import com.devwuu.mocha.agent.tool.BrewArg;
+import com.devwuu.mocha.agent.tool.CupArg;
 import com.devwuu.mocha.agent.tool.ProposeRecordArgs;
 import com.devwuu.mocha.agent.tool.RecordProposal;
 import com.devwuu.mocha.agent.tool.SourcedArg;
@@ -29,7 +29,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * TΔ1(changes/0018) · TΔ2a(changes/0021): 제안 tool 서버 검증 — 검증 규칙별 통과/거부(사유 포함)를
- * 결정론으로 단언한다 (AC-Δ5, data-model §5 — beans·brews 인자는 V-14·V-15).
+ * 결정론으로 단언한다 (AC-Δ5, data-model §5 — beans·cups 인자는 V-14·V-15).
  * 외부 호출 없음 — 순수 도메인 검증(모듈 CLAUDE.md §5.2).
  * <p>changes/0029 TΔ1에서 검증 진입점이 {@link RecordProposalValidator} 하나로 줄었다 —
  * {@code propose_edit} 케이스군과 <b>단일 대기 케이스군(구 AC-30)</b>이 대상 구조와 함께 폐기됐다
@@ -46,8 +46,8 @@ class ProposalValidatorsTest {
 
     // ---- 픽스처 ----
 
-    private static BrewArg reviewBrew(String myTaste, String myTasteOriginal, String rating) {
-        return new BrewArg(null, new BrewArg.ReviewArg(myTaste, myTasteOriginal, rating));
+    private static CupArg reviewCup(String myTaste, String myTasteOriginal, String rating) {
+        return new CupArg(null, new CupArg.ReviewArg(myTaste, myTasteOriginal, rating));
     }
 
     private static ProposeRecordArgs recordArgs(String coffeeName, String rating, String targetDate,
@@ -58,8 +58,8 @@ class ProposalValidatorsTest {
                 List.of(new BeanArg(new SourcedArg<>("에티오피아", "search"), new SourcedArg<>(null, null))),
                 new SourcedArg<>(null, null),
                 new SourcedArg<>(List.of("자스민", "베르가못"), "search"),
-                List.of(new BrewArg(new Recipe(null, 15.0, 240.0, null, null, null, null, null, null, null),
-                        new BrewArg.ReviewArg("새콤하고 좋았음", "새콤하고 좋았다", rating))),
+                List.of(new CupArg(new Recipe(null, 15.0, 240.0, null, null, null, null, null, null, null),
+                        new CupArg.ReviewArg("새콤하고 좋았음", "새콤하고 좋았다", rating))),
                 targetDate, match,
                 List.of("https://frob.co.kr/products/chelbesa"));
     }
@@ -69,10 +69,10 @@ class ProposalValidatorsTest {
                 new ProposeRecordArgs.MatchArg("new", null, null));
     }
 
-    /** 메타 최소·brews만 바꿔 끼우는 변형 — beans·brews 검증 케이스용. */
-    private static ProposeRecordArgs recordArgsWith(List<BeanArg> beans, List<BrewArg> brews) {
+    /** 메타 최소·cups만 바꿔 끼우는 변형 — beans·cups 검증 케이스용. */
+    private static ProposeRecordArgs recordArgsWith(List<BeanArg> beans, List<CupArg> cups) {
         return new ProposeRecordArgs(
-                new SourcedArg<>("예가체프", "user"), null, beans, null, null, brews,
+                new SourcedArg<>("예가체프", "user"), null, beans, null, null, cups,
                 TASTED.toString(), new ProposeRecordArgs.MatchArg("new", null, null), null);
     }
 
@@ -189,7 +189,7 @@ class ProposalValidatorsTest {
                                                   SourcedArg<List<String>> officialNotes, List<BeanArg> beans) {
             return new ProposeRecordArgs(
                     new SourcedArg<>(coffeeName, "user"), roastery, beans, null, officialNotes,
-                    List.of(reviewBrew("새콤하고 좋았음", "새콤하고 좋았다", "맛있다")),
+                    List.of(reviewCup("새콤하고 좋았음", "새콤하고 좋았다", "맛있다")),
                     TASTED.toString(), new ProposeRecordArgs.MatchArg("new", null, null), null);
         }
 
@@ -318,10 +318,10 @@ class ProposalValidatorsTest {
             RecordProposal withNull = okOf(validateRecord(
                     recordArgs("예가체프", null, TASTED.toString(),
                             new ProposeRecordArgs.MatchArg("new", null, null))));
-            assertThat(withNull.brews().getFirst().review().rating()).isNull();
+            assertThat(withNull.cups().getFirst().review().rating()).isNull();
 
             RecordProposal withLabel = okOf(validateRecord(recordArgs()));
-            assertThat(withLabel.brews().getFirst().review().rating()).isEqualTo(Rating.GOOD);
+            assertThat(withLabel.cups().getFirst().review().rating()).isEqualTo(Rating.GOOD);
         }
     }
 
@@ -388,7 +388,7 @@ class ProposalValidatorsTest {
                                     new SourcedArg<>("워시드", "search")),
                             new BeanArg(new SourcedArg<>("콜롬비아", "user"),
                                     new SourcedArg<>("내추럴", "user"))),
-                    List.of(reviewBrew("좋았음", null, null)))));
+                    List.of(reviewCup("좋았음", null, null)))));
             assertThat(proposal.meta().beans()).containsExactly(
                     new Bean(new Sourced<>("에티오피아 예가체프", Source.USER), new Sourced<>("워시드", Source.SEARCH)),
                     new Bean(new Sourced<>("콜롬비아", Source.USER), new Sourced<>("내추럴", Source.USER)));
@@ -400,7 +400,7 @@ class ProposalValidatorsTest {
             RecordProposal proposal = okOf(validateRecord(recordArgsWith(
                     List.of(new BeanArg(new SourcedArg<>("  ", "user"), new SourcedArg<>("워시드", "user")),
                             new BeanArg(new SourcedArg<>("콜롬비아", "user"), new SourcedArg<>(null, null))),
-                    List.of(reviewBrew("좋았음", null, null)))));
+                    List.of(reviewCup("좋았음", null, null)))));
             assertThat(proposal.meta().beans())
                     .containsExactly(new Bean(new Sourced<>("콜롬비아", Source.USER), null));
         }
@@ -410,7 +410,7 @@ class ProposalValidatorsTest {
         void beanSubfieldSourceViolationRejected() {
             assertThat(rejectionOf(validateRecord(recordArgsWith(
                     List.of(new BeanArg(new SourcedArg<>("에티오피아", "guess"), new SourcedArg<>(null, null))),
-                    List.of(reviewBrew("좋았음", null, null))))))
+                    List.of(reviewCup("좋았음", null, null))))))
                     .contains("beans[0].description").contains("guess").contains("V-5");
         }
 
@@ -418,7 +418,7 @@ class ProposalValidatorsTest {
         @DisplayName("V-14: beans 미언급(null)은 빈 배열로 정규화된다 — 저장 거부 아님(원두 정보는 부속)")
         void missingBeansNormalizedToEmpty() {
             RecordProposal proposal = okOf(validateRecord(
-                    recordArgsWith(null, List.of(reviewBrew("좋았음", null, null)))));
+                    recordArgsWith(null, List.of(reviewCup("좋았음", null, null)))));
             assertThat(proposal.meta().beans()).isEmpty();
         }
     }
@@ -432,10 +432,10 @@ class ProposalValidatorsTest {
         @DisplayName("V-8: 위반 값(음수·0·공백)은 항목만 드롭되고 저장은 거부되지 않는다")
         void invalidItemsDroppedNotRejected() {
             RecordProposal proposal = okOf(validateRecord(recordArgsWith(
-                    null, List.of(new BrewArg(new Recipe(null, -1.0, 240.0, null, null, null, "  ", null, null, null), null)))));
+                    null, List.of(new CupArg(new Recipe(null, -1.0, 240.0, null, null, null, "  ", null, null, null), null)))));
             // 감상 없는 recipe만의 발화 = recipe만 담긴 회차 1개(V-15 허용).
-            assertThat(proposal.brews().getFirst().recipe()).isEqualTo(new Recipe(null, null, 240.0, null, null, null, null, null, null, null));
-            assertThat(proposal.brews().getFirst().review()).isNull();
+            assertThat(proposal.cups().getFirst().recipe()).isEqualTo(new Recipe(null, null, 240.0, null, null, null, null, null, null, null));
+            assertThat(proposal.cups().getFirst().review()).isNull();
         }
 
         @Test
@@ -443,8 +443,8 @@ class ProposalValidatorsTest {
         void tenFieldNormalizationAppliesPerItem() {
             Recipe raw = new Recipe("에스프레소", 18.0, null, -1.0, 28.0, 0.0, "8 (매버릭 2.0)", " ", null, "다음엔 220클릭");
             RecordProposal proposal = okOf(validateRecord(recordArgsWith(
-                    null, List.of(new BrewArg(raw, null)))));
-            assertThat(proposal.brews().getFirst().recipe()).isEqualTo(
+                    null, List.of(new CupArg(raw, null)))));
+            assertThat(proposal.cups().getFirst().recipe()).isEqualTo(
                     new Recipe("에스프레소", 18.0, null, null, 28.0, null, "8 (매버릭 2.0)", null, null, "다음엔 220클릭"));
         }
 
@@ -452,42 +452,42 @@ class ProposalValidatorsTest {
         @DisplayName("V-8: recipe 전 필드 전무면 recipe 자체가 null로 정규화된다(레시피 카드 미생성 근거)")
         void allInvalidNormalizedToNull() {
             RecordProposal proposal = okOf(validateRecord(recordArgsWith(
-                    null, List.of(new BrewArg(new Recipe(null, 0.0, null, null, null, null, "", null, null, null),
-                            new BrewArg.ReviewArg("좋았음", null, null))))));
+                    null, List.of(new CupArg(new Recipe(null, 0.0, null, null, null, null, "", null, null, null),
+                            new CupArg.ReviewArg("좋았음", null, null))))));
             // recipe 전무 정규화가 저장 거부로 번지지 않는다 — 감상 review이 있어 회차는 성립(V-15).
-            assertThat(proposal.brews().getFirst().recipe()).isNull();
+            assertThat(proposal.cups().getFirst().recipe()).isNull();
         }
     }
 
-    // ---- V-15 회차(brews) — changes/0021 ADR-59 ----
+    // ---- V-15 회차(cups) — changes/0021 ADR-59 ----
 
     @Nested
-    class BrewsV15 {
+    class CupsV15 {
 
         @Test
-        @DisplayName("V-15: brews 미언급(null)은 회차 0개라 사유와 함께 거부된다 — 기록할 내용이 없음")
-        void missingBrewsRejected() {
+        @DisplayName("V-15: cups 미언급(null)은 회차 0개라 사유와 함께 거부된다 — 기록할 내용이 없음")
+        void missingCupsRejected() {
             assertThat(rejectionOf(validateRecord(recordArgsWith(null, null))))
                     .contains("회차").contains("V-15");
         }
 
         @Test
         @DisplayName("V-15: 전 요소가 빈 회차(드롭)여도 회차 0개로 거부된다")
-        void allEmptyBrewsRejected() {
+        void allEmptyCupsRejected() {
             assertThat(rejectionOf(validateRecord(recordArgsWith(
-                    null, List.of(new BrewArg(null, null),
-                            new BrewArg(new Recipe(null, 0.0, null, null, null, null, " ", null, null, null), new BrewArg.ReviewArg(" ", null, null))))))).contains("회차").contains("V-15");
+                    null, List.of(new CupArg(null, null),
+                            new CupArg(new Recipe(null, 0.0, null, null, null, null, " ", null, null, null), new CupArg.ReviewArg(" ", null, null))))))).contains("회차").contains("V-15");
         }
 
         @Test
         @DisplayName("V-15/AC-74: 시도 2회 발화는 회차 2개로 정규화된다 — 배열 순서 = 회차 번호, 시도별 recipe·review 유지")
-        void twoAttemptsBecomeTwoBrews() {
+        void twoAttemptsBecomeTwoCups() {
             RecordProposal proposal = okOf(validateRecord(recordArgsWith(null, List.of(
-                    new BrewArg(new Recipe(null, 15.0, 240.0, null, null, null, "210클릭 (매버릭 2.0)", null, null, null),
-                            new BrewArg.ReviewArg("떫었음", "떫었다", null)),
-                    new BrewArg(new Recipe(null, 15.0, 240.0, null, null, null, "220클릭 (매버릭 2.0)", null, null, null),
-                            new BrewArg.ReviewArg("부드러웠음", "부드러웠다", "맛있다"))))));
-            assertThat(proposal.brews()).containsExactly(
+                    new CupArg(new Recipe(null, 15.0, 240.0, null, null, null, "210클릭 (매버릭 2.0)", null, null, null),
+                            new CupArg.ReviewArg("떫었음", "떫었다", null)),
+                    new CupArg(new Recipe(null, 15.0, 240.0, null, null, null, "220클릭 (매버릭 2.0)", null, null, null),
+                            new CupArg.ReviewArg("부드러웠음", "부드러웠다", "맛있다"))))));
+            assertThat(proposal.cups()).containsExactly(
                     new Cup(new Recipe(null, 15.0, 240.0, null, null, null, "210클릭 (매버릭 2.0)", null, null, null), new Review("떫었음", "떫었다", null)),
                     new Cup(new Recipe(null, 15.0, 240.0, null, null, null, "220클릭 (매버릭 2.0)", null, null, null),
                             new Review("부드러웠음", "부드러웠다", Rating.GOOD)));
@@ -495,17 +495,17 @@ class ProposalValidatorsTest {
 
         @Test
         @DisplayName("V-15: 빈 회차 요소만 드롭되고 내용 있는 회차는 유지된다")
-        void emptyBrewElementDropped() {
+        void emptyCupElementDropped() {
             RecordProposal proposal = okOf(validateRecord(recordArgsWith(
-                    null, List.of(new BrewArg(null, null), reviewBrew("좋았음", null, null)))));
-            assertThat(proposal.brews()).containsExactly(new Cup(null, new Review("좋았음", null, null)));
+                    null, List.of(new CupArg(null, null), reviewCup("좋았음", null, null)))));
+            assertThat(proposal.cups()).containsExactly(new Cup(null, new Review("좋았음", null, null)));
         }
 
         @Test
         @DisplayName("V-15: 감상 발화 1건은 review을 담은 회차 1개로 정규화된다(V-11 원문 병존 포함)")
-        void tasteBecomesSingleBrew() {
+        void tasteBecomesSingleCup() {
             RecordProposal proposal = okOf(validateRecord(recordArgs()));
-            assertThat(proposal.brews()).containsExactly(new Cup(
+            assertThat(proposal.cups()).containsExactly(new Cup(
                     new Recipe(null, 15.0, 240.0, null, null, null, null, null, null, null),
                     new Review("새콤하고 좋았음", "새콤하고 좋았다", Rating.GOOD)));
         }
@@ -520,8 +520,8 @@ class ProposalValidatorsTest {
         @DisplayName("V-11: 원문 누락 시 정규화본이 양쪽에 담긴다 — 저장 거부 아님(감상 유실 방지 우선)")
         void missingOriginalFallsBackToNormalized() {
             RecordProposal proposal = okOf(validateRecord(recordArgsWith(
-                    null, List.of(reviewBrew("맛있었음", null, null)))));
-            Review review = proposal.brews().getFirst().review();
+                    null, List.of(reviewCup("맛있었음", null, null)))));
+            Review review = proposal.cups().getFirst().review();
             assertThat(review.myTaste()).isEqualTo("맛있었음");
             assertThat(review.myTasteOriginal()).isEqualTo("맛있었음");
         }
@@ -530,7 +530,7 @@ class ProposalValidatorsTest {
         @DisplayName("V-11: 원문이 오면 정규화본과 함께 보존된다(AC-47)")
         void originalPreservedWhenPresent() {
             RecordProposal proposal = okOf(validateRecord(recordArgs()));
-            Review review = proposal.brews().getFirst().review();
+            Review review = proposal.cups().getFirst().review();
             assertThat(review.myTaste()).isEqualTo("새콤하고 좋았음");
             assertThat(review.myTasteOriginal()).isEqualTo("새콤하고 좋았다");
         }

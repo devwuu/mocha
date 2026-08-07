@@ -107,7 +107,7 @@ class AgentSystemPromptTest {
 
     @Test
     @DisplayName("ADR-59/AC-74·75: 회차 규칙 — 시도 분리·감상↔피드백 분리·마시는 방식은 같은 회차 감상")
-    void encodesBrewSplitRules() {
+    void encodesCupSplitRules() {
         assertThat(PROMPT).contains("한 번 내려서 마신 단위가 회차 1개다");
         assertThat(PROMPT).contains("시도마다 회차 요소를 만든다");
         assertThat(PROMPT).contains("커피 맛의 감상·평가는 그 회차의 review에");
@@ -119,7 +119,7 @@ class AgentSystemPromptTest {
 
     @Test
     @DisplayName("ADR-59/AC-79: 회차 병합 — append 기본, 명시 지칭 시만 그 회차 review에 병합·rating은 명시 시만 갱신")
-    void encodesBrewMergeRules() {
+    void encodesCupMergeRules() {
         assertThat(PROMPT).contains("새 시도·새 감상은 새 회차로 append한다");
         assertThat(PROMPT).contains("그 회차의 review에 병합한다");
         assertThat(PROMPT).contains("my_taste_original은 원문을 이어붙여 보존");
@@ -206,10 +206,10 @@ class AgentSystemPromptTest {
 
     @Test
     @DisplayName("D-14 (TΔ29b): 수정 제안은 그 엔트리의 회차를 전부 싣는다 — 저장이 배열을 통째로 교체한다")
-    void encodesFullBrewArrayOnEdit() {
+    void encodesFullCupArrayOnEdit() {
         // 이 규칙이 빠지면 실패가 조용하다 — 폼은 온전해 보이고 [저장] 순간 나머지 회차가 사라진다.
         // 근거(통째 교체)를 함께 싣는 것이 ADR-60 사유 정보량 원칙의 프롬프트 측 적용이다.
-        assertThat(PROMPT).contains("회차(brews)는 하나도 빠뜨리지 말고 전부 싣는다");
+        assertThat(PROMPT).contains("회차(cups)는 하나도 빠뜨리지 말고 전부 싣는다");
         assertThat(PROMPT).contains("회차 배열을 통째로 교체하므로");
         assertThat(PROMPT).contains("나머지 회차는 저장된 값 그대로 둔다");
     }
@@ -233,7 +233,7 @@ class AgentSystemPromptTest {
         assertThat(PROMPT).contains("list_notes");
         assertThat(PROMPT).contains("get_note");
         // TΔ29b: 매칭 대조가 «출발점» 서술에서 «제안 전 필수»로 조여졌다 — 수정 흐름 절을 더한 뒤
-        // brew-split 케이스에서 list_notes 생략이 6회차 중 3회 관측됐고(전 0/6), 이 문장이 6/6으로 되돌렸다.
+        // cup-split 케이스에서 list_notes 생략이 6회차 중 3회 관측됐고(전 0/6), 이 문장이 6/6으로 되돌렸다.
         assertThat(PROMPT).contains("기록을 제안하기 전에 언제나 list_notes");
         assertThat(PROMPT).contains("대조를 건너뛰면 이미 있는 커피를 새 노트로 또 만든다");
         assertThat(PROMPT).contains("today 기준으로 절대 날짜");

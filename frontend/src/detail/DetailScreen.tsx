@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import type { NoteDetail, NoteDetailBrew, NoteDetailEntry, NotePhoto, Recipe, Source } from '../api'
+import type { NoteDetail, NoteDetailCup, NoteDetailEntry, NotePhoto, Recipe, Source } from '../api'
 import { getNoteDetail } from '../api'
 import { SOURCE_LABELS } from '../formValues'
 import { editPath, GALLERY } from '../routes'
-import { shareBrewCards } from './share'
+import { shareCupCards } from './share'
 
 /**
  * 상세 보기 화면 — 노트 전문 + 회차별 레시피·감상 + 그 날의 사진 (changes/0029 TΔ13a).
@@ -212,8 +212,8 @@ function EntrySection({ entry, noteId }: { entry: NoteDetailEntry; noteId: numbe
         </div>
       )}
 
-      {entry.brews.map((brew, index) => (
-        <BrewCard key={index} brew={brew} no={index + 1} noteId={noteId} date={entry.date} />
+      {entry.cups.map((cup, index) => (
+        <CupCard key={index} cup={cup} no={index + 1} noteId={noteId} date={entry.date} />
       ))}
     </section>
   )
@@ -230,50 +230,50 @@ function EntrySection({ entry, noteId }: { entry: NoteDetailEntry; noteId: numbe
  * 하나**인 것은 카드가 회차 단위로 구워지기 때문이고(ADR-59), 감상·레시피를 갈라 달지 않는 근거는
  * `share.ts`가 소유한다.
  */
-function BrewCard({
-  brew,
+function CupCard({
+  cup,
   no,
   noteId,
   date,
 }: {
-  brew: NoteDetailBrew
+  cup: NoteDetailCup
   no: number
   noteId: number
   date: string
 }) {
-  const recipe = brew.recipe
+  const recipe = cup.recipe
   const notes = recipe === null ? [] : sentenceRows(recipe)
 
   return (
-    <div className="brew">
-      <div className="brew__head">
-        <span className="brew__no">{no}회차</span>
-        <div className="brew__head-right">
-          {recipe?.method != null && <span className="brew__method">{recipe.method}</span>}
-          <ShareButton noteId={noteId} date={date} brew={brew} no={no} />
+    <div className="cup">
+      <div className="cup__head">
+        <span className="cup__no">{no}회차</span>
+        <div className="cup__head-right">
+          {recipe?.method != null && <span className="cup__method">{recipe.method}</span>}
+          <ShareButton noteId={noteId} date={date} cup={cup} no={no} />
         </div>
       </div>
 
       {recipe !== null && <Stats recipe={recipe} />}
 
       {notes.length > 0 && (
-        <div className="brew__notes">
+        <div className="cup__notes">
           {notes.map((row) => (
             <div key={row.label}>
-              <div className="brew__label">{row.label}</div>
-              <div className="brew__sentence">{row.value}</div>
+              <div className="cup__label">{row.label}</div>
+              <div className="cup__sentence">{row.value}</div>
             </div>
           ))}
         </div>
       )}
 
-      {brew.review !== null && (
-        <div className="brew__review">
-          <div className="brew__review-head">
-            <span className="brew__label">내가 느끼길</span>
-            {brew.review.rating !== null && <span className="brew__rating">{brew.review.rating}</span>}
+      {cup.review !== null && (
+        <div className="cup__review">
+          <div className="cup__review-head">
+            <span className="cup__label">내가 느끼길</span>
+            {cup.review.rating !== null && <span className="cup__rating">{cup.review.rating}</span>}
           </div>
-          {brew.review.my_taste !== null && <p className="brew__taste">{brew.review.my_taste}</p>}
+          {cup.review.my_taste !== null && <p className="cup__taste">{cup.review.my_taste}</p>}
         </div>
       )}
     </div>
@@ -292,12 +292,12 @@ function BrewCard({
 function ShareButton({
   noteId,
   date,
-  brew,
+  cup,
   no,
 }: {
   noteId: number
   date: string
-  brew: NoteDetailBrew
+  cup: NoteDetailCup
   no: number
 }) {
   const [state, setState] = useState<'idle' | 'working' | 'failed'>('idle')
@@ -305,7 +305,7 @@ function ShareButton({
   async function onShare() {
     setState('working')
     try {
-      await shareBrewCards(noteId, date, brew, no)
+      await shareCupCards(noteId, date, cup, no)
       setState('idle')
     } catch {
       setState('failed')
@@ -315,7 +315,7 @@ function ShareButton({
   return (
     <button
       type="button"
-      className="brew__share"
+      className="cup__share"
       onClick={onShare}
       disabled={state === 'working'}
       aria-label={`${no}회차 카드 공유`}
@@ -357,7 +357,7 @@ function Stats({ recipe }: { recipe: Recipe }) {
 
   const rest = cells.length % 3
   return (
-    <div className="brew__stats">
+    <div className="cup__stats">
       {cells.map((cell) => (
         <div className="stat" key={cell.label}>
           <div className="stat__label">{cell.label}</div>

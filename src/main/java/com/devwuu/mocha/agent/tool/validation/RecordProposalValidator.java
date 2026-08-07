@@ -26,11 +26,11 @@ import java.util.stream.Collectors;
  * <p>changes/0029 TΔ1 이후 <b>유일한 검증 진입점</b>이다 — {@code propose_edit}과 단일 대기 게이트가 함께
  * 폐기됐다(delta 0029 D-1·D-2). 진입점이 하나로 줄며 백로그 R-3(try/catch 중복)·R-4(RejectedException
  * 결합 미강제)의 근거도 소멸했다. 규칙 패밀리는 같은 패키지의 구체 클래스에 위임한다 — 출처
- * {@code SourceRules}(V-5·V-14), 회차 {@code BrewRules}(V-1·V-8·V-15). 진입점 고유 검증(필수값·회차 0개
+ * {@code SourceRules}(V-5·V-14), 회차 {@code CupRules}(V-1·V-8·V-15). 진입점 고유 검증(필수값·회차 0개
  * 거부·V-16 다중 날짜 게이트·match 판정)은 여기 남는다.
  * <ul>
  *   <li>V-1 rating 4범주, V-5 source enum 제약, V-8 recipe 정규화, V-11 my_taste 병존</li>
- *   <li>V-14 beans 정규화, V-15 회차(brews) 정규화 — 빈 회차 드롭·회차 0개 거부(changes/0021)</li>
+ *   <li>V-14 beans 정규화, V-15 회차(cups) 정규화 — 빈 회차 드롭·회차 0개 거부(changes/0021)</li>
  *   <li>V-16 다중 날짜 게이트(record 전용) — 원문 다중 날짜의 분해 우회 제안 거부(changes/0023)</li>
  *   <li>V-6 draft 대조(changes/0029 TΔ2) — 턴 입력 draft의 상위 출처 값을 하위 출처가 덮는 제안 거부</li>
  * </ul>
@@ -82,15 +82,15 @@ public class RecordProposalValidator {
             requireSingleDateOrSegmented(utterance, targetDate);
             MatchInfo match = toMatchInfo(args.match());
 
-            List<Cup> brews = BrewRules.brews(args.brews());
+            List<Cup> cups = CupRules.cups(args.cups());
             // V-15: 드롭 후 회차 0개인 엔트리는 저장을 거부한다 — 기록할 내용이 없음(사유는 tool 결과로).
-            if (brews.isEmpty()) {
-                throw new RejectedException("기록할 회차 내용이 없다 — brews에 감상(review)이나 레시피(recipe) 중 "
+            if (cups.isEmpty()) {
+                throw new RejectedException("기록할 회차 내용이 없다 — cups에 감상(review)이나 레시피(recipe) 중 "
                         + "최소 하나를 담은 회차를 채워야 저장할 수 있다(V-15). 사용자에게 그날의 감상이나 레시피를 물어봐라.");
             }
             List<String> sources = ValidationSupport.dropBlanks(args.sources());
             NoteMeta meta = new NoteMeta(coffeeName, roastery, beans, roastLevel, officialNotes, sources);
-            return ToolValidation.ok(new RecordProposal(meta, targetDate, brews, match));
+            return ToolValidation.ok(new RecordProposal(meta, targetDate, cups, match));
         } catch (RejectedException rejection) {
             return ToolValidation.rejected(rejection.getMessage());
         }

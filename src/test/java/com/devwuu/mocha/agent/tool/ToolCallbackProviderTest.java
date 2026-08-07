@@ -275,7 +275,7 @@ class ToolCallbackProviderTest {
         assertThat(result.get("coffee_name").get("value").asString()).isEqualTo("Ethiopia Chelbesa");
         assertThat(result.get("entries")).hasSize(1);
         assertThat(result.get("entries").get(0).get("date").asString()).isEqualTo("2026-07-13");
-        assertThat(result.get("entries").get(0).get("brews").get(0).get("review").get("my_taste").asString()).isEqualTo("새콤하고 좋았음");
+        assertThat(result.get("entries").get(0).get("cups").get(0).get("review").get("my_taste").asString()).isEqualTo("새콤하고 좋았음");
     }
 
     @Test
@@ -314,7 +314,7 @@ class ToolCallbackProviderTest {
                   "coffee_name": {"value": "%s", "source": "user"},
                   "roastery": {"value": "%s", "source": "user"},
                   "beans": [], "roast_level": null, "official_notes": null,
-                  "brews": [%s],
+                  "cups": [%s],
                   "target_date": "%s",
                   "match": %s,
                   "sources": []

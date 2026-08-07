@@ -36,8 +36,8 @@
   --on-brown: #f6f1e9;
   --chip: #e3d9cb;
   /* 상세의 회차 카드(`design/노트 상세.dc.html`) — 카드 테두리와 그 안의 구획선. */
-  --brew-border: #c3b6a5;
-  --brew-line: #e2d9cb;
+  --cup-border: #c3b6a5;
+  --cup-line: #e2d9cb;
 
   font-family: 'Gowun Batang', serif;
   color: var(--ink-soft);
@@ -349,13 +349,13 @@ body {
   color: var(--muted);
 }
 
-.draft__brew {
+.draft__cup {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.draft__brew-no {
+.draft__cup-no {
   font-size: 11px;
   color: var(--brown-deep);
 }
@@ -1430,30 +1430,30 @@ select:focus {
   height: 104px;
   object-fit: cover;
   display: block;
-  border: 1px solid var(--brew-border);
+  border: 1px solid var(--cup-border);
 }
 
-.brew {
+.cup {
   display: flex;
   flex-direction: column;
   background: var(--card);
-  border: 1px solid var(--brew-border);
+  border: 1px solid var(--cup-border);
 }
 
 /* 카드 안의 마지막 블록은 밑줄을 지운다 — 감상 없는 회차, 문장 없는 회차 어느 쪽이든 끝이 깔끔하다. */
-.brew > *:last-child {
+.cup > *:last-child {
   border-bottom: none;
 }
 
-.brew__head {
+.cup__head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  border-bottom: 1px solid var(--brew-line);
+  border-bottom: 1px solid var(--cup-line);
 }
 
-.brew__no {
+.cup__no {
   font-size: 11.5px;
   letter-spacing: 1px;
   color: #6d5e4f;
@@ -1464,17 +1464,17 @@ select:focus {
  * 버튼이 세 번째 자식으로 들어가면 방식 칩이 가운데로 밀려 그 배치가 깨진다. 묶어서 오른쪽 한 덩어리로
  * 두면 방식이 없는 회차에서도 버튼이 제자리(오른쪽 끝)에 선다.
  */
-.brew__head-right {
+.cup__head-right {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.brew__method {
+.cup__method {
   font-size: 10px;
   letter-spacing: 1.5px;
   color: #64564a;
-  border: 1px solid var(--brew-border);
+  border: 1px solid var(--cup-border);
   border-radius: 999px;
   padding: 2px 10px;
 }
@@ -1488,7 +1488,7 @@ select:focus {
  * 하지 않는다. **`inset`이 재는 자리는 패딩 박스라** 테두리 1px만큼 덜 뻗어 실측은 20 + 11×2 = 42px다
  * (TΔ5a의 ≥40px 충족). 이 1px 차이를 눈으로 셀 수 없어 CDP 실측이 값을 정했다.
  */
-.brew__share {
+.cup__share {
   position: relative;
   font: inherit;
   font-size: 10px;
@@ -1501,13 +1501,13 @@ select:focus {
   cursor: pointer;
 }
 
-.brew__share::after {
+.cup__share::after {
   content: '';
   position: absolute;
   inset: -12px 0;
 }
 
-.brew__share:disabled {
+.cup__share:disabled {
   opacity: 0.55;
   cursor: default;
 }
@@ -1516,10 +1516,10 @@ select:focus {
  * 수치 격자 — 3열. 테두리는 칸이 그린다: 오른쪽 선은 3n번째와 마지막 칸에서 빠지고, 위쪽 선은 첫 줄에서
  * 빠진다. **마지막 칸만 span을 가지므로** 앞 칸들의 순서가 곧 열 위치이고 그래서 nth-child 규칙이 맞는다.
  */
-.brew__stats {
+.cup__stats {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
-  border-bottom: 1px solid var(--brew-line);
+  border-bottom: 1px solid var(--cup-line);
 }
 
 .stat {
@@ -1528,8 +1528,8 @@ select:focus {
   gap: 3px;
   padding: 11px 14px;
   min-width: 0;
-  border-top: 1px solid var(--brew-line);
-  border-right: 1px solid var(--brew-line);
+  border-top: 1px solid var(--cup-line);
+  border-right: 1px solid var(--cup-line);
 }
 
 .stat:nth-child(-n + 3) {
@@ -1572,61 +1572,61 @@ select:focus {
 }
 
 /* 문장류(푸어링·관찰) — 길이가 제각각이라 격자에 넣지 않는다. */
-.brew__notes {
+.cup__notes {
   display: flex;
   flex-direction: column;
   gap: 10px;
   padding: 12px 16px;
-  border-bottom: 1px solid var(--brew-line);
+  border-bottom: 1px solid var(--cup-line);
 }
 
-.brew__notes > div {
+.cup__notes > div {
   display: flex;
   flex-direction: column;
   gap: 3px;
 }
 
-.brew__label {
+.cup__label {
   font-size: 10.5px;
   letter-spacing: 1.5px;
   color: var(--muted);
 }
 
-.brew__notes .brew__label {
+.cup__notes .cup__label {
   font-size: 9.5px;
 }
 
-.brew__sentence {
+.cup__sentence {
   font-size: 12.5px;
   line-height: 1.7;
   color: var(--ink-soft);
   text-wrap: pretty;
 }
 
-.brew__review {
+.cup__review {
   display: flex;
   flex-direction: column;
   gap: 8px;
   padding: 12px 16px 14px;
 }
 
-.brew__review-head {
+.cup__review-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
 }
 
-.brew__rating {
+.cup__rating {
   font-size: 10.5px;
   color: #64564a;
-  border: 1px solid var(--brew-border);
+  border: 1px solid var(--cup-border);
   border-radius: 999px;
   padding: 2px 11px;
   white-space: nowrap;
 }
 
-.brew__taste {
+.cup__taste {
   margin: 0;
   font-size: 13.5px;
   line-height: 1.8;
@@ -1714,7 +1714,7 @@ select:focus {
 .edit__section-head {
   padding: 9px 20px;
   background: var(--bar);
-  border-bottom: 1px solid var(--brew-border);
+  border-bottom: 1px solid var(--cup-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1817,7 +1817,7 @@ select:focus {
 .efield__input,
 .efield__select {
   width: 100%;
-  border: 1px solid var(--brew-border);
+  border: 1px solid var(--cup-border);
   border-radius: 0;
   background: #fbf8f2;
   padding: 9px 11px;
@@ -1873,7 +1873,7 @@ select:focus {
   display: flex;
   align-items: center;
   gap: 9px;
-  border: 1px solid var(--brew-border);
+  border: 1px solid var(--cup-border);
   background: #fbf8f2;
   padding: 7px 11px;
   font-size: 12.5px;
@@ -1929,7 +1929,7 @@ select:focus {
 
 .edit__date-head--folded {
   background: var(--chip);
-  border-bottom: 1px solid var(--brew-border);
+  border-bottom: 1px solid var(--cup-border);
 }
 
 .edit__date-left {
@@ -2026,36 +2026,36 @@ select:focus {
 
 /* ── 회차 카드(시안) ─────────────────────────────────────────────── */
 
-.ebrew {
-  border: 1px solid var(--brew-border);
+.ecup {
+  border: 1px solid var(--cup-border);
   background: var(--card);
   display: flex;
   flex-direction: column;
 }
 
-.ebrew__head {
+.ecup__head {
   padding: 11px 14px;
-  border-bottom: 1px solid var(--brew-line);
+  border-bottom: 1px solid var(--cup-line);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
 }
 
-.ebrew__no {
+.ecup__no {
   font-size: 11.5px;
   letter-spacing: 1px;
   color: #6d5e4f;
 }
 
 /* 시안의 `핸드드립 ▾` 칩 — 값 집합이 없어(FR-18 자유 문자열) 드롭다운이 아니라 입력이다. */
-.ebrew__method {
+.ecup__method {
   width: 116px;
   flex: none;
   /* 입력이라 ::after를 못 쓴다(§탭 영역). 23px이던 것을 34px로 — 44에 못 미치는 것은 이것이 시안의
      `핸드드립 ▾` 칩이고 더 키우면 회차 카드 머리가 칩이 아니라 버튼 줄로 읽히기 때문이다(ADR-54). */
   min-height: 34px;
-  border: 1px solid var(--brew-border);
+  border: 1px solid var(--cup-border);
   border-radius: 999px;
   background: transparent;
   padding: 3px 11px;
@@ -2066,48 +2066,48 @@ select:focus {
   text-align: center;
 }
 
-.ebrew__method:focus {
+.ecup__method:focus {
   outline: 2px solid var(--brown);
   outline-offset: -2px;
 }
 
 /* 레시피 / 평가 구획 머리 — 회차 안에서 두 관심사가 갈리는 자리(ADR-59의 1:1 구조). */
-.ebrew__band {
+.ecup__band {
   padding: 9px 14px;
   background: #efe8dd;
-  border-bottom: 1px solid var(--brew-line);
+  border-bottom: 1px solid var(--cup-line);
   display: flex;
   align-items: baseline;
   gap: 9px;
 }
 
-.ebrew__band-title {
+.ecup__band-title {
   font-size: 10px;
   letter-spacing: 2.5px;
   color: #6d5e4f;
 }
 
-.ebrew__stats {
+.ecup__stats {
   padding: 13px 14px;
-  border-bottom: 1px solid var(--brew-line);
+  border-bottom: 1px solid var(--cup-line);
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 9px;
 }
 
-.ebrew__block {
+.ecup__block {
   padding: 13px 14px 14px;
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 
-.ebrew__block + .ebrew__band {
-  border-top: 1px solid var(--brew-line);
+.ecup__block + .ecup__band {
+  border-top: 1px solid var(--cup-line);
 }
 
-.ebrew__stats + .ebrew__block {
-  border-bottom: 1px solid var(--brew-line);
+.ecup__stats + .ecup__block {
+  border-bottom: 1px solid var(--cup-line);
 }
 
 /* ── 액션 / 알림 / 삭제 ──────────────────────────────────────────── */
@@ -2225,7 +2225,7 @@ select:focus {
 .edit__danger {
   margin: 14px 20px 22px;
   padding: 14px;
-  border: 1px dashed var(--brew-border);
+  border: 1px dashed var(--cup-border);
   display: flex;
   flex-direction: column;
   align-items: center;

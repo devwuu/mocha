@@ -6,7 +6,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * eval 케이스의 JSON 경로 — {@code entries[0].brews[0].recipe.grind} (ref: changes/0026 TΔ1, ADR-68).
+ * eval 케이스의 JSON 경로 — {@code entries[0].cups[0].recipe.grind} (ref: changes/0026 TΔ1, ADR-68).
  * <p>JSONPath 같은 범용 질의 언어를 끌어오지 않는다: 케이스가 필요로 한 것은 <b>필드 하강 + 배열 인덱스</b>뿐이고
  * (findings-TΔ0 §2.3), 와일드카드·필터·재귀 하강은 쓰는 케이스가 없다(루트 CLAUDE.md §4 right-sizing).
  * 문법이 좁으면 오타가 라이브러리 안에서 "매치 없음"으로 조용히 넘어가지 않고 로더에서 사유와 함께 터진다(AC-Δ1).
@@ -45,7 +45,7 @@ public record EvalPath(String raw, List<Segment> segments) {
         if (!PATH.matcher(raw).matches()) {
             throw new IllegalArgumentException(
                     "경로 문법 오류: \"" + raw + "\" — 필드는 snake_case, 인덱스는 [n] 형태여야 한다"
-                            + " (예: entries[0].brews[0].recipe.grind)");
+                            + " (예: entries[0].cups[0].recipe.grind)");
         }
         List<Segment> segments = new ArrayList<>();
         Matcher m = SEGMENT.matcher(raw);

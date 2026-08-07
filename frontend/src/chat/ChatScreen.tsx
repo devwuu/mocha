@@ -513,9 +513,9 @@ function editedNotice(saved: NoteDetail, update: EntryDraft): string {
   if (update.value.date === update.targetDate) {
     return `${update.value.date} 기록을 고쳤어. ${suffix}`
   }
-  const brews = saved.entries.find((entry) => entry.date === update.value.date)?.brews.length ?? 0
-  return brews > update.value.brews.length
-    ? `${update.targetDate} 기록을 ${update.value.date} 기록에 합쳤어. 이제 ${brews}회차야. ${suffix}`
+  const cups = saved.entries.find((entry) => entry.date === update.value.date)?.cups.length ?? 0
+  return cups > update.value.cups.length
+    ? `${update.targetDate} 기록을 ${update.value.date} 기록에 합쳤어. 이제 ${cups}회차야. ${suffix}`
     : `${update.targetDate} 기록을 ${update.value.date}로 옮겼어. ${suffix}`
 }
 

@@ -69,7 +69,7 @@ class EvalCaseLoaderTest {
                 .containsExactly(
                         new EvalPath.Segment.Field("entries"),
                         new EvalPath.Segment.Index(0),
-                        new EvalPath.Segment.Field("brews"),
+                        new EvalPath.Segment.Field("cups"),
                         new EvalPath.Segment.Index(0),
                         new EvalPath.Segment.Field("recipe"),
                         new EvalPath.Segment.Field("grind"));
@@ -373,7 +373,7 @@ class EvalCaseLoaderTest {
                   proposal:
                     state: created
                     draft:
-                      - path: entries[0].brews
+                      - path: entries[0].cups
                         size: 2
                         present: true
                 """;

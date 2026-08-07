@@ -135,7 +135,7 @@ public record EvalCase(
     /**
      * JSON 경로 단언 — 정확히 한 종류만 지정한다(둘을 겹쳐 쓰면 무엇이 깨졌는지가 흐려진다).
      *
-     * @param path    {@code entries[0].brews[0].recipe.grind} 문법. 필드명은 저장 포맷 그대로 snake_case.
+     * @param path    {@code entries[0].cups[0].recipe.grind} 문법. 필드명은 저장 포맷 그대로 snake_case.
      * @param value   값 동등 비교(스칼라).
      * @param size    배열 크기.
      * @param present 존재 여부 — {@code true}면 null 아닌 값이 있어야 하고, {@code false}면 없어야 한다.

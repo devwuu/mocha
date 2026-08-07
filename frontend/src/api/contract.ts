@@ -52,7 +52,7 @@ export interface Review {
 }
 
 /** 회차 1개 — 배열 순서가 곧 회차 번호다. 둘 다 null인 회차는 서버가 드롭한다(V-15). */
-export interface Brew {
+export interface Cup {
   recipe: Recipe | null
   review: Review | null
 }
@@ -60,7 +60,7 @@ export interface Brew {
 /** 날짜별 시음 기록 — `date`가 entries 내 유일 키다(V-3). */
 export interface Entry {
   date: string
-  brews: Brew[]
+  cups: Cup[]
   updated_at: string | null
 }
 
@@ -188,7 +188,7 @@ export interface PhotoUploadResponse {
  * 갤러리 그리드의 한 칸 — 노트 1건의 납작한 사영 (changes/0029 TΔ12).
  *
  * 필드가 `NoteCandidate` + `thumbnail_url`인 것은 우연이 아니다: 두 화면 다 노트를 *고르는* 자리라
- * 3단 중첩(entries → brews → recipe/review)을 한 줄도 쓰지 않는다. 상세가 무엇을 보여줄지는
+ * 3단 중첩(entries → cups → recipe/review)을 한 줄도 쓰지 않는다. 상세가 무엇을 보여줄지는
  * `GET /api/notes/{id}`가 따로 답한다(TΔ13a·TΔ5a).
  *
  * `thumbnail_url`은 **서버가 만든 완성된 경로**다 — 클라이언트는 `<img src>`에 그대로 꽂고 URL 규칙을
@@ -284,7 +284,7 @@ export interface NoteDetailReview {
 }
 
 /** 저장된 회차 1개 — 레시피·감상 중 최소 하나는 non-null이다(V-15). */
-export interface NoteDetailBrew {
+export interface NoteDetailCup {
   recipe: Recipe | null
   review: NoteDetailReview | null
 }
@@ -298,7 +298,7 @@ export interface NoteDetailBrew {
  */
 export interface NoteDetailEntry {
   date: string
-  brews: NoteDetailBrew[]
+  cups: NoteDetailCup[]
   photos: NotePhoto[]
 }
 
@@ -369,7 +369,7 @@ export interface NoteMetaUpdate {
  */
 export interface NoteEntryUpdate {
   date: string
-  brews: NoteDetailBrew[]
+  cups: NoteDetailCup[]
 }
 
 /** `POST /api/notes` — 폼 확정 저장(= 구 [저장] 버튼). 본문이 곧 확정된 draft다. */

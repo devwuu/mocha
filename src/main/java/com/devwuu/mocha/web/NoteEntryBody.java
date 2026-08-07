@@ -3,7 +3,6 @@ package com.devwuu.mocha.web;
 import com.devwuu.mocha.domain.Cup;
 import com.devwuu.mocha.domain.Entry;
 import com.devwuu.mocha.domain.Review;
-import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -25,8 +24,7 @@ import java.util.List;
  * 정규화본을 양쪽에 담는다. 수정하면 <i>"말한 그대로"</i>가 편집본으로 수렴하는 것이 이 계약의 뜻이다
  * (ref: data-model.md#V-11 뒷문장).
  */
-// TΔ3 임시 조치: JSON 키는 아직 brews다 — 계약 표면 개명은 TΔ4가 하고 이 애너테이션을 걷어낸다.
-public record NoteEntryBody(LocalDate date, @JsonProperty("brews") List<NoteDetailBody.DetailCup> cups) {
+public record NoteEntryBody(LocalDate date, List<NoteDetailBody.DetailCup> cups) {
 
     /**
      * 도메인 엔트리로 되돌린다 — 회차는 <b>V-15 정규화를 거친다</b>(빈 감상 드롭 · 레시피·감상 둘 다 없는
