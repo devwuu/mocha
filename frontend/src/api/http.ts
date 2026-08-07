@@ -102,7 +102,7 @@ export async function getNoteDetail(noteId: number): Promise<NoteDetail> {
 }
 
 /**
- * 노트 메타 수정 — 커피명·엔트리를 뺀 사실 갱신 (TΔ13b 화면 · TΔ5b-3 서버, AC-5).
+ * 노트 메타 수정 — 커피명·시음일을 뺀 사실 갱신 (TΔ13b 화면 · TΔ5b-3 서버, AC-5).
  *
  * **`coffee_name`을 보낼 자리가 없다**(`NoteMetaUpdate`) — 커피명은 노트 생성 후 불변이고(V-9) 그 값은
  * 서버가 저장된 것에서 채운다. 클라이언트가 되싣지 않는 유일한 상세 필드다.
@@ -115,11 +115,11 @@ export async function patchNoteMeta(noteId: number, body: NoteMetaUpdate): Promi
 }
 
 /**
- * 엔트리 수정 — 회차 교체 + 날짜 이동 (TΔ13b 화면 · TΔ5b-3 서버, AC-5).
+ * 시음일 수정 — 회차 교체 + 날짜 이동 (TΔ13b 화면 · TΔ5b-3 서버, AC-5).
  *
  * **경로의 날짜가 대상이고 본문의 `date`가 결과다.** 이동처에 이미 기록이 있으면 그날의 회차 뒤로
  * 합쳐지고 사진도 함께 옮겨 오는데(D-12), **그 규칙의 소유자는 서버**다 — mock이 흉내내던 병합을 여기서는
- * 흉내내지 않는다. 응답의 엔트리·사진 URL이 곧 결과다.
+ * 흉내내지 않는다. 응답의 시음일·사진 URL이 곧 결과다.
  */
 export async function patchNoteEntry(
   noteId: number,

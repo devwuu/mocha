@@ -99,7 +99,7 @@ export interface DraftNote {
  * `entries[0].date`가 이 값과 달라지면 그것이 곧 날짜 이동 요청이다 — 저장이 `PATCH
  * /api/notes/{id}/entries/{date}`로 나갈 때 **경로에 실리는 것이 이쪽**이고 본문에 실리는 것이 폼의
  * 날짜다(`NoteEntryUpdate`의 같은 축). 그래서 이 필드는 폼 편집으로 움직이지 않는다 — 함께 움직이면
- * *"어느 엔트리를 고치는 중인가"*를 잃는다.
+ * *"어느 시음일을 고치는 중인가"*를 잃는다.
  */
 export type MatchInfo =
   | { type: 'new' }
@@ -113,7 +113,7 @@ export type MatchInfo =
  * 로스터리가 다르면 같은 이름의 다른 커피인 것이 정상이다. 커피명만 보여주면 동명 후보를 구분할 축이
  * 없다(사용자 확정 2026-08-01).
  *
- * 둘 다 nullable이다 — 로스터리를 모르는 노트가 있을 수 있고, `latest_date`는 엔트리가 없는 노트에서 빈다.
+ * 둘 다 nullable이다 — 로스터리를 모르는 노트가 있을 수 있고, `latest_date`는 시음일이 없는 노트에서 빈다.
  */
 export interface NoteCandidate {
   note_id: number
@@ -195,7 +195,7 @@ export interface PhotoUploadResponse {
  * 알지 않는다. 아카이브 상대 경로(`photos/…`, V-4)를 프론트가 조립하면 같은 규칙이 양쪽에 이중화되고,
  * 폴더 접미가 생성 시점 스냅샷이라(ADR-75) 클라이언트가 재계산할 수 있는 값도 아니다.
  *
- * `roastery`·`latest_date`·`thumbnail_url`이 모두 nullable이다 — 로스터리를 모르는 노트, 엔트리가
+ * `roastery`·`latest_date`·`thumbnail_url`이 모두 nullable이다 — 로스터리를 모르는 노트, 시음일이
  * 없는 노트(삭제 직후), 사진 없이 발화만으로 기록한 노트가 전부 정상 상태다.
  */
 export interface NoteSummary {
@@ -292,7 +292,7 @@ export interface NoteDetailCup {
 /**
  * 저장된 날짜별 시음 기록 + **그 날의 사진**.
  *
- * 사진이 노트가 아니라 엔트리에 붙는 것은 `note_photo`의 참조 축이 `(note_id, tasted_on)`이기 때문이다
+ * 사진이 노트가 아니라 시음일에 붙는 것은 `note_photo`의 참조 축이 `(note_id, tasted_on)`이기 때문이다
  * (TΔ8b, 사용자 확정 2026-08-01). 화면은 가장 최근 날짜의 첫 장을 상단 히어로로 쓰고 나머지를 그 날짜
  * 섹션에 두는데, **계약 하나로 둘 다 된다** — 노트 레벨 배열을 따로 두면 같은 사진이 두 자리에 실린다.
  */
@@ -355,8 +355,8 @@ export interface NoteMetaUpdate {
  * 수정이다. 한 필드가 두 뜻을 지지 않게 자리를 나눈 것이라(`NoteTxService.replaceEntry(noteId,
  * targetDate, entry)`가 이미 그 모양이다) 요청만 보고 어느 쪽인지 알 수 있다.
  *
- * **이동처에 이미 기록이 있으면 그날의 회차 뒤로 합쳐진다**(D-12, 2026-08-01 사용자 확정). 엔트리 총수는
- * 1 줄고(둘이 하나가 된다) 그날의 사진도 함께 옮겨 온다. 구 V-10은 이동처를 *덮어썼는데* — 엔트리가
+ * **이동처에 이미 기록이 있으면 그날의 회차 뒤로 합쳐진다**(D-12, 2026-08-01 사용자 확정). 시음일 총수는
+ * 1 줄고(둘이 하나가 된다) 그날의 사진도 함께 옮겨 온다. 구 V-10은 이동처를 *덮어썼는데* — 시음일이
  * 하루치 감상 1건이던 시절(changes/0012)의 규칙이라 회차 배열(ADR-59) 위에서는 그날의 N회차를 통째로
  * 지우는 뜻이 됐다. 캡처 경로가 같은 상황에 이미 *회차 append*로 답하고 있다(ADR-4·59).
  *

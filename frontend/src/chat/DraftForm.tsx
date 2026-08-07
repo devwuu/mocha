@@ -40,7 +40,7 @@ export function DraftForm({ draft, busy, onChange, onSave, onCancel }: DraftForm
    * 함께 보이므로 무엇에 영향을 주는지가 눈에 있지만, **채팅 안의 폼은 구조상 그것을 보여줄 수 없다** —
    * 대화 흐름에 앉은 카드 하나라 회차 1건만 담는다. 같은 규칙이 아니라 **같은 이유의 다른 답**이다.
    *
-   * 그래서 이 폼이 저장하는 것은 **엔트리 하나**이고, 메타 PATCH를 보낼 이유가 없다(TΔ28b가 받는다).
+   * 그래서 이 폼이 저장하는 것은 **시음일 하나**이고, 메타 PATCH를 보낼 이유가 없다(TΔ28b가 받는다).
    */
   const locked = draft.match.type === 'edit'
   /*
@@ -49,7 +49,7 @@ export function DraftForm({ draft, busy, onChange, onSave, onCancel }: DraftForm
    * 찾아 본문의 날짜로 옮긴다(`note-update.contract.json`의 `date_move`).
    */
   const target = draft.match.type === 'edit' ? draft.match.date : null
-  // 날짜가 빈 폼은 보내지 않는다 — 엔트리의 유일 키라(V-3) 서버가 400으로 답할 요청이고, 그 실패를
+  // 날짜가 빈 폼은 보내지 않는다 — 시음일의 유일 키라(V-3) 서버가 400으로 답할 요청이고, 그 실패를
   // 「저장하지 못했어」로 옮기면 사용자는 무엇이 문제인지 모른 채 폼을 들여다보게 된다.
   const incomplete = note.entries.some((entry) => entry.date === '')
 
@@ -123,14 +123,14 @@ export function DraftForm({ draft, busy, onChange, onSave, onCancel }: DraftForm
 
       {note.entries.map((entry, entryIndex) => (
         // key가 날짜가 아니라 인덱스인 것은 날짜가 편집 가능해졌기 때문이다(TΔ28c) — 날짜를 키로 두면
-        // 값이 바뀔 때마다 섹션이 통째로 다시 마운트돼 입력 중 포커스가 날아간다. 폼 안에서 엔트리가
+        // 값이 바뀔 때마다 섹션이 통째로 다시 마운트돼 입력 중 포커스가 날아간다. 폼 안에서 시음일이
         // 재정렬되거나 늘고 주는 일이 없어 인덱스가 안정적인 키다.
         <div className="draft__section" key={entryIndex}>
           {/*
             **날짜는 수정 모드에서만 열린다**(TΔ28c, 사용자 확정 2026-08-02). 서버 의미론이 이미 있는
-            자리라서다: PATCH는 «경로=대상, 본문=결과»로 날짜 이동을 규정하고(D-12) 수정 폼은 엔트리를
+            자리라서다: PATCH는 «경로=대상, 본문=결과»로 날짜 이동을 규정하고(D-12) 수정 폼은 시음일을
             1건만 담아 **같은 날짜가 둘 생길 자리가 없다**. 캡처 모드에서 열면 다중 날짜 분해(ADR-61)로
-            여러 엔트리를 든 draft에서 날짜가 겹칠 수 있고, 그때 서버는 병합하지 않고 UNIQUE로 깨진다(V-3).
+            여러 시음일을 든 draft에서 날짜가 겹칠 수 있고, 그때 서버는 병합하지 않고 UNIQUE로 깨진다(V-3).
           */}
           {target === null ? (
             <h3>{entry.date}</h3>

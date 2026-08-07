@@ -25,7 +25,7 @@ import type {
  *
  * **`targetDate`와 `value.date`가 따로 있는 것이 이 타입의 존재 이유다.** 앞은 경로의 `{date}`(서버가 고칠
  * 대상을 찾는 키)이고 뒤는 본문의 `date`(결과 날짜)다. 사용자가 날짜를 바꾸면 뒤만 움직이고 앞은 로드
- * 시점의 값에 못 박힌다 — 둘을 한 필드로 두면 날짜를 고치는 순간 *"어느 엔트리를 고치는 중인가"*를 잃는다.
+ * 시점의 값에 못 박힌다 — 둘을 한 필드로 두면 날짜를 고치는 순간 *"어느 시음일을 고치는 중인가"*를 잃는다.
  */
 export interface EntryDraft {
   targetDate: string
@@ -52,7 +52,7 @@ export function toEntryDrafts(note: NoteDetail): EntryDraft[] {
 }
 
 /**
- * 채팅 수정 모드 폼 → 엔트리 PATCH 본문 (changes/0029 TΔ28b, D-14, AC-13).
+ * 채팅 수정 모드 폼 → 시음일 PATCH 본문 (changes/0029 TΔ28b, D-14, AC-13).
  *
  * **이 함수가 수정 화면 쪽 모듈에 사는 것이 요점이다**: 저장 요청을 만드는 코드는 한 벌이어야 한다
  * (D-14 ③). 같은 `PATCH /api/notes/{id}/entries/{date}`를 두 화면이 각자 조립하면 한쪽만 고치는 순간
@@ -74,7 +74,7 @@ export function toEntryUpdate(draft: Draft): EntryDraft {
     // 보내면 «새 기록을 남기려던 조작이 남의 기록을 덮는» 형태가 된다.
     throw new Error('수정 모드가 아닌 폼이야')
   }
-  // 폼의 단위는 엔트리 1건이다(TΔ28a) — 조용히 첫 건만 고르면 사용자가 보지 못한 회차가 저장되거나
+  // 폼의 단위는 시음일 1건이다(TΔ28a) — 조용히 첫 건만 고르면 사용자가 보지 못한 회차가 저장되거나
   // 사라진다. 계약이 깨진 것이므로 요청을 만들지 않는다.
   if (draft.note.entries.length !== 1) {
     throw new Error('수정 모드 폼은 기록 1건만 담아')
@@ -148,7 +148,7 @@ export function withDate(entry: NoteEntryUpdate, date: string): NoteEntryUpdate 
 }
 
 /**
- * 이 엔트리를 옮기면 합쳐질 상대 — 없으면 null (D-12).
+ * 이 시음일을 옮기면 합쳐질 상대 — 없으면 null (D-12).
  *
  * 판정 입력이 **화면이 이미 들고 있는 값**이라 서버에 묻지 않는다. 구 V-10은 충돌 여부를 서버가 계산해
  * pending에 실어 보냈는데(`date_conflict`, changes/0012), 그것이 필요했던 이유는 Slack에 폼이 없어

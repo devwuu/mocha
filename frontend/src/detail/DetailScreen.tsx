@@ -101,7 +101,7 @@ export function DetailScreen({ noteId, onNavigate }: DetailScreenProps) {
 
             <div className="detail__entries">
               {note.entries.length === 0 && (
-                // 엔트리 없는 노트는 정상 상태다(계약 예시가 박는다) — 빈 화면 대신 그렇다고 말한다.
+                // 시음일 없는 노트는 정상 상태다(계약 예시가 박는다) — 빈 화면 대신 그렇다고 말한다.
                 <div className="detail__empty">아직 시음 기록이 없어요.</div>
               )}
               {note.entries.map((entry) => (
@@ -129,7 +129,7 @@ export function DetailScreen({ noteId, onNavigate }: DetailScreenProps) {
   )
 }
 
-/** 히어로 = 가장 최근 날짜의 첫 사진. 엔트리는 날짜 오름차순이므로 뒤에서부터 찾는다. */
+/** 히어로 = 가장 최근 날짜의 첫 사진. 시음일은 날짜 오름차순이므로 뒤에서부터 찾는다. */
 function heroPhoto(entries: NoteDetailEntry[]): NotePhoto | null {
   for (let index = entries.length - 1; index >= 0; index--) {
     const photos = entries[index].photos
@@ -192,7 +192,7 @@ function Meta({ note }: { note: NoteDetail }) {
 }
 
 /**
- * 날짜 하나 = 날짜 rule + 그 날의 사진 + 회차 카드들. `date`가 엔트리의 유일 키다(V-3).
+ * 날짜 하나 = 날짜 rule + 그 날의 사진 + 회차 카드들. `date`가 시음일의 유일 키다(V-3).
  *
  * 사진이 회차 위에 오는 것이 시안의 순서다 — 그 날의 장면이 먼저고 기록이 뒤다.
  */
