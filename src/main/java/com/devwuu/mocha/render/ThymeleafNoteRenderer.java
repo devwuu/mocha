@@ -2,7 +2,7 @@ package com.devwuu.mocha.render;
 
 import com.devwuu.mocha.domain.Bean;
 import com.devwuu.mocha.domain.Cup;
-import com.devwuu.mocha.domain.Entry;
+import com.devwuu.mocha.domain.TastingDay;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Sourced;
@@ -87,31 +87,31 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
 
     @Override
     public void renderAll() {
-        List<EntryRef> ordered = orderedEntries(noteService.findAll());
+        List<TastingDayRef> ordered = orderedTastingDays(noteService.findAll());
 
         // 카드가 참조하는 로컬 자산을 base(artifact 루트)에 먼저 깔아야 래스터화 시 폰트·이미지가 해석된다(ADR-11).
         copyMascot();
         copyFonts();
         Set<Path> baked = new HashSet<>();
-        for (EntryRef ref : ordered) {
-            baked.addAll(bakeEntryCards(ref));
+        for (TastingDayRef ref : ordered) {
+            baked.addAll(bakeTastingDayCards(ref));
         }
         pruneOrphanCards(baked);
-        log.info("전체 리렌더 완료: theme={} entries={} cards={} dir={}",
+        log.info("전체 리렌더 완료: theme={} tastingDays={} cards={} dir={}",
                 theme.id(), ordered.size(), baked.size(), artifactDir);
     }
 
     @Override
-    public Optional<Path> entryCard(long noteId, LocalDate date, CardType type, int cupNumber) {
+    public Optional<Path> tastingDayCard(long noteId, LocalDate date, CardType type, int cupNumber) {
         Note note = noteService.findById(noteId).orElse(null);
         if (note == null) {
             return Optional.empty();
         }
-        Entry entry = entryOf(note, date);
+        TastingDay tastingDay = tastingDayOf(note, date);
         // 없는 대상은 예외가 아니라 빈 결과다 — 그 판정을 상태 코드로 옮기는 것은 전송 계층의 몫이고,
         // 여기서 예외로 던지면 "카드가 없다"와 "굽다 실패했다"가 같은 형태로 올라간다(뜻이 다르다).
-        if (entry == null || cupNumber < 1 || cupNumber > entry.cups().size()
-                || !type.presentIn(entry.cups().get(cupNumber - 1))) {
+        if (tastingDay == null || cupNumber < 1 || cupNumber > tastingDay.cups().size()
+                || !type.presentIn(tastingDay.cups().get(cupNumber - 1))) {
             return Optional.empty();
         }
 
@@ -120,46 +120,46 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
             return Optional.of(card); // 캐시 히트 — 쓰기가 무효화하지 않은 카드는 최신이다(NoteService).
         }
         // 미스는 엔트리 단위로 채운다 — 공유가 그 회차의 감상·레시피를 함께 집으므로 두 번째 요청이 곧
-        // 이어지고, 브라우저 기동이 카드 장수보다 비싸다(NoteRenderer#entryCard).
-        return bakeEntry(note, entry).stream().filter(card::equals).findFirst();
+        // 이어지고, 브라우저 기동이 카드 장수보다 비싸다(NoteRenderer#tastingDayCard).
+        return bakeTastingDay(note, tastingDay).stream().filter(card::equals).findFirst();
     }
 
     @Override
-    public List<Path> renderEntryCard(long noteId, LocalDate date) {
+    public List<Path> renderTastingDayCard(long noteId, LocalDate date) {
         Note note = noteService.findById(noteId)
                 .orElseThrow(() -> new IllegalArgumentException("카드 렌더 대상 노트 없음: noteId=" + noteId));
-        Entry entry = entryOf(note, date);
-        if (entry == null) {
+        TastingDay tastingDay = tastingDayOf(note, date);
+        if (tastingDay == null) {
             throw new IllegalArgumentException("카드 렌더 대상 엔트리 없음: noteId=" + noteId + " date=" + date);
         }
-        return bakeEntry(note, entry);
+        return bakeTastingDay(note, tastingDay);
     }
 
-    // 그 엔트리의 회차 카드를 굽고 옛 카드를 정리한다 — renderEntryCard와 온디맨드 미스의 공용 지점.
-    private List<Path> bakeEntry(Note note, Entry entry) {
+    // 그 엔트리의 회차 카드를 굽고 옛 카드를 정리한다 — renderTastingDayCard와 온디맨드 미스의 공용 지점.
+    private List<Path> bakeTastingDay(Note note, TastingDay tastingDay) {
         // 한 장만 굽는 길이어도 base 자산은 최신 상태여야 한다 — 카드가 참조하는 폰트·이미지의 해석 기준(AC-Δ7).
         copyMascot();
         copyFonts();
-        List<Path> cards = bakeEntryCards(new EntryRef(note, entry));
+        List<Path> cards = bakeTastingDayCards(new TastingDayRef(note, tastingDay));
         // 회차 감소·파트 소멸 재저장의 옛 번호 카드가 남지 않게, 방금 산출 집합 외의 그 엔트리 카드를 지운다(TΔ5a).
-        pruneEntryCards(note, entry.date(), Set.copyOf(cards));
-        log.info("엔트리 카드 렌더: noteId={} date={} → {}장", note.id(), entry.date(), cards.size());
+        pruneTastingDayCards(note, tastingDay.date(), Set.copyOf(cards));
+        log.info("엔트리 카드 렌더: noteId={} date={} → {}장", note.id(), tastingDay.date(), cards.size());
         return cards;
     }
 
-    // entries 배열 존재는 도메인 생성자가 보장한다(V-3 — CR25-10) — null 재검증 없음(ADR-66 POLICY).
-    private static Entry entryOf(Note note, LocalDate date) {
-        return note.entries().stream().filter(e -> e.date().equals(date)).findFirst().orElse(null);
+    // tastingDays 배열 존재는 도메인 생성자가 보장한다(V-3 — CR25-10) — null 재검증 없음(ADR-66 POLICY).
+    private static TastingDay tastingDayOf(Note note, LocalDate date) {
+        return note.tastingDays().stream().filter(e -> e.date().equals(date)).findFirst().orElse(null);
     }
 
     // 그 엔트리(노트,date)의 카드 파일 중 keep에 없는 것을 지운다 — 회차 감소·파트 소멸로 남은
     // 옛 번호 카드의 정리 지점이다(노트 단위 캐시 무효화는 쓰기 경로가 진다, NoteService).
-    private void pruneEntryCards(Note note, LocalDate date, Set<Path> keep) {
+    private void pruneTastingDayCards(Note note, LocalDate date, Set<Path> keep) {
         Path noteDir = CardFiles.noteCardsDir(artifactDir, note);
         if (!Files.isDirectory(noteDir)) {
             return;
         }
-        try (DirectoryStream<Path> cards = Files.newDirectoryStream(noteDir, CardFiles.entryCardGlob(date))) {
+        try (DirectoryStream<Path> cards = Files.newDirectoryStream(noteDir, CardFiles.tastingDayCardGlob(date))) {
             for (Path card : cards) {
                 if (!keep.contains(card)) {
                     Files.delete(card);
@@ -206,43 +206,43 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
 
     // 엔트리의 회차 카드 전부를 굽는다 — review 있는 회차는 감상 카드, recipe 있는 회차는 레시피 카드(AC-78).
     // 산출 순서 = CardFiles.expectedCards와 동일(회차 오름차순, 감상 → 레시피).
-    private List<Path> bakeEntryCards(EntryRef ref) {
+    private List<Path> bakeTastingDayCards(TastingDayRef ref) {
         List<Path> out = new ArrayList<>();
-        List<Cup> cups = ref.entry().cups();
+        List<Cup> cups = ref.tastingDay().cups();
         for (int i = 0; i < cups.size(); i++) {
             int n = i + 1; // 배열 순서 = 회차 번호(ADR-59)
             Cup cup = cups.get(i);
             if (cup.review() != null) {
-                out.add(bakeTasteCard(ref.note(), ref.entry(), cup.review(), n));
+                out.add(bakeTasteCard(ref.note(), ref.tastingDay(), cup.review(), n));
             }
             if (cup.recipe() != null) {
-                out.add(bakeRecipeCard(ref.note(), ref.entry(), cup.recipe(), n));
+                out.add(bakeRecipeCard(ref.note(), ref.tastingDay(), cup.recipe(), n));
             }
         }
         return out;
     }
 
     // taste.html을 회차 감상 파트 1건으로 렌더해 cards/<접미>/<date>-taste-<n>.jpg로 굽는다.
-    private Path bakeTasteCard(Note note, Entry entry, Review review, int cupNumber) {
+    private Path bakeTasteCard(Note note, TastingDay tastingDay, Review review, int cupNumber) {
         NoteView.TasteCard card = new NoteView.TasteCard(
                 Sourced.valueOrNull(note.coffeeName()), // 제목은 값만 — 출처 무표기(제목=정체성, NoteView.TasteCard)
                 Sourced.valueOrNull(note.roastery()),
                 beanLines(note.beans()),
                 Sourced.valueOrNull(note.roastLevel()),
                 Sourced.valuesOrEmpty(note.officialNotes()),
-                entry.date(),
+                tastingDay.date(),
                 review.myTaste(),
                 review.rating());
-        Path out = CardFiles.tasteCard(artifactDir, note, entry.date(), cupNumber);
+        Path out = CardFiles.tasteCard(artifactDir, note, tastingDay.date(), cupNumber);
         cardImageRenderer.render(render("taste", cardContext(card)), artifactDir, out);
         return out;
     }
 
     // recipe.html을 회차 레시피 파트 1건으로 렌더해 cards/<접미>/<date>-recipe-<n>.jpg로 굽는다.
-    private Path bakeRecipeCard(Note note, Entry entry, Recipe recipe, int cupNumber) {
+    private Path bakeRecipeCard(Note note, TastingDay tastingDay, Recipe recipe, int cupNumber) {
         NoteView.RecipeCard card = new NoteView.RecipeCard(
-                Sourced.valueOrNull(note.coffeeName()), Sourced.valueOrNull(note.roastery()), entry.date(), recipe);
-        Path out = CardFiles.recipeCard(artifactDir, note, entry.date(), cupNumber);
+                Sourced.valueOrNull(note.coffeeName()), Sourced.valueOrNull(note.roastery()), tastingDay.date(), recipe);
+        Path out = CardFiles.recipeCard(artifactDir, note, tastingDay.date(), cupNumber);
         cardImageRenderer.render(render("recipe", cardContext(card)), artifactDir, out);
         return out;
     }
@@ -268,15 +268,15 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
     // 모든 (노트,엔트리)를 엔트리 date 내림차순 + 노트 id 오름차순으로 평탄화한다(결정론적 재현성, AC-Δ7).
     // 2차 키는 저장소 findAll의 정렬 키(id 오름차순)와 같아야 한다 — 두 곳이 갈리면 같은 DB에서
     // 산출 순서가 달라진다(E-1, changes/0028 TΔ6c. 파일 시절엔 둘 다 slug였다).
-    private static List<EntryRef> orderedEntries(List<Note> notes) {
-        List<EntryRef> refs = new ArrayList<>();
-        // entries 배열 존재는 도메인 생성자가 보장한다(V-3 — CR25-10) — null 재검증 없음(ADR-66 POLICY).
+    private static List<TastingDayRef> orderedTastingDays(List<Note> notes) {
+        List<TastingDayRef> refs = new ArrayList<>();
+        // tastingDays 배열 존재는 도메인 생성자가 보장한다(V-3 — CR25-10) — null 재검증 없음(ADR-66 POLICY).
         for (Note note : notes) {
-            for (Entry entry : note.entries()) {
-                refs.add(new EntryRef(note, entry));
+            for (TastingDay tastingDay : note.tastingDays()) {
+                refs.add(new TastingDayRef(note, tastingDay));
             }
         }
-        refs.sort(Comparator.comparing((EntryRef r) -> r.entry().date()).reversed()
+        refs.sort(Comparator.comparing((TastingDayRef r) -> r.tastingDay().date()).reversed()
                 .thenComparing(r -> r.note().id()));
         return refs;
     }
@@ -328,6 +328,6 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
     }
 
     /** 평탄화된 (노트, 엔트리) 한 쌍 — 카드 산출의 단위. */
-    private record EntryRef(Note note, Entry entry) {
+    private record TastingDayRef(Note note, TastingDay tastingDay) {
     }
 }

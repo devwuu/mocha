@@ -1,7 +1,7 @@
 package com.devwuu.mocha.repository.jpa;
 
 import static com.devwuu.mocha.repository.entity.QCupEntity.cupEntity;
-import static com.devwuu.mocha.repository.entity.QEntryEntity.entryEntity;
+import static com.devwuu.mocha.repository.entity.QTastingDayEntity.tastingDayEntity;
 import static com.devwuu.mocha.repository.entity.QNoteAliasEntity.noteAliasEntity;
 import static com.devwuu.mocha.repository.entity.QNoteBeanEntity.noteBeanEntity;
 import static com.devwuu.mocha.repository.entity.QNoteEntity.noteEntity;
@@ -18,7 +18,7 @@ import com.devwuu.mocha.domain.NoteFilter;
 import com.devwuu.mocha.domain.NoteListItem;
 import com.devwuu.mocha.domain.NotePhoto;
 import com.devwuu.mocha.repository.entity.CupEntity;
-import com.devwuu.mocha.repository.entity.EntryEntity;
+import com.devwuu.mocha.repository.entity.TastingDayEntity;
 import com.devwuu.mocha.repository.entity.NotePhotoEntity;
 import com.devwuu.mocha.repository.entity.RecipeEntity;
 import com.devwuu.mocha.repository.entity.ReviewEntity;
@@ -64,18 +64,18 @@ class NoteEntityRepositoryCustomImpl implements NoteEntityRepositoryCustom {
         if (noteIds.isEmpty()) {
             return NoteChildRows.empty();
         }
-        List<EntryEntity> entries = query.selectFrom(entryEntity)
-                .where(entryEntity.noteId.in(noteIds))
-                // Note 계약: entries는 날짜 오름차순. 순서를 질의가 지므로 조립부가 재정렬하지 않는다.
-                .orderBy(entryEntity.noteId.asc(), entryEntity.tastedOn.asc())
+        List<TastingDayEntity> tastingDays = query.selectFrom(tastingDayEntity)
+                .where(tastingDayEntity.noteId.in(noteIds))
+                // Note 계약: tastingDays는 날짜 오름차순. 순서를 질의가 지므로 조립부가 재정렬하지 않는다.
+                .orderBy(tastingDayEntity.noteId.asc(), tastingDayEntity.tastedOn.asc())
                 .fetch();
-        List<Long> entryIds = entries.stream().map(EntryEntity::getId).toList();
+        List<Long> tastingDayIds = tastingDays.stream().map(TastingDayEntity::getId).toList();
 
-        List<CupEntity> cups = entryIds.isEmpty() ? List.of()
+        List<CupEntity> cups = tastingDayIds.isEmpty() ? List.of()
                 : query.selectFrom(cupEntity)
-                        .where(cupEntity.entryId.in(entryIds))
+                        .where(cupEntity.tastingDayId.in(tastingDayIds))
                         // AC-Δ4: seq가 회차 번호를 소유한다 — 구 "배열 순서 = 회차"의 암묵 의존을 대체.
-                        .orderBy(cupEntity.entryId.asc(), cupEntity.seq.asc())
+                        .orderBy(cupEntity.tastingDayId.asc(), cupEntity.seq.asc())
                         .fetch();
         List<Long> cupIds = cups.stream().map(CupEntity::getId).toList();
 
@@ -94,7 +94,7 @@ class NoteEntityRepositoryCustomImpl implements NoteEntityRepositoryCustom {
                 query.selectFrom(noteSourceEntity)
                         .where(noteSourceEntity.noteId.in(noteIds))
                         .orderBy(noteSourceEntity.noteId.asc(), noteSourceEntity.seq.asc()).fetch(),
-                entries,
+                tastingDays,
                 cups,
                 // recipe·review는 cup_id가 곧 PK라 짝짓기가 조회 조건 그 자체다(TΔ3b의 PK 공유 1:1).
                 cupIds.isEmpty() ? List.<RecipeEntity>of()
@@ -112,9 +112,9 @@ class NoteEntityRepositoryCustomImpl implements NoteEntityRepositoryCustom {
                         noteEntity.roastery.value,
                         // 엔트리가 없는 노트는 여기가 null이다 — 그래서 join이 left다(inner면 그 노트가
                         // 후보에서 통째로 빠지는데, 삭제 직후가 정확히 그 상태다).
-                        entryEntity.tastedOn.max()))
+                        tastingDayEntity.tastedOn.max()))
                 .from(noteEntity)
-                .leftJoin(entryEntity).on(entryEntity.noteId.eq(noteEntity.id))
+                .leftJoin(tastingDayEntity).on(tastingDayEntity.noteId.eq(noteEntity.id))
                 .where(matches(normalizedQuery))
                 // 노트마다 엔트리 수만큼 행이 불어난 것을 다시 접는다. 별칭 축을 join이 아니라 exists로
                 // 둔 것도 같은 이유고(아래), 그쪽은 접을 필요조차 없게 만든 것이다.
@@ -126,7 +126,7 @@ class NoteEntityRepositoryCustomImpl implements NoteEntityRepositoryCustom {
                         // NULLS LAST를 명시한다 — 로스터리 미상·시음 기록 없음을 뒤로 보낸다. Postgres
                         // 기본값은 ASC에서 LAST, DESC에서 FIRST라 아래 줄은 안 적으면 뒤집힌다.
                         noteEntity.roasteryNormalized.asc().nullsLast(),
-                        entryEntity.tastedOn.max().desc().nullsLast())
+                        tastingDayEntity.tastedOn.max().desc().nullsLast())
                 .fetch();
     }
 
@@ -160,14 +160,14 @@ class NoteEntityRepositoryCustomImpl implements NoteEntityRepositoryCustom {
         // 같다 — 엔트리가 없는 노트는 inner join에서 목록 자체에서 빠지는데, 삭제 직후가 그 상태다.
         List<Tuple> rows = query
                 .select(noteEntity.id, noteEntity.coffeeName.value, noteEntity.roastery.value,
-                        entryEntity.tastedOn.max())
+                        tastingDayEntity.tastedOn.max())
                 .from(noteEntity)
-                .leftJoin(entryEntity).on(entryEntity.noteId.eq(noteEntity.id))
+                .leftJoin(tastingDayEntity).on(tastingDayEntity.noteId.eq(noteEntity.id))
                 .where(filters(filter))
                 .groupBy(noteEntity.id, noteEntity.coffeeName.value, noteEntity.roastery.value)
                 // 커서는 집계값(최근 시음일)과 견주므로 where가 아니라 having이다.
                 .having(after(cursor))
-                .orderBy(entryEntity.tastedOn.max().desc().nullsLast(), noteEntity.id.desc())
+                .orderBy(tastingDayEntity.tastedOn.max().desc().nullsLast(), noteEntity.id.desc())
                 .limit(limit)
                 .fetch();
 
@@ -178,7 +178,7 @@ class NoteEntityRepositoryCustomImpl implements NoteEntityRepositoryCustom {
                         row.get(noteEntity.id),
                         row.get(noteEntity.coffeeName.value),
                         row.get(noteEntity.roastery.value),
-                        row.get(entryEntity.tastedOn.max()),
+                        row.get(tastingDayEntity.tastedOn.max()),
                         thumbnails.get(row.get(noteEntity.id))))
                 .toList();
     }
@@ -239,7 +239,7 @@ class NoteEntityRepositoryCustomImpl implements NoteEntityRepositoryCustom {
         if (cursor == null) {
             return null;
         }
-        DateExpression<LocalDate> latestDate = entryEntity.tastedOn.max();
+        DateExpression<LocalDate> latestDate = tastingDayEntity.tastedOn.max();
         if (cursor.latestDate() == null) {
             return latestDate.isNull().and(noteEntity.id.lt(cursor.noteId()));
         }
@@ -281,11 +281,11 @@ class NoteEntityRepositoryCustomImpl implements NoteEntityRepositoryCustom {
                     .exists());
         }
         if (!filter.rating().isEmpty()) {
-            // entry → cup → review 세 단을 exists 하나로 — 연관 매핑이 없어 조인 조건을 값으로 적는다.
-            where.and(JPAExpressions.selectOne().from(reviewEntity, cupEntity, entryEntity)
+            // tasting_day → cup → review 세 단을 exists 하나로 — 연관 매핑이 없어 조인 조건을 값으로 적는다.
+            where.and(JPAExpressions.selectOne().from(reviewEntity, cupEntity, tastingDayEntity)
                     .where(cupEntity.id.eq(reviewEntity.cupId),
-                            entryEntity.id.eq(cupEntity.entryId),
-                            entryEntity.noteId.eq(noteEntity.id),
+                            tastingDayEntity.id.eq(cupEntity.tastingDayId),
+                            tastingDayEntity.noteId.eq(noteEntity.id),
                             reviewEntity.rating.in(filter.rating()))
                     .exists());
         }
@@ -316,23 +316,23 @@ class NoteEntityRepositoryCustomImpl implements NoteEntityRepositoryCustom {
     }
 
     @Override
-    public Optional<Long> findEntryId(long noteId, LocalDate tastedOn) {
-        return Optional.ofNullable(query.select(entryEntity.id).from(entryEntity)
-                .where(entryEntity.noteId.eq(noteId), entryEntity.tastedOn.eq(tastedOn))
+    public Optional<Long> findTastingDayId(long noteId, LocalDate tastedOn) {
+        return Optional.ofNullable(query.select(tastingDayEntity.id).from(tastingDayEntity)
+                .where(tastingDayEntity.noteId.eq(noteId), tastingDayEntity.tastedOn.eq(tastedOn))
                 .fetchOne());
     }
 
     @Override
-    public Optional<EntryEntity> findEntry(long noteId, LocalDate tastedOn) {
-        return Optional.ofNullable(query.selectFrom(entryEntity)
-                .where(entryEntity.noteId.eq(noteId), entryEntity.tastedOn.eq(tastedOn))
+    public Optional<TastingDayEntity> findTastingDay(long noteId, LocalDate tastedOn) {
+        return Optional.ofNullable(query.selectFrom(tastingDayEntity)
+                .where(tastingDayEntity.noteId.eq(noteId), tastingDayEntity.tastedOn.eq(tastedOn))
                 .fetchOne());
     }
 
     @Override
-    public long countCups(long entryId) {
+    public long countCups(long tastingDayId) {
         Long count = query.select(cupEntity.count()).from(cupEntity)
-                .where(cupEntity.entryId.eq(entryId))
+                .where(cupEntity.tastingDayId.eq(tastingDayId))
                 .fetchOne();
         return count == null ? 0L : count;
     }
@@ -370,11 +370,11 @@ class NoteEntityRepositoryCustomImpl implements NoteEntityRepositoryCustom {
     }
 
     @Override
-    public void deleteCups(long entryId) {
+    public void deleteCups(long tastingDayId) {
         // 회차 id를 먼저 집는다 — recipe·review는 cup_id로만 걸려 있어(1:1 PK 공유) 부모가 사라진 뒤에는
         // 지울 근거가 없어진다. FK가 없으므로 이 순서를 잃으면 고아 행이 조용히 남는다(ADR-75).
         List<Long> cupIds = query.select(cupEntity.id).from(cupEntity)
-                .where(cupEntity.entryId.eq(entryId)).fetch();
+                .where(cupEntity.tastingDayId.eq(tastingDayId)).fetch();
         if (cupIds.isEmpty()) {
             return;
         }
@@ -384,14 +384,14 @@ class NoteEntityRepositoryCustomImpl implements NoteEntityRepositoryCustom {
     }
 
     @Override
-    public void deleteEntry(long entryId) {
-        deleteCups(entryId);
-        query.delete(entryEntity).where(entryEntity.id.eq(entryId)).execute();
+    public void deleteTastingDay(long tastingDayId) {
+        deleteCups(tastingDayId);
+        query.delete(tastingDayEntity).where(tastingDayEntity.id.eq(tastingDayId)).execute();
     }
 
     @Override
     public long deleteNote(long noteId) {
-        deleteEntries(noteId);
+        deleteTastingDays(noteId);
         deleteNoteArraysExceptAliases(noteId);
         // 별칭은 여기서만 지운다 — 수정 세션이 남기는 것은 원본 존치(V-13) 때문이고 노트가 사라지는
         // 자리에는 그 근거가 없다.
@@ -399,7 +399,7 @@ class NoteEntityRepositoryCustomImpl implements NoteEntityRepositoryCustom {
         // 사진 색인도 함께 — 파일은 이 트랜잭션이 아니라 호출부(NoteService)가 커밋 뒤에 지운다.
         // 순서가 그쪽인 근거는 V3 마이그레이션 POLICY가 소유한다(사진 바이트를 조용히 잃지 않는다).
         query.delete(notePhotoEntity).where(notePhotoEntity.noteId.eq(noteId)).execute();
-        // 노트 행은 마지막이다. 엔티티로 실어 와 em.remove()에 맡기지 않는 것은 deleteEntry와 같은 이유 —
+        // 노트 행은 마지막이다. 엔티티로 실어 와 em.remove()에 맡기지 않는 것은 deleteTastingDay와 같은 이유 —
         // Hibernate의 flush 순서가 삭제를 항상 마지막에 두므로, 삭제가 언제 나가는지를 코드가 쥘 수 없다.
         return query.delete(noteEntity).where(noteEntity.id.eq(noteId)).execute();
     }
@@ -408,19 +408,19 @@ class NoteEntityRepositoryCustomImpl implements NoteEntityRepositoryCustom {
      * 노트의 엔트리 <b>전부</b>를 하위부터 — {@link #deleteCups}를 엔트리마다 부르지 않고 id를 모아 한 번에
      * 지운다. 엔트리가 몇 건이든 질의 수가 고정된다(수집 2 + 삭제 4).
      */
-    private void deleteEntries(long noteId) {
-        List<Long> entryIds = query.select(entryEntity.id).from(entryEntity)
-                .where(entryEntity.noteId.eq(noteId)).fetch();
-        if (entryIds.isEmpty()) {
+    private void deleteTastingDays(long noteId) {
+        List<Long> tastingDayIds = query.select(tastingDayEntity.id).from(tastingDayEntity)
+                .where(tastingDayEntity.noteId.eq(noteId)).fetch();
+        if (tastingDayIds.isEmpty()) {
             return;
         }
         List<Long> cupIds = query.select(cupEntity.id).from(cupEntity)
-                .where(cupEntity.entryId.in(entryIds)).fetch();
+                .where(cupEntity.tastingDayId.in(tastingDayIds)).fetch();
         if (!cupIds.isEmpty()) {
             query.delete(reviewEntity).where(reviewEntity.cupId.in(cupIds)).execute();
             query.delete(recipeEntity).where(recipeEntity.cupId.in(cupIds)).execute();
             query.delete(cupEntity).where(cupEntity.id.in(cupIds)).execute();
         }
-        query.delete(entryEntity).where(entryEntity.id.in(entryIds)).execute();
+        query.delete(tastingDayEntity).where(tastingDayEntity.id.in(tastingDayIds)).execute();
     }
 }

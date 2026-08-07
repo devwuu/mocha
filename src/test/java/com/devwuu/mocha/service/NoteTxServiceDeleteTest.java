@@ -6,7 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Bean;
 import com.devwuu.mocha.domain.Cup;
-import com.devwuu.mocha.domain.Entry;
+import com.devwuu.mocha.domain.TastingDay;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
 import com.devwuu.mocha.domain.Rating;
@@ -51,7 +51,7 @@ class NoteTxServiceDeleteTest extends PostgresIntegrationTest {
     // 0029 TΔ8b: note_photo가 늘었다. 사진 색인은 이 테스트의 표본이 만들지 않으므로(사진은 파일 경로다)
     // 잔존 0 판정에는 넣지 않고 NoteTxServicePhotoTest가 따로 소유한다.
     private static final List<String> CHILD_TABLES =
-            List.of("entry", "cup", "recipe", "review", "note_bean", "note_official_note", "note_alias", "note_source");
+            List.of("tasting_day", "cup", "recipe", "review", "note_bean", "note_official_note", "note_alias", "note_source");
 
     @Autowired
     EntityManager em;
@@ -97,8 +97,8 @@ class NoteTxServiceDeleteTest extends PostgresIntegrationTest {
         flushAndClear();
 
         Note loaded = repo.findById(survivor.id()).orElseThrow();
-        assertThat(loaded.entries()).hasSize(2);
-        assertThat(loaded.entries().getFirst().cups()).hasSize(2);
+        assertThat(loaded.tastingDays()).hasSize(2);
+        assertThat(loaded.tastingDays().getFirst().cups()).hasSize(2);
         assertThat(loaded.beans()).hasSize(1);
         assertThat(loaded.officialNotes().value()).containsExactly("자스민", "베르가못");
         assertThat(loaded.sources()).hasSize(1);
@@ -151,9 +151,9 @@ class NoteTxServiceDeleteTest extends PostgresIntegrationTest {
      * <p>회차를 둘 두는 것은 {@code cup} 삭제가 한 건만 지우고 나머지를 남기는 갈래를 가르기 위해서다.
      */
     private Note seedFullyPopulated() {
-        Note saved = repo.commit(null, fullMeta(), entry(day(9)),
+        Note saved = repo.commit(null, fullMeta(), tastingDay(day(9)),
                 new Aliases(List.of("예가체프 G1"), List.of("커피베라 성수")));
-        return repo.commit(saved.id(), fullMeta(), entry(day(10)), Aliases.empty());
+        return repo.commit(saved.id(), fullMeta(), tastingDay(day(10)), Aliases.empty());
     }
 
     private static NoteMeta fullMeta() {
@@ -171,8 +171,8 @@ class NoteTxServiceDeleteTest extends PostgresIntegrationTest {
     }
 
     // updatedAt은 감사 컬럼이 발급하므로 인자값은 버려진다(Q-5) — 표본에서는 자리만 채운다.
-    private static Entry entry(LocalDate date) {
-        return new Entry(date, List.of(
+    private static TastingDay tastingDay(LocalDate date) {
+        return new TastingDay(date, List.of(
                 new Cup(recipe(15.0), new Review("첫 잔", "첫 잔", Rating.GOOD)),
                 new Cup(recipe(16.0), new Review("둘째 잔", "둘째 잔", Rating.PERFECT))),
                 OffsetDateTime.of(2000, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC));

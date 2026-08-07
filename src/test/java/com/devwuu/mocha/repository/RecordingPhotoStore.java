@@ -78,7 +78,7 @@ public class RecordingPhotoStore implements PhotoStore {
     }
 
     /** 날짜 이동이 받은 (폴더 접미, 옛 날짜, 새 날짜) — 인자 3종을 한 줄로 붙여 기록한다(TΔ5b-2). */
-    public final List<String> movedEntries = new ArrayList<>();
+    public final List<String> movedTastingDays = new ArrayList<>();
 
     /** 이동이 돌려줄 {@code 옛 경로 → 새 경로}. 비어 있으면 "옮길 사진이 없었다"와 같다. */
     public Map<String, String> movedPaths = Map.of();
@@ -87,8 +87,8 @@ public class RecordingPhotoStore implements PhotoStore {
     public RuntimeException moveFailure;
 
     @Override
-    public Map<String, String> moveEntryPhotos(String noteFolder, String fromDate, String toDate) {
-        movedEntries.add(noteFolder + " " + fromDate + " → " + toDate);
+    public Map<String, String> moveTastingDayPhotos(String noteFolder, String fromDate, String toDate) {
+        movedTastingDays.add(noteFolder + " " + fromDate + " → " + toDate);
         if (moveFailure != null) {
             throw moveFailure;
         }

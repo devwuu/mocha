@@ -97,7 +97,7 @@ class TurnRunnerTest {
 
     @Test
     @DisplayName("AC-Δ8(0026): 성공 턴에서도 턴 진입 관측 로그에 발화 원문이 실린다 — 박제 회수 경로(ADR-69 ①)")
-    void turnEntryObservationCarriesRawUtterance() {
+    void turnTastingDayObservationCarriesRawUtterance() {
         chatClient.reply = "맛있었겠다 멍! 🐾";
 
         TurnResult result = runner.run(USER, "어제 마신 예가체프 새콤했어", null);

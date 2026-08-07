@@ -2,7 +2,7 @@ package com.devwuu.mocha.web;
 
 import com.devwuu.mocha.SingleUser;
 import com.devwuu.mocha.agent.conversation.FoldingChatMemory;
-import com.devwuu.mocha.domain.Entry;
+import com.devwuu.mocha.domain.TastingDay;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteCandidate;
@@ -257,20 +257,20 @@ public class NoteController {
      * spec에 없다(TΔ13b 편차 ⑤).
      */
     @PatchMapping("/{id:\\d+}/entries/{date}")
-    public ResponseEntity<NoteDetailBody> replaceEntry(
+    public ResponseEntity<NoteDetailBody> replaceTastingDay(
             @PathVariable long id,
             @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
             @RequestBody NoteEntryBody request) {
         if (request == null || request.date() == null) {
             return ResponseEntity.badRequest().build();
         }
-        Entry entry = request.toEntry();
-        if (entry.cups().isEmpty()) {
+        TastingDay tastingDay = request.toTastingDay();
+        if (tastingDay.cups().isEmpty()) {
             log.warn("엔트리 수정 거부(회차 없음): noteId={} date={}", id, date);
             return ResponseEntity.badRequest().build();
         }
         try {
-            return ResponseEntity.ok(NoteDetailBody.of(noteService.replaceEntry(id, date, entry)));
+            return ResponseEntity.ok(NoteDetailBody.of(noteService.replaceTastingDay(id, date, tastingDay)));
         } catch (IllegalStateException e) {
             // 노트도 대상 엔트리도 "고칠 것이 URL에 없다"는 같은 사실이다.
             log.warn("엔트리 수정 거부(대상 소실): {}", e.getMessage());

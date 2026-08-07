@@ -1,7 +1,7 @@
 package com.devwuu.mocha.repository.jpa;
 
 import com.devwuu.mocha.repository.entity.CupEntity;
-import com.devwuu.mocha.repository.entity.EntryEntity;
+import com.devwuu.mocha.repository.entity.TastingDayEntity;
 import com.devwuu.mocha.repository.entity.NoteAliasEntity;
 import com.devwuu.mocha.repository.entity.NoteBeanEntity;
 import com.devwuu.mocha.repository.entity.NoteOfficialNoteEntity;
@@ -26,7 +26,7 @@ public record NoteChildRows(
         List<NoteOfficialNoteEntity> officialNotes,
         List<NoteAliasEntity> aliases,
         List<NoteSourceEntity> sources,
-        List<EntryEntity> entries,
+        List<TastingDayEntity> tastingDays,
         List<CupEntity> cups,
         List<RecipeEntity> recipes,
         List<ReviewEntity> reviews

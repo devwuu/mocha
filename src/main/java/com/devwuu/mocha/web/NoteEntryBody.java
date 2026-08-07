@@ -1,7 +1,7 @@
 package com.devwuu.mocha.web;
 
 import com.devwuu.mocha.domain.Cup;
-import com.devwuu.mocha.domain.Entry;
+import com.devwuu.mocha.domain.TastingDay;
 import com.devwuu.mocha.domain.Review;
 
 import java.time.LocalDate;
@@ -14,7 +14,7 @@ import java.util.List;
  *
  * <p><b>경로의 {@code date}가 대상이고 본문의 {@code date}가 결과다.</b> 둘이 다르면 날짜 이동, 같으면
  * 제자리 수정이다. 한 필드가 두 뜻을 지지 않게 자리를 나눈 것이라 요청만 보고 어느 쪽인지 알 수 있고,
- * {@code NoteTxService.replaceEntry(noteId, targetDate, entry, …)}가 이미 그 모양이다(TΔ4a).
+ * {@code NoteTxService.replaceTastingDay(noteId, targetDate, tastingDay, …)}가 이미 그 모양이다(TΔ4a).
  *
  * <p><b>회차 타입은 상세 응답의 것을 그대로 쓴다</b>({@link NoteDetailBody.DetailCup}) — 폼이 받은 것을
  * 고쳐 되돌려 보내는 자리라 두 벌로 나눌 이유가 없고, 나누면 <i>"응답에는 있는데 요청에는 없는 필드"</i>가
@@ -33,9 +33,9 @@ public record NoteEntryBody(LocalDate date, List<NoteDetailBody.DetailCup> cups)
      *
      * <p>{@code updatedAt}은 {@code null}이다 — 엔트리 행의 시각은 감사 리스너가 채운다(0028 TΔ4).
      */
-    public Entry toEntry() {
+    public TastingDay toTastingDay() {
         List<Cup> raw = cups == null ? List.of() : cups.stream().map(NoteEntryBody::toCup).toList();
-        return new Entry(date, Cup.normalize(raw), null);
+        return new TastingDay(date, Cup.normalize(raw), null);
     }
 
     private static Cup toCup(NoteDetailBody.DetailCup cup) {

@@ -180,7 +180,7 @@ class CardControllerTest {
         }
 
         @Override
-        public Optional<Path> entryCard(long noteId, LocalDate date, CardType type, int cupNumber) {
+        public Optional<Path> tastingDayCard(long noteId, LocalDate date, CardType type, int cupNumber) {
             calls.add(noteId + " " + date + " " + type + " " + cupNumber);
             if (failure != null) {
                 throw failure;
@@ -189,7 +189,7 @@ class CardControllerTest {
         }
 
         @Override
-        public List<Path> renderEntryCard(long noteId, LocalDate date) {
+        public List<Path> renderTastingDayCard(long noteId, LocalDate date) {
             throw new UnsupportedOperationException("온디맨드 미스는 구현체 안에서 일어난다");
         }
     }

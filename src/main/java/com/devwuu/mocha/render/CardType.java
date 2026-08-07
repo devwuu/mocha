@@ -49,7 +49,7 @@ public enum CardType {
     /**
      * 그 회차에 이 종류의 카드가 있는가 — 없는 파트는 카드를 만들지 않는다(AC-78).
      *
-     * <p>산출 규칙({@code ThymeleafNoteRenderer.bakeEntryCards})과 <b>같은 판정</b>이라 여기 둔다:
+     * <p>산출 규칙({@code ThymeleafNoteRenderer.bakeTastingDayCards})과 <b>같은 판정</b>이라 여기 둔다:
      * 갈리면 온디맨드가 <i>"있다"</i>고 답한 카드를 렌더러가 굽지 않는 조합이 생긴다.
      */
     public boolean presentIn(Cup cup) {

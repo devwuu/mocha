@@ -43,7 +43,7 @@ import java.util.Optional;
  * 표면이 서로 다른 매체 둘(JSON·JPEG)을 함께 지게 된다.
  *
  * <p>컨트롤러가 하는 일은 §2가 정한 대로 <b>파싱·위임·응답 변환</b>이다 — 캐시 히트/미스 판정도 산출도
- * {@link NoteRenderer#entryCard}가 소유하고, 무효화는 쓰기 경로({@code NoteService})가 소유한다.
+ * {@link NoteRenderer#tastingDayCard}가 소유하고, 무효화는 쓰기 경로({@code NoteService})가 소유한다.
  */
 @RestController
 @RequestMapping("/api/notes")
@@ -80,7 +80,7 @@ public class CardController {
             @RequestParam(name = "n", defaultValue = "1") int n) {
         Optional<Path> card;
         try {
-            card = noteRenderer.entryCard(id, date, type, n);
+            card = noteRenderer.tastingDayCard(id, date, type, n);
         } catch (RuntimeException e) {
             // POLICY: 굽기 실패를 삼키지 않는다 — 저장된 기록은 멀쩡하고 실패한 것은 파생물뿐이라
             //         화면이 "카드를 만들지 못했어요"로 수렴시킨다 (ref: plan.md §7).

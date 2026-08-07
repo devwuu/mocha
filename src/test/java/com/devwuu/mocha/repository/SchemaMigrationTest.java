@@ -30,12 +30,13 @@ class SchemaMigrationTest extends PostgresIntegrationTest {
     // 0029 TΔ8b: V3가 note_photo를 들였다 — 노트↔사진 연결이 폴더 규약에서 행으로 옮겨왔다(ADR-79).
     // 0030 TΔ1: V4가 tasting을 review로 개명했다 — 테이블 수는 그대로고 이름만 옮겨갔다(ADR-85, AC-Δ1).
     // 0030 TΔ3: V5가 brew를 cup으로 개명했다 — 자식의 조인 컬럼 brew_id도 cup_id로 함께 옮겨갔다.
+    // 0030 TΔ5a: V6가 entry를 tasting_day로 개명했다 — cup.entry_id도 tasting_day_id로 함께 옮겨갔다.
     private static final List<String> TABLES = List.of(
             "note", "note_bean", "note_official_note", "note_alias", "note_source",
-            "entry", "cup", "recipe", "review", "note_photo");
+            "tasting_day", "cup", "recipe", "review", "note_photo");
 
     /** 0030 개명이 걷어낸 이름 — 「이름만 옮긴다」는 «신 이름이 있다»와 «구 이름이 없다»가 함께 서야 성립한다. */
-    private static final List<String> RENAMED_AWAY = List.of("tasting", "brew");
+    private static final List<String> RENAMED_AWAY = List.of("tasting", "brew", "entry");
 
     @Autowired
     JdbcTemplate jdbc;
@@ -52,7 +53,7 @@ class SchemaMigrationTest extends PostgresIntegrationTest {
                         + " WHERE success = true AND version IS NOT NULL ORDER BY installed_rank",
                 String.class);
 
-        assertThat(versions).containsExactly("1", "2", "3", "4", "5");
+        assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6");
     }
 
     @Test
@@ -89,11 +90,11 @@ class SchemaMigrationTest extends PostgresIntegrationTest {
     @Test
     @DisplayName("AC-Δ1(TΔ3): brew → cup 개명 — 회차 행의 컬럼·UNIQUE가 그대로 따라왔다")
     void cupTableCarriesTheRenamedColumns() {
-        // entry_id는 아직 옛 이름이다 — 심볼 ③(entry → tasting_day)의 몫이라 V6가 옮긴다.
-        assertThat(columnsOf("cup")).containsExactlyInAnyOrder("id", "entry_id", "seq");
+        // entry_id는 V6(TΔ5a)가 tasting_day_id로 옮겼다 — 이 테스트는 그 뒤의 상태를 본다.
+        assertThat(columnsOf("cup")).containsExactlyInAnyOrder("id", "tasting_day_id", "seq");
 
-        // UNIQUE(entry_id, seq)가 살아 있다 — 회차 번호의 유일성이 rename을 건너뛰지 않았다는 증거다.
-        // 제약 이름(brew_entry_id_seq_key)은 rename 대상이 아니라 그대로이므로 개수로 센다.
+        // UNIQUE(tasting_day_id, seq)가 살아 있다 — 회차 번호의 유일성이 rename을 건너뛰지 않았다는 증거다.
+        // 제약 이름(brew_entry_id_seq_key)은 테이블·컬럼 rename을 따라오지 않아 그대로이므로 개수로 센다.
         assertThat(jdbc.queryForObject(
                 "SELECT count(*) FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid"
                         + " JOIN pg_namespace n ON n.oid = c.connamespace"
@@ -115,6 +116,35 @@ class SchemaMigrationTest extends PostgresIntegrationTest {
                         + " JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY (i.indkey)"
                         + " WHERE n.nspname = 'test' AND t.relname = 'recipe' AND i.indisprimary",
                 String.class)).containsExactly("cup_id");
+    }
+
+    @Test
+    @DisplayName("AC-Δ1·Δ16(TΔ5a): entry → tasting_day 개명 — 컬럼·UNIQUE·인덱스가 그대로 따라왔다")
+    void tastingDayTableCarriesTheRenamedColumns() {
+        // 감사 컬럼 4종이 함께 따라온다 — 개명이 재생성이었다면 여기서 빠진다(delta §감사 컬럼).
+        assertThat(columnsOf("tasting_day")).containsExactlyInAnyOrder(
+                "id", "note_id", "tasted_on", "created_at", "created_by", "modified_at", "modified_by");
+
+        // AC-Δ16: UNIQUE(note_id, tasted_on) = 「하루 시음일 1건」이 DB 제약으로 살아 있다(V-3·V-10).
+        // 병합안을 택했다면 사라졌을 자리라 개수가 아니라 «어느 컬럼에 걸렸는가»까지 본다.
+        assertThat(jdbc.queryForList(
+                "SELECT a.attname FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid"
+                        + " JOIN pg_namespace n ON n.oid = c.connamespace"
+                        + " JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY (c.conkey)"
+                        + " WHERE n.nspname = 'test' AND t.relname = 'tasting_day' AND c.contype = 'u'",
+                String.class)).containsExactlyInAnyOrder("note_id", "tasted_on");
+
+        // 인덱스는 이름이 표시되는 자리라(psql \d, 실행계획) 제약과 달리 명시적으로 옮겼다 — V6가 그 문장이다.
+        assertThat(jdbc.queryForList(
+                "SELECT indexname FROM pg_indexes WHERE schemaname = 'test' AND tablename = 'tasting_day'",
+                String.class)).contains("idx_tasting_day_tasted_on").doesNotContain("idx_entry_tasted_on");
+    }
+
+    @Test
+    @DisplayName("AC-Δ1(TΔ5a): 회차의 조인 컬럼이 entry_id → tasting_day_id로 함께 옮겨갔다")
+    void cupsJoinOnTastingDayId() {
+        // 테이블만 옮기고 조인 컬럼을 두면 매핑이 조용히 어긋난다 — «신 이름이 있다»와 «구 이름이 없다» 짝.
+        assertThat(columnsOf("cup")).contains("tasting_day_id").doesNotContain("entry_id");
     }
 
     private List<String> columnsOf(String table) {

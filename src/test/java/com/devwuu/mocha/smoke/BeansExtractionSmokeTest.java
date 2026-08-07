@@ -8,7 +8,7 @@ import com.devwuu.mocha.agent.turn.TurnDraft;
 import com.devwuu.mocha.agent.turn.TurnProposalSink;
 import com.devwuu.mocha.agent.turn.TurnUserMessage;
 import com.devwuu.mocha.domain.Aliases;
-import com.devwuu.mocha.domain.Entry;
+import com.devwuu.mocha.domain.TastingDay;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
 import com.devwuu.mocha.json.MochaObjectMapper;

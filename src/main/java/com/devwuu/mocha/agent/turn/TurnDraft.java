@@ -24,7 +24,7 @@ import java.util.Objects;
  * <p>POLICY: agent/tool/은 tool 정의·인자·검증만 — 턴 전처리·컨텍스트 운반체는 agent/turn/에,
  * 새 인터페이스 없이 구체 클래스로 (ref: plan.md#ADR-64).
  *
- * @param note  작성 중인 노트(entries 포함) — 저장 전이라 {@code id}는 신규면 null이다(0028 D-1).
+ * @param note  작성 중인 노트(tastingDays 포함) — 저장 전이라 {@code id}는 신규면 null이다(0028 D-1).
  * @param match 폼의 매칭 배지 상태(신규/기존) — 사용자가 배지에서 바꿀 수 있으므로 draft의 일부다(OQ-2 ㉢).
  */
 public record TurnDraft(Note note, MatchInfo match) {

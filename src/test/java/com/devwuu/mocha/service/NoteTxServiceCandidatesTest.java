@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Cup;
-import com.devwuu.mocha.domain.Entry;
+import com.devwuu.mocha.domain.TastingDay;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteCandidate;
 import com.devwuu.mocha.domain.Rating;
@@ -140,7 +140,7 @@ class NoteTxServiceCandidatesTest extends PostgresIntegrationTest {
 
     @Test
     @DisplayName("TΔ7: 최근 시음일은 엔트리 여러 건 중 가장 늦은 날짜다 — 노트당 한 줄로 접힌다")
-    void latestDateIsTheMaximumAcrossEntries() {
+    void latestDateIsTheMaximumAcrossTastingDays() {
         insert("에티오피아 게뎁", "모모스커피",
                 dates(LocalDate.of(2026, 7, 3), LocalDate.of(2026, 7, 28), LocalDate.of(2026, 7, 11)));
         em.clear();
@@ -152,7 +152,7 @@ class NoteTxServiceCandidatesTest extends PostgresIntegrationTest {
 
     @Test
     @DisplayName("TΔ7: 로스터리 미상·엔트리 0건 노트도 후보다 — nullable 지점이 계약에 있는 이유다")
-    void notesWithoutRoasteryOrEntriesAreStillCandidates() {
+    void notesWithoutRoasteryOrTastingDaysAreStillCandidates() {
         // 엔트리 0건은 결손이 아니라 정상 상태다(삭제 직후가 그렇다). inner join이면 여기서 통째로 빠진다.
         insert("게뎁 워시드", null, List.of());
         em.clear();
@@ -218,15 +218,15 @@ class NoteTxServiceCandidatesTest extends PostgresIntegrationTest {
 
     // ────────────────────────────── 표본 ──────────────────────────────
 
-    private void insert(String coffeeName, String roastery, List<LocalDate> entryDates) {
-        insert(coffeeName, roastery, entryDates, Aliases.empty());
+    private void insert(String coffeeName, String roastery, List<LocalDate> tastingDayDates) {
+        insert(coffeeName, roastery, tastingDayDates, Aliases.empty());
     }
 
     private void insertWithAliases(String coffeeName, String roastery, Aliases aliases) {
         insert(coffeeName, roastery, dates(LocalDate.of(2026, 7, 1)), aliases);
     }
 
-    private void insert(String coffeeName, String roastery, List<LocalDate> entryDates, Aliases aliases) {
+    private void insert(String coffeeName, String roastery, List<LocalDate> tastingDayDates, Aliases aliases) {
         repo.insert(new Note(
                 null,
                 new Sourced<>(coffeeName, Source.USER),
@@ -236,7 +236,7 @@ class NoteTxServiceCandidatesTest extends PostgresIntegrationTest {
                 null,
                 aliases,
                 List.of(),
-                entryDates.stream().map(NoteTxServiceCandidatesTest::entry).toList(),
+                tastingDayDates.stream().map(NoteTxServiceCandidatesTest::tastingDay).toList(),
                 IGNORED,
                 IGNORED));
     }
@@ -245,7 +245,7 @@ class NoteTxServiceCandidatesTest extends PostgresIntegrationTest {
         return List.of(dates);
     }
 
-    private static Entry entry(LocalDate date) {
-        return new Entry(date, List.of(new Cup(null, new Review("맛있었음", "맛있었음", Rating.GOOD))), IGNORED);
+    private static TastingDay tastingDay(LocalDate date) {
+        return new TastingDay(date, List.of(new Cup(null, new Review("맛있었음", "맛있었음", Rating.GOOD))), IGNORED);
     }
 }

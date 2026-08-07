@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.devwuu.mocha.SingleUser;
 import com.devwuu.mocha.domain.Source;
-import com.devwuu.mocha.repository.entity.EntryEntity;
+import com.devwuu.mocha.repository.entity.TastingDayEntity;
 import com.devwuu.mocha.repository.entity.NoteEntity;
 import com.devwuu.mocha.repository.entity.SourcedValue;
 import com.devwuu.mocha.support.PostgresIntegrationTest;
@@ -29,7 +29,7 @@ import java.time.ZoneId;
  * TΔ4 (changes/0028-rdb-storage) — 감사 컬럼 배선 검증
  * (delta.md#감사-컬럼, 축 개정은 changes/0029-app-interface/delta.md#D-13).
  *
- * <p>검증 대상은 "저장 시 {@code note}·{@code entry}의 4개 컬럼이 채워지는가"와 "수정이 무엇을
+ * <p>검증 대상은 "저장 시 {@code note}·{@code tasting_day}의 4개 컬럼이 채워지는가"와 "수정이 무엇을
  * 건드리는가" 둘이다. 값 주입 경로가 Spring Data Auditing이라 단위 테스트로는 관측되지 않는다 —
  * {@code AuditingEntityListener}가 붙는 실 persist/flush가 필요하다.
  *
@@ -65,19 +65,19 @@ class EntityAuditingTest extends PostgresIntegrationTest {
     }
 
     @Test
-    @DisplayName("D-13: entry 저장 시 감사 컬럼 4종이 채워진다")
-    void entryIsAudited() {
+    @DisplayName("D-13: tasting_day 저장 시 감사 컬럼 4종이 채워진다")
+    void tastingDayIsAudited() {
         NoteEntity note = persistNote();
         OffsetDateTime at = OffsetDateTime.now(clock);
 
-        EntryEntity entry = new EntryEntity(note.getId(), LocalDate.of(2026, 7, 31));
-        em.persist(entry);
+        TastingDayEntity tastingDay = new TastingDayEntity(note.getId(), LocalDate.of(2026, 7, 31));
+        em.persist(tastingDay);
         em.flush();
 
-        assertThat(entry.getCreatedAt()).isEqualTo(at);
-        assertThat(entry.getModifiedAt()).isEqualTo(at);
-        assertThat(entry.getCreatedBy()).isEqualTo(SingleUser.ID);
-        assertThat(entry.getModifiedBy()).isEqualTo(SingleUser.ID);
+        assertThat(tastingDay.getCreatedAt()).isEqualTo(at);
+        assertThat(tastingDay.getModifiedAt()).isEqualTo(at);
+        assertThat(tastingDay.getCreatedBy()).isEqualTo(SingleUser.ID);
+        assertThat(tastingDay.getModifiedBy()).isEqualTo(SingleUser.ID);
     }
 
     @Test

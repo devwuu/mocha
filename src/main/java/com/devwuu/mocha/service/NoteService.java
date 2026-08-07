@@ -2,7 +2,7 @@ package com.devwuu.mocha.service;
 
 import com.devwuu.mocha.SingleUser;
 import com.devwuu.mocha.domain.Aliases;
-import com.devwuu.mocha.domain.Entry;
+import com.devwuu.mocha.domain.TastingDay;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteCandidate;
@@ -38,7 +38,7 @@ import java.util.stream.Stream;
  * 넘긴다. 원자적이어야 하는 규칙(V-9·V-10·V-13·ADR-4 병합 정책)은 전부 그 아래에 있다 — <b>이 클래스에
  * 비즈니스 규칙을 두지 않는다.</b> 여기 있는 판단은 <b>전부 외부 콜·파일에 관한 것</b>이다:
  * <i>"별칭 생성 콜을 쏠 것인가"</i>({@link #commit}) · <i>"사진 폴더를 옮길 것인가"</i>
- * ({@link #replaceEntry} — 날짜가 바뀌었는가 · 옮길 사진이 있는가) · <i>"어느 카드가 낡았는가"</i>
+ * ({@link #replaceTastingDay} — 날짜가 바뀌었는가 · 옮길 사진이 있는가) · <i>"어느 카드가 낡았는가"</i>
  * ({@link #invalidateCards} — TΔ9, 모든 쓰기가 지난다).
  *
  * <p>이 분리가 백엔드 CLAUDE.md §3(<i>"트랜잭션 안에서 외부 호출을 하지 않는다"</i>)을 규칙이 아니라
@@ -162,7 +162,7 @@ public class NoteService {
      */
     public Note commit(Note draft, MatchInfo match) {
         // 입력 검증은 트랜잭션을 열기 전에 — 저장할 것이 없는 요청으로 쓰기 구간에 들어가지 않는다.
-        Entry entry = latestEntry(draft);
+        TastingDay tastingDay = latestTastingDay(draft);
         NoteMeta meta = metaOf(draft);
 
         Aliases generated = isNew(match) ? generateAliases(draft) : null;
@@ -171,9 +171,9 @@ public class NoteService {
         if (draft.id() != null) {
             invalidateCards(draft.id());
         }
-        Note saved = noteTxService.commit(draft.id(), meta, entry, generated);
-        archivePhotos(saved, entry.date());
-        log.info("커밋 완료: noteId={} date={} entries={}", saved.id(), entry.date(), saved.entries().size());
+        Note saved = noteTxService.commit(draft.id(), meta, tastingDay, generated);
+        archivePhotos(saved, tastingDay.date());
+        log.info("커밋 완료: noteId={} date={} tastingDays={}", saved.id(), tastingDay.date(), saved.tastingDays().size());
         return saved;
     }
 
@@ -234,7 +234,7 @@ public class NoteService {
     }
 
     /**
-     * 엔트리 수정 — 대상 회차를 갈아끼우고, {@code entry.date()}가 다르면 <b>사진까지 데리고</b> 날짜를
+     * 엔트리 수정 — 대상 회차를 갈아끼우고, {@code tastingDay.date()}가 다르면 <b>사진까지 데리고</b> 날짜를
      * 옮긴다 (ref: V-10 개정본, changes/0029 delta.md#D-12 ③, spec FR-10·FR-21, tasks TΔ5b-2).
      *
      * <p><b>이 메서드가 지는 것은 순서다</b>: 아카이브 폴더 이동(외부 IO) → 저장. {@link #commit}이
@@ -254,10 +254,10 @@ public class NoteService {
      * @return 갱신된 노트 전문 + 사진 — 이동 후의 사진 URL까지 서버가 답한다(TΔ5b-3).
      * @throws IllegalStateException 대상 노트 또는 {@code targetDate} 엔트리 소실 시.
      */
-    public NoteDetail replaceEntry(long noteId, LocalDate targetDate, Entry entry) {
-        Map<String, String> movedPhotos = movePhotoFiles(noteId, targetDate, entry.date());
+    public NoteDetail replaceTastingDay(long noteId, LocalDate targetDate, TastingDay tastingDay) {
+        Map<String, String> movedPhotos = movePhotoFiles(noteId, targetDate, tastingDay.date());
         invalidateCards(noteId);
-        return noteTxService.replaceEntry(noteId, targetDate, entry, movedPhotos);
+        return noteTxService.replaceTastingDay(noteId, targetDate, tastingDay, movedPhotos);
     }
 
     /**
@@ -277,7 +277,7 @@ public class NoteService {
             return Map.of();
         }
         Map<String, String> moved =
-                photoStore.moveEntryPhotos(folder.get(), targetDate.toString(), movedTo.toString());
+                photoStore.moveTastingDayPhotos(folder.get(), targetDate.toString(), movedTo.toString());
         if (!moved.isEmpty()) {
             log.info("사진 동반 이동: noteId={} {} → {} photos={}", noteId, targetDate, movedTo, moved.size());
         }
@@ -384,12 +384,12 @@ public class NoteService {
                 draft.sources());
     }
 
-    /** 이번 시음 엔트리 — draft.entries는 1건 전제(폼과 동일 가정). 마지막 엔트리를 취한다. */
-    private static Entry latestEntry(Note draft) {
-        List<Entry> entries = draft.entries();
-        if (entries == null || entries.isEmpty()) {
+    /** 이번 시음 엔트리 — draft.tastingDays는 1건 전제(폼과 동일 가정). 마지막 엔트리를 취한다. */
+    private static TastingDay latestTastingDay(Note draft) {
+        List<TastingDay> tastingDays = draft.tastingDays();
+        if (tastingDays == null || tastingDays.isEmpty()) {
             throw new IllegalArgumentException("저장할 시음 엔트리가 없다: noteId=" + draft.id());
         }
-        return entries.getLast();
+        return tastingDays.getLast();
     }
 }

@@ -8,7 +8,7 @@ import com.devwuu.mocha.agent.turn.TurnDraft;
 import com.devwuu.mocha.agent.turn.TurnProposalSink;
 import com.devwuu.mocha.agent.turn.TurnUserMessage;
 import com.devwuu.mocha.domain.Aliases;
-import com.devwuu.mocha.domain.Entry;
+import com.devwuu.mocha.domain.TastingDay;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
 import com.devwuu.mocha.json.MochaObjectMapper;
@@ -117,8 +117,8 @@ class CupRulesSmokeTest {
         if (proposed.isEmpty()) {
             System.out.println("제안 없음 — 제안 tool 미호출 (다중 날짜 폴백 시나리오에서는 기대 동작)");
         } else {
-            List<Entry> entries = proposed.get().note().entries();
-            Entry latest = entries.get(entries.size() - 1);
+            List<TastingDay> tastingDays = proposed.get().note().tastingDays();
+            TastingDay latest = tastingDays.get(tastingDays.size() - 1);
             System.out.println("draft 최신 엔트리 date = " + latest.date()
                     + " (순차 제안 시나리오 기대: active_date=가장 이른 날짜)");
             System.out.println("draft.cups(" + latest.cups().size() + "개) = "

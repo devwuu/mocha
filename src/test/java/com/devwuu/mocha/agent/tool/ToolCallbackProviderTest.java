@@ -10,7 +10,7 @@ import com.devwuu.mocha.agent.turn.TurnUserMessage;
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Bean;
 import com.devwuu.mocha.domain.Cup;
-import com.devwuu.mocha.domain.Entry;
+import com.devwuu.mocha.domain.TastingDay;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteDetail;
@@ -111,9 +111,9 @@ class ToolCallbackProviderTest {
         TurnDraft proposed = proposals.proposal().orElseThrow();
         assertThat(proposed.note().coffeeName().value()).isEqualTo("커피베라 예가체프 G1");
         assertThat(proposed.note().id()).isNull(); // 신규는 아직 저장 전 — id는 INSERT가 발급한다(D-1)
-        assertThat(proposed.note().entries()).hasSize(1);
-        assertThat(proposed.note().entries().get(0).date()).isEqualTo(LocalDate.of(2026, 7, 16));
-        assertThat(proposed.note().entries().get(0).cups().getFirst().review().rating()).isEqualTo(Rating.GOOD);
+        assertThat(proposed.note().tastingDays()).hasSize(1);
+        assertThat(proposed.note().tastingDays().get(0).date()).isEqualTo(LocalDate.of(2026, 7, 16));
+        assertThat(proposed.note().tastingDays().get(0).cups().getFirst().review().rating()).isEqualTo(Rating.GOOD);
         assertThat(proposed.match().type()).isEqualTo(MatchInfo.MatchType.NEW);
         assertThat(result.get("proposed").asBoolean()).isTrue();
         // 신규 제안 결과에는 식별자가 실리지 않는다 — 없는 값을 null로 실어 보내지 않는다(D-1).
@@ -137,7 +137,7 @@ class ToolCallbackProviderTest {
                 recordArgs("커피베라 예가체프 G1", "커피베라", "\"완전 내스타일\"", "2026-07-16", "{\"type\":\"new\",\"note_id\":null,\"date\":null}")));
 
         TurnDraft updated = proposals.proposal().orElseThrow();
-        assertThat(updated.note().entries().get(0).cups().getFirst().review().rating()).isEqualTo(Rating.PERFECT); // 수정 반영
+        assertThat(updated.note().tastingDays().get(0).cups().getFirst().review().rating()).isEqualTo(Rating.PERFECT); // 수정 반영
         assertThat(updated.note().id()).isNull();                     // 저장 전 — 여전히 식별자 없음
         assertThat(result.get("updated_draft").asBoolean()).isTrue();
     }
@@ -212,7 +212,7 @@ class ToolCallbackProviderTest {
 
     @Test
     @DisplayName("TΔ29a: 노트는 있어도 그 날짜 엔트리가 없으면 거부 — 없는 기록을 고치는 폼이 서지 않는다")
-    void proposeRecordRejectsEditOnMissingEntry() {
+    void proposeRecordRejectsEditOnMissingTastingDay() {
         noteService.put(note(12L, "Ethiopia Chelbesa", "FroB", Aliases.empty(), LocalDate.of(2026, 7, 13)));
 
         JsonNode result = mapper.readTree(execute("propose_record",
@@ -335,17 +335,17 @@ class ToolCallbackProviderTest {
     }
 
     private static Note note(Long id, String coffeeName, String roastery, Aliases aliases,
-                             LocalDate... entryDates) {
-        List<Entry> entries = new ArrayList<>();
-        for (LocalDate date : entryDates) {
-            entries.add(new Entry(date,
+                             LocalDate... tastingDayDates) {
+        List<TastingDay> tastingDays = new ArrayList<>();
+        for (LocalDate date : tastingDayDates) {
+            tastingDays.add(new TastingDay(date,
                     List.of(new Cup(null, new Review("새콤하고 좋았음", null, Rating.GOOD))),
                     OffsetDateTime.parse("2026-07-14T10:00:00+09:00")));
         }
         return new Note(id, new Sourced<>(coffeeName, Source.USER), new Sourced<>(roastery, Source.USER),
                 List.of(new Bean(new Sourced<>("에티오피아", Source.SEARCH), null)),
                 null, new Sourced<>(List.of("자스민"), Source.SEARCH),
-                aliases, List.of(), entries,
+                aliases, List.of(), tastingDays,
                 OffsetDateTime.parse("2026-07-13T10:20:30+09:00"),
                 OffsetDateTime.parse("2026-07-14T10:00:00+09:00"));
     }
@@ -387,7 +387,7 @@ class ToolCallbackProviderTest {
         }
 
         @Override
-        public NoteDetail replaceEntry(long noteId, LocalDate targetDate, Entry entry) {
+        public NoteDetail replaceTastingDay(long noteId, LocalDate targetDate, TastingDay tastingDay) {
             throw new UnsupportedOperationException("제안 tool은 노트를 쓰지 않는다 — 수정은 UI 전용(D-1)");
         }
 

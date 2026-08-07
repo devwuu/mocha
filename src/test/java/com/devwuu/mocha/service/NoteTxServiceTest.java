@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Bean;
 import com.devwuu.mocha.domain.Cup;
-import com.devwuu.mocha.domain.Entry;
+import com.devwuu.mocha.domain.TastingDay;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Recipe;
@@ -69,7 +69,7 @@ class NoteTxServiceTest extends PostgresIntegrationTest {
     @Test
     @DisplayName("TΔ5a: 저장 → 조회 왕복이 도메인 동치 — 3단 중첩과 배열 6종이 Postgres를 지나 그대로 돌아온다")
     void roundTripThroughDatabase() {
-        Note input = sampleNote(List.of(firstEntry(), secondEntry()));
+        Note input = sampleNote(List.of(firstTastingDay(), secondTastingDay()));
 
         Note saved = repo.insert(input);
         em.clear();
@@ -84,8 +84,8 @@ class NoteTxServiceTest extends PostgresIntegrationTest {
     @Test
     @DisplayName("TΔ5a: 식별자는 DB가 발급한다 — 인자의 id는 무시되고 발급된 id가 조회 키로 동작한다")
     void identifierComesFromDatabase() {
-        Note first = repo.insert(sampleNote(List.of(firstEntry())));
-        Note second = repo.insert(sampleNote(List.of(firstEntry())));
+        Note first = repo.insert(sampleNote(List.of(firstTastingDay())));
+        Note second = repo.insert(sampleNote(List.of(firstTastingDay())));
         em.clear();
 
         // 표본이 실어 보낸 IGNORED_ID가 아니라 BIGSERIAL이 발급한 값이다(insert 계약).
@@ -96,18 +96,18 @@ class NoteTxServiceTest extends PostgresIntegrationTest {
 
     @Test
     @DisplayName("TΔ5a: 엔트리 정렬은 질의가 소유한다 — 내림차순으로 심어도 날짜 오름차순으로 돌아온다")
-    void entryOrderComesFromQueryNotInsertion() {
+    void tastingDayOrderComesFromQueryNotInsertion() {
         // 날짜 내림차순으로 심는다 — 삽입 순서를 그대로 되돌려주면 여기서 갈린다(Note 계약: 날짜 오름차순).
-        Note input = sampleNote(List.of(secondEntry(), firstEntry()));
+        Note input = sampleNote(List.of(secondTastingDay(), firstTastingDay()));
 
         Note saved = repo.insert(input);
         em.clear();
         Note restored = repo.findById(saved.id()).orElseThrow();
 
-        assertThat(restored.entries()).extracting(Entry::date)
+        assertThat(restored.tastingDays()).extracting(TastingDay::date)
                 .containsExactly(LocalDate.of(2026, 7, 10), LocalDate.of(2026, 7, 12));
         // 회차는 seq 오름차순 — 첫 엔트리의 두 회차가 뒤집히지 않았다(AC-Δ4의 저장소 쪽 최소 확인).
-        assertThat(restored.entries().getFirst().cups()).extracting(b -> b.recipe().doseG())
+        assertThat(restored.tastingDays().getFirst().cups()).extracting(b -> b.recipe().doseG())
                 .containsExactly(15.0, 16.0);
     }
 
@@ -115,9 +115,9 @@ class NoteTxServiceTest extends PostgresIntegrationTest {
     @DisplayName("TΔ5a: findAll은 id 오름차순으로 결정적이다 — 행의 물리 순서가 바뀌어도 흔들리지 않는다")
     void findAllIsDeterministicById() {
         List<Long> inserted = List.of(
-                repo.insert(sampleNote(List.of(firstEntry()))).id(),
-                repo.insert(sampleNote(List.of(firstEntry()))).id(),
-                repo.insert(sampleNote(List.of(firstEntry()))).id());
+                repo.insert(sampleNote(List.of(firstTastingDay()))).id(),
+                repo.insert(sampleNote(List.of(firstTastingDay()))).id(),
+                repo.insert(sampleNote(List.of(firstTastingDay()))).id());
 
         // 첫 노트를 수정하면 Postgres는 새 튜플을 힙 끝에 append한다 — ORDER BY가 없으면 순서가 밀린다.
         NoteEntity first = em.find(NoteEntity.class, inserted.getFirst());
@@ -131,7 +131,7 @@ class NoteTxServiceTest extends PostgresIntegrationTest {
     @Test
     @DisplayName("TΔ5a: 감사 컬럼이 도메인 타임스탬프를 겸한다 — 조회 왕복에서 실제 값으로 돌아온다(Q-5)")
     void auditColumnsSurfaceAsDomainTimestamps() {
-        Note saved = repo.insert(sampleNote(List.of(firstEntry())));
+        Note saved = repo.insert(sampleNote(List.of(firstTastingDay())));
         em.clear();
 
         Note restored = repo.findById(saved.id()).orElseThrow();
@@ -139,12 +139,12 @@ class NoteTxServiceTest extends PostgresIntegrationTest {
         // 입력이 실어 보낸 IGNORED가 아니라 Auditing이 채운 값이어야 한다 — 변환기는 이 필드를 쓰지 않는다(TΔ3c).
         assertThat(restored.createdAt()).isNotNull().isNotEqualTo(IGNORED);
         assertThat(restored.updatedAt()).isEqualTo(restored.createdAt());
-        assertThat(restored.entries().getFirst().updatedAt()).isNotNull().isNotEqualTo(IGNORED);
+        assertThat(restored.tastingDays().getFirst().updatedAt()).isNotNull().isNotEqualTo(IGNORED);
         // POLICY: 표기는 UTC — timestamptz가 오프셋을 저장하지 않으므로 쓰기 표기를 컬럼이 담는 것에
         //         맞춘다(사용자 확정 2026-07-31, JpaAuditingConfig POLICY). 맞추지 않으면 저장이 돌려준
         //         값과 다시 읽은 값의 오프셋이 갈린다 — 그 동치는 roundTripThroughDatabase가 붙잡는다.
         assertThat(restored.createdAt().getOffset()).isEqualTo(ZoneOffset.UTC);
-        assertThat(restored.entries().getFirst().updatedAt().getOffset()).isEqualTo(ZoneOffset.UTC);
+        assertThat(restored.tastingDays().getFirst().updatedAt().getOffset()).isEqualTo(ZoneOffset.UTC);
     }
 
     @Test
@@ -163,14 +163,14 @@ class NoteTxServiceTest extends PostgresIntegrationTest {
 
     // TΔ6d가 둔 미구현 표식 2건은 전부 사라졌다 — commit는 TΔ5b가, applyEdit은 TΔ5c가 구현하며
     // 표식 테스트가 실패해 삭제가 강제됐다(장치가 의도대로 작동했다). 각 계약의 검증은
-    // NoteTxServiceUpsertEntryTest·NoteTxServiceApplyEditTest가 소유한다.
+    // NoteTxServiceUpsertTastingDayTest·NoteTxServiceApplyEditTest가 소유한다.
 
     // ───────────── 로드 경계 위생 (ADR-66, 구 JsonFileNoteRepositoryTest 이관 — TΔ10b) ─────────────
 
     @Test
     @DisplayName("이관/AC-Δ2①: 공백 description 원두 행은 로드 시 드롭 — 나머지 원두 유지, 행은 무변경")
     void loadDropsInvalidBeanElements() {
-        long noteId = repo.insert(sampleNote(List.of(firstEntry()))).id();
+        long noteId = repo.insert(sampleNote(List.of(firstTastingDay()))).id();
         // 저장소를 지나지 않고 V-14 위반 원두를 심는다 — psql 직접 편집 대역. 스키마가 막는 것은 부재까지고
         // (description NOT NULL) 공백은 통과하므로, 파일 시절의 방어가 그대로 남는 갈래가 정확히 여기다.
         em.persist(new NoteBeanEntity(noteId, 2, new SourcedValue("   ", Source.PHOTO), null));
@@ -192,17 +192,17 @@ class NoteTxServiceTest extends PostgresIntegrationTest {
 
     @Test
     @DisplayName("재정의/CR25-10: 엔트리 0건 노트가 findAll 전체를 마비시키지 않는다 — 곁의 정상 노트도 온전하다")
-    void zeroEntryNoteDoesNotBreakFindAll() {
+    void zeroTastingDayNoteDoesNotBreakFindAll() {
         // 파일 시절의 "entries 키 없는 JSON"이라는 형태는 소멸했지만 성질은 남는다 — DB에서 엔트리 0행은
         // 결손이 아니라 정상 상태이고(삭제 직후가 그렇다), 그 노트가 조립을 지나며 넘어지면 결손 1건이
         // findAll을 통해 조회·매칭·전체 렌더를 통째로 마비시킨다.
         long empty = repo.insert(sampleNote(List.of())).id();
-        long normal = repo.insert(sampleNote(List.of(firstEntry()))).id();
+        long normal = repo.insert(sampleNote(List.of(firstTastingDay()))).id();
         em.clear();
 
-        assertThat(repo.findById(empty).orElseThrow().entries()).isEmpty();
+        assertThat(repo.findById(empty).orElseThrow().tastingDays()).isEmpty();
         assertThat(repo.findAll()).extracting(Note::id).containsExactly(empty, normal);
-        assertThat(repo.findAll().getLast().entries()).hasSize(1);
+        assertThat(repo.findAll().getLast().tastingDays()).hasSize(1);
     }
 
     /** 조립 경로는 부모를 통해서만 자식을 읽으므로, 드롭된 행의 생존은 테이블을 직접 봐야 관측된다. */
@@ -216,7 +216,7 @@ class NoteTxServiceTest extends PostgresIntegrationTest {
     // ────────────────────────────── 표본 ──────────────────────────────
 
     /** 3단 중첩 + 배열 6종을 전부 채운 노트 — 왕복이 무엇 하나 떨구지 않는지 보는 기준 표본(TΔ3c 표본 승계). */
-    private static Note sampleNote(List<Entry> entries) {
+    private static Note sampleNote(List<TastingDay> tastingDays) {
         return new Note(
                 IGNORED_ID,                                                     // id는 BIGSERIAL이 발급한다
                 new Sourced<>("커피베라 예가체프 G1", Source.USER),
@@ -227,13 +227,13 @@ class NoteTxServiceTest extends PostgresIntegrationTest {
                 new Sourced<>(List.of("자스민", "베르가못"), Source.SEARCH),
                 new Aliases(List.of("예가체프 G1", "yirgacheffe"), List.of("Coffee Vera")),
                 List.of("https://example.com/coffeevera"),
-                entries,
+                tastingDays,
                 IGNORED,
                 IGNORED);
     }
 
-    private static Entry firstEntry() {
-        return new Entry(
+    private static TastingDay firstTastingDay() {
+        return new TastingDay(
                 LocalDate.of(2026, 7, 10),
                 List.of(
                         new Cup(new Recipe("핸드드립", 15.0, 240.0, 220.0, 150.0, 92.5, "중간 (코만단테)",
@@ -243,8 +243,8 @@ class NoteTxServiceTest extends PostgresIntegrationTest {
                 IGNORED);
     }
 
-    private static Entry secondEntry() {
-        return new Entry(
+    private static TastingDay secondTastingDay() {
+        return new TastingDay(
                 LocalDate.of(2026, 7, 12),
                 List.of(new Cup(null, new Review("오늘은 밍밍했음", "오늘은 밍밍했음", Rating.OKAY_NOT_MINE))),
                 IGNORED);
@@ -258,7 +258,7 @@ class NoteTxServiceTest extends PostgresIntegrationTest {
         return new Note(
                 (Long) null, note.coffeeName(), note.roastery(), note.beans(), note.roastLevel(), note.officialNotes(),
                 note.aliases(), note.sources(),
-                note.entries().stream().map(e -> new Entry(e.date(), e.cups(), null)).toList(),
+                note.tastingDays().stream().map(e -> new TastingDay(e.date(), e.cups(), null)).toList(),
                 null, null);
     }
 }

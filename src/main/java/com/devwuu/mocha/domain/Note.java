@@ -1,5 +1,7 @@
 package com.devwuu.mocha.domain;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.time.OffsetDateTime;
 import java.util.List;
 
@@ -19,7 +21,7 @@ import java.util.List;
  * @param officialNotes 로스터리 전시 테이스팅 노트 — 로스터리 출처 한정(fallback 없음, FR-3/FR-7).
  * @param aliases       내부 매칭·검색 전용 별칭 — 렌더·미리보기 미표시(V-13, changes/0016, ADR-37).
  * @param sources       검색 참조 링크 (FR-12).
- * @param entries       날짜별 시음 기록. 날짜 오름차순 유지.
+ * @param tastingDays  날짜별 시음 기록. 날짜 오름차순 유지.
  * @param createdAt     ISO-8601.
  * @param updatedAt     ISO-8601.
  */
@@ -32,18 +34,21 @@ public record Note(
         Sourced<List<String>> officialNotes,
         Aliases aliases,
         List<String> sources,
-        List<Entry> entries,
+        // 0030 TΔ5a 임시 조치: 개명은 식별자까지만 옮기고 JSON 키는 그대로 둔다 — 계약 스냅샷·프론트·eval
+        // 코퍼스가 이 단계에서 안 깨지게 하기 위해서다. TΔ6이 키를 tasting_days로 옮기며 이 줄을 걷는다.
+        @JsonProperty("entries")
+        List<TastingDay> tastingDays,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt
 ) {
     // V-14: beans는 null 불가 — 정보 전무면 빈 배열(요소 검증·드롭은 저장·로드 경계의 Bean.normalize 몫, ADR-66).
-    // V-3: entries도 같은 부류의 배열(null 불가) — 수기 편집 JSON의 키 누락을 여기서 빈 배열로 수렴시킨다.
-    //      로드 경계(ADR-66)가 전 노트에 normalized()를 거는데, 그 정규화 자체가 entries null에 NPE로 새면
+    // V-3: tastingDays도 같은 부류의 배열(null 불가) — 수기 편집 JSON의 키 누락을 여기서 빈 배열로 수렴시킨다.
+    //      로드 경계(ADR-66)가 전 노트에 normalized()를 거는데, 그 정규화 자체가 tastingDays null에 NPE로 새면
     //      노트 1건의 결손이 findAll을 통해 전체 조회·렌더를 마비시킨다(CR25-10, changes/0025).
-    //      Entry.cups(V-15)·beans(V-14)와 동일한 "배열은 도메인 생성자가 보장" 대칭.
+    //      TastingDay.cups(V-15)·beans(V-14)와 동일한 "배열은 도메인 생성자가 보장" 대칭.
     public Note {
         beans = beans == null ? List.of() : List.copyOf(beans);
-        entries = entries == null ? List.of() : List.copyOf(entries);
+        tastingDays = tastingDays == null ? List.of() : List.copyOf(tastingDays);
     }
 
     /**
@@ -60,12 +65,12 @@ public record Note(
             Sourced<String> roastLevel,
             Sourced<List<String>> officialNotes,
             List<String> sources,
-            List<Entry> entries,
+            List<TastingDay> tastingDays,
             OffsetDateTime createdAt,
             OffsetDateTime updatedAt
     ) {
         this(id, coffeeName, roastery, beans, roastLevel, officialNotes,
-                Aliases.empty(), sources, entries, createdAt, updatedAt);
+                Aliases.empty(), sources, tastingDays, createdAt, updatedAt);
     }
 
     /**
@@ -75,16 +80,16 @@ public record Note(
      */
     public Note normalized() {
         List<Bean> normalizedBeans = Bean.normalize(beans);
-        List<Entry> normalizedEntries = entries.stream()
+        List<TastingDay> normalizedTastingDays = tastingDays.stream()
                 .map(e -> {
                     List<Cup> cups = Cup.normalize(e.cups());
-                    return cups.equals(e.cups()) ? e : new Entry(e.date(), cups, e.updatedAt());
+                    return cups.equals(e.cups()) ? e : new TastingDay(e.date(), cups, e.updatedAt());
                 })
                 .toList();
-        if (normalizedBeans.equals(beans) && normalizedEntries.equals(entries)) {
+        if (normalizedBeans.equals(beans) && normalizedTastingDays.equals(tastingDays)) {
             return this;
         }
         return new Note(id, coffeeName, roastery, normalizedBeans, roastLevel, officialNotes,
-                aliases, sources, normalizedEntries, createdAt, updatedAt);
+                aliases, sources, normalizedTastingDays, createdAt, updatedAt);
     }
 }

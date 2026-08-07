@@ -30,7 +30,7 @@ import java.time.OffsetDateTime;
  * <p>값 주입은 Spring Data Auditing이 전담하고 변환기·저장소는 이 필드를 쓰지 않는다 — 그래서
  * setter가 없다. 주체·시각의 공급자는 {@code JpaAuditingConfig}가 소유한다.
  *
- * <p>적용 대상은 {@code note}·{@code entry} 두 테이블뿐이다(delta §감사 컬럼). 하위(cup·recipe·
+ * <p>적용 대상은 {@code note}·{@code tasting_day} 두 테이블뿐이다(delta §감사 컬럼). 하위(cup·recipe·
  * review·배열 테이블)는 부모를 통해 추적하며, 회차 단위 감사 요구가 실제로 관측되면 그때 확장한다
  * (루트 CLAUDE.md §4).
  */

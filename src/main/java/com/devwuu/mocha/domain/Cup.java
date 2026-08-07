@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 회차 1개(한 번 내려서 마신 단위) — {@code Entry.cups} 배열의 요소 (ref: data-model.md#2.2,
+ * 회차 1개(한 번 내려서 마신 단위) — {@code TastingDay.cups} 배열의 요소 (ref: data-model.md#2.2,
  * changes/0021 ADR-59).
  * <p>레시피와 그 결과물의 감상은 회차 안에서 <b>1:1</b>이며 참조 필드가 없다 — 짝은 구조 자체가 표현한다.
  * 배열 순서 = 회차 번호(별도 필드 없음). recipe만(감상 없는 시도), review만(레시피 없이 마신 날 — 카페 등)

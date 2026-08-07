@@ -2,7 +2,7 @@ package com.devwuu.mocha.agent.tool;
 
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Bean;
-import com.devwuu.mocha.domain.Entry;
+import com.devwuu.mocha.domain.TastingDay;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.service.NoteService;
@@ -71,7 +71,7 @@ class NoteLookupTools {
                 Aliases.dedupNormalized(aliases),
                 beansSummary(note.beans()),
                 Sourced.valuesOrEmpty(note.officialNotes()),
-                note.entries().stream().map(Entry::date).max(Comparator.naturalOrder()).orElse(null));
+                note.tastingDays().stream().map(TastingDay::date).max(Comparator.naturalOrder()).orElse(null));
     }
 
     // list_notes 페이로드의 origin 항목은 beans 요약(설명 쉼표 나열)으로 채운다 — 매칭·검색 재료 용도라

@@ -1,9 +1,10 @@
 package com.devwuu.mocha.web;
 
 import com.devwuu.mocha.domain.Bean;
-import com.devwuu.mocha.domain.Entry;
+import com.devwuu.mocha.domain.TastingDay;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.Sourced;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -14,12 +15,12 @@ import java.util.List;
  *
  * <p><b>왜 한 벌 더 있는가</b>: 별칭(V-13)은 <i>내부 매칭·검색 전용</i>이고 폼은 그것을 표시하지도
  * 편집하지도 않는다. 커밋 시 축적도 저장된 값을 읽어 서버가 계산한다(TΔ4c
- * {@code commit(noteId, meta, entry, generated)} — {@code generated == null}이 그 신호). TΔ10이 화면을
+ * {@code commit(noteId, meta, tastingDay, generated)} — {@code generated == null}이 그 신호). TΔ10이 화면을
  * 세우며 이 사실을 확인하고 계약에서 잘라냈고, 이 타입이 그 결정의 구현이다.
  *
  * <p>{@code REVIEW.md} §4(<i>"같은 데이터를 표현하는 클래스가 두 벌 생기면 리뷰 지적 대상"</i>)의
  * <b>뷰 전용 가공 예외</b>로 둔다 — 두 벌이 생기는 범위는 <b>이 한 겹뿐</b>이다. 중첩 타입
- * ({@link Sourced}·{@link Bean}·{@link Entry}·회차·레시피·감상)은 도메인 record를 그대로 재사용하므로
+ * ({@link Sourced}·{@link Bean}·{@link TastingDay}·회차·레시피·감상)은 도메인 record를 그대로 재사용하므로
  * 계약과 도메인이 갈라질 여지가 노트 최상위 필드 목록으로 한정된다. {@code ClientApiContractTest}가
  * 그 목록을 TΔ2 스냅샷과 대조해 드리프트를 잡는다.
  *
@@ -33,13 +34,15 @@ public record NoteBody(
         Sourced<String> roastLevel,
         Sourced<List<String>> officialNotes,
         List<String> sources,
-        List<Entry> entries,
+        // 0030 TΔ5a 임시 조치 — JSON 키는 TΔ6이 옮긴다(도메인 {@code Note}와 같은 이유).
+        @JsonProperty("entries")
+        List<TastingDay> tastingDays,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt) {
 
     public static NoteBody of(Note note) {
         return new NoteBody(note.id(), note.coffeeName(), note.roastery(), note.beans(),
-                note.roastLevel(), note.officialNotes(), note.sources(), note.entries(),
+                note.roastLevel(), note.officialNotes(), note.sources(), note.tastingDays(),
                 note.createdAt(), note.updatedAt());
     }
 
@@ -50,6 +53,6 @@ public record NoteBody(
      */
     public Note toNote() {
         return new Note(id, coffeeName, roastery, beans, roastLevel, officialNotes,
-                sources, entries, createdAt, updatedAt);
+                sources, tastingDays, createdAt, updatedAt);
     }
 }

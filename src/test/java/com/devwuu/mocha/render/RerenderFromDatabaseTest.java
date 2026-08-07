@@ -6,7 +6,7 @@ import com.devwuu.mocha.config.RenderConfig;
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Bean;
 import com.devwuu.mocha.domain.Cup;
-import com.devwuu.mocha.domain.Entry;
+import com.devwuu.mocha.domain.TastingDay;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
 import com.devwuu.mocha.domain.Rating;
@@ -51,7 +51,7 @@ import java.util.stream.Stream;
  * <p>{@link ThymeleafNoteRendererTest#reRenderIsReproducible}와 갈리는 지점이 이 클래스의 존재 이유다.
  * 그쪽은 저장소가 인메모리 fake라 <b>렌더러가 결정적인가</b>까지만 답한다 — 노트가 어느 매체에서 오는지는
  * 검증 밖이고, 파일 시절에도 같은 그린이 났다. 여기서는 노트를 실 Postgres에 <b>운영 쓰기 경로</b>
- * ({@code upsertEntry})로 심고, 두 번째 렌더 전에 영속성 컨텍스트를 비워 조회가 실제로 행을 지나게 한다.
+ * ({@code upsertTastingDay})로 심고, 두 번째 렌더 전에 영속성 컨텍스트를 비워 조회가 실제로 행을 지나게 한다.
  * 그래야 그린이 "DB만으로 복원된다"를 붙잡는다.
  *
  * <p>재현 동일성만으로는 <b>입력이 DB라는 것</b>이 관측되지 않는다 — 아무것도 읽지 않고 상수를 굽는
@@ -129,7 +129,7 @@ class RerenderFromDatabaseTest extends PostgresIntegrationTest {
         deleteRecursively(artifactDir);
 
         // DB만 바꾼다 — 파일에는 아무것도 남아 있지 않다. 한쪽은 늘리고 한쪽은 지워 방향을 둘 다 본다.
-        repo.commit(kept.id(), metaOf(kept), tasteEntry(LocalDate.of(2026, 7, 20), "다음 날은 더 달았다."),
+        repo.commit(kept.id(), metaOf(kept), tasteTastingDay(LocalDate.of(2026, 7, 20), "다음 날은 더 달았다."),
                 Aliases.empty());
         repo.delete(removed.id());
         em.clear();
@@ -148,7 +148,7 @@ class RerenderFromDatabaseTest extends PostgresIntegrationTest {
     // ────────────────────────────── 표본 ──────────────────────────────
 
     /**
-     * 노트 2건을 <b>운영 쓰기 경로</b>({@code upsertEntry})로 심는다 — 실제 커밋이 남기는 것과 같은 행 모양이어야
+     * 노트 2건을 <b>운영 쓰기 경로</b>({@code upsertTastingDay})로 심는다 — 실제 커밋이 남기는 것과 같은 행 모양이어야
      * 렌더 입력으로서의 DB가 재현된다. 한쪽은 레시피 있는 회차를 둬 카드 2종(감상·레시피)이 모두 산출되게 한다.
      */
     /**
@@ -173,7 +173,7 @@ class RerenderFromDatabaseTest extends PostgresIntegrationTest {
                 List.of(new Bean(new Sourced<>("콜롬비아", Source.SEARCH), null)),
                 null, new Sourced<>(List.of(), Source.SEARCH), List.of());
 
-        Entry withRecipe = new Entry(
+        TastingDay withRecipe = new TastingDay(
                 LocalDate.of(2026, 7, 10),
                 List.of(new Cup(
                         new Recipe("핸드드립", 15.0, 240.0, null, 160.0, 92.5, "중간 (코만단테)", "V60",
@@ -183,14 +183,14 @@ class RerenderFromDatabaseTest extends PostgresIntegrationTest {
 
         return List.of(
                 repo.commit(null, yirgacheffe, withRecipe, Aliases.empty()),
-                repo.commit(null, geisha, tasteEntry(LocalDate.of(2026, 7, 4), "화사하다."), Aliases.empty()));
+                repo.commit(null, geisha, tasteTastingDay(LocalDate.of(2026, 7, 4), "화사하다."), Aliases.empty()));
     }
 
-    private static Entry tasteEntry(LocalDate date, String taste) {
-        return new Entry(date, List.of(new Cup(null, new Review(taste, null, Rating.PERFECT))), IGNORED);
+    private static TastingDay tasteTastingDay(LocalDate date, String taste) {
+        return new TastingDay(date, List.of(new Cup(null, new Review(taste, null, Rating.PERFECT))), IGNORED);
     }
 
-    /** 저장된 노트의 메타 — {@code upsertEntry} 재호출이 노트 단위 필드를 그대로 두게 한다. */
+    /** 저장된 노트의 메타 — {@code upsertTastingDay} 재호출이 노트 단위 필드를 그대로 두게 한다. */
     private static NoteMeta metaOf(Note note) {
         return new NoteMeta(note.coffeeName(), note.roastery(), note.beans(), note.roastLevel(),
                 note.officialNotes(), note.sources());

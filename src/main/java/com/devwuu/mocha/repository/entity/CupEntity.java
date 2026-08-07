@@ -19,7 +19,7 @@ import jakarta.persistence.Table;
  * 1:1 짝이 표현된다({@link RecipeEntity}·{@link ReviewEntity}). 도메인 {@link com.devwuu.mocha.domain.Cup}가
  * 두 값을 직접 품는 것과 달리, 영속 형태에서는 회차가 <b>식별자만 가진 행</b>이 된다.
  *
- * <p>{@code entryId}는 연관 매핑이 아니라 평범한 컬럼이다(ADR-75 — FK 없음).
+ * <p>{@code tastingDayId}는 연관 매핑이 아니라 평범한 컬럼이다(ADR-75 — FK 없음).
  */
 @Entity
 @Table(name = "cup")
@@ -29,8 +29,8 @@ public class CupEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "entry_id", nullable = false)
-    private Long entryId;
+    @Column(name = "tasting_day_id", nullable = false)
+    private Long tastingDayId;
 
     @Column(name = "seq", nullable = false)
     private int seq;
@@ -39,8 +39,8 @@ public class CupEntity {
         // JPA 전용.
     }
 
-    public CupEntity(Long entryId, int seq) {
-        this.entryId = entryId;
+    public CupEntity(Long tastingDayId, int seq) {
+        this.tastingDayId = tastingDayId;
         this.seq = seq;
     }
 
@@ -48,8 +48,8 @@ public class CupEntity {
         return id;
     }
 
-    public Long getEntryId() {
-        return entryId;
+    public Long getTastingDayId() {
+        return tastingDayId;
     }
 
     public int getSeq() {

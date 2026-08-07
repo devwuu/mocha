@@ -25,7 +25,7 @@ class DomainSerializationTest {
 
     private static Note sampleNote() {
         OffsetDateTime ts = OffsetDateTime.of(2026, 7, 10, 9, 30, 0, 0, ZoneOffset.ofHours(9));
-        Entry entry = new Entry(
+        TastingDay tastingDay = new TastingDay(
                 LocalDate.of(2026, 7, 10),
                 List.of(new Cup(
                         new Recipe(null, 15.0, 240.0, null, null, null, "중간", null, null, null),   // 레시피 포함 — Note 왕복에 회차 recipe도 실린다(FR-18)
@@ -40,7 +40,7 @@ class DomainSerializationTest {
                 new Sourced<>(null, Source.SEARCH),          // 미확정 값 + source 마킹
                 new Sourced<>(List.of("자스민", "베르가못"), Source.SEARCH),  // Sourced<List<String>>
                 List.of("https://example.com/coffeevera"),
-                List.of(entry),
+                List.of(tastingDay),
                 ts,
                 ts
         );
@@ -98,14 +98,14 @@ class DomainSerializationTest {
     @Test
     @DisplayName("V-1: rating null 허용(미언급) — 회차 review 안에서")
     void nullRatingAllowed() throws Exception {
-        Entry entry = new Entry(LocalDate.of(2026, 7, 10),
+        TastingDay tastingDay = new TastingDay(LocalDate.of(2026, 7, 10),
                 List.of(new Cup(null, new Review("무난", null, null))), null);
 
-        String json = mapper.writeValueAsString(entry);
-        Entry restored = mapper.readValue(json, Entry.class);
+        String json = mapper.writeValueAsString(tastingDay);
+        TastingDay restored = mapper.readValue(json, TastingDay.class);
 
         assertThat(restored.cups().getFirst().review().rating()).isNull();
-        assertThat(restored).isEqualTo(entry);
+        assertThat(restored).isEqualTo(tastingDay);
     }
 
     @Test
@@ -117,7 +117,7 @@ class DomainSerializationTest {
                 + "\"photos\":[\"photos/coffeevera/2026-07-10/a.jpg\"],\"updated_at\":null}";
 
         // 미지 키(photos)는 조용히 무시된다(findings-TΔ0 §1) — 마이그레이션·mapper 옵션 불필요.
-        Entry restored = mapper.readValue(legacy, Entry.class);
+        TastingDay restored = mapper.readValue(legacy, TastingDay.class);
         String reserialized = mapper.writeValueAsString(restored);
 
         assertThat(reserialized).doesNotContain("photos");
@@ -130,17 +130,17 @@ class DomainSerializationTest {
     @Test
     @DisplayName("AC-Δ5: my_taste(정규화)·my_taste_original(원문)이 review 안에 snake_case로 영속·왕복된다")
     void myTasteOriginalRoundTrip() throws Exception {
-        Entry entry = new Entry(LocalDate.of(2026, 7, 10),
+        TastingDay tastingDay = new TastingDay(LocalDate.of(2026, 7, 10),
                 List.of(new Cup(null, new Review("새콤하고 좋았음", "새콤하고 좋았다", Rating.GOOD))), null);
 
-        String json = mapper.writeValueAsString(entry);
-        Entry restored = mapper.readValue(json, Entry.class);
+        String json = mapper.writeValueAsString(tastingDay);
+        TastingDay restored = mapper.readValue(json, TastingDay.class);
 
         assertThat(json).contains("\"my_taste\":\"새콤하고 좋았음\"")
                 .contains("\"my_taste_original\":\"새콤하고 좋았다\"");
         assertThat(restored.cups().getFirst().review().myTaste()).isEqualTo("새콤하고 좋았음");
         assertThat(restored.cups().getFirst().review().myTasteOriginal()).isEqualTo("새콤하고 좋았다");
-        assertThat(restored).isEqualTo(entry);
+        assertThat(restored).isEqualTo(tastingDay);
     }
 
     @Test
@@ -160,7 +160,7 @@ class DomainSerializationTest {
     @DisplayName("0021-TΔ1b: cups(회차 배열 — recipe 10필드·review)가 snake_case로 직렬화·왕복된다")
     void cupsRoundTrip() throws Exception {
         // ideas/sample.md 패턴: 같은 날 2회 시도 — 회차별 레시피·피드백·감상이 갈린다(배열 순서 = 회차 번호).
-        Entry entry = new Entry(
+        TastingDay tastingDay = new TastingDay(
                 LocalDate.of(2026, 7, 18),
                 List.of(
                         new Cup(
@@ -174,14 +174,14 @@ class DomainSerializationTest {
                                 null)),                             // 감상 없는 시도(recipe만) 허용(V-15)
                 null);
 
-        String json = mapper.writeValueAsString(entry);
-        Entry restored = mapper.readValue(json, Entry.class);
+        String json = mapper.writeValueAsString(tastingDay);
+        TastingDay restored = mapper.readValue(json, TastingDay.class);
 
         assertThat(json).contains("\"cups\"")
                 .contains("\"yield_ml\":10").contains("\"time_sec\":28")   // 신설 수치 필드 snake_case·number
                 .contains("\"grind\":\"210클릭 (매버릭 2.0)\"")
                 .contains("\"pouring\":\"뜸 40ml 30초 → 100ml → 100ml\"");
-        assertThat(restored).isEqualTo(entry);
+        assertThat(restored).isEqualTo(tastingDay);
         assertThat(restored.cups()).hasSize(2);
         assertThat(restored.cups().getFirst().recipe().feedback()).isEqualTo("퍽은 물퍽, 다음엔 220클릭으로");
         assertThat(restored.cups().getLast().review()).isNull();
@@ -193,8 +193,8 @@ class DomainSerializationTest {
         String withoutCups = "{\"date\":\"2026-07-10\",\"updated_at\":null}";
         String nullCups = "{\"date\":\"2026-07-10\",\"cups\":null,\"updated_at\":null}";
 
-        assertThat(mapper.readValue(withoutCups, Entry.class).cups()).isEmpty();
-        assertThat(mapper.readValue(nullCups, Entry.class).cups()).isEmpty();
+        assertThat(mapper.readValue(withoutCups, TastingDay.class).cups()).isEmpty();
+        assertThat(mapper.readValue(nullCups, TastingDay.class).cups()).isEmpty();
     }
 
     @Test

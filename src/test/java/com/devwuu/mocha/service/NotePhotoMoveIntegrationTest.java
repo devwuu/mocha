@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.devwuu.mocha.SingleUser;
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Cup;
-import com.devwuu.mocha.domain.Entry;
+import com.devwuu.mocha.domain.TastingDay;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
@@ -74,7 +74,7 @@ class NotePhotoMoveIntegrationTest extends PostgresIntegrationTest {
     void moveWithoutCollisionKeepsRowsAndFilesTogether() {
         Note saved = seedWithPhoto(day(10), "bag.jpg");
 
-        service.replaceEntry(saved.id(), day(10), entry(day(11)));
+        service.replaceTastingDay(saved.id(), day(10), tastingDay(day(11)));
         flushAndClear();
 
         assertThat(tx.photoPaths(saved.id())).containsExactly(archivePath(saved, 11, "bag.jpg"));
@@ -90,7 +90,7 @@ class NotePhotoMoveIntegrationTest extends PostgresIntegrationTest {
         Note saved = seedWithPhoto(day(10), "bag.jpg");
         attachPhoto(saved, day(11), "bag.jpg");
 
-        service.replaceEntry(saved.id(), day(10), entry(day(11)));
+        service.replaceTastingDay(saved.id(), day(10), tastingDay(day(11)));
         flushAndClear();
 
         assertThat(tx.photoPaths(saved.id())).containsExactly(
@@ -103,10 +103,10 @@ class NotePhotoMoveIntegrationTest extends PostgresIntegrationTest {
     @Test
     @DisplayName("TΔ5b-2: 사진 없는 엔트리의 날짜 이동은 파일을 만들지도 지우지도 않는다")
     void moveWithoutPhotosTouchesNothing() {
-        Note saved = service.commit(draft(null, entry(day(10))), MatchInfo.newNote());
+        Note saved = service.commit(draft(null, tastingDay(day(10))), MatchInfo.newNote());
         flushAndClear();
 
-        service.replaceEntry(saved.id(), day(10), entry(day(11)));
+        service.replaceTastingDay(saved.id(), day(10), tastingDay(day(11)));
         flushAndClear();
 
         assertThat(tx.photoPaths(saved.id())).isEmpty();
@@ -118,7 +118,7 @@ class NotePhotoMoveIntegrationTest extends PostgresIntegrationTest {
     /** 스테이징 → 커밋으로 사진 1장을 실제 아카이브에 세운 노트. */
     private Note seedWithPhoto(LocalDate date, String filename) {
         photoStore.stage(SingleUser.ID, filename, jpeg(1));
-        Note saved = service.commit(draft(null, entry(date)), MatchInfo.newNote());
+        Note saved = service.commit(draft(null, tastingDay(date)), MatchInfo.newNote());
         flushAndClear();
         return saved;
     }
@@ -126,7 +126,7 @@ class NotePhotoMoveIntegrationTest extends PostgresIntegrationTest {
     /** 이미 있는 노트의 다른 날짜에 사진 1장을 더한다 — 병합 갈래의 이동처를 만드는 자리. */
     private void attachPhoto(Note note, LocalDate date, String filename) {
         photoStore.stage(SingleUser.ID, filename, jpeg(2));
-        service.commit(draft(note.id(), entry(date)), MatchInfo.existing(note.id(), date));
+        service.commit(draft(note.id(), tastingDay(date)), MatchInfo.existing(note.id(), date));
         flushAndClear();
     }
 
@@ -161,14 +161,14 @@ class NotePhotoMoveIntegrationTest extends PostgresIntegrationTest {
                 List.of(), null, null, List.of());
     }
 
-    private static Note draft(Long id, Entry entry) {
+    private static Note draft(Long id, TastingDay tastingDay) {
         NoteMeta meta = meta();
         return new Note(id, meta.coffeeName(), meta.roastery(), meta.beans(), meta.roastLevel(),
-                meta.officialNotes(), Aliases.empty(), meta.sources(), List.of(entry), null, null);
+                meta.officialNotes(), Aliases.empty(), meta.sources(), List.of(tastingDay), null, null);
     }
 
-    private static Entry entry(LocalDate date) {
-        return new Entry(date, List.of(new Cup(null, new Review("감상", "감상", Rating.GOOD))),
+    private static TastingDay tastingDay(LocalDate date) {
+        return new TastingDay(date, List.of(new Cup(null, new Review("감상", "감상", Rating.GOOD))),
                 OffsetDateTime.of(2000, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC));
     }
 

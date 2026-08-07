@@ -6,7 +6,7 @@ import com.devwuu.mocha.agent.conversation.TranscriptTurn;
 import com.devwuu.mocha.config.CommonConfig;
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Cup;
-import com.devwuu.mocha.domain.Entry;
+import com.devwuu.mocha.domain.TastingDay;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteCandidate;
@@ -130,8 +130,8 @@ class NoteControllerTest {
         assertThat(noteService.lastDraft).isNotNull();
         assertThat(noteService.lastDraft.roastery().value()).isEqualTo("커피베라");
         assertThat(noteService.lastDraft.roastery().source()).isEqualTo(Source.USER);
-        assertThat(noteService.lastDraft.entries()).hasSize(1);
-        assertThat(noteService.lastDraft.entries().getFirst().cups().getFirst().review().rating())
+        assertThat(noteService.lastDraft.tastingDays()).hasSize(1);
+        assertThat(noteService.lastDraft.tastingDays().getFirst().cups().getFirst().review().rating())
                 .isEqualTo(Rating.GOOD);
         assertThat(noteService.lastMatch.type()).isEqualTo(MatchInfo.MatchType.NEW);
         assertThat(mapper.readTree(body)).isEqualTo(contract.get("response"));
@@ -198,7 +198,7 @@ class NoteControllerTest {
 
     @Test
     @DisplayName("TΔ6b: 저장할 시음이 없는 본문은 400 — 폼이 아닌 것을 저장으로 받지 않는다")
-    void bodyWithoutEntriesIsRejected() throws Exception {
+    void bodyWithoutTastingDaysIsRejected() throws Exception {
         ObjectNode request = (ObjectNode) contract.get("request");
         ((ObjectNode) request.get("note")).putArray("entries");
         noteService.failure = new IllegalArgumentException("저장할 시음 엔트리가 없다: noteId=null");
@@ -384,7 +384,7 @@ class NoteControllerTest {
 
     @Test
     @DisplayName("TΔ5a: 엔트리 없는 노트도 200 — 정상 상태이지 실패가 아니다")
-    void noteWithoutEntriesIsStillANote() throws Exception {
+    void noteWithoutTastingDaysIsStillANote() throws Exception {
         JsonNode expected = load(DETAIL_CONTRACT).get("response_no_entries");
         noteService.detail = detailOf(expected);
 
@@ -474,21 +474,21 @@ class NoteControllerTest {
 
     @Test
     @DisplayName("TΔ5b-3/AC-5: 엔트리 수정 — 경로의 date가 대상이고 본문의 date가 결과다")
-    void entryUpdateSeparatesTargetDateFromResultDate() throws Exception {
+    void tastingDayUpdateSeparatesTargetDateFromResultDate() throws Exception {
         JsonNode update = load(UPDATE_CONTRACT);
         noteService.updated = detailOf(update.get("response_after_meta"));
 
         patch("/api/notes/21/entries/2026-07-02", update.get("entry_request"), status().isOk());
 
-        assertThat(noteService.lastEntryId).isEqualTo(21L);
+        assertThat(noteService.lastTastingDayId).isEqualTo(21L);
         assertThat(noteService.lastTargetDate).isEqualTo(LocalDate.of(2026, 7, 2));
-        assertThat(noteService.lastEntry.date()).isEqualTo(LocalDate.of(2026, 7, 2));
-        assertThat(noteService.lastEntry.cups()).hasSize(2);
+        assertThat(noteService.lastTastingDay.date()).isEqualTo(LocalDate.of(2026, 7, 2));
+        assertThat(noteService.lastTastingDay.cups()).hasSize(2);
     }
 
     @Test
     @DisplayName("TΔ5b-3/D-12: 날짜 이동 요청이 그대로 닿고, 응답은 병합된 노트 전문이다")
-    void entryUpdateCarriesTheDateMoveAndAnswersWithTheMergedNote() throws Exception {
+    void tastingDayUpdateCarriesTheDateMoveAndAnswersWithTheMergedNote() throws Exception {
         JsonNode update = load(UPDATE_CONTRACT);
         JsonNode expected = update.get("response_after_move");
         noteService.updated = detailOf(expected);
@@ -497,27 +497,27 @@ class NoteControllerTest {
 
         // 대상은 경로, 결과는 본문 — 둘이 다르다는 사실 자체가 "이동"이다(합치는 일은 아래 층의 규칙).
         assertThat(noteService.lastTargetDate).isEqualTo(LocalDate.of(2026, 7, 2));
-        assertThat(noteService.lastEntry.date()).isEqualTo(LocalDate.of(2026, 6, 28));
+        assertThat(noteService.lastTastingDay.date()).isEqualTo(LocalDate.of(2026, 6, 28));
         // 병합 결과를 화면이 따라 계산하지 않는다 — 엔트리 총수 감소·사진 URL의 날짜까지 서버가 답한다.
         assertThat(mapper.readTree(body)).isEqualTo(expected);
     }
 
     @Test
     @DisplayName("TΔ5b-3: 요청에 감상 원문이 없으므로 정규화본이 양쪽에 담긴다 — 수정하면 '말한 그대로'가 편집본으로 수렴한다(V-11)")
-    void entryUpdateFillsTheOriginalFromTheEditedReview() throws Exception {
+    void tastingDayUpdateFillsTheOriginalFromTheEditedReview() throws Exception {
         JsonNode update = load(UPDATE_CONTRACT);
         noteService.updated = detailOf(update.get("response_after_meta"));
 
         patch("/api/notes/21/entries/2026-07-02", update.get("entry_request"), status().isOk());
 
-        Review review = noteService.lastEntry.cups().getLast().review();
+        Review review = noteService.lastTastingDay.cups().getLast().review();
         assertThat(review.myTaste()).isEqualTo("온도 낮추니 떫은 맛이 사라졌다. 다음에도 90℃로.");
         assertThat(review.myTasteOriginal()).isEqualTo(review.myTaste());
     }
 
     @Test
     @DisplayName("TΔ5b-3/V-15: 회차가 하나도 남지 않는 본문은 400 — 화면에 없는 엔트리 삭제 경로를 만들지 않는다")
-    void entryUpdateWithoutCupsIsRejected() throws Exception {
+    void tastingDayUpdateWithoutCupsIsRejected() throws Exception {
         ObjectNode empty = (ObjectNode) load(UPDATE_CONTRACT).get("entry_request");
         // 빈 회차(레시피도 감상도 없음)는 V-15 정규화가 드롭한다 — 그 결과가 0건이면 저장할 시음이 없다.
         empty.set("cups", mapper.createArrayNode().add(
@@ -525,12 +525,12 @@ class NoteControllerTest {
 
         patch("/api/notes/21/entries/2026-07-02", empty, status().isBadRequest());
 
-        assertThat(noteService.lastEntry).as("저장할 회차가 없는 요청이 쓰기까지 갔다").isNull();
+        assertThat(noteService.lastTastingDay).as("저장할 회차가 없는 요청이 쓰기까지 갔다").isNull();
     }
 
     @Test
     @DisplayName("TΔ5b-3: 대상 엔트리 소실은 404 — 고칠 것이 URL에 없다는 뜻이라 노트 소실과 같은 답이다")
-    void entryUpdateOnMissingTargetIsNotFound() throws Exception {
+    void tastingDayUpdateOnMissingTargetIsNotFound() throws Exception {
         noteService.editFailure = new IllegalStateException("수정 대상 엔트리 소실: 21 2026-01-01");
 
         patch("/api/notes/21/entries/2026-01-01", load(UPDATE_CONTRACT).get("entry_request"), status().isNotFound());
@@ -593,14 +593,14 @@ class NoteControllerTest {
      */
     private NoteDetail detailOf(JsonNode response) {
         NoteDetailBody body = mapper.treeToValue(response, NoteDetailBody.class);
-        List<Entry> entries = new ArrayList<>();
+        List<TastingDay> tastingDays = new ArrayList<>();
         List<NotePhoto> photos = new ArrayList<>();
-        for (NoteDetailBody.DetailEntry entry : body.entries()) {
-            entries.add(new Entry(entry.date(), entry.cups().stream().map(NoteControllerTest::toCup).toList(), null));
-            entry.photos().forEach(photo -> photos.add(new NotePhoto(entry.date(), toArchivePath(photo.url()))));
+        for (NoteDetailBody.DetailTastingDay tastingDay : body.tastingDays()) {
+            tastingDays.add(new TastingDay(tastingDay.date(), tastingDay.cups().stream().map(NoteControllerTest::toCup).toList(), null));
+            tastingDay.photos().forEach(photo -> photos.add(new NotePhoto(tastingDay.date(), toArchivePath(photo.url()))));
         }
         Note note = new Note(body.noteId(), body.coffeeName(), body.roastery(), body.beans(),
-                body.roastLevel(), body.officialNotes(), body.sources(), entries, null, null);
+                body.roastLevel(), body.officialNotes(), body.sources(), tastingDays, null, null);
         return new NoteDetail(note, photos);
     }
 
@@ -715,9 +715,9 @@ class NoteControllerTest {
         RuntimeException editFailure;
         Long lastMetaId;
         NoteMeta lastMeta;
-        Long lastEntryId;
+        Long lastTastingDayId;
         LocalDate lastTargetDate;
-        Entry lastEntry;
+        TastingDay lastTastingDay;
         Long lastDeleteId;
         boolean deleted = true;
 
@@ -744,9 +744,9 @@ class NoteControllerTest {
             editFailure = null;
             lastMetaId = null;
             lastMeta = null;
-            lastEntryId = null;
+            lastTastingDayId = null;
             lastTargetDate = null;
-            lastEntry = null;
+            lastTastingDay = null;
             lastDeleteId = null;
             deleted = true;
         }
@@ -767,10 +767,10 @@ class NoteControllerTest {
         }
 
         @Override
-        public NoteDetail replaceEntry(long noteId, LocalDate targetDate, Entry entry) {
-            lastEntryId = noteId;
+        public NoteDetail replaceTastingDay(long noteId, LocalDate targetDate, TastingDay tastingDay) {
+            lastTastingDayId = noteId;
             lastTargetDate = targetDate;
-            lastEntry = entry;
+            lastTastingDay = tastingDay;
             if (editFailure != null) {
                 throw editFailure;
             }
@@ -816,7 +816,7 @@ class NoteControllerTest {
 
         private static Note withId(Note draft, long id) {
             return new Note(id, draft.coffeeName(), draft.roastery(), draft.beans(), draft.roastLevel(),
-                    draft.officialNotes(), draft.aliases(), draft.sources(), draft.entries(),
+                    draft.officialNotes(), draft.aliases(), draft.sources(), draft.tastingDays(),
                     draft.createdAt() == null ? OffsetDateTime.now() : draft.createdAt(),
                     OffsetDateTime.now());
         }

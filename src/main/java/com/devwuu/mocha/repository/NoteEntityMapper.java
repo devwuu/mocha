@@ -3,7 +3,7 @@ package com.devwuu.mocha.repository;
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Bean;
 import com.devwuu.mocha.domain.Cup;
-import com.devwuu.mocha.domain.Entry;
+import com.devwuu.mocha.domain.TastingDay;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteMeta;
 import com.devwuu.mocha.domain.Recipe;
@@ -12,7 +12,7 @@ import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.domain.Review;
 import com.devwuu.mocha.repository.entity.AliasKind;
 import com.devwuu.mocha.repository.entity.CupEntity;
-import com.devwuu.mocha.repository.entity.EntryEntity;
+import com.devwuu.mocha.repository.entity.TastingDayEntity;
 import com.devwuu.mocha.repository.entity.NoteAliasEntity;
 import com.devwuu.mocha.repository.entity.NoteBeanEntity;
 import com.devwuu.mocha.repository.entity.NoteEntity;
@@ -38,11 +38,11 @@ import java.util.stream.Collectors;
  *
  * <p>POLICY: 변환은 <b>저장소 쪽에만</b> 있다 — 도메인 record는 영속 타입을 모른다(백엔드 CLAUDE.md §4,
  * REVIEW.md §2). 엔티티도 도메인 타입을 조립하지 않는다: 엔티티는 행 하나를 표현하고, 3단 중첩
- * ({@code Note → entries → cups → recipe/review})과 배열 6종의 분해·재조립은 전부 여기서 일어난다.
+ * ({@code Note → tastingDays → cups → recipe/review})과 배열 6종의 분해·재조립은 전부 여기서 일어난다.
  *
  * <p><b>조립은 아래에서 위로</b> 한다 — 엔티티에 연관 매핑이 없으므로({@link NoteEntity} POLICY) 부모가
  * 자식 행을 알지 못한다. 평면 행 목록({@link NoteChildRows})을 부모별로 그룹핑해
- * {@link #toCup} → {@link #toEntry} → {@link #toNote} 순으로 올리는 것이 {@link #assemble}이다.
+ * {@link #toCup} → {@link #toTastingDay} → {@link #toNote} 순으로 올리는 것이 {@link #assemble}이다.
  * <b>정렬은 질의가 소유한다</b>: seq 있는 3종은 {@code seq} 오름차순, 별칭은 {@code id} 오름차순
  * (= 첫 등장 순서, V-13). 이 클래스는 받은 목록의 순서를 그대로 보존할 뿐 재정렬하지 않는다.
  *
@@ -171,8 +171,8 @@ public final class NoteEntityMapper {
     }
 
     /** 엔트리 행. 회차는 {@link CupEntity}로 따로 나가고, {@code updatedAt}은 감사 컬럼이 겸한다(Q-5). */
-    public static EntryEntity toEntryEntity(Long noteId, Entry entry) {
-        return new EntryEntity(noteId, entry.date());
+    public static TastingDayEntity toTastingDayEntity(Long noteId, TastingDay tastingDay) {
+        return new TastingDayEntity(noteId, tastingDay.date());
     }
 
     /**
@@ -225,7 +225,7 @@ public final class NoteEntityMapper {
                 groupBy(children.officialNotes(), NoteOfficialNoteEntity::getNoteId);
         Map<Long, List<NoteAliasEntity>> aliasesByNote = groupBy(children.aliases(), NoteAliasEntity::getNoteId);
         Map<Long, List<NoteSourceEntity>> sourcesByNote = groupBy(children.sources(), NoteSourceEntity::getNoteId);
-        Map<Long, List<Entry>> entriesByNote = assembleEntries(children);
+        Map<Long, List<TastingDay>> tastingDaysByNote = assembleTastingDays(children);
 
         List<Note> assembled = new ArrayList<>(rows.size());
         for (NoteEntity row : rows) {
@@ -236,27 +236,27 @@ public final class NoteEntityMapper {
                     officialNotesByNote.getOrDefault(id, List.of()),
                     aliasesByNote.getOrDefault(id, List.of()),
                     sourcesByNote.getOrDefault(id, List.of()),
-                    entriesByNote.getOrDefault(id, List.of()));
+                    tastingDaysByNote.getOrDefault(id, List.of()));
             assembled.add(sanitized(domain, id));
         }
         return List.copyOf(assembled);
     }
 
     /** 엔트리 → 회차 → 레시피/감상 세 단을 노트별로 되묶는다. 짝짓기는 전부 부모 id 조회다(연관 없음). */
-    private static Map<Long, List<Entry>> assembleEntries(NoteChildRows children) {
-        Map<Long, List<CupEntity>> cupsByEntry = groupBy(children.cups(), CupEntity::getEntryId);
+    private static Map<Long, List<TastingDay>> assembleTastingDays(NoteChildRows children) {
+        Map<Long, List<CupEntity>> cupsByTastingDay = groupBy(children.cups(), CupEntity::getTastingDayId);
         Map<Long, RecipeEntity> recipeByCup = children.recipes().stream()
                 .collect(Collectors.toMap(RecipeEntity::getCupId, Function.identity()));
         Map<Long, ReviewEntity> reviewByCup = children.reviews().stream()
                 .collect(Collectors.toMap(ReviewEntity::getCupId, Function.identity()));
 
-        Map<Long, List<Entry>> byNote = new LinkedHashMap<>();
-        for (EntryEntity entry : children.entries()) {
-            List<Cup> cups = cupsByEntry.getOrDefault(entry.getId(), List.<CupEntity>of()).stream()
+        Map<Long, List<TastingDay>> byNote = new LinkedHashMap<>();
+        for (TastingDayEntity tastingDay : children.tastingDays()) {
+            List<Cup> cups = cupsByTastingDay.getOrDefault(tastingDay.getId(), List.<CupEntity>of()).stream()
                     .map(cup -> toCup(recipeByCup.get(cup.getId()), reviewByCup.get(cup.getId())))
                     .toList();
-            byNote.computeIfAbsent(entry.getNoteId(), key -> new ArrayList<>())
-                    .add(toEntry(entry, cups));
+            byNote.computeIfAbsent(tastingDay.getNoteId(), key -> new ArrayList<>())
+                    .add(toTastingDay(tastingDay, cups));
         }
         return byNote;
     }
@@ -292,10 +292,10 @@ public final class NoteEntityMapper {
         return sanitized;
     }
 
-    /** 노트 조립 — 자식 행 목록과 <b>이미 조립된</b> 엔트리를 받는다({@link #toEntry}). */
+    /** 노트 조립 — 자식 행 목록과 <b>이미 조립된</b> 엔트리를 받는다({@link #toTastingDay}). */
     public static Note toNote(NoteEntity note, List<NoteBeanEntity> beans,
                               List<NoteOfficialNoteEntity> officialNotes, List<NoteAliasEntity> aliases,
-                              List<NoteSourceEntity> sources, List<Entry> entries) {
+                              List<NoteSourceEntity> sources, List<TastingDay> tastingDays) {
         return new Note(
                 note.getId(),
                 toSourced(note.getCoffeeName()),
@@ -305,15 +305,15 @@ public final class NoteEntityMapper {
                 toOfficialNotes(note.getOfficialNotesSource(), officialNotes),
                 toAliases(aliases),
                 sources.stream().map(NoteSourceEntity::getUrl).toList(),
-                entries,
+                tastingDays,
                 note.getCreatedAt(),
                 // Q-5: 감사 컬럼이 도메인 타임스탬프를 겸한다 — modified_at이 곧 updatedAt이다.
                 note.getModifiedAt());
     }
 
     /** 엔트리 조립 — 회차는 {@link #toCup}로 올라온 것을 받는다. 순서는 질의({@code seq} 오름차순)가 소유. */
-    public static Entry toEntry(EntryEntity entry, List<Cup> cups) {
-        return new Entry(entry.getTastedOn(), cups, entry.getModifiedAt());
+    public static TastingDay toTastingDay(TastingDayEntity tastingDay, List<Cup> cups) {
+        return new TastingDay(tastingDay.getTastedOn(), cups, tastingDay.getModifiedAt());
     }
 
     /**

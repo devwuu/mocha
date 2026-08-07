@@ -3,7 +3,7 @@ package com.devwuu.mocha.repository;
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Bean;
 import com.devwuu.mocha.domain.Cup;
-import com.devwuu.mocha.domain.Entry;
+import com.devwuu.mocha.domain.TastingDay;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Recipe;
@@ -11,7 +11,7 @@ import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.domain.Review;
 import com.devwuu.mocha.repository.entity.AliasKind;
-import com.devwuu.mocha.repository.entity.EntryEntity;
+import com.devwuu.mocha.repository.entity.TastingDayEntity;
 import com.devwuu.mocha.repository.entity.NoteAliasEntity;
 import com.devwuu.mocha.repository.entity.NoteBeanEntity;
 import com.devwuu.mocha.repository.entity.NoteEntity;
@@ -54,7 +54,7 @@ class NoteEntityMapperTest {
 
     /** 3단 중첩 + 배열 6종을 전부 채운 노트 — 왕복이 무엇 하나 떨구지 않는지 보는 기준 표본. */
     private static Note sampleNote() {
-        Entry first = new Entry(
+        TastingDay first = new TastingDay(
                 LocalDate.of(2026, 7, 10),
                 List.of(
                         new Cup(new Recipe("핸드드립", 15.0, 240.0, 220.0, 150.0, 92.5, "중간 (코만단테)",
@@ -62,7 +62,7 @@ class NoteEntityMapperTest {
                                 new Review("새콤하고 좋았음", "It was pleasantly bright", Rating.GOOD)),
                         new Cup(new Recipe(null, 16.0, null, null, null, null, null, null, null, null), null)),
                 CREATED);
-        Entry second = new Entry(
+        TastingDay second = new TastingDay(
                 LocalDate.of(2026, 7, 12),
                 List.of(new Cup(null, new Review("오늘은 밍밍했음", "오늘은 밍밍했음", Rating.OKAY_NOT_MINE))),
                 UPDATED);
@@ -232,22 +232,22 @@ class NoteEntityMapperTest {
         List<NoteAliasEntity> aliases = NoteEntityMapper.toAliasEntities(NOTE_ID, original.aliases());
         List<NoteSourceEntity> sources = NoteEntityMapper.toSourceEntities(NOTE_ID, original.sources());
 
-        List<Entry> entries = new ArrayList<>();
+        List<TastingDay> tastingDays = new ArrayList<>();
         long cupId = 0;
-        for (Entry entry : original.entries()) {
-            EntryEntity entryEntity = NoteEntityMapper.toEntryEntity(NOTE_ID, entry);
-            ReflectionTestUtils.setField(entryEntity, "modifiedAt", entry.updatedAt());
+        for (TastingDay tastingDay : original.tastingDays()) {
+            TastingDayEntity tastingDayEntity = NoteEntityMapper.toTastingDayEntity(NOTE_ID, tastingDay);
+            ReflectionTestUtils.setField(tastingDayEntity, "modifiedAt", tastingDay.updatedAt());
 
             List<Cup> cups = new ArrayList<>();
-            for (Cup cup : entry.cups()) {
+            for (Cup cup : tastingDay.cups()) {
                 long id = ++cupId;
                 cups.add(NoteEntityMapper.toCup(
                         NoteEntityMapper.toRecipeEntity(id, cup.recipe()),
                         NoteEntityMapper.toReviewEntity(id, cup.review())));
             }
-            entries.add(NoteEntityMapper.toEntry(entryEntity, cups));
+            tastingDays.add(NoteEntityMapper.toTastingDay(tastingDayEntity, cups));
         }
 
-        return NoteEntityMapper.toNote(noteEntity, beans, officialNotes, aliases, sources, entries);
+        return NoteEntityMapper.toNote(noteEntity, beans, officialNotes, aliases, sources, tastingDays);
     }
 }

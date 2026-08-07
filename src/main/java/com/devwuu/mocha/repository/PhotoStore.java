@@ -11,7 +11,7 @@ import java.util.Map;
  * 스테이징만 지우면 되도록 한다(ADR-3 정신: 확인 이후에만 커밋).
  * <p><b>{@code noteFolder}는 id가 아니라 {@link NoteFolderName}이 만든 접미 문자열</b>({@code <id>-<로스터리>-<커피명>})
  * 이다(changes/0028 §파일 경로 규약). 폴더명이 생성 시점 스냅샷이라 나중에 재계산으로 맞출 수 없기 때문이다 —
- * id만 받으면 로스터리가 수정된 뒤 {@link #moveEntryPhotos}가 기존 폴더를 찾지 못한다.
+ * id만 받으면 로스터리가 수정된 뒤 {@link #moveTastingDayPhotos}가 기존 폴더를 찾지 못한다.
  * <p>JSON에 남기는 것은 절대 경로·URL이 아니라 {@code photos/}로 시작하는 상대 경로뿐이다(V-4, AC-11).
  * <p>구현: {@link LocalPhotoStore}. 썸네일 생성(makeThumbnail)은 파생물 계층이라 T4-3에서 붙인다.
  */
@@ -73,7 +73,7 @@ public interface PhotoStore {
      *
      * <p><b>옮긴 자리를 돌려주는 것이 이 메서드의 계약이다</b>(changes/0029 TΔ5b-2): 유일화가 이름을 바꾸므로
      * 새 경로는 <b>이동 후에야 정해진다</b> — 호출부가 날짜 세그먼트만 갈아 끼워 계산하면 병합에서 다른 파일을
-     * 가리킨다. {@code note_photo}의 색인이 이 답을 그대로 받아 적는다({@code NoteService.replaceEntry}).
+     * 가리킨다. {@code note_photo}의 색인이 이 답을 그대로 받아 적는다({@code NoteService.replaceTastingDay}).
      *
      * <p>POLICY: 실패는 <b>삼키지 않는다</b> — 이 호출부에서 삼키면 사진이 옛 날짜에 남아 어느 화면에도
      * 보이지 않는 상태(TΔ5b-2가 고치는 바로 그 상태)를 조용히 다시 만든다. 아직 아무 행도 바뀌지 않은
@@ -87,7 +87,7 @@ public interface PhotoStore {
      * @return 옮긴 파일의 {@code 옛 상대 경로 → 새 상대 경로}(둘 다 {@code photos/} 시작, V-4), 이동 순서대로.
      *         옮길 것이 없으면 빈 맵.
      */
-    Map<String, String> moveEntryPhotos(String noteFolder, String fromDate, String toDate);
+    Map<String, String> moveTastingDayPhotos(String noteFolder, String fromDate, String toDate);
 
     /**
      * 스테이징에 원본이 남아 있는 사용자 키 목록(스테이징 하위 디렉토리명). 없으면 빈 목록.

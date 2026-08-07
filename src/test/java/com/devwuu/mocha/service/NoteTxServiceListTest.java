@@ -6,7 +6,7 @@ import static org.assertj.core.api.Assertions.tuple;
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Bean;
 import com.devwuu.mocha.domain.Cup;
-import com.devwuu.mocha.domain.Entry;
+import com.devwuu.mocha.domain.TastingDay;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteCursor;
 import com.devwuu.mocha.domain.NoteFilter;
@@ -82,19 +82,19 @@ class NoteTxServiceListTest extends PostgresIntegrationTest {
 
     @Test
     @DisplayName("TΔ5a: 엔트리 없는 노트는 맨 뒤다(NULLS LAST) — Postgres 기본값은 DESC에서 FIRST라 명시가 필요하다")
-    void notesWithoutEntriesSortLast() {
-        long withoutEntries = insert("게뎁 워시드", null);
-        long withEntries = insert("에티오피아 게뎁", "모모스커피", date(2026, 7, 2));
+    void notesWithoutTastingDaysSortLast() {
+        long withoutTastingDays = insert("게뎁 워시드", null);
+        long withTastingDays = insert("에티오피아 게뎁", "모모스커피", date(2026, 7, 2));
         em.clear();
 
         // 명시하지 않으면 "아직 아무것도 안 마신 노트"가 갤러리 맨 위를 차지한다.
         assertThat(page(NoteFilter.none(), null, ALL).notes()).extracting(NoteListItem::noteId)
-                .containsExactly(withEntries, withoutEntries);
+                .containsExactly(withTastingDays, withoutTastingDays);
     }
 
     @Test
     @DisplayName("TΔ5a: 엔트리가 여럿이면 가장 최근 날짜가 정렬 키다 — 노트의 위치는 마지막으로 마신 날이 정한다")
-    void latestDateIsTheMaxOfEntries() {
+    void latestDateIsTheMaxOfTastingDays() {
         insert("에티오피아 게뎁", "프릳츠", date(2026, 6, 28), date(2026, 7, 2));
         insert("케냐 AA", "커피베라", date(2026, 6, 30));
         em.clear();
@@ -174,9 +174,9 @@ class NoteTxServiceListTest extends PostgresIntegrationTest {
     @Test
     @DisplayName("TΔ5a: 축 간은 AND — 필터를 더할수록 좁아진다")
     void differentAxesCombineWithAnd() {
-        insert("A", "프릳츠", List.of(bean("에티오피아 예가체프", "워시드")), entry(date(2026, 7, 3), Rating.GOOD));
-        insert("B", "프릳츠", List.of(bean("콜롬비아 우일라", "내추럴")), entry(date(2026, 7, 2), Rating.GOOD));
-        insert("C", "모모스커피", List.of(bean("에티오피아 게뎁", "워시드")), entry(date(2026, 7, 1), Rating.GOOD));
+        insert("A", "프릳츠", List.of(bean("에티오피아 예가체프", "워시드")), tastingDay(date(2026, 7, 3), Rating.GOOD));
+        insert("B", "프릳츠", List.of(bean("콜롬비아 우일라", "내추럴")), tastingDay(date(2026, 7, 2), Rating.GOOD));
+        insert("C", "모모스커피", List.of(bean("에티오피아 게뎁", "워시드")), tastingDay(date(2026, 7, 1), Rating.GOOD));
         em.clear();
 
         NoteFilter filter = new NoteFilter(null, List.of("프릳츠"), List.of("워시드"), null, List.of());
@@ -188,8 +188,8 @@ class NoteTxServiceListTest extends PostgresIntegrationTest {
     void processMatchesAnyBean() {
         insert("블렌드", "프릳츠",
                 List.of(bean("에티오피아 게뎁", "워시드"), bean("콜롬비아 우일라", "내추럴")),
-                entry(date(2026, 7, 3), Rating.GOOD));
-        insert("싱글", "프릳츠", List.of(bean("케냐 AA", "워시드")), entry(date(2026, 7, 2), Rating.GOOD));
+                tastingDay(date(2026, 7, 3), Rating.GOOD));
+        insert("싱글", "프릳츠", List.of(bean("케냐 AA", "워시드")), tastingDay(date(2026, 7, 2), Rating.GOOD));
         em.clear();
 
         assertThat(page(process("내추럴"), null, ALL).notes())
@@ -199,8 +199,8 @@ class NoteTxServiceListTest extends PostgresIntegrationTest {
     @Test
     @DisplayName("TΔ5a: 원산지는 원두 설명의 부분일치다 — 원산지 컬럼이 없어 자유 텍스트로 근사한다(ADR-53)")
     void originIsAPartialMatchOnBeanDescription() {
-        insert("A", "프릳츠", List.of(bean("에티오피아 예가체프 헤어룸", "워시드")), entry(date(2026, 7, 3), Rating.GOOD));
-        insert("B", "프릳츠", List.of(bean("콜롬비아 우일라 카투라", "워시드")), entry(date(2026, 7, 2), Rating.GOOD));
+        insert("A", "프릳츠", List.of(bean("에티오피아 예가체프 헤어룸", "워시드")), tastingDay(date(2026, 7, 3), Rating.GOOD));
+        insert("B", "프릳츠", List.of(bean("콜롬비아 우일라 카투라", "워시드")), tastingDay(date(2026, 7, 2), Rating.GOOD));
         em.clear();
 
         assertThat(page(origin("에티오피아"), null, ALL).notes())
@@ -213,9 +213,9 @@ class NoteTxServiceListTest extends PostgresIntegrationTest {
     @Test
     @DisplayName("TΔ5a: 평가는 회차 하나라도 그 값이면 남는다 — 같은 날 두 번 내려 평가가 갈릴 수 있다")
     void ratingMatchesAnyCup() {
-        insert("A", "프릳츠", List.of(), new Entry(LocalDate.of(2026, 7, 3), List.of(
+        insert("A", "프릳츠", List.of(), new TastingDay(LocalDate.of(2026, 7, 3), List.of(
                 cup(Rating.BAD), cup(Rating.PERFECT)), IGNORED));
-        insert("B", "프릳츠", List.of(), entry(date(2026, 7, 2), Rating.BAD));
+        insert("B", "프릳츠", List.of(), tastingDay(date(2026, 7, 2), Rating.BAD));
         em.clear();
 
         assertThat(page(rating(Rating.PERFECT), null, ALL).notes())
@@ -255,8 +255,8 @@ class NoteTxServiceListTest extends PostgresIntegrationTest {
     @Test
     @DisplayName("TΔ5a: facet은 저장분 전체다 — 필터로 좁히면 고른 것을 되돌릴 수 없다(칩이 잠긴다)")
     void facetsIgnoreTheFilter() {
-        insert("A", "프릳츠", List.of(bean("에티오피아 게뎁", "워시드")), entry(date(2026, 7, 3), Rating.GOOD));
-        insert("B", "모모스커피", List.of(bean("콜롬비아 우일라", "내추럴")), entry(date(2026, 7, 2), Rating.GOOD));
+        insert("A", "프릳츠", List.of(bean("에티오피아 게뎁", "워시드")), tastingDay(date(2026, 7, 3), Rating.GOOD));
+        insert("B", "모모스커피", List.of(bean("콜롬비아 우일라", "내추럴")), tastingDay(date(2026, 7, 2), Rating.GOOD));
         em.clear();
 
         NotePage filtered = page(roastery("프릳츠"), null, ALL);
@@ -344,18 +344,18 @@ class NoteTxServiceListTest extends PostgresIntegrationTest {
 
     private long insert(String coffeeName, String roastery, LocalDate... dates) {
         return insert(coffeeName, roastery, List.of(),
-                Arrays.stream(dates).map(date -> entry(date, Rating.GOOD)).toArray(Entry[]::new));
+                Arrays.stream(dates).map(date -> tastingDay(date, Rating.GOOD)).toArray(TastingDay[]::new));
     }
 
-    private long insert(String coffeeName, String roastery, List<Bean> beans, Entry... entries) {
-        return insert(coffeeName, roastery, beans, Aliases.empty(), entries);
+    private long insert(String coffeeName, String roastery, List<Bean> beans, TastingDay... tastingDays) {
+        return insert(coffeeName, roastery, beans, Aliases.empty(), tastingDays);
     }
 
     private void insertWithAliases(String coffeeName, String roastery, Aliases aliases) {
-        insert(coffeeName, roastery, List.of(), aliases, entry(date(2026, 7, 1), Rating.GOOD));
+        insert(coffeeName, roastery, List.of(), aliases, tastingDay(date(2026, 7, 1), Rating.GOOD));
     }
 
-    private long insert(String coffeeName, String roastery, List<Bean> beans, Aliases aliases, Entry... entries) {
+    private long insert(String coffeeName, String roastery, List<Bean> beans, Aliases aliases, TastingDay... tastingDays) {
         return repo.insert(new Note(
                 null,
                 new Sourced<>(coffeeName, Source.USER),
@@ -365,7 +365,7 @@ class NoteTxServiceListTest extends PostgresIntegrationTest {
                 null,
                 aliases,
                 List.of(),
-                List.of(entries),
+                List.of(tastingDays),
                 IGNORED,
                 IGNORED)).id();
     }
@@ -378,8 +378,8 @@ class NoteTxServiceListTest extends PostgresIntegrationTest {
         return LocalDate.of(year, month, day);
     }
 
-    private static Entry entry(LocalDate date, Rating rating) {
-        return new Entry(date, List.of(cup(rating)), IGNORED);
+    private static TastingDay tastingDay(LocalDate date, Rating rating) {
+        return new TastingDay(date, List.of(cup(rating)), IGNORED);
     }
 
     private static Cup cup(Rating rating) {

@@ -175,7 +175,7 @@ public class LocalPhotoStore implements PhotoStore {
     }
 
     @Override
-    public Map<String, String> moveEntryPhotos(String noteFolder, String fromDate, String toDate) {
+    public Map<String, String> moveTastingDayPhotos(String noteFolder, String fromDate, String toDate) {
         Path source = photosDir.resolve(noteFolder).resolve(fromDate);
         // 원본 폴더 부재 = 옮길 사진 없음 → no-op(사진 없이 날짜만 이동한 엔트리도 정상 경로).
         if (!Files.isDirectory(source)) {
@@ -242,7 +242,7 @@ public class LocalPhotoStore implements PhotoStore {
      * 스테이징 열람은 사진만 본다 — 판정은 매직바이트(입구 게이트 ADR-29와 같은 어휘), 확장자·메타는 신뢰하지 않는다.
      * <p>{@code readStaged}·{@code commit}이 공유하는 유일한 열람 지점이라, 여기서 거른 파일은 OCR 배치에도
      * 아카이브에도 들어가지 않는다. 스테이징엔 vision 지원 포맷과 HEIC 대체 썸네일만 정상 유입되므로
-     * {@code UNKNOWN} 제외로 충분하다. 아카이브 열람({@code moveEntryPhotos})은 대상이 아니다 — 이미 저장된
+     * {@code UNKNOWN} 제외로 충분하다. 아카이브 열람({@code moveTastingDayPhotos})은 대상이 아니다 — 이미 저장된
      * 파일을 걸러내면 날짜 이동에서 잔재가 남아 폴더가 접히지 않는다.
      */
     // POLICY: 저장소 읽기 경계가 유일한 무결성 관문 — 소비처는 로드된 객체의 구조 무결성을 재검증하지 않는다 (ref: specs/coffee-note-agent/plan.md#ADR-66)

@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Cup;
-import com.devwuu.mocha.domain.Entry;
+import com.devwuu.mocha.domain.TastingDay;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteDetail;
 import com.devwuu.mocha.domain.NoteMeta;
@@ -158,7 +158,7 @@ class NoteTxServicePhotoTest extends PostgresIntegrationTest {
         tx.attachPhotos(saved.id(), day(10), List.of(folderPath(saved, 10, "bag.jpg")));
         flushAndClear();
 
-        tx.replaceEntry(saved.id(), day(10), entry(day(11)),
+        tx.replaceTastingDay(saved.id(), day(10), tastingDay(day(11)),
                 Map.of(folderPath(saved, 10, "bag.jpg"), folderPath(saved, 11, "bag.jpg")));
         flushAndClear();
 
@@ -171,13 +171,13 @@ class NoteTxServicePhotoTest extends PostgresIntegrationTest {
     @DisplayName("D-12 ③: 병합이면 이동처 사진 뒤로 seq를 이어 발급한다 — UNIQUE라 선택이 아니라 제약이다")
     void mergeAppendsPhotosAfterExisting() {
         Note saved = seed();
-        tx.commit(saved.id(), meta(), entry(day(11)), null);
+        tx.commit(saved.id(), meta(), tastingDay(day(11)), null);
         tx.attachPhotos(saved.id(), day(10), List.of(folderPath(saved, 10, "bag.jpg")));
         tx.attachPhotos(saved.id(), day(11), List.of(folderPath(saved, 11, "label.jpg")));
         flushAndClear();
 
         // 이동처에 같은 이름이 없어도 그날 먼저 있던 사진이 앞이다 — 회차 병합과 같은 순서(V-15).
-        tx.replaceEntry(saved.id(), day(10), entry(day(11)),
+        tx.replaceTastingDay(saved.id(), day(10), tastingDay(day(11)),
                 Map.of(folderPath(saved, 10, "bag.jpg"), folderPath(saved, 11, "bag.jpg")));
         flushAndClear();
 
@@ -191,12 +191,12 @@ class NoteTxServicePhotoTest extends PostgresIntegrationTest {
     void mergeRecordsUniquifiedPath() {
         // 날짜 세그먼트만 갈아 끼우면 두 행이 같은 파일을 가리킨다 — 실제 자리는 파일을 옮긴 쪽만 안다.
         Note saved = seed();
-        tx.commit(saved.id(), meta(), entry(day(11)), null);
+        tx.commit(saved.id(), meta(), tastingDay(day(11)), null);
         tx.attachPhotos(saved.id(), day(10), List.of(folderPath(saved, 10, "bag.jpg")));
         tx.attachPhotos(saved.id(), day(11), List.of(folderPath(saved, 11, "bag.jpg")));
         flushAndClear();
 
-        tx.replaceEntry(saved.id(), day(10), entry(day(11)),
+        tx.replaceTastingDay(saved.id(), day(10), tastingDay(day(11)),
                 Map.of(folderPath(saved, 10, "bag.jpg"), folderPath(saved, 11, "bag-2.jpg")));
         flushAndClear();
 
@@ -213,10 +213,10 @@ class NoteTxServicePhotoTest extends PostgresIntegrationTest {
         tx.attachPhotos(saved.id(), day(10), List.of(folderPath(saved, 10, "bag.jpg")));
         flushAndClear();
 
-        NoteDetail moved = tx.replaceEntry(saved.id(), day(10), entry(day(11)),
+        NoteDetail moved = tx.replaceTastingDay(saved.id(), day(10), tastingDay(day(11)),
                 Map.of(folderPath(saved, 10, "bag.jpg"), folderPath(saved, 11, "bag.jpg")));
 
-        assertThat(moved.note().entries()).extracting(Entry::date).containsExactly(day(11));
+        assertThat(moved.note().tastingDays()).extracting(TastingDay::date).containsExactly(day(11));
         assertThat(moved.photosOn()).containsOnlyKeys(day(11));
         assertThat(moved.photosOn().get(day(11))).containsExactly(folderPath(saved, 11, "bag.jpg"));
     }
@@ -241,7 +241,7 @@ class NoteTxServicePhotoTest extends PostgresIntegrationTest {
                 folderPath(saved, 10, "bag.jpg"), folderPath(saved, 10, "label.jpg")));
         flushAndClear();
 
-        tx.replaceEntry(saved.id(), day(10), entry(day(10)), Map.of());
+        tx.replaceTastingDay(saved.id(), day(10), tastingDay(day(10)), Map.of());
         flushAndClear();
 
         assertThat(tx.photoPaths(saved.id())).containsExactly(
@@ -254,15 +254,15 @@ class NoteTxServicePhotoTest extends PostgresIntegrationTest {
     @Test
     @DisplayName("TΔ5a: 상세는 노트와 사진을 함께 준다 — 사진이 (노트, 날짜)로 붙어 엔트리에 실린다")
     void detailCarriesPhotosKeyedByDate() {
-        Note saved = tx.commit(null, meta(), entry(day(10)), Aliases.empty());
-        tx.commit(saved.id(), meta(), entry(day(12)), null);
+        Note saved = tx.commit(null, meta(), tastingDay(day(10)), Aliases.empty());
+        tx.commit(saved.id(), meta(), tastingDay(day(12)), null);
         tx.attachPhotos(saved.id(), day(12),
                 List.of(folderPath(saved, 12, "bag.jpg"), folderPath(saved, 12, "brew.jpg")));
         flushAndClear();
 
         NoteDetail detail = tx.findDetail(saved.id()).orElseThrow();
 
-        assertThat(detail.note().entries()).extracting(Entry::date).containsExactly(day(10), day(12));
+        assertThat(detail.note().tastingDays()).extracting(TastingDay::date).containsExactly(day(10), day(12));
         // 사진 없는 날과 있는 날이 같은 노트 안에 섞인다 — 히어로 선택이 "첫 엔트리"가 아닌 이유다.
         assertThat(detail.photosOn()).containsOnlyKeys(day(12));
         assertThat(detail.photosOn().get(day(12)))
@@ -279,7 +279,7 @@ class NoteTxServicePhotoTest extends PostgresIntegrationTest {
 
         assertThat(detail.photos()).isEmpty();
         assertThat(detail.photosOn()).isEmpty();
-        assertThat(detail.note().entries()).hasSize(1);
+        assertThat(detail.note().tastingDays()).hasSize(1);
     }
 
     @Test
@@ -291,7 +291,7 @@ class NoteTxServicePhotoTest extends PostgresIntegrationTest {
     // ────────────────────────────── 표본·헬퍼 ──────────────────────────────
 
     private Note seed() {
-        return tx.commit(null, meta(), entry(day(10)), Aliases.empty());
+        return tx.commit(null, meta(), tastingDay(day(10)), Aliases.empty());
     }
 
     private static NoteMeta meta() {
@@ -300,8 +300,8 @@ class NoteTxServicePhotoTest extends PostgresIntegrationTest {
                 List.of(), null, null, List.of());
     }
 
-    private static Entry entry(LocalDate date) {
-        return new Entry(date, List.of(new Cup(null, new Review("감상", "감상", Rating.GOOD))),
+    private static TastingDay tastingDay(LocalDate date) {
+        return new TastingDay(date, List.of(new Cup(null, new Review("감상", "감상", Rating.GOOD))),
                 OffsetDateTime.of(2000, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC));
     }
 

@@ -6,7 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Bean;
 import com.devwuu.mocha.domain.Cup;
-import com.devwuu.mocha.domain.Entry;
+import com.devwuu.mocha.domain.TastingDay;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteDetail;
@@ -108,17 +108,17 @@ class NoteServiceTest {
 
         @Test
         @DisplayName("커밋은 draft의 마지막 엔트리를 아래로 넘긴다 — 노트 메타는 id/엔트리를 뺀 나머지")
-        void commitPassesLatestEntryAndMeta() {
+        void commitPassesLatestTastingDayAndMeta() {
             service.commit(draft(null, "커피", "로스터리"), MatchInfo.newNote());
 
-            assertThat(tx.lastEntry.date()).isEqualTo(day(10));
+            assertThat(tx.lastTastingDay.date()).isEqualTo(day(10));
             assertThat(Sourced.valueOrNull(tx.lastMeta.coffeeName())).isEqualTo("커피");
             assertThat(Sourced.valueOrNull(tx.lastMeta.roastery())).isEqualTo("로스터리");
         }
 
         @Test
         @DisplayName("저장할 시음 엔트리가 없으면 트랜잭션을 열기 전에 거부 — 외부 콜도 나가지 않는다")
-        void commitRejectsDraftWithoutEntry() {
+        void commitRejectsDraftWithoutTastingDay() {
             Note empty = new Note(null, new Sourced<>("커피", Source.USER), null, List.of(), null, null,
                     Aliases.empty(), List.of(), List.of(), null, null);
 
@@ -149,7 +149,7 @@ class NoteServiceTest {
 
         // delta D-9: 외부 IO가 없어도 상위 계층이 잡는 타입을 하나로 유지한다(사용자 확정 2026-08-01).
         // 여기서 보는 것은 "인자가 변형 없이 통과하는가"뿐이고, 규칙 자체는 NoteTxService 테스트가 진다.
-        // (replaceEntry는 TΔ5b-2에서 사진 이동을 얹어 위임 한 줄이 아니게 됐다 — 그 몫은 Photos가 본다.)
+        // (replaceTastingDay는 TΔ5b-2에서 사진 이동을 얹어 위임 한 줄이 아니게 됐다 — 그 몫은 Photos가 본다.)
 
         @Test
         @DisplayName("수정·삭제·조회는 트랜잭션 계층에 그대로 위임된다 — 이 계층이 값을 건드리지 않는다")
@@ -160,9 +160,9 @@ class NoteServiceTest {
             service.updateMeta(7, meta);
             assertThat(tx.lastMeta).isSameAs(meta);
 
-            Entry entry = entry();
-            service.replaceEntry(7, day(9), entry);
-            assertThat(tx.lastEntry).isSameAs(entry);
+            TastingDay tastingDay = tastingDay();
+            service.replaceTastingDay(7, day(9), tastingDay);
+            assertThat(tx.lastTastingDay).isSameAs(tastingDay);
             assertThat(tx.lastTargetDate).isEqualTo(day(9));
 
             assertThat(service.findById(7)).isPresent();
@@ -178,7 +178,7 @@ class NoteServiceTest {
             tx.put(saved(7, "커피", "로스터리", Aliases.empty()));
 
             service.updateMeta(7, meta("커피", "로스터리 2호점"));
-            service.replaceEntry(7, day(9), entry());
+            service.replaceTastingDay(7, day(9), tastingDay());
             service.delete(7);
 
             assertThat(aliasGenerator.calls).isEmpty();
@@ -321,9 +321,9 @@ class NoteServiceTest {
                     "photos/7-로스터리-커피/2026-07-09/bag.jpg",
                     "photos/7-로스터리-커피/2026-07-10/bag-2.jpg");
 
-            service.replaceEntry(7, day(9), entry());
+            service.replaceTastingDay(7, day(9), tastingDay());
 
-            assertThat(photoStore.movedEntries)
+            assertThat(photoStore.movedTastingDays)
                     .containsExactly("7-로스터리-커피 2026-07-09 → 2026-07-10");
             // 색인이 계산값이 아니라 파일이 실제로 간 자리를 받는다.
             assertThat(tx.lastMovedPhotoPaths)
@@ -337,9 +337,9 @@ class NoteServiceTest {
             tx.put(saved(7, "커피", "새 로스터리", Aliases.empty()));
             tx.photos.add("photos/7-옛로스터리-커피/2026-07-09/bag.jpg");
 
-            service.replaceEntry(7, day(9), entry());
+            service.replaceTastingDay(7, day(9), tastingDay());
 
-            assertThat(photoStore.movedEntries)
+            assertThat(photoStore.movedTastingDays)
                     .containsExactly("7-옛로스터리-커피 2026-07-09 → 2026-07-10");
         }
 
@@ -349,9 +349,9 @@ class NoteServiceTest {
             tx.put(saved(7, "커피", "로스터리", Aliases.empty()));
             tx.photos.add("photos/7-로스터리-커피/2026-07-10/bag.jpg");
 
-            service.replaceEntry(7, day(10), entry());
+            service.replaceTastingDay(7, day(10), tastingDay());
 
-            assertThat(photoStore.movedEntries).isEmpty();
+            assertThat(photoStore.movedTastingDays).isEmpty();
             assertThat(tx.lastMovedPhotoPaths).isEmpty();
         }
 
@@ -360,9 +360,9 @@ class NoteServiceTest {
         void noIndexedPhotosMeansNoFileIo() {
             tx.put(saved(7, "커피", "로스터리", Aliases.empty()));
 
-            service.replaceEntry(7, day(9), entry());
+            service.replaceTastingDay(7, day(9), tastingDay());
 
-            assertThat(photoStore.movedEntries).isEmpty();
+            assertThat(photoStore.movedTastingDays).isEmpty();
             assertThat(tx.replaces).isOne();
         }
 
@@ -373,7 +373,7 @@ class NoteServiceTest {
             tx.photos.add("photos/7-로스터리-커피/2026-07-09/bag.jpg");
             photoStore.moveFailure = new IllegalStateException("디스크 실패");
 
-            assertThatThrownBy(() -> service.replaceEntry(7, day(9), entry()))
+            assertThatThrownBy(() -> service.replaceTastingDay(7, day(9), tastingDay()))
                     .isInstanceOf(IllegalStateException.class);
 
             // 삼키면 "엔트리는 옮겨졌는데 사진은 옛 날짜"가 조용히 남는다 — 이 task가 고치는 그 상태다.
@@ -415,7 +415,7 @@ class NoteServiceTest {
             tx.put(note);
             Path old = seedCard(note, "2026-07-09-taste-1.jpg");
 
-            service.replaceEntry(7, day(9), entry());
+            service.replaceTastingDay(7, day(9), tastingDay());
 
             assertThat(old).doesNotExist();
         }
@@ -475,8 +475,8 @@ class NoteServiceTest {
         return LocalDate.of(2026, 7, dayOfMonth);
     }
 
-    private static Entry entry() {
-        return new Entry(day(10), List.of(new Cup(null, new Review("감상", "감상", Rating.GOOD))),
+    private static TastingDay tastingDay() {
+        return new TastingDay(day(10), List.of(new Cup(null, new Review("감상", "감상", Rating.GOOD))),
                 OffsetDateTime.parse("2026-07-10T10:00:00+09:00"));
     }
 
@@ -491,14 +491,14 @@ class NoteServiceTest {
     private static Note draft(Long id, String coffeeName, String roastery) {
         NoteMeta meta = meta(coffeeName, roastery);
         return new Note(id, meta.coffeeName(), meta.roastery(), meta.beans(), meta.roastLevel(),
-                meta.officialNotes(), Aliases.empty(), meta.sources(), List.of(entry()), null, null);
+                meta.officialNotes(), Aliases.empty(), meta.sources(), List.of(tastingDay()), null, null);
     }
 
     /** 이미 저장된 노트 — 위임 경로의 조회 대상이 된다. */
     private static Note saved(long id, String coffeeName, String roastery, Aliases aliases) {
         NoteMeta meta = meta(coffeeName, roastery);
         return new Note(id, meta.coffeeName(), meta.roastery(), meta.beans(), meta.roastLevel(),
-                meta.officialNotes(), aliases, meta.sources(), List.of(entry()), null, null);
+                meta.officialNotes(), aliases, meta.sources(), List.of(tastingDay()), null, null);
     }
 
     // ────────────────────────────── fake ──────────────────────────────
@@ -512,7 +512,7 @@ class NoteServiceTest {
         private final Map<Long, Note> notes = new LinkedHashMap<>();
         private Long lastNoteId;
         private NoteMeta lastMeta;
-        private Entry lastEntry;
+        private TastingDay lastTastingDay;
         private LocalDate lastTargetDate;
         private Aliases lastGenerated;
         private Map<String, String> lastMovedPhotoPaths;
@@ -551,10 +551,10 @@ class NoteServiceTest {
         }
 
         @Override
-        public Note commit(Long noteId, NoteMeta meta, Entry entry, Aliases generated) {
+        public Note commit(Long noteId, NoteMeta meta, TastingDay tastingDay, Aliases generated) {
             lastNoteId = noteId;
             lastMeta = meta;
-            lastEntry = entry;
+            lastTastingDay = tastingDay;
             lastGenerated = generated;
             commits++;
             return notes.getOrDefault(noteId, saved(noteId == null ? 1 : noteId,
@@ -572,10 +572,10 @@ class NoteServiceTest {
         }
 
         @Override
-        public NoteDetail replaceEntry(long noteId, LocalDate targetDate, Entry entry,
+        public NoteDetail replaceTastingDay(long noteId, LocalDate targetDate, TastingDay tastingDay,
                                        Map<String, String> movedPhotoPaths) {
             lastTargetDate = targetDate;
-            lastEntry = entry;
+            lastTastingDay = tastingDay;
             lastMovedPhotoPaths = movedPhotoPaths;
             replaces++;
             return detailOf(noteId);

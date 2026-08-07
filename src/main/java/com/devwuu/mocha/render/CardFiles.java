@@ -1,7 +1,7 @@
 package com.devwuu.mocha.render;
 
 import com.devwuu.mocha.domain.Cup;
-import com.devwuu.mocha.domain.Entry;
+import com.devwuu.mocha.domain.TastingDay;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.repository.NoteFolderName;
 
@@ -31,7 +31,7 @@ public final class CardFiles {
      * 종류로 고르는 카드 경로 — 온디맨드 API가 쓴다(TΔ9).
      *
      * <p>{@link CardType#id()}가 곧 파일명 세그먼트라 분기가 형식적으로 보이지만, 두 메서드를 남겨 두는
-     * 것은 산출 쪽({@code bakeEntryCards})이 여전히 파트별로 부르기 때문이다 — 여기서 문자열을 이어
+     * 것은 산출 쪽({@code bakeTastingDayCards})이 여전히 파트별로 부르기 때문이다 — 여기서 문자열을 이어
      * 붙이면 규약이 <i>"이름을 만드는 규칙"</i>과 <i>"이름을 고르는 규칙"</i>으로 갈린다.
      */
     public static Path card(Path artifactDir, Note note, LocalDate date, CardType type, int cupNumber) {
@@ -54,23 +54,23 @@ public final class CardFiles {
      * 엔트리의 기대 카드 경로 전부 — 회차 오름차순, 회차 안에서는 감상 → 레시피.
      * 렌더 산출 순서·재사용 판정("전부 존재")·배달 순서의 기준 집합이다.
      */
-    public static List<Path> expectedCards(Path artifactDir, Note note, Entry entry) {
+    public static List<Path> expectedCards(Path artifactDir, Note note, TastingDay tastingDay) {
         List<Path> expected = new ArrayList<>();
-        List<Cup> cups = entry.cups();
+        List<Cup> cups = tastingDay.cups();
         for (int i = 0; i < cups.size(); i++) {
             int n = i + 1; // 배열 순서 = 회차 번호(ADR-59)
             if (cups.get(i).review() != null) {
-                expected.add(tasteCard(artifactDir, note, entry.date(), n));
+                expected.add(tasteCard(artifactDir, note, tastingDay.date(), n));
             }
             if (cups.get(i).recipe() != null) {
-                expected.add(recipeCard(artifactDir, note, entry.date(), n));
+                expected.add(recipeCard(artifactDir, note, tastingDay.date(), n));
             }
         }
         return expected;
     }
 
     /** 그 엔트리(날짜)의 카드 파일 글롭 — 날짜 이동·회차 감소 시 옛 카드 전부 정리에 쓴다(AC-39). */
-    static String entryCardGlob(LocalDate date) {
+    static String tastingDayCardGlob(LocalDate date) {
         return date + "-*.jpg";
     }
 

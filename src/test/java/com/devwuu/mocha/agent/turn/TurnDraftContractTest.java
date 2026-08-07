@@ -2,7 +2,7 @@ package com.devwuu.mocha.agent.turn;
 
 import com.devwuu.mocha.domain.Bean;
 import com.devwuu.mocha.domain.Cup;
-import com.devwuu.mocha.domain.Entry;
+import com.devwuu.mocha.domain.TastingDay;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.Rating;
@@ -77,7 +77,7 @@ class TurnDraftContractTest {
      */
     private static TurnDraft canonicalDraft() {
         OffsetDateTime timestamp = OffsetDateTime.of(2026, 7, 16, 10, 0, 0, 0, ZoneOffset.ofHours(9));
-        Entry entry = new Entry(LocalDate.of(2026, 7, 16), List.of(new Cup(
+        TastingDay tastingDay = new TastingDay(LocalDate.of(2026, 7, 16), List.of(new Cup(
                 new Recipe("핸드드립", 15.0, 240.0, 220.0, 160.0, 92.0, "210클릭 (매버릭 2.0)",
                         "V60", "40초 뜸 후 3회 분할", "퍽이 물퍽이었음"),
                 new Review("새콤하고 좋았음", "새콤하고 좋았다", Rating.GOOD))), timestamp);
@@ -90,7 +90,7 @@ class TurnDraftContractTest {
                 new Sourced<>("라이트", Source.SEARCH),
                 new Sourced<>(List.of("자스민", "베르가못"), Source.SEARCH),
                 List.of("https://example.test/chelbesa"),
-                List.of(entry),
+                List.of(tastingDay),
                 timestamp, timestamp);
         return new TurnDraft(note, MatchInfo.newNote());
     }

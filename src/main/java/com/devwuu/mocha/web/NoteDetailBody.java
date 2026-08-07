@@ -2,13 +2,14 @@ package com.devwuu.mocha.web;
 
 import com.devwuu.mocha.domain.Bean;
 import com.devwuu.mocha.domain.Cup;
-import com.devwuu.mocha.domain.Entry;
+import com.devwuu.mocha.domain.TastingDay;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteDetail;
 import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.domain.Review;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -48,7 +49,9 @@ public record NoteDetailBody(
         Sourced<String> roastLevel,
         Sourced<List<String>> officialNotes,
         List<String> sources,
-        List<DetailEntry> entries) {
+        // 0030 TΔ5a 임시 조치 — JSON 키는 TΔ6이 옮긴다(도메인 {@code Note}와 같은 이유).
+        @JsonProperty("entries")
+        List<DetailTastingDay> tastingDays) {
 
     /**
      * 날짜별 시음 기록 + <b>그 날의 사진</b>.
@@ -56,7 +59,7 @@ public record NoteDetailBody(
      * 이기 때문이고, 계약 하나로 히어로와 날짜별 스트립이 <b>둘 다</b> 나온다 — 노트 레벨 배열을 따로 두면
      * 같은 사진이 두 자리에 실린다.
      */
-    public record DetailEntry(LocalDate date, List<DetailCup> cups, List<Photo> photos) {
+    public record DetailTastingDay(LocalDate date, List<DetailCup> cups, List<Photo> photos) {
     }
 
     /** 저장된 회차 1개 — 레시피·감상 중 최소 하나는 non-null이다(V-15). */
@@ -82,15 +85,15 @@ public record NoteDetailBody(
                 note.roastLevel(),
                 note.officialNotes(),
                 note.sources(),
-                note.entries().stream()
-                        .map(entry -> toDetailEntry(entry, photosByDate.getOrDefault(entry.date(), List.of())))
+                note.tastingDays().stream()
+                        .map(tastingDay -> toDetailTastingDay(tastingDay, photosByDate.getOrDefault(tastingDay.date(), List.of())))
                         .toList());
     }
 
-    private static DetailEntry toDetailEntry(Entry entry, List<String> paths) {
-        return new DetailEntry(
-                entry.date(),
-                entry.cups().stream().map(NoteDetailBody::toDetailCup).toList(),
+    private static DetailTastingDay toDetailTastingDay(TastingDay tastingDay, List<String> paths) {
+        return new DetailTastingDay(
+                tastingDay.date(),
+                tastingDay.cups().stream().map(NoteDetailBody::toDetailCup).toList(),
                 paths.stream().map(PhotoUrl::of).filter(Objects::nonNull).map(Photo::new).toList());
     }
 

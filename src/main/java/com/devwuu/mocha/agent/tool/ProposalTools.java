@@ -5,7 +5,7 @@ import com.devwuu.mocha.agent.tool.validation.ToolValidation;
 import com.devwuu.mocha.agent.turn.TurnDraft;
 import com.devwuu.mocha.agent.turn.TurnProposalSink;
 import com.devwuu.mocha.agent.turn.TurnUserMessage;
-import com.devwuu.mocha.domain.Entry;
+import com.devwuu.mocha.domain.TastingDay;
 import com.devwuu.mocha.domain.MatchInfo;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.Sourced;
@@ -193,7 +193,7 @@ class ProposalTools {
         }
 
         OffsetDateTime now = OffsetDateTime.now(clock);
-        Entry entry = new Entry(proposal.targetDate(), proposal.cups(), now);
+        TastingDay tastingDay = new TastingDay(proposal.targetDate(), proposal.cups(), now);
         // POLICY: 제안 노트의 식별자는 기존 노트면 그 id, 신규면 null이다 — id는 INSERT가 발급하므로 저장 전
         //         draft가 식별자를 가질 방법이 없고, 이 null이 그대로 커밋의 신규/기존 분기가 된다
         //         (ref: changes/0028 D-1, ADR-75 — 구 recordSlug 대체키 발급은 근거와 함께 소멸했다).
@@ -203,7 +203,7 @@ class ProposalTools {
                 match.noteId(),
                 proposal.meta().coffeeName(), proposal.meta().roastery(), proposal.meta().beans(),
                 proposal.meta().roastLevel(), proposal.meta().officialNotes(),
-                proposal.meta().sources(), List.of(entry), now, now);
+                proposal.meta().sources(), List.of(tastingDay), now, now);
 
         // POLICY: 제안의 효과는 결과를 수거함에 싣는 것까지다 — 서버 상태(노트·pending)를 쓰지 않는다.
         //         저장(커밋)은 사용자 확정만 하고, 작성 중 데이터는 클라이언트 폼이 소유한다
@@ -244,8 +244,8 @@ class ProposalTools {
     private static String editTargetRejection(Note target, MatchInfo match, RecordProposal proposal) {
         // 대상 엔트리가 실존해야 한다 — 없는 날짜를 고치겠다는 제안은 PATCH 단계에서 404로 죽고, 그때는
         // 사용자가 [저장]을 누른 뒤라 정정할 자리가 없다. 루프 안에서 되돌린다.
-        boolean hasEntry = target.entries().stream().anyMatch(entry -> match.date().equals(entry.date()));
-        if (!hasEntry) {
+        boolean hasTastingDay = target.tastingDays().stream().anyMatch(tastingDay -> match.date().equals(tastingDay.date()));
+        if (!hasTastingDay) {
             return "노트 " + match.noteId() + "에 " + match.date() + " 기록이 없다 — get_note로 실제 엔트리 "
                     + "날짜를 확인하고 고칠 날짜를 다시 지목해라. 새로 마신 것을 더하는 것이라면 "
                     + "match.type=existing이다.";

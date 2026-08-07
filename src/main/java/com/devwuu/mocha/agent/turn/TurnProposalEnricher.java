@@ -121,7 +121,7 @@ public class TurnProposalEnricher {
                 fillNotes(note.officialNotes(), result.officialNotes()),
                 note.aliases(),
                 mergeSources(note.sources(), result.sources()),
-                note.entries(),
+                note.tastingDays(),
                 note.createdAt(),
                 note.updatedAt());
     }

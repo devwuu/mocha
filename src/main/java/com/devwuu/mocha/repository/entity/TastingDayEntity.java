@@ -10,7 +10,7 @@ import jakarta.persistence.Table;
 import java.time.LocalDate;
 
 /**
- * {@code entry} 테이블 매핑 — 날짜별 시음 기록 = 버전 (ref: data-model.md#2.2, FR-15).
+ * {@code tasting_day} 테이블 매핑 — 날짜별 시음 기록 = 버전 (ref: data-model.md#2.2, FR-15).
  * <p>{@code tasted_on}은 {@code date} 타입이라 형식 위반(V-3)을 DB가 거르고, {@code UNIQUE(note_id, tasted_on)}이
  * "노트 안에서 날짜가 유일 키"(V-10)를 제약으로 강제한다 — 구현체가 매번 검사하던 규칙이 스키마로 내려간 자리다.
  *
@@ -24,8 +24,8 @@ import java.time.LocalDate;
  * 추가한다"</i>로 남겨 둔 자리다(루트 CLAUDE.md §4).
  */
 @Entity
-@Table(name = "entry")
-public class EntryEntity extends BaseEntity {
+@Table(name = "tasting_day")
+public class TastingDayEntity extends BaseEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -34,19 +34,19 @@ public class EntryEntity extends BaseEntity {
     @Column(name = "note_id", nullable = false)
     private Long noteId;
 
-    // V-3: 시각은 수집하지 않는다(Q-1) — 도메인 Entry.date(LocalDate)와 같은 정밀도다.
+    // V-3: 시각은 수집하지 않는다(Q-1) — 도메인 TastingDay.date(LocalDate)와 같은 정밀도다.
     @Column(name = "tasted_on", nullable = false)
     private LocalDate tastedOn;
 
-    // 감사 컬럼 4종(Q-5)은 BaseEntity가 소유한다 — modifiedAt이 도메인 Entry.updatedAt을 겸한다.
+    // 감사 컬럼 4종(Q-5)은 BaseEntity가 소유한다 — modifiedAt이 도메인 TastingDay.updatedAt을 겸한다.
 
-    // 회차 컬렉션은 여기 없다 — cup는 entry_id로 각자 서 있고, 조립과 seq 오름차순 정렬은 질의가 소유한다.
+    // 회차 컬렉션은 여기 없다 — cup는 tasting_day_id로 각자 서 있고, 조립과 seq 오름차순 정렬은 질의가 소유한다.
 
-    protected EntryEntity() {
+    protected TastingDayEntity() {
         // JPA 전용.
     }
 
-    public EntryEntity(Long noteId, LocalDate tastedOn) {
+    public TastingDayEntity(Long noteId, LocalDate tastedOn) {
         this.noteId = noteId;
         this.tastedOn = tastedOn;
     }

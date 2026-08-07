@@ -2,7 +2,7 @@ package com.devwuu.mocha.service;
 
 import com.devwuu.mocha.domain.Aliases;
 import com.devwuu.mocha.domain.Cup;
-import com.devwuu.mocha.domain.Entry;
+import com.devwuu.mocha.domain.TastingDay;
 import com.devwuu.mocha.domain.Note;
 import com.devwuu.mocha.domain.NoteCandidate;
 import com.devwuu.mocha.domain.NoteCursor;
@@ -15,7 +15,7 @@ import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.repository.NoteEntityMapper;
 import com.devwuu.mocha.repository.NoteFolderName;
 import com.devwuu.mocha.repository.entity.CupEntity;
-import com.devwuu.mocha.repository.entity.EntryEntity;
+import com.devwuu.mocha.repository.entity.TastingDayEntity;
 import com.devwuu.mocha.repository.entity.NoteEntity;
 import com.devwuu.mocha.repository.entity.NotePhotoEntity;
 import com.devwuu.mocha.repository.entity.RecipeEntity;
@@ -47,7 +47,7 @@ import java.util.stream.Stream;
  * <ul>
  *   <li><b>V-9</b> 커피명 불변 — 저장된 값과 대조하고 다르면 거부({@link #updateMeta})</li>
  *   <li><b>V-10</b> 개정본(D-12) 날짜 이동 시 이동처와 <b>회차 병합</b> = 엔트리 총수 1 감소, 사진 색인
- *       동반 이동({@link #replaceEntry})</li>
+ *       동반 이동({@link #replaceTastingDay})</li>
  *   <li><b>V-13</b> 관측 표기 축적 — 기존 별칭을 읽어 더할 것만 계산({@link #commit})</li>
  *   <li><b>ADR-4·59</b> 같은 날짜는 갱신만(하루 2엔트리 금지, AC-14), 엔트리 통째 교체</li>
  *   <li>대상 소실 검사 — 쓰기를 시작하기 전에 던져 부분 반영을 남기지 않는다</li>
@@ -168,10 +168,10 @@ public class NoteTxService {
     /**
      * 폼 확정 저장 — 날짜 엔트리 병합 (ref: plan.md#ADR-4·37·59, changes/0016, AC-4).
      * <ul>
-     *   <li>{@code noteId}가 {@code null}이면 {@code meta}로 새 노트를 만들고 {@code entry}를 첫 엔트리로 둔다
+     *   <li>{@code noteId}가 {@code null}이면 {@code meta}로 새 노트를 만들고 {@code tasting_day}를 첫 엔트리로 둔다
      *       — id는 INSERT가 발급하므로 저장 전 draft는 식별자를 갖지 않는다(0028 D-1).</li>
      *   <li>있으면 같은 date 엔트리는 갱신(엔트리 통째 교체), 다른 date는 추가 후 날짜 오름차순 정렬한다.</li>
-     *   <li>같은 date 갱신에서 회차 append·기존 회차 지칭 병합은 에이전트가 구성한 {@code entry.cups}
+     *   <li>같은 date 갱신에서 회차 append·기존 회차 지칭 병합은 에이전트가 구성한 {@code tastingDay.cups}
      *       배열(V-15 검증 통과분)을 신뢰한다 — 서버는 회차 단위 병합을 하지 않는다(changes/0021 ADR-59).</li>
      * </ul>
      * POLICY: 같은 날짜 엔트리는 갱신만 — 하루 2엔트리 금지, 다회 시도는 cups 회차로
@@ -191,16 +191,16 @@ public class NoteTxService {
      * @return 저장된 최종 노트.
      */
     @Transactional
-    public Note commit(Long noteId, NoteMeta meta, Entry entry, Aliases generated) {
+    public Note commit(Long noteId, NoteMeta meta, TastingDay tastingDay, Aliases generated) {
         if (noteId == null) {
-            return insert(newNote(meta, entry, generated));
+            return insert(newNote(meta, tastingDay, generated));
         }
         // 소실은 조용히 신규 생성으로 흡수하지 않는다 — 그러면 매칭이 지목한 노트와 별개의 중복 노트가
         // 생기고 사진·카드가 두 id로 갈린다. FK가 없어 DB가 막아주지 않는 자리다(ADR-75).
         Note existing = findById(noteId)
                 .orElseThrow(() -> new IllegalStateException("병합 대상 노트 소실: " + noteId));
 
-        replaceEntryRows(noteId, entry);
+        replaceTastingDayRows(noteId, tastingDay);
         notes.insertAll(NoteEntityMapper.toAliasEntities(
                 noteId, generated != null ? generated : accumulated(existing, meta)));
         return reload(noteId);
@@ -245,37 +245,37 @@ public class NoteTxService {
         notes.insertAll(NoteEntityMapper.toOfficialNoteEntities(noteId, note.officialNotes()));
         notes.insertAll(NoteEntityMapper.toAliasEntities(noteId, note.aliases()));
         notes.insertAll(NoteEntityMapper.toSourceEntities(noteId, note.sources()));
-        for (Entry entry : note.entries()) {
-            insertEntry(noteId, entry);
+        for (TastingDay tastingDay : note.tastingDays()) {
+            insertTastingDay(noteId, tastingDay);
         }
         return reload(noteId);
     }
 
     /** 신규 노트 — 식별자·타임스탬프는 저장이 발급하므로 비워 둔다({@link #insert} 계약). */
-    private static Note newNote(NoteMeta meta, Entry entry, Aliases aliases) {
+    private static Note newNote(NoteMeta meta, TastingDay tastingDay, Aliases aliases) {
         return new Note(
                 null, meta.coffeeName(), meta.roastery(), meta.beans(), meta.roastLevel(),
                 meta.officialNotes(), aliases == null ? Aliases.empty() : aliases, meta.sources(),
-                List.of(entry), null, null);
+                List.of(tastingDay), null, null);
     }
 
     // POLICY: seq = 회차 번호. 구 스키마의 "배열 순서 = 회차 번호(별도 필드 없음)"를 컬럼으로 명시한다 —
     //         직렬화가 어긋나면 회차가 뒤섞이고 탐지할 방법이 없던 암묵 순서 의존이 여기서 사라진다
     //         (ref: data-model.md#2.2, changes/0028-rdb-storage/delta.md#동기, AC-Δ4).
-    private void insertEntry(long noteId, Entry entry) {
-        long entryId = notes.insertAndFlush(NoteEntityMapper.toEntryEntity(noteId, entry)).getId();
-        insertCups(entryId, entry.cups());
+    private void insertTastingDay(long noteId, TastingDay tastingDay) {
+        long tastingDayId = notes.insertAndFlush(NoteEntityMapper.toTastingDayEntity(noteId, tastingDay)).getId();
+        insertCups(tastingDayId, tastingDay.cups());
     }
 
-    private void insertCups(long entryId, List<Cup> cups) {
-        appendCups(entryId, cups, 0);
+    private void insertCups(long tastingDayId, List<Cup> cups) {
+        appendCups(tastingDayId, cups, 0);
     }
 
     // 시작 seq를 받는 것은 날짜 이동 병합 하나 때문이다 — 그때만 이동처의 기존 회차 뒤로 이어 붙는다(D-12).
-    private void appendCups(long entryId, List<Cup> cups, int startSeq) {
+    private void appendCups(long tastingDayId, List<Cup> cups, int startSeq) {
         for (int i = 0; i < cups.size(); i++) {
             int seq = startSeq + i;
-            long cupId = notes.insertAndFlush(new CupEntity(entryId, seq)).getId();
+            long cupId = notes.insertAndFlush(new CupEntity(tastingDayId, seq)).getId();
             Cup cup = cups.get(i);
             // 레시피·감상이 없는 회차는 행을 만들지 않는다 — 1:1 짝은 cup_id PK 공유로만 표현된다(V-15).
             RecipeEntity recipe = NoteEntityMapper.toRecipeEntity(cupId, cup.recipe());
@@ -286,9 +286,9 @@ public class NoteTxService {
 
     // 행 재사용이 아니라 삭제 후 재삽입인 것은 "통째 교체"의 직역이다 — 엔트리에는 필드 단위 갱신 개념이
     // 없어 수정 메서드도 두지 않았다(0028 TΔ3b). 날짜 오름차순 정렬은 조회 질의가 소유한다(재정렬하지 않는다).
-    private void replaceEntryRows(long noteId, Entry entry) {
-        notes.findEntryId(noteId, entry.date()).ifPresent(notes::deleteEntry);
-        insertEntry(noteId, entry);
+    private void replaceTastingDayRows(long noteId, TastingDay tastingDay) {
+        notes.findTastingDayId(noteId, tastingDay.date()).ifPresent(notes::deleteTastingDay);
+        insertTastingDay(noteId, tastingDay);
     }
 
     // ────────────────────────────── 사진 색인 ──────────────────────────────
@@ -358,7 +358,7 @@ public class NoteTxService {
      * <p><b>돌려주는 것은 노트 전문 + 사진이다</b>(TΔ5b-3) — 쓰기 직후의 최종 상태를 <b>같은 트랜잭션
      * 안에서</b> 읽는다. 나눠 부르면 그 사이의 저장이 "엔트리는 새 날짜인데 사진은 옛 목록"인 조합을
      * 만든다는 {@link NoteDetail}의 근거가 쓰기 뒤에도 그대로 걸린다. 메타 수정은 사진을 옮기지 않지만
-     * {@link #replaceEntry}는 옮기므로, 두 쓰기의 반환형을 갈라 둘 이유가 없다.
+     * {@link #replaceTastingDay}는 옮기므로, 두 쓰기의 반환형을 갈라 둘 이유가 없다.
      *
      * @throws IllegalArgumentException 커피명 변경 시도(V-9).
      * @throws IllegalStateException    대상 노트 소실 시(호출부가 안내로 수렴, plan §7).
@@ -393,10 +393,10 @@ public class NoteTxService {
     }
 
     /**
-     * 엔트리 교체 — {@code targetDate} 엔트리의 회차를 {@code entry}의 것으로 갈아끼우고, 필요하면 날짜를
+     * 엔트리 교체 — {@code targetDate} 엔트리의 회차를 {@code tasting_day}의 것으로 갈아끼우고, 필요하면 날짜를
      * 옮긴다 (ref: plan.md#ADR-27·ADR-59, V-10 개정본, changes/0029 delta.md#D-12).
      * <ul>
-     *   <li>{@code entry.date()}가 {@code targetDate}와 다르면 날짜 이동 — 이동처 date가 <b>비어 있으면</b>
+     *   <li>{@code tastingDay.date()}가 {@code targetDate}와 다르면 날짜 이동 — 이동처 date가 <b>비어 있으면</b>
      *       {@code tasted_on} 갱신이고, <b>이미 기록이 있으면</b> 그날의 회차 뒤로 합친다(엔트리 총수 1 감소).
      *       날짜 오름차순 정렬은 유지된다.</li>
      *   <li>이동처가 빈 경우 엔트리 <b>행은 살아남는다</b> — 삭제 후 재삽입이 아니라 {@code tasted_on}
@@ -410,7 +410,7 @@ public class NoteTxService {
      * 0개 엔트리를 드롭할 수 있어(V-15) 도메인으로 판정하면 <b>행은 있는데 소실로 보이는</b> 갈래가 생긴다
      * — 고칠 대상이 무엇인지는 행이 답한다.
      *
-     * <p>갈래에 따라 대상 엔트리를 <b>다른 접근자로</b> 집는 것은 {@code findEntryId}·{@code findEntry}의
+     * <p>갈래에 따라 대상 엔트리를 <b>다른 접근자로</b> 집는 것은 {@code findTastingDayId}·{@code findTastingDay}의
      * 계약 그대로다: 병합에서 원본은 <b>지울 것</b>이고(id만), 그 밖에서는 <b>고칠 것</b>이다(관리되는 엔티티).
      *
      * <p><b>사진 색인이 같은 트랜잭션에서 따라온다</b>(TΔ5b-2, D-12 ③) — {@code note_photo}의 참조 축이
@@ -418,30 +418,30 @@ public class NoteTxService {
      * 갈라 두면 <i>"엔트리는 옮겨졌는데 사진은 안 옮겨진"</i> 중간 상태가 커밋될 수 있어 한 경계 안이다.
      *
      * @param movedPhotoPaths 파일 이동이 실제로 만든 {@code 옛 경로 → 새 경로}
-     *                        ({@code PhotoStore.moveEntryPhotos}의 반환값). 날짜가 그대로거나 옮긴 사진이
+     *                        ({@code PhotoStore.moveTastingDayPhotos}의 반환값). 날짜가 그대로거나 옮긴 사진이
      *                        없으면 빈 맵. <b>계산하지 않고 받는</b> 이유는 병합에서 파일명이 유일화로
      *                        바뀌기 때문이다 — 실제 자리는 파일을 옮긴 쪽만 안다.
      * @throws IllegalStateException 대상 노트 또는 {@code targetDate} 엔트리 소실 시
      *                               (호출부가 안내로 수렴, plan §7).
      */
     @Transactional
-    public NoteDetail replaceEntry(long noteId, LocalDate targetDate, Entry entry,
+    public NoteDetail replaceTastingDay(long noteId, LocalDate targetDate, TastingDay tastingDay,
                                    Map<String, String> movedPhotoPaths) {
         if (notes.findById(noteId).isEmpty()) {
             throw new IllegalStateException("수정 대상 노트 소실: " + noteId);
         }
-        LocalDate movedTo = entry.date();
+        LocalDate movedTo = tastingDay.date();
         Optional<Long> collision = movedTo.equals(targetDate)
                 ? Optional.empty()
-                : notes.findEntryId(noteId, movedTo);
+                : notes.findTastingDayId(noteId, movedTo);
 
         if (collision.isPresent()) {
-            mergeIntoExisting(collision.get(), requireEntryId(noteId, targetDate), entry.cups());
+            mergeIntoExisting(collision.get(), requireTastingDayId(noteId, targetDate), tastingDay.cups());
         } else {
-            EntryEntity target = notes.findEntry(noteId, targetDate)
-                    .orElseThrow(() -> missingEntry(noteId, targetDate));
+            TastingDayEntity target = notes.findTastingDay(noteId, targetDate)
+                    .orElseThrow(() -> missingTastingDay(noteId, targetDate));
             target.updateTastedOn(movedTo);
-            replaceCups(target.getId(), entry.cups());
+            replaceCups(target.getId(), tastingDay.cups());
         }
         if (!movedTo.equals(targetDate)) {
             movePhotoRows(noteId, targetDate, movedTo, movedPhotoPaths);
@@ -486,15 +486,15 @@ public class NoteTxService {
     // UNIQUE(note_id, tasted_on)를 지나지 않는다는 점도 갈린다: 병합에는 tasted_on UPDATE가 없어
     // 중간 상태 자체가 생기지 않는다(무충돌 이동만이 그 순서를 지는 갈래다).
     private void mergeIntoExisting(long destinationId, long sourceId, List<Cup> cups) {
-        notes.deleteEntry(sourceId);
+        notes.deleteTastingDay(sourceId);
         appendCups(destinationId, cups, (int) notes.countCups(destinationId));
     }
 
-    private long requireEntryId(long noteId, LocalDate targetDate) {
-        return notes.findEntryId(noteId, targetDate).orElseThrow(() -> missingEntry(noteId, targetDate));
+    private long requireTastingDayId(long noteId, LocalDate targetDate) {
+        return notes.findTastingDayId(noteId, targetDate).orElseThrow(() -> missingTastingDay(noteId, targetDate));
     }
 
-    private static IllegalStateException missingEntry(long noteId, LocalDate targetDate) {
+    private static IllegalStateException missingTastingDay(long noteId, LocalDate targetDate) {
         return new IllegalStateException("수정 대상 엔트리 소실: " + noteId + " " + targetDate);
     }
 
@@ -502,11 +502,11 @@ public class NoteTxService {
      * 회차 통째 교체 — 엔트리 행은 살려 두고 그 아래만 갈아끼운다.
      *
      * <p>회차에는 필드 단위 갱신 개념이 없다(ADR-59 — 서버는 회차 단위 병합을 하지 않고 에이전트가 구성한
-     * 배열을 신뢰한다). 삭제가 벌크라 즉시 나가므로 {@code UNIQUE(entry_id, seq)}가 새 회차보다 먼저 풀린다.
+     * 배열을 신뢰한다). 삭제가 벌크라 즉시 나가므로 {@code UNIQUE(tasting_day_id, seq)}가 새 회차보다 먼저 풀린다.
      */
-    private void replaceCups(long entryId, List<Cup> cups) {
-        notes.deleteCups(entryId);
-        insertCups(entryId, cups);
+    private void replaceCups(long tastingDayId, List<Cup> cups) {
+        notes.deleteCups(tastingDayId);
+        insertCups(tastingDayId, cups);
     }
 
     // ────────────────────────────── 삭제 ──────────────────────────────
@@ -530,7 +530,7 @@ public class NoteTxService {
      * ({@code deleteNote})이 통째로 진다 — 쓰기 3종 중 유일하게 도메인을 지나지 않는 경로다.
      *
      * <p><b>지울 노트를 읽지 않는다.</b> 존재를 먼저 확인하면 그 노트가 영속성 컨텍스트에 실리고, 뒤이은
-     * 벌크 삭제는 컨텍스트를 모르므로 <b>이미 지운 행의 살아 있는 사본</b>이 남는다({@code findEntryId}가
+     * 벌크 삭제는 컨텍스트를 모르므로 <b>이미 지운 행의 살아 있는 사본</b>이 남는다({@code findTastingDayId}가
      * 엔티티가 아니라 id만 돌려주는 것과 같은 이유). 없는 id는 아무 행도 지우지 못할 뿐이다.
      *
      * @return 노트 행이 실제로 지워졌으면 {@code true}, 없는 id였으면 {@code false}.
