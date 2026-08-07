@@ -50,7 +50,7 @@ class ProposalTools {
     private static final String RATING_SCHEMA = """
             {"type":["string","null"],"enum":["완전 내스타일","맛있다","맛은 있는데 내스타일은 아님","맛이 없다",null],
              "description":"4범주 평가 — 미언급이면 null(V-1)"}""";
-    private static final String TASTING_SCHEMA = """
+    private static final String REVIEW_SCHEMA = """
             {"type":["object","null"],"description":"그 회차의 맛 감상 — 감상 없는 시도면 null(V-15). 맛 감상·평가는 여기, 추출 관찰·진단·계획은 recipe.feedback에(ADR-59 분리 규칙)","properties":{
               "my_taste":{"type":"string","description":"내 느낌 — 한국어 음슴체 정규화본(ADR-30), 키워드화 금지"},
               "my_taste_original":{"type":["string","null"],"description":"말한 그대로의 감상 원문 — my_taste와 함께 채운다(V-11)"},
@@ -78,10 +78,10 @@ class ProposalTools {
                     sourcedSchema("원산지·품종 등을 묶은 자유 텍스트(한국어 표기) — 품종은 알면 포함", true),
                     sourcedSchema("그 원두의 가공방식(한국어 관용 표기) — 모르면 null", true));
     private static final String BREW_SCHEMA = """
-            {"type":"object","description":"회차 1개(한 번 내려 마신 단위) — recipe·tasting 중 최소 하나를 채운다(V-15)","properties":{
+            {"type":"object","description":"회차 1개(한 번 내려 마신 단위) — recipe·review 중 최소 하나를 채운다(V-15)","properties":{
               "recipe":%s,
-              "tasting":%s
-            },"required":["recipe","tasting"],"additionalProperties":false}""".formatted(RECIPE_SCHEMA, TASTING_SCHEMA);
+              "review":%s
+            },"required":["recipe","review"],"additionalProperties":false}""".formatted(RECIPE_SCHEMA, REVIEW_SCHEMA);
 
     private static final String PROPOSE_RECORD_SCHEMA = """
             {"type":"object","properties":{

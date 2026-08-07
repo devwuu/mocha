@@ -167,20 +167,20 @@ class NoteEntityMapperTest {
     }
 
     @Test
-    @DisplayName("TΔ3c: 회차의 recipe·tasting 한쪽만 있는 경우 — 행 미생성으로 표현된다")
+    @DisplayName("TΔ3c: 회차의 recipe·review 한쪽만 있는 경우 — 행 미생성으로 표현된다")
     void brewWithOnlyOneSide() {
         Brew recipeOnly = new Brew(new Recipe(null, 15.0, null, null, null, null, null, null, null, null), null);
-        Brew tastingOnly = new Brew(null, new Review("맛있었음", "맛있었음", Rating.PERFECT));
+        Brew reviewOnly = new Brew(null, new Review("맛있었음", "맛있었음", Rating.PERFECT));
 
         assertThat(NoteEntityMapper.toReviewEntity(1L, recipeOnly.review())).isNull();
-        assertThat(NoteEntityMapper.toRecipeEntity(2L, tastingOnly.recipe())).isNull();
+        assertThat(NoteEntityMapper.toRecipeEntity(2L, reviewOnly.recipe())).isNull();
 
         assertThat(NoteEntityMapper.toBrew(
                 NoteEntityMapper.toRecipeEntity(1L, recipeOnly.recipe()),
                 NoteEntityMapper.toReviewEntity(1L, recipeOnly.review()))).isEqualTo(recipeOnly);
         assertThat(NoteEntityMapper.toBrew(
-                NoteEntityMapper.toRecipeEntity(2L, tastingOnly.recipe()),
-                NoteEntityMapper.toReviewEntity(2L, tastingOnly.review()))).isEqualTo(tastingOnly);
+                NoteEntityMapper.toRecipeEntity(2L, reviewOnly.recipe()),
+                NoteEntityMapper.toReviewEntity(2L, reviewOnly.review()))).isEqualTo(reviewOnly);
     }
 
     @Test

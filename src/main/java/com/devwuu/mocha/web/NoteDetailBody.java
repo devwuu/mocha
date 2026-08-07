@@ -10,8 +10,6 @@ import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.domain.Review;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
-
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -62,11 +60,7 @@ public record NoteDetailBody(
     }
 
     /** 저장된 회차 1개 — 레시피·감상 중 최소 하나는 non-null이다(V-15). */
-    public record DetailBrew(
-            Recipe recipe,
-            // 임시: JSON 키는 TΔ2가 옮긴다 — 계약 스냅샷·프론트를 개명 한복판에서 깨지 않기 위한 조치다
-            //       (ref: changes/0030 tasks.md TΔ1·TΔ2).
-            @JsonProperty("tasting") DetailReview review) {
+    public record DetailBrew(Recipe recipe, DetailReview review) {
     }
 
     /** 저장된 감상 — <b>원문이 없다</b>(위 절단 셋). */

@@ -39,7 +39,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * 회차(brews) 규칙·수치 정규화·다중 날짜 순차 제안(ADR-59·61, FR-15/18/22)이 실 에이전트 루프에서
  * 지켜지는지 관측한다.
  * <ul>
- *   <li>AC-74·75: {@code ideas/sample.md} 07-18 발화 → 회차 2개, 시도별 레시피·feedback과 맛 감상(tasting) 분리</li>
+ *   <li>AC-74·75: {@code ideas/sample.md} 07-18 발화 → 회차 2개, 시도별 레시피·feedback과 맛 감상(review) 분리</li>
  *   <li>AC-66·76: grind {@code "210클릭 (매버릭 2.0)"} 형식, "10ml정도"→10·"2분 40초"→160 number 정규화</li>
  *   <li>AC-Δ2(AC-77 개정): 두 날짜(07-18·07-19) 발화 + 세그먼트 컨텍스트 → 이른 날짜(07-18) 제안 +
  *       나머지(07-19) "저장 후 이어서" 안내. 세그먼트 부재(분해 실패 폴백) 턴은 제안 미생성 + 분리 안내</li>
@@ -57,7 +57,7 @@ class BrewRulesSmokeTest {
     @Test
     void printsBrewSplitForSampleTwoAttemptUtterance() throws Exception {
         // 기대: brews 요소 2개 — 각 회차에 그 시도의 recipe(도징·클릭·추출량)와 feedback(퍽·크레마 관찰·다음 계획),
-        //       맛 코멘트(라떼 지방맛·단맛·개맛있다)는 1회차 tasting으로. 마시는 방식(진하게/연하게/라떼)은 회차 분리 ❌.
+        //       맛 코멘트(라떼 지방맛·단맛·개맛있다)는 1회차 review으로. 마시는 방식(진하게/연하게/라떼)은 회차 분리 ❌.
         runProposalSmoke("BREW SPLIT (AC-74·75)", sampleSection0718(), null);
     }
 

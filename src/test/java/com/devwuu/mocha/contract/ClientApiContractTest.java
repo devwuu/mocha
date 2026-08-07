@@ -105,6 +105,23 @@ class ClientApiContractTest {
     }
 
     @Test
+    @DisplayName("0030 TΔ2/AC-Δ2: 계약 어디에도 tasting 키가 없다 — 중첩 어느 깊이에서도(개명은 계약 표면까지 간다)")
+    void tastingAppearsNowhereInTheClientContracts() throws IOException {
+        // 개명(ADR-85)의 완료 지점은 서버 내부가 아니라 «클라이언트가 무엇을 보는가»다. TΔ1이 임시로
+        // 붙들어 뒀던 @JsonProperty("tasting") 2곳을 TΔ2가 걷어냈고, 그 잔재가 어느 계약 파일에라도
+        // 남으면 여기서 레드가 된다 — 프론트는 계약 파일을 먼저 보고 짜므로 조용히 갈라질 자리다.
+        for (String contract : List.of(TURN_DRAFT_SNAPSHOT, AGENT_TURN_CONTRACT, NOTE_COMMIT_CONTRACT,
+                NOTE_DETAIL_CONTRACT, NOTE_UPDATE_CONTRACT, NOTE_LIST_CONTRACT, NOTE_CANDIDATES_CONTRACT)) {
+            assertThat(keysAnywhere(load(contract)))
+                    .as("%s 에 구 어휘 tasting 키가 남아 있다", contract)
+                    .doesNotContain("tasting");
+        }
+        // 새 이름이 실제로 그 자리를 대신하는지도 함께 본다 — 「없다」만으로는 키가 통째로 사라진 경우와
+        // 갈리지 않는다(TΔ1의 RENAMED_AWAY 단언과 같은 짝).
+        assertThat(keysAnywhere(load(NOTE_DETAIL_CONTRACT))).contains("review");
+    }
+
+    @Test
     @DisplayName("TΔ10: 턴 요청 본문 = {utterance, draft, photos}, draft는 첫 턴에 null — 폼이 없으면 보낼 것이 없다")
     void turnRequestCarriesUtteranceAndOptionalDraft() throws IOException {
         JsonNode contract = load(AGENT_TURN_CONTRACT);
@@ -284,7 +301,7 @@ class ClientApiContractTest {
         // 노트마다 따라오고 결과의 대부분이 버려진다(TΔ7 NoteCandidate와 같은 판단).
         assertThat(keysAnywhere(load(NOTE_LIST_CONTRACT)))
                 .as("목록 계약에 3단 중첩이 실려 나간다")
-                .doesNotContain("entries", "brews", "recipe", "tasting", "aliases");
+                .doesNotContain("entries", "brews", "recipe", "review", "aliases");
     }
 
     @Test
@@ -537,16 +554,16 @@ class ClientApiContractTest {
         List<String> ratings = Arrays.stream(Rating.values()).map(Rating::label).toList();
 
         load(NOTE_DETAIL_CONTRACT).get("response").get("entries").forEach(entry -> entry.get("brews").forEach(brew -> {
-            assertThat(fieldNames(brew)).containsExactly("recipe", "tasting");
-            assertThat(brew.get("recipe").isNull() && brew.get("tasting").isNull())
+            assertThat(fieldNames(brew)).containsExactly("recipe", "review");
+            assertThat(brew.get("recipe").isNull() && brew.get("review").isNull())
                     .as("둘 다 null인 회차는 저장되지 않는다(V-15) — 예시에 있으면 화면이 없는 상태를 그리게 된다")
                     .isFalse();
-            JsonNode tasting = brew.get("tasting");
-            if (!tasting.isNull()) {
+            JsonNode review = brew.get("review");
+            if (!review.isNull()) {
                 // 원문 절단의 결과 — 저장된 감상은 {my_taste, rating} 둘뿐이다.
-                assertThat(fieldNames(tasting)).containsExactly("my_taste", "rating");
-                if (!tasting.get("rating").isNull()) {
-                    assertThat(ratings).contains(tasting.get("rating").stringValue());
+                assertThat(fieldNames(review)).containsExactly("my_taste", "rating");
+                if (!review.get("rating").isNull()) {
+                    assertThat(ratings).contains(review.get("rating").stringValue());
                 }
             }
         }));
@@ -624,17 +641,17 @@ class ClientApiContractTest {
 
     @Test
     @DisplayName("TΔ13b: 수정 본문도 감상 원문을 싣지 않는다 — 폼이 고치는 것은 정규화본뿐이다(V-11 뒷문장)")
-    void entryUpdateDropsTheOriginalTasting() throws IOException {
+    void entryUpdateDropsTheOriginalReview() throws IOException {
         JsonNode contract = load(NOTE_UPDATE_CONTRACT);
 
         assertThat(keysAnywhere(contract))
                 .as("수정 계약에 감상 원문·별칭이 실려 나간다 — 상세 응답의 절단과 같은 선이다")
                 .doesNotContain("my_taste_original", "aliases");
         contract.get("entry_request").get("brews").forEach(brew -> {
-            assertThat(fieldNames(brew)).containsExactly("recipe", "tasting");
-            JsonNode tasting = brew.get("tasting");
-            if (!tasting.isNull()) {
-                assertThat(fieldNames(tasting)).containsExactly("my_taste", "rating");
+            assertThat(fieldNames(brew)).containsExactly("recipe", "review");
+            JsonNode review = brew.get("review");
+            if (!review.isNull()) {
+                assertThat(fieldNames(review)).containsExactly("my_taste", "rating");
             }
         });
     }
@@ -793,11 +810,11 @@ class ClientApiContractTest {
         // POLICY: 감상 원문은 폼 편집으로 다시 쓰지 않는다(V-11) — 사용자가 고치는 것은 정규화본이고,
         //         원문이 비면 서버가 정규화본을 양쪽에 담는다. 수정 모드 draft의 감상은 저장된 값이거나
         //         모델이 요구를 반영해 다시 지은 값이라 어느 쪽도 "말한 그대로"가 아니다.
-        List<String> draftTasting = fieldNames(draftEntry.get("brews").get(0).get("tasting"));
-        assertThat(draftTasting).contains("my_taste_original");
-        assertThat(fieldNames(firstTasting(body)))
+        List<String> draftReview = fieldNames(draftEntry.get("brews").get(0).get("review"));
+        assertThat(draftReview).contains("my_taste_original");
+        assertThat(fieldNames(firstReview(body)))
                 .as("변환이 떨구는 것은 my_taste_original 하나여야 한다")
-                .isEqualTo(draftTasting.stream().filter(field -> !field.equals("my_taste_original")).toList());
+                .isEqualTo(draftReview.stream().filter(field -> !field.equals("my_taste_original")).toList());
     }
 
     @Test
@@ -838,11 +855,11 @@ class ClientApiContractTest {
         assertThat(contract.get("response_status").intValue()).isEqualTo(204);
     }
 
-    /** 엔트리 본문에서 감상이 실린 첫 회차 — 레시피만 있는 회차는 tasting이 null이다(V-15). */
-    private static JsonNode firstTasting(JsonNode entryBody) {
+    /** 엔트리 본문에서 감상이 실린 첫 회차 — 레시피만 있는 회차는 review가 null이다(V-15). */
+    private static JsonNode firstReview(JsonNode entryBody) {
         return entryBody.get("brews").valueStream()
-                .map(brew -> brew.get("tasting"))
-                .filter(tasting -> tasting != null && !tasting.isNull())
+                .map(brew -> brew.get("review"))
+                .filter(review -> review != null && !review.isNull())
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("엔트리 계약 예시에 감상이 실린 회차가 없다"));
     }

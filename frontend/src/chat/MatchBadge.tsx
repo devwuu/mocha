@@ -310,9 +310,9 @@ function EntryPicker({ target, onPick }: { target: NoteCandidate; onPick: (draft
  */
 function summarize(entry: NoteDetailEntry): string {
   const parts = [`${entry.brews.length}회차`]
-  const rating = entry.brews.map((brew) => brew.tasting?.rating).find((value) => value != null)
+  const rating = entry.brews.map((brew) => brew.review?.rating).find((value) => value != null)
   const taste = entry.brews
-    .map((brew) => brew.tasting?.my_taste)
+    .map((brew) => brew.review?.my_taste)
     .find((value) => value != null && value !== '')
   if (rating != null) {
     parts.push(rating)

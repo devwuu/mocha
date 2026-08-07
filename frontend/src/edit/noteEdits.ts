@@ -4,7 +4,7 @@ import type {
   Draft,
   NoteDetail,
   NoteDetailBrew,
-  NoteDetailTasting,
+  NoteDetailReview,
   NoteEntryUpdate,
   NoteMetaUpdate,
   Recipe,
@@ -86,7 +86,7 @@ export function toEntryUpdate(draft: Draft): EntryDraft {
 function toUpdateBrew(brew: Brew): NoteDetailBrew {
   return {
     recipe: brew.recipe,
-    tasting: brew.tasting === null ? null : { my_taste: brew.tasting.my_taste, rating: brew.tasting.rating },
+    review: brew.review === null ? null : { my_taste: brew.review.my_taste, rating: brew.review.rating },
   }
 }
 
@@ -133,13 +133,13 @@ export function withRecipe(entry: NoteEntryUpdate, brewIndex: number, patch: Par
   return withBrew(entry, brewIndex, (brew) => ({ ...brew, recipe: { ...(brew.recipe ?? EMPTY_RECIPE), ...patch } }))
 }
 
-/** 감상이 없던 회차도 같다 — `my_taste`가 빈 tasting은 서버가 드롭한다(V-15). */
-export function withTasting(
+/** 감상이 없던 회차도 같다 — `my_taste`가 빈 review은 서버가 드롭한다(V-15). */
+export function withReview(
   entry: NoteEntryUpdate,
   brewIndex: number,
-  patch: Partial<NoteDetailTasting>,
+  patch: Partial<NoteDetailReview>,
 ): NoteEntryUpdate {
-  return withBrew(entry, brewIndex, (brew) => ({ ...brew, tasting: { ...(brew.tasting ?? EMPTY_TASTING), ...patch } }))
+  return withBrew(entry, brewIndex, (brew) => ({ ...brew, review: { ...(brew.review ?? EMPTY_REVIEW), ...patch } }))
 }
 
 /** 결과 날짜 변경 — `targetDate`는 건드리지 않는다(위 `EntryDraft` 주석). */
@@ -191,4 +191,4 @@ const EMPTY_RECIPE: Recipe = {
 
 // my_taste_original은 계약에 없다 — 폼이 고치는 것은 정규화본이고, 원문 필드가 비면 서버가 정규화본을
 // 양쪽에 담는다(V-11 뒷문장). 수정하면 "말한 그대로"가 편집본으로 수렴하는 것이 받아들인 대가다.
-const EMPTY_TASTING: NoteDetailTasting = { my_taste: null, rating: null }
+const EMPTY_REVIEW: NoteDetailReview = { my_taste: null, rating: null }

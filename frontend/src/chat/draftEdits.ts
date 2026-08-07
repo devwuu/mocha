@@ -8,7 +8,7 @@ import type {
   NoteDetail,
   NoteDetailBrew,
   Recipe,
-  Tasting,
+  Review,
 } from '../api/contract'
 
 /**
@@ -111,9 +111,9 @@ export function selectEditTarget(detail: NoteDetail, date: string): Draft {
 function toDraftBrew(brew: NoteDetailBrew): Brew {
   return {
     recipe: brew.recipe,
-    tasting: brew.tasting === null
+    review: brew.review === null
       ? null
-      : { my_taste: brew.tasting.my_taste, my_taste_original: null, rating: brew.tasting.rating },
+      : { my_taste: brew.review.my_taste, my_taste_original: null, rating: brew.review.rating },
   }
 }
 
@@ -138,10 +138,10 @@ export function patchRecipe(draft: Draft, entryIndex: number, brewIndex: number,
   return patchBrew(draft, entryIndex, brewIndex, { recipe: { ...current, ...patch } })
 }
 
-/** 감상이 없던 회차도 같다 — `my_taste`가 빈 tasting은 서버가 드롭한다(V-15). */
-export function patchTasting(draft: Draft, entryIndex: number, brewIndex: number, patch: Partial<Tasting>): Draft {
-  const current = draft.note.entries[entryIndex].brews[brewIndex].tasting ?? EMPTY_TASTING
-  return patchBrew(draft, entryIndex, brewIndex, { tasting: { ...current, ...patch } })
+/** 감상이 없던 회차도 같다 — `my_taste`가 빈 review은 서버가 드롭한다(V-15). */
+export function patchReview(draft: Draft, entryIndex: number, brewIndex: number, patch: Partial<Review>): Draft {
+  const current = draft.note.entries[entryIndex].brews[brewIndex].review ?? EMPTY_REVIEW
+  return patchBrew(draft, entryIndex, brewIndex, { review: { ...current, ...patch } })
 }
 
 const EMPTY_RECIPE: Recipe = {
@@ -159,7 +159,7 @@ const EMPTY_RECIPE: Recipe = {
 
 // my_taste_original은 "말한 그대로의 원문"이라 폼 편집으로 다시 쓰지 않는다(V-11) — 사용자가 고치는
 // 것은 정규화본(my_taste)뿐이고, 원문이 비어 있으면 서버가 정규화본으로 채운다.
-const EMPTY_TASTING: Tasting = { my_taste: null, my_taste_original: null, rating: null }
+const EMPTY_REVIEW: Review = { my_taste: null, my_taste_original: null, rating: null }
 
 function replaceAt<T>(items: T[], index: number, update: (item: T) => T): T[] {
   return items.map((item, i) => (i === index ? update(item) : item))

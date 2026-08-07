@@ -16,7 +16,7 @@ import { getNoteCard } from '../api'
 /** 그 회차에 있는 카드 종류 — 없는 파트는 카드가 없다(AC-78). 순서는 감상 → 레시피(렌더 순서와 같다). */
 export function cardTypesOf(brew: NoteDetailBrew): CardType[] {
   const types: CardType[] = []
-  if (brew.tasting !== null) {
+  if (brew.review !== null) {
     types.push('taste')
   }
   if (brew.recipe !== null) {

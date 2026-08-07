@@ -3,7 +3,7 @@ import type { Draft, Rating, Sourced } from '../api/contract'
 import { RATINGS } from '../api/contract'
 import { numberValue, SOURCE_LABELS, textValue, userList, userValue } from '../formValues'
 import { MatchBadge } from './MatchBadge'
-import { patchBean, patchEntry, patchNote, patchRecipe, patchTasting } from './draftEdits'
+import { patchBean, patchEntry, patchNote, patchRecipe, patchReview } from './draftEdits'
 
 /**
  * 미리보기 폼 — 에이전트가 제안한 draft를 사용자가 확인하고 고치는 자리 (changes/0029 TΔ10, AC-1).
@@ -231,18 +231,18 @@ export function DraftForm({ draft, busy, onChange, onSave, onCancel }: DraftForm
               <Field label="감상">
                 <textarea
                   rows={2}
-                  value={brew.tasting?.my_taste ?? ''}
+                  value={brew.review?.my_taste ?? ''}
                   onChange={(event) =>
-                    onChange(patchTasting(draft, entryIndex, brewIndex, { my_taste: textValue(event.target.value) }))
+                    onChange(patchReview(draft, entryIndex, brewIndex, { my_taste: textValue(event.target.value) }))
                   }
                 />
               </Field>
               <Field label="평가">
                 <select
-                  value={brew.tasting?.rating ?? ''}
+                  value={brew.review?.rating ?? ''}
                   onChange={(event) =>
                     onChange(
-                      patchTasting(draft, entryIndex, brewIndex, {
+                      patchReview(draft, entryIndex, brewIndex, {
                         rating: event.target.value === '' ? null : (event.target.value as Rating),
                       }),
                     )

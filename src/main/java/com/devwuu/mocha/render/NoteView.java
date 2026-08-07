@@ -21,7 +21,7 @@ public final class NoteView {
      * 감상 카드 뷰 — {@code templates/<theme>/taste.html}의 바인딩 계약
      * (ref: FR-7 감상 카드 필드↔영역 매핑, changes/0021 ADR-54·59, TΔ4a).
      * <p>카드 단위 = <b>회차 1개의 감상 파트</b>: 노트 메타(커피명·로스터리·beans·roast_level·official_notes)
-     * + 그 회차 {@code tasting}(my_taste·rating). 회차 번호는 카드에 표기하지 않는다(파일명만 — ADR-54 POLICY).
+     * + 그 회차 {@code review}(my_taste·rating). 회차 번호는 카드에 표기하지 않는다(파일명만 — ADR-54 POLICY).
      * <p>출처 표기({@code ·검색} 배지)와 sources 영역은 시안·FR-7 매핑에 없다 — 값만 평문으로 담는다.
      * {@code myTaste}가 있는 회차만 이 카드를 굽는다(AC-25·78) — {@code myTaste}는 null 아님 전제.
      * <p>{@link ThymeleafNoteRenderer}가 회차 파트에서 이 뷰를 조립한다(TΔ5a).

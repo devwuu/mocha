@@ -45,7 +45,7 @@ export interface Recipe {
 }
 
 /** 회차 맛 감상 — `my_taste`가 있으면 `my_taste_original`도 함께 있다(V-11). */
-export interface Tasting {
+export interface Review {
   my_taste: string | null
   my_taste_original: string | null
   rating: Rating | null
@@ -54,7 +54,7 @@ export interface Tasting {
 /** 회차 1개 — 배열 순서가 곧 회차 번호다. 둘 다 null인 회차는 서버가 드롭한다(V-15). */
 export interface Brew {
   recipe: Recipe | null
-  tasting: Tasting | null
+  review: Review | null
 }
 
 /** 날짜별 시음 기록 — `date`가 entries 내 유일 키다(V-3). */
@@ -188,7 +188,7 @@ export interface PhotoUploadResponse {
  * 갤러리 그리드의 한 칸 — 노트 1건의 납작한 사영 (changes/0029 TΔ12).
  *
  * 필드가 `NoteCandidate` + `thumbnail_url`인 것은 우연이 아니다: 두 화면 다 노트를 *고르는* 자리라
- * 3단 중첩(entries → brews → recipe/tasting)을 한 줄도 쓰지 않는다. 상세가 무엇을 보여줄지는
+ * 3단 중첩(entries → brews → recipe/review)을 한 줄도 쓰지 않는다. 상세가 무엇을 보여줄지는
  * `GET /api/notes/{id}`가 따로 답한다(TΔ13a·TΔ5a).
  *
  * `thumbnail_url`은 **서버가 만든 완성된 경로**다 — 클라이언트는 `<img src>`에 그대로 꽂고 URL 규칙을
@@ -275,10 +275,10 @@ export interface NotePhoto {
  * 저장된 회차의 감상 — **원문(`my_taste_original`)이 없다**.
  *
  * V-11이 원문을 함께 저장하게 하지만 *"렌더는 `my_taste`만 사용"*이 같은 규칙의 뒷문장이고, 상세도 렌더다.
- * 폼의 `Tasting`과 타입을 나눈 것이 그 차이를 컴파일러가 지키게 한다(TΔ10의 `aliases` 절단과 같은 판단 —
+ * 폼의 `Review`와 타입을 나눈 것이 그 차이를 컴파일러가 지키게 한다(TΔ10의 `aliases` 절단과 같은 판단 —
  * 화면이 쓰지 않는 값은 계약에서 뺀다).
  */
-export interface NoteDetailTasting {
+export interface NoteDetailReview {
   my_taste: string | null
   rating: Rating | null
 }
@@ -286,7 +286,7 @@ export interface NoteDetailTasting {
 /** 저장된 회차 1개 — 레시피·감상 중 최소 하나는 non-null이다(V-15). */
 export interface NoteDetailBrew {
   recipe: Recipe | null
-  tasting: NoteDetailTasting | null
+  review: NoteDetailReview | null
 }
 
 /**
@@ -360,7 +360,7 @@ export interface NoteMetaUpdate {
  * 하루치 감상 1건이던 시절(changes/0012)의 규칙이라 회차 배열(ADR-59) 위에서는 그날의 N회차를 통째로
  * 지우는 뜻이 됐다. 캡처 경로가 같은 상황에 이미 *회차 append*로 답하고 있다(ADR-4·59).
  *
- * `tasting`에 **`my_taste_original`이 없다** — 폼이 고치는 것은 정규화본이고, 원문 필드가 비면 서버가
+ * `review`에 **`my_taste_original`이 없다** — 폼이 고치는 것은 정규화본이고, 원문 필드가 비면 서버가
  * 정규화본을 양쪽에 담는다(V-11 뒷문장). 수정하면 *"말한 그대로"*가 편집본으로 수렴하는 것이 이 계약이
  * 받아들인 대가다(사용자 확정 2026-08-01).
  *

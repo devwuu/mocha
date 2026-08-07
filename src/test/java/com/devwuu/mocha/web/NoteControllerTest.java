@@ -370,7 +370,7 @@ class NoteControllerTest {
 
     @Test
     @DisplayName("TΔ5a: 감상 원문은 응답에 실리지 않는다 — 저장된 값이 있어도 렌더는 my_taste만 쓴다(V-11 뒷문장)")
-    void detailNeverLeaksTheOriginalTasting() throws Exception {
+    void detailNeverLeaksTheOriginalReview() throws Exception {
         // 도메인에는 반드시 원문이 있다(V-11) — fake가 그것을 눈에 띄는 값으로 들고 있어야 새는지가 보인다.
         noteService.detail = detailOf(load(DETAIL_CONTRACT).get("response"));
 
@@ -504,7 +504,7 @@ class NoteControllerTest {
 
     @Test
     @DisplayName("TΔ5b-3: 요청에 감상 원문이 없으므로 정규화본이 양쪽에 담긴다 — 수정하면 '말한 그대로'가 편집본으로 수렴한다(V-11)")
-    void entryUpdateFillsTheOriginalFromTheEditedTasting() throws Exception {
+    void entryUpdateFillsTheOriginalFromTheEditedReview() throws Exception {
         JsonNode update = load(UPDATE_CONTRACT);
         noteService.updated = detailOf(update.get("response_after_meta"));
 
@@ -521,7 +521,7 @@ class NoteControllerTest {
         ObjectNode empty = (ObjectNode) load(UPDATE_CONTRACT).get("entry_request");
         // 빈 회차(레시피도 감상도 없음)는 V-15 정규화가 드롭한다 — 그 결과가 0건이면 저장할 시음이 없다.
         empty.set("brews", mapper.createArrayNode().add(
-                mapper.createObjectNode().putNull("recipe").putNull("tasting")));
+                mapper.createObjectNode().putNull("recipe").putNull("review")));
 
         patch("/api/notes/21/entries/2026-07-02", empty, status().isBadRequest());
 

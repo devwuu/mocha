@@ -275,7 +275,7 @@ class ToolCallbackProviderTest {
         assertThat(result.get("coffee_name").get("value").asString()).isEqualTo("Ethiopia Chelbesa");
         assertThat(result.get("entries")).hasSize(1);
         assertThat(result.get("entries").get(0).get("date").asString()).isEqualTo("2026-07-13");
-        assertThat(result.get("entries").get(0).get("brews").get(0).get("tasting").get("my_taste").asString()).isEqualTo("새콤하고 좋았음");
+        assertThat(result.get("entries").get(0).get("brews").get(0).get("review").get("my_taste").asString()).isEqualTo("새콤하고 좋았음");
     }
 
     @Test
@@ -319,14 +319,14 @@ class ToolCallbackProviderTest {
                   "match": %s,
                   "sources": []
                 }
-                """.formatted(coffeeName, roastery, tastingBrewJson("새콤하고 좋았음", "새콤하고 좋았다", ratingJson),
+                """.formatted(coffeeName, roastery, reviewBrewJson("새콤하고 좋았음", "새콤하고 좋았다", ratingJson),
                 targetDate, matchJson);
     }
 
     /** 감상만 담은 회차 1개 JSON 조각 — brews 배열 요소(data-model §3.3, changes/0021). */
-    private static String tastingBrewJson(String myTaste, String original, String ratingJson) {
+    private static String reviewBrewJson(String myTaste, String original, String ratingJson) {
         return """
-                {"recipe": null, "tasting": {"my_taste": "%s", "my_taste_original": "%s", "rating": %s}}"""
+                {"recipe": null, "review": {"my_taste": "%s", "my_taste_original": "%s", "rating": %s}}"""
                 .formatted(myTaste, original, ratingJson);
     }
 

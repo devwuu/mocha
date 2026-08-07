@@ -49,7 +49,7 @@ class ToolArgsContractTest {
                                   "time_sec": 160, "temp_c": 92, "grind": "210클릭 (매버릭 2.0)",
                                   "machine": null, "pouring": "뜸 40ml 30초 → 100ml → 100ml",
                                   "feedback": "첫 모금이 살짝 떫었으니 다음엔 220클릭으로" },
-                      "tasting": { "my_taste": "새콤하고 좋았음",
+                      "review": { "my_taste": "새콤하고 좋았음",
                                    "my_taste_original": "새콤하고 좋았다",
                                    "rating": "맛있다" } }
                   ],
@@ -68,8 +68,8 @@ class ToolArgsContractTest {
         assertThat(args.brews().getFirst().recipe()).isEqualTo(new Recipe(
                 "핸드드립", 15.0, 240.0, null, 160.0, 92.0, "210클릭 (매버릭 2.0)", null,
                 "뜸 40ml 30초 → 100ml → 100ml", "첫 모금이 살짝 떫었으니 다음엔 220클릭으로"));
-        assertThat(args.brews().getFirst().tasting()).isEqualTo(
-                new BrewArg.TastingArg("새콤하고 좋았음", "새콤하고 좋았다", "맛있다"));
+        assertThat(args.brews().getFirst().review()).isEqualTo(
+                new BrewArg.ReviewArg("새콤하고 좋았음", "새콤하고 좋았다", "맛있다"));
         assertThat(args.targetDate()).isEqualTo("2026-07-16");
         // note_id는 스키마상 정수지만 인자 record는 원시 String으로 받는다 — 위반 값(비숫자)이 역직렬화
         // 예외로 새지 않고 거부 사유로 돌아가게 하는 계약이다(changes/0028 TΔ0b §4 E-6).

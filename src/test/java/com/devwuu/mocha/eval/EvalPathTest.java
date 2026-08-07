@@ -31,7 +31,7 @@ class EvalPathTest {
     @Test
     @DisplayName("AC-Δ1: snake_case 저장 포맷 필드명을 그대로 받는다 — 판정 대상이 직렬화된 JSON이라서")
     void acceptsSnakeCaseFieldNames() {
-        assertThat(EvalPath.parse("entries[0].brews[0].tasting.my_taste_original").segments())
+        assertThat(EvalPath.parse("entries[0].brews[0].review.my_taste_original").segments())
                 .last()
                 .isEqualTo(new EvalPath.Segment.Field("my_taste_original"));
     }

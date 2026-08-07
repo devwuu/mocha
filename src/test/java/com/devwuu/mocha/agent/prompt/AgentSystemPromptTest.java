@@ -110,18 +110,18 @@ class AgentSystemPromptTest {
     void encodesBrewSplitRules() {
         assertThat(PROMPT).contains("한 번 내려서 마신 단위가 회차 1개다");
         assertThat(PROMPT).contains("시도마다 회차 요소를 만든다");
-        assertThat(PROMPT).contains("커피 맛의 감상·평가는 그 회차의 tasting에");
+        assertThat(PROMPT).contains("커피 맛의 감상·평가는 그 회차의 review에");
         assertThat(PROMPT).contains("그 회차의 recipe.feedback에 담는다");
-        assertThat(PROMPT).contains("feedback이 아니라 그 회차의 tasting이다");
+        assertThat(PROMPT).contains("feedback이 아니라 그 회차의 review다");
         assertThat(PROMPT).contains("마시는 방식 차이는 레시피가 아니다");
         assertThat(PROMPT).contains("같은 회차의 감상 텍스트 하나에 담는다");
     }
 
     @Test
-    @DisplayName("ADR-59/AC-79: 회차 병합 — append 기본, 명시 지칭 시만 그 회차 tasting에 병합·rating은 명시 시만 갱신")
+    @DisplayName("ADR-59/AC-79: 회차 병합 — append 기본, 명시 지칭 시만 그 회차 review에 병합·rating은 명시 시만 갱신")
     void encodesBrewMergeRules() {
         assertThat(PROMPT).contains("새 시도·새 감상은 새 회차로 append한다");
-        assertThat(PROMPT).contains("그 회차의 tasting에 병합한다");
+        assertThat(PROMPT).contains("그 회차의 review에 병합한다");
         assertThat(PROMPT).contains("my_taste_original은 원문을 이어붙여 보존");
         assertThat(PROMPT).contains("rating은 새 평가가 명시될 때만 갱신한다");
         assertThat(PROMPT).contains("대상 회차를 반영한 전체 배열로 구성해 보낸다");

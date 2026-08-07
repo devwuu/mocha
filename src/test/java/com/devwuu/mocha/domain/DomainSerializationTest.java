@@ -71,9 +71,9 @@ class DomainSerializationTest {
                 .contains("\"roast_level\"")
                 .contains("\"official_notes\"")
                 .contains("\"brews\"")              // 회차 배열(changes/0021 ADR-59)
-                .contains("\"tasting\"")
+                .contains("\"review\"")
                 .contains("\"my_taste\"")
-                .contains("\"my_taste_original\"")  // 감상 원문 병존(V-11 — tasting 요소 단위)
+                .contains("\"my_taste_original\"")  // 감상 원문 병존(V-11 — review 요소 단위)
                 .contains("\"created_at\"")
                 .contains("\"dose_g\"")     // recipe 필드 snake_case(FR-18)
                 .contains("\"water_ml\"");
@@ -96,7 +96,7 @@ class DomainSerializationTest {
     }
 
     @Test
-    @DisplayName("V-1: rating null 허용(미언급) — 회차 tasting 안에서")
+    @DisplayName("V-1: rating null 허용(미언급) — 회차 review 안에서")
     void nullRatingAllowed() throws Exception {
         Entry entry = new Entry(LocalDate.of(2026, 7, 10),
                 List.of(new Brew(null, new Review("무난", null, null))), null);
@@ -113,7 +113,7 @@ class DomainSerializationTest {
     void legacyPhotosKeyIgnoredOnRoundTrip() throws Exception {
         // 사진 아카이브 전용화(ADR-32) 이전에 저장된 엔트리 JSON — photos 배열을 품고 있다.
         String legacy = "{\"date\":\"2026-07-10\",\"brews\":[{\"recipe\":null,"
-                + "\"tasting\":{\"my_taste\":\"새콤\",\"my_taste_original\":\"새콤\",\"rating\":\"맛있다\"}}],"
+                + "\"review\":{\"my_taste\":\"새콤\",\"my_taste_original\":\"새콤\",\"rating\":\"맛있다\"}}],"
                 + "\"photos\":[\"photos/coffeevera/2026-07-10/a.jpg\"],\"updated_at\":null}";
 
         // 미지 키(photos)는 조용히 무시된다(findings-TΔ0 §1) — 마이그레이션·mapper 옵션 불필요.
@@ -125,10 +125,10 @@ class DomainSerializationTest {
         assertThat(restored.brews().getFirst().review().rating()).isEqualTo(Rating.GOOD);
     }
 
-    // --- TΔ4(changes/0013) → 0021 TΔ1b: my_taste 정규화 + 원문 병존 — tasting 요소 단위(V-11 개정) ---
+    // --- TΔ4(changes/0013) → 0021 TΔ1b: my_taste 정규화 + 원문 병존 — review 요소 단위(V-11 개정) ---
 
     @Test
-    @DisplayName("AC-Δ5: my_taste(정규화)·my_taste_original(원문)이 tasting 안에 snake_case로 영속·왕복된다")
+    @DisplayName("AC-Δ5: my_taste(정규화)·my_taste_original(원문)이 review 안에 snake_case로 영속·왕복된다")
     void myTasteOriginalRoundTrip() throws Exception {
         Entry entry = new Entry(LocalDate.of(2026, 7, 10),
                 List.of(new Brew(null, new Review("새콤하고 좋았음", "새콤하고 좋았다", Rating.GOOD))), null);
@@ -144,12 +144,12 @@ class DomainSerializationTest {
     }
 
     @Test
-    @DisplayName("V-11: my_taste만 있고 원문이 누락되면 정규화본을 원문에도 담아 영속한다(tasting 요소 단위)")
+    @DisplayName("V-11: my_taste만 있고 원문이 누락되면 정규화본을 원문에도 담아 영속한다(review 요소 단위)")
     void persistsCopiedOriginalWhenMissing() throws Exception {
-        Review tasting = new Review("맛있었음", null, Rating.GOOD); // 원문 누락 → V-11 복사가 걸린다
+        Review review = new Review("맛있었음", null, Rating.GOOD); // 원문 누락 → V-11 복사가 걸린다
 
-        assertThat(tasting.myTasteOriginal()).isEqualTo("맛있었음"); // 도메인 불변 보장
-        Review restored = mapper.readValue(mapper.writeValueAsString(tasting), Review.class);
+        assertThat(review.myTasteOriginal()).isEqualTo("맛있었음"); // 도메인 불변 보장
+        Review restored = mapper.readValue(mapper.writeValueAsString(review), Review.class);
         assertThat(restored.myTasteOriginal()).isEqualTo("맛있었음"); // JSON에도 병존
     }
 
@@ -157,7 +157,7 @@ class DomainSerializationTest {
     // 기존 노트 JSON은 삭제·재등록하므로(ADR-28 관례) 구 엔트리 레벨 필드 로드 호환 테스트는 두지 않는다.
 
     @Test
-    @DisplayName("0021-TΔ1b: brews(회차 배열 — recipe 10필드·tasting)가 snake_case로 직렬화·왕복된다")
+    @DisplayName("0021-TΔ1b: brews(회차 배열 — recipe 10필드·review)가 snake_case로 직렬화·왕복된다")
     void brewsRoundTrip() throws Exception {
         // ideas/sample.md 패턴: 같은 날 2회 시도 — 회차별 레시피·피드백·감상이 갈린다(배열 순서 = 회차 번호).
         Entry entry = new Entry(
@@ -198,13 +198,13 @@ class DomainSerializationTest {
     }
 
     @Test
-    @DisplayName("0021-TΔ1b/V-15: normalize — recipe·tasting 둘 다 null인 회차와 빈 감상 tasting을 드롭한다")
+    @DisplayName("0021-TΔ1b/V-15: normalize — recipe·review 둘 다 null인 회차와 빈 감상 review을 드롭한다")
     void brewsNormalizeDropsEmptyElements() {
         List<Brew> normalized = Brew.normalize(Arrays.asList(
                 new Brew(new Recipe(null, 15.0, 240.0, null, null, null, "중간", null, null, null), new Review("새콤", null, Rating.GOOD)),
                 new Brew(null, null),                                          // 빈 회차 → 드롭
                 null,                                                          // null 요소 → 드롭
-                new Brew(null, Review.normalize("  ", null, Rating.GOOD)),    // 빈 감상 tasting → null → 드롭
+                new Brew(null, Review.normalize("  ", null, Rating.GOOD)),    // 빈 감상 review → null → 드롭
                 new Brew(new Recipe(null, 0.0, null, null, null, null, "  ", null, null, null), null)));                 // recipe 전무 정규화 → null → 드롭
 
         assertThat(normalized).containsExactly(
@@ -213,8 +213,8 @@ class DomainSerializationTest {
     }
 
     @Test
-    @DisplayName("0021-TΔ1b/V-15: tasting.my_taste는 비어 있지 않아야 한다 — 빈 감상은 tasting 자체가 null로 드롭")
-    void tastingNormalizeRejectsBlankTaste() {
+    @DisplayName("0021-TΔ1b/V-15: review.my_taste는 비어 있지 않아야 한다 — 빈 감상은 review 자체가 null로 드롭")
+    void reviewNormalizeRejectsBlankTaste() {
         assertThat(Review.normalize(null, null, Rating.GOOD)).isNull();
         assertThat(Review.normalize("   ", "원문", null)).isNull();
         // 감상이 있으면 원문 병존(V-11) — 원문 누락 시 정규화본 복사.

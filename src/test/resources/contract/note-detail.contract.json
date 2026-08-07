@@ -37,7 +37,7 @@
               "pouring": "뜸 40ml 30초 → 100ml → 100ml",
               "feedback": "다음엔 한 단계 굵게"
             },
-            "tasting": {
+            "review": {
               "my_taste": "새콤하고 좋았다. 식으니까 자몽 같은 신맛이 올라온다.",
               "rating": "맛있다"
             }
@@ -61,11 +61,11 @@
               "pouring": null,
               "feedback": null
             },
-            "tasting": null
+            "review": null
           },
           {
             "recipe": null,
-            "tasting": {
+            "review": {
               "my_taste": "온도 낮추니 떫은 맛이 사라졌다.",
               "rating": "완전 내스타일"
             }
@@ -92,7 +92,7 @@
         "brews": [
           {
             "recipe": null,
-            "tasting": { "my_taste": "그냥 무난했다.", "rating": null }
+            "review": { "my_taste": "그냥 무난했다.", "rating": null }
           }
         ],
         "photos": []

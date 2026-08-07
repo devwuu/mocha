@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import type {
   NoteDetail,
   NoteDetailBrew,
-  NoteDetailTasting,
+  NoteDetailReview,
   NoteEntryUpdate,
   NoteMetaUpdate,
   Rating,
@@ -25,7 +25,7 @@ import {
   withDate,
   withNotes,
   withRecipe,
-  withTasting,
+  withReview,
 } from './noteEdits'
 
 /**
@@ -528,7 +528,7 @@ function DateSection({
               brew={brew}
               no={brewIndex + 1}
               onRecipe={(patch) => onChange(withRecipe(entry, brewIndex, patch))}
-              onTasting={(patch) => onChange(withTasting(entry, brewIndex, patch))}
+              onReview={(patch) => onChange(withReview(entry, brewIndex, patch))}
             />
           ))}
 
@@ -552,12 +552,12 @@ function BrewCard({
   brew,
   no,
   onRecipe,
-  onTasting,
+  onReview,
 }: {
   brew: NoteDetailBrew
   no: number
   onRecipe: (patch: Partial<Recipe>) => void
-  onTasting: (patch: Partial<NoteDetailTasting>) => void
+  onReview: (patch: Partial<NoteDetailReview>) => void
 }) {
   const recipe = brew.recipe
 
@@ -634,16 +634,16 @@ function BrewCard({
         <TextArea
           label="감상"
           rows={5}
-          value={brew.tasting?.my_taste ?? ''}
-          onChange={(next) => onTasting({ my_taste: textValue(next) })}
+          value={brew.review?.my_taste ?? ''}
+          onChange={(next) => onReview({ my_taste: textValue(next) })}
         />
         <label className="efield">
           <span className="efield__label">평가</span>
           <select
             className="efield__select"
-            value={brew.tasting?.rating ?? ''}
+            value={brew.review?.rating ?? ''}
             onChange={(event) =>
-              onTasting({ rating: event.target.value === '' ? null : (event.target.value as Rating) })
+              onReview({ rating: event.target.value === '' ? null : (event.target.value as Rating) })
             }
           >
             <option value="">미언급</option>
@@ -784,7 +784,7 @@ function TextArea({
 function summarize(brew: NoteDetailBrew): string {
   const recipe = brew.recipe
   if (recipe === null) {
-    return brew.tasting?.my_taste ?? ''
+    return brew.review?.my_taste ?? ''
   }
   const amounts = [unit(recipe.dose_g, 'g'), unit(recipe.water_ml ?? recipe.yield_ml, 'ml')].filter((v) => v !== null)
   const gear = [recipe.machine, recipe.grind].filter((v) => v !== null).join(' ')

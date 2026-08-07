@@ -31,11 +31,11 @@ final class BrewRules {
             if (arg == null) {
                 continue;
             }
-            BrewArg.TastingArg tasting = arg.tasting();
-            converted.add(new Brew(arg.recipe(), tasting == null ? null : Review.normalize(
-                    ValidationSupport.blankToNull(tasting.myTaste()),
-                    ValidationSupport.blankToNull(tasting.myTasteOriginal()),
-                    parseRating(tasting.rating()))));
+            BrewArg.ReviewArg review = arg.review();
+            converted.add(new Brew(arg.recipe(), review == null ? null : Review.normalize(
+                    ValidationSupport.blankToNull(review.myTaste()),
+                    ValidationSupport.blankToNull(review.myTasteOriginal()),
+                    parseRating(review.rating()))));
         }
         return Brew.normalize(converted);
     }

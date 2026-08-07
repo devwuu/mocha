@@ -1,7 +1,5 @@
 package com.devwuu.mocha.domain;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -17,10 +15,7 @@ import java.util.List;
  */
 public record Brew(
         Recipe recipe,
-        // 임시: 개명은 서버 안쪽부터 간다 — JSON 키를 여기서 함께 옮기면 계약 스냅샷·프론트·eval 코퍼스가
-        //       같은 커밋에서 깨져 «빌드 그린»이 완료 신호가 되지 못한다. TΔ2가 이 애너테이션을 걷어내며
-        //       키를 review로 옮긴다 (ref: changes/0030 tasks.md TΔ1·TΔ2).
-        @JsonProperty("tasting") Review review) {
+        Review review) {
 
     /**
      * V-15 정규화: null 배열은 빈 배열로, 각 요소는 recipe(V-8)·review(V-15 빈 감상 드롭)을 정규화한 뒤

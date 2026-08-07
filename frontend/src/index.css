@@ -1603,14 +1603,14 @@ select:focus {
   text-wrap: pretty;
 }
 
-.brew__tasting {
+.brew__review {
   display: flex;
   flex-direction: column;
   gap: 8px;
   padding: 12px 16px 14px;
 }
 
-.brew__tasting-head {
+.brew__review-head {
   display: flex;
   align-items: center;
   justify-content: space-between;

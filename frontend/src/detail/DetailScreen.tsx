@@ -267,13 +267,13 @@ function BrewCard({
         </div>
       )}
 
-      {brew.tasting !== null && (
-        <div className="brew__tasting">
-          <div className="brew__tasting-head">
+      {brew.review !== null && (
+        <div className="brew__review">
+          <div className="brew__review-head">
             <span className="brew__label">내가 느끼길</span>
-            {brew.tasting.rating !== null && <span className="brew__rating">{brew.tasting.rating}</span>}
+            {brew.review.rating !== null && <span className="brew__rating">{brew.review.rating}</span>}
           </div>
-          {brew.tasting.my_taste !== null && <p className="brew__taste">{brew.tasting.my_taste}</p>}
+          {brew.review.my_taste !== null && <p className="brew__taste">{brew.review.my_taste}</p>}
         </div>
       )}
     </div>

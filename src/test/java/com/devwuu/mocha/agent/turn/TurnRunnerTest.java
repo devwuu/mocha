@@ -257,7 +257,7 @@ class TurnRunnerTest {
               "coffee_name": {"value": "커피베라 예가체프 G1", "source": "user"},
               "roastery": {"value": "커피베라", "source": "user"},
               "beans": [], "roast_level": null, "official_notes": null,
-              "brews": [{"recipe": null, "tasting": {
+              "brews": [{"recipe": null, "review": {
                 "my_taste": "새콤하고 좋았음", "my_taste_original": "새콤하고 좋았다", "rating": "맛있다"}}],
               "target_date": "2026-07-16",
               "match": {"type": "new", "note_id": null, "date": null},
