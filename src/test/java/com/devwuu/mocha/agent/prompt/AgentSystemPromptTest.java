@@ -128,12 +128,22 @@ class AgentSystemPromptTest {
     }
 
     @Test
-    @DisplayName("FR-18/AC-66·76: 수치 정규화 — grind 형식·대략 표기는 숫자만·총 시간 초 환산")
-    void encodesRecipeNumericNormalization() {
+    @DisplayName("FR-18/AC-66·76/AC-Δ5·Δ7·Δ8: 레시피 필드 규칙 — grind·grinder 분리, 비수치·기구는 detail, 총 시간 초 환산")
+    void encodesRecipeFieldRules() {
         assertThat(PROMPT).contains("대략 표기는 숫자만 취한다");
         assertThat(PROMPT).contains("\"2분 40초\" → 160");
-        assertThat(PROMPT).contains("\"210클릭 (매버릭 2.0)\"");
-        assertThat(PROMPT).contains("그라인더 언급이 없으면 분쇄값만 담는다");
+        // changes/0030 ADR-86: grind는 number가 되고 그라인더명이 grinder로 갈려 나갔다(AC-Δ5).
+        assertThat(PROMPT).contains("분쇄값은 grind에 숫자만 담고 그라인더명은 grinder에 따로 담는다");
+        assertThat(PROMPT).contains("그라인더 언급이 없으면 grind만 담는다");
+        // AC-Δ7: 숫자로 안 떨어지는 분쇄 표현의 행선지 · AC-Δ8: 폐기된 machine 칸의 정보가 가는 곳.
+        assertThat(PROMPT).contains("숫자로 떨어지지 않는 분쇄 표현");
+        assertThat(PROMPT).contains("grind를 비우고 detail에 문장으로 담는다");
+        assertThat(PROMPT).contains("구조화되지 않는 레시피 서술의 행선지는 detail 하나다");
+        // 필드 폐기는 개명과 갈린다 — 구 규칙이 남은 채 새 규칙이 함께 실려도 위 contains는 전부 그린이고,
+        // 그러면 모델은 한 프롬프트 안에서 서로 어긋난 두 형태를 동시에 지시받는다(TΔ10·TΔ11과 같은 짝).
+        assertThat(PROMPT).doesNotContain("\"210클릭 (매버릭 2.0)\"");
+        assertThat(PROMPT).doesNotContain("pouring");
+        assertThat(PROMPT).doesNotContain("machine");
     }
 
     @Test
