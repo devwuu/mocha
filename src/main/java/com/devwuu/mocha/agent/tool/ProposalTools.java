@@ -62,13 +62,13 @@ class ProposalTools {
               "dose_g":{"type":["number","null"],"description":"원두량(g) — 양수"},
               "water_ml":{"type":["number","null"],"description":"부은 물량(ml) — 양수"},
               "yield_ml":{"type":["number","null"],"description":"추출량(ml) — 대략 발화(\\"10ml정도\\")는 숫자만(ADR-59)"},
-              "time_sec":{"type":["number","null"],"description":"총 추출 시간(초) — \\"2분 40초\\"는 160. 과정 시간은 pouring에"},
+              "time_sec":{"type":["number","null"],"description":"총 추출 시간(초) — \\"2분 40초\\"는 160. 과정 시간은 detail에"},
               "temp_c":{"type":["number","null"],"description":"물/머신 온도(℃)"},
-              "grind":{"type":["string","null"],"description":"분쇄도 — \\"<분쇄값> (<그라인더명>)\\" 형식, 그라인더 언급 없으면 값만(FR-18)"},
-              "machine":{"type":["string","null"],"description":"머신·기구명"},
-              "pouring":{"type":["string","null"],"description":"푸어링·과정 자유 텍스트 — 구조화하지 않는다"},
+              "grind":{"type":["number","null"],"description":"분쇄값 — 숫자만 담는다(양수). \\"210클릭\\"은 210. 숫자로 떨어지지 않는 표현(\\"중간 굵기\\")은 여기가 아니라 detail에(FR-18)"},
+              "grinder":{"type":["string","null"],"description":"그라인더명(\\"매버릭 2.0\\") — 미언급이면 null"},
+              "detail":{"type":["string","null"],"description":"상세 레시피 — 과정·푸어링 자유 텍스트, 구조화하지 않는다. 기구·머신명도 여기 담는다"},
               "feedback":{"type":["string","null"],"description":"그 시도의 관찰·진단·다음 계획 — 한국어 음슴체"}
-            },"required":["method","dose_g","water_ml","yield_ml","time_sec","temp_c","grind","machine","pouring","feedback"],"additionalProperties":false}""";
+            },"required":["method","dose_g","water_ml","yield_ml","time_sec","temp_c","grind","grinder","detail","feedback"],"additionalProperties":false}""";
     private static final String BEAN_SCHEMA = """
             {"type":"object","description":"원두 1종 — 단일 원두도 요소 1개, 블렌드는 구성 원두마다 요소를 만들어 원두별 가공방식을 담는다(V-14)","properties":{
               "description":%s,

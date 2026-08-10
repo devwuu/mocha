@@ -1,12 +1,16 @@
 package com.devwuu.mocha.agent.tool;
 
+import com.devwuu.mocha.agent.turn.TurnProposalSink;
+import com.devwuu.mocha.agent.turn.TurnUserMessage;
 import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.json.MochaObjectMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 import java.lang.reflect.RecordComponent;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -76,6 +80,54 @@ class ToolArgsContractTest {
         assertThat(args.match()).isEqualTo(
                 new ProposeRecordArgs.MatchArg("existing", "12", "2026-07-16"));
         assertThat(args.sources()).containsExactly("https://frob.co.kr/products/chelbesa");
+    }
+
+    @Test
+    @DisplayName("changes/0030 TΔ12: propose_record의 recipe 스키마 = 도메인 Recipe의 와이어 형태 — grind는 number, grinder·detail이 machine·pouring 자리를 대신한다")
+    void recipeSchemaMatchesTheRecipeWireShape() {
+        JsonNode recipe = proposeRecordSchema()
+                .get("properties").get("cups").get("items").get("properties").get("recipe");
+
+        // 기대값을 손으로 나열하지 않고 «record를 이 매퍼로 직렬화한 결과»에서 뽑는다 — 모델이 실제로 채워
+        // 보내야 하는 키가 그것이고, 도메인이 다시 바뀌면 목록을 고치지 않아도 이 단언이 따라 움직인다.
+        List<String> wireFields = fieldNames(mapper.valueToTree(
+                new Recipe(null, null, null, null, null, null, null, null, null, null)));
+
+        // containsExactly = 부재(machine·pouring) + 존재(grinder·detail) + 순서를 한 번에 문다. strict
+        // 계약이라 required도 전 필드여야 한다 — 스키마가 없는 필드를 요구하면 모델 응답이 통째로 막힌다.
+        assertThat(fieldNames(recipe.get("properties"))).containsExactlyElementsOf(wireFields);
+        assertThat(stringValues(recipe.get("required"))).containsExactlyElementsOf(wireFields);
+        assertThat(recipe.get("additionalProperties").asBoolean()).isFalse();
+
+        // ⚠️ grind는 이름이 그대로라 키 단언이 재편을 못 잡는다 — 타입을 따로 문다(TΔ11 ClientApiContractTest와
+        // 같은 구멍). 텍스트인 채로 남았다면 위 세 단언은 전부 그린이고 V-8 수치 규칙만 조용히 어긋난다.
+        assertThat(stringValues(recipe.get("properties").get("grind").get("type")))
+                .containsExactly("number", "null");
+        assertThat(stringValues(recipe.get("properties").get("grinder").get("type")))
+                .containsExactly("string", "null");
+        assertThat(stringValues(recipe.get("properties").get("detail").get("type")))
+                .containsExactly("string", "null");
+    }
+
+    /**
+     * 장착된 {@code propose_record}의 인자 스키마 — 턴별 인자(userId·발화·draft·수거함)는 executor
+     * 클로저에만 쓰이고 정의에는 영향이 없어 더미로 충분하다(계약 스냅샷 테스트와 같은 방식).
+     */
+    private JsonNode proposeRecordSchema() {
+        List<ToolCallback> tools = ToolCallbackProviderFixture.toolkit().build()
+                .forTurn("U-contract", new TurnUserMessage("계약", null), null, new TurnProposalSink());
+        ToolCallback proposeRecord = tools.stream()
+                .filter(tool -> tool.name().equals("propose_record"))
+                .findFirst().orElseThrow();
+        return mapper.readTree(proposeRecord.parametersSchema());
+    }
+
+    private static List<String> fieldNames(JsonNode object) {
+        return new ArrayList<>(object.propertyNames());
+    }
+
+    private static List<String> stringValues(JsonNode array) {
+        return array.valueStream().map(JsonNode::asString).toList();
     }
 
     private static List<String> componentNames(Class<?> recordClass) {
