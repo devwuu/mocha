@@ -3,7 +3,6 @@ package com.devwuu.mocha.render;
 import com.devwuu.mocha.config.RenderConfig;
 import com.devwuu.mocha.domain.Recipe;
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.thymeleaf.context.Context;
@@ -167,17 +166,8 @@ class RecipeCardTemplateTest {
         }
     }
 
-    @Test
-    @DisplayName("변형 분기 POLICY: method에 '에스프레소' 포함이면 에스프레소 변형, 그 외(null 포함)는 핸드드립 변형")
-    void espressoLayoutMatchesByContains() {
-        assertTrue(cardWithMethod("에스프레소").espressoLayout());
-        assertTrue(cardWithMethod("아이스 에스프레소").espressoLayout(), "자유 문자열 포함 매칭");
-        assertFalse(cardWithMethod("핸드드립").espressoLayout());
-        assertFalse(cardWithMethod(null).espressoLayout(), "method 없으면 핸드드립 변형 기본");
-    }
-
-    private static NoteView.RecipeCard cardWithMethod(String method) {
-        return new NoteView.RecipeCard("커피", null, LocalDate.parse("2026-07-18"),
-                new Recipe(method, 15.0, null, null, null, null, null, null, null, null));
-    }
+    // 구 espressoLayoutMatchesByContains는 TΔ18에서 삭제됐다 — 단언 대상 espressoLayout()이 사라졌고
+    // (ADR-87 방식 분기 폐기), 그 자리를 대신하는 「method 무관 동일 타일 집합」은 NoteViewRecipeCardTest가
+    // 뷰 모델 층에서 진다. 이 클래스의 템플릿 층 개편(핸드드립·에스프레소 두 갈래 통합, 타일 수 배치 단언)은
+    // 템플릿 재이식과 같은 자리라 TΔ20이 소유한다.
 }

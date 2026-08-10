@@ -4,6 +4,7 @@ import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Recipe;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -57,38 +58,61 @@ public final class NoteView {
             Recipe recipe) {
 
         /**
-         * 수치 타일 변형 분기 — 시안의 핸드드립/에스프레소가 갈리는 지점(findings-TΔ0 §5, Thymeleaf 분기 통합).
-         * <p>POLICY: {@code method}는 자유 문자열이라 "에스프레소" <b>포함</b>이면 에스프레소 변형
-         * (도징·추출량+비율·추출 시간 타일), 그 외(null 포함)는 핸드드립 변형(원두·물·분쇄도 타일)으로 조판한다.
-         * 어느 변형이든 값 있는 항목만 표시하고 타일에 못 오른 값은 라벨 행으로 내려간다 — 변형은 배치만 바꾸며
-         * 정보를 떨어뜨리지 않는다 (ref: FR-7 "값 있는 항목만", v7-recipe-discussion Q35).
+         * 3열 그리드에 올릴 타일 — <b>값 있는 항목만</b> 시안 순서(원두·물·시간·온도·추출량·분쇄도)로 담는다.
+         * 템플릿은 이 목록을 행 우선으로 흘려 넣기만 하고, 빈 목록이면 그리드 영역 자체를 숨긴다.
+         * <p>POLICY: 카드 레이아웃은 {@code method}를 <b>분기 조건으로 쓰지 않는다</b> — 표시 판정의 기준은
+         * 오직 "그 값이 있는가"다. 구 {@code espressoLayout()}(= {@code method.contains("에스프레소")})과
+         * 그것이 가르던 타일/상세 행 2개 레이아웃은 함께 사라졌다: {@code method}가 자유 문자열인 한
+         * "아메리카노"처럼 어느 분기도 아닌 값이 계속 나오고, 그때마다 값이 엉뚱한 영역으로 밀렸다
+         * (ref: plan.md#ADR-87, spec FR-7 ③·AC-25, changes/0030 §1.3).
+         * <p>POLICY: 타일 6종은 <b>레시피의 수치성 필드 전량</b>과 일치한다(ADR-86 재편 이후) — 그래서
+         * "타일에 못 오른 값을 담는 상세 행 영역"이라는 층이 필요 없다. 수치가 아닌 것({@code detail}·
+         * {@code feedback})은 타일이 아니라 텍스트 블록이 받는다.
+         * <p>POLICY: 분쇄도 타일의 값은 {@code grind}이고 {@code grinder}는 그 서브라벨이다 —
+         * <b>그라인더명만 있고 수치가 없으면 타일 자체가 없다</b>(2026-08-10 사용자 확정). 이름은
+         * "얼마나 갈았나"의 답이 아니라서 값 자리를 대신 채우지 않고, 카드는 상세 화면과 달리
+         * 없는 항목의 자리를 남기지 않는다(AC-25 — 상세 화면의 {@code —} 규칙은 회차 간 비교가 근거였다).
+         * <p>시간의 표시 가능 여부는 표기 단일 소스({@link RecipeAmounts#time})에 위임한다 — 반올림 0초 등
+         * 표기 불가 값이 타일 유무 판정만 참으로 만드는 어긋남 방지(changes/0025 리뷰 후속).
          */
-        public boolean espressoLayout() {
-            return recipe.method() != null && recipe.method().contains("에스프레소");
+        public List<Tile> tiles() {
+            List<Tile> tiles = new ArrayList<>(6);
+            if (recipe.doseG() != null) {
+                tiles.add(new Tile("원두", RecipeAmounts.num(recipe.doseG()) + "g", null));
+            }
+            if (recipe.waterMl() != null) {
+                tiles.add(new Tile("물", RecipeAmounts.num(recipe.waterMl()) + "ml", null));
+            }
+            String time = RecipeAmounts.time(recipe.timeSec());
+            if (time != null) {
+                tiles.add(new Tile("시간", time, null)); // 표기는 "2분 40초" — 시안의 2:40은 기각(D-7)
+            }
+            if (recipe.tempC() != null) {
+                tiles.add(new Tile("온도", RecipeAmounts.num(recipe.tempC()) + "℃", null));
+            }
+            if (recipe.yieldMl() != null) {
+                // 비율은 도징·추출량 둘 다 있을 때만, 그리고 추출 방식과 무관하게 붙는다(AC-Δ12 — 구 규칙은
+                // 에스프레소 변형 전용이었다). 서브라벨 자리라 계산 불가 시 null로 생략된다(ADR-54).
+                String ratio = RecipeAmounts.ratio(recipe.doseG(), recipe.yieldMl());
+                tiles.add(new Tile("추출량", RecipeAmounts.num(recipe.yieldMl()) + "ml",
+                        ratio == null ? null : "비율 " + ratio));
+            }
+            if (recipe.grind() != null) {
+                tiles.add(new Tile("분쇄도", RecipeAmounts.num(recipe.grind()), recipe.grinder()));
+            }
+            return List.copyOf(tiles);
         }
+    }
 
-        // 시간의 표시 가능 여부는 표기 단일 소스(RecipeAmounts.time)에 위임 — 반올림 0초 등 표기 불가 값이
-        // 타일·행 유무 판정만 참으로 만드는 어긋남 방지(changes/0025 리뷰 후속, 템플릿 가드와 동일 기준).
-
-        /** 수치 타일 영역에 오를 값이 하나라도 있는가 — 없으면 타일 행 자체를 숨긴다(구 AC-25 승계). */
-        public boolean hasNumericTiles() {
-            return espressoLayout()
-                    ? recipe.doseG() != null || recipe.yieldMl() != null || RecipeAmounts.time(recipe.timeSec()) != null
-                    : recipe.doseG() != null || recipe.waterMl() != null || recipe.grind() != null;
-        }
-
-        /**
-         * 라벨 그리드(타일 아래 상세 행)에 오를 값이 하나라도 있는가 — 없으면 영역 자체를 숨긴다.
-         * <p>changes/0030 TΔ11에서 폐기된 {@code machine} 항이 빠지고 {@code pouring}이 {@code detail}로
-         * 옮겨졌다 — <b>구 필드가 사라진 자리를 메운 최소 수정</b>이고 배치 판단은 그대로다.
-         * 이 메서드와 {@link #espressoLayout()}은 TΔ18에서 통째로 삭제된다(ADR-87 — 방식 분기 폐기).
-         */
-        public boolean hasDetailRows() {
-            return espressoLayout()
-                    ? recipe.grind() != null || recipe.tempC() != null
-                            || recipe.waterMl() != null || recipe.detail() != null
-                    : recipe.tempC() != null || recipe.yieldMl() != null
-                            || recipe.detail() != null || RecipeAmounts.time(recipe.timeSec()) != null;
-        }
+    /**
+     * 레시피 카드의 수치 타일 1칸 — {@link RecipeCard#tiles()}가 값 있는 항목만 담아 돌려준다.
+     * 단위·비율 접두는 여기서 이미 붙어 있어 템플릿은 문자열을 그대로 찍는다(두 테마의 타일 어휘·표기가
+     * 시안에서 동일하고, 갈리는 것은 색·치수뿐이다 — ADR-87 이식).
+     *
+     * @param label 타일 라벨("원두"·"물"·"시간"·"온도"·"추출량"·"분쇄도")
+     * @param value 단위까지 붙인 표시값("15g"·"2분 40초"·"92℃")
+     * @param sub   서브라벨 — 추출량의 "비율 1 : 2", 분쇄도의 그라인더명. 없으면 null(줄 생략)
+     */
+    public record Tile(String label, String value, String sub) {
     }
 }
