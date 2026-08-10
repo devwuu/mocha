@@ -1,6 +1,7 @@
 package com.devwuu.mocha.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.devwuu.mocha.domain.Source;
 import com.devwuu.mocha.repository.entity.NoteEntity;
@@ -53,7 +54,7 @@ class SchemaMigrationTest extends PostgresIntegrationTest {
                         + " WHERE success = true AND version IS NOT NULL ORDER BY installed_rank",
                 String.class);
 
-        assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6");
+        assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7");
     }
 
     @Test
@@ -147,6 +148,43 @@ class SchemaMigrationTest extends PostgresIntegrationTest {
         assertThat(columnsOf("cup")).contains("tasting_day_id").doesNotContain("entry_id");
     }
 
+    @Test
+    @DisplayName("AC-Δ8(TΔ9): 레시피 필드 재편 — machine·pouring이 사라지고 detail·grind(numeric)·grinder가 들어왔다")
+    void recipeTableCarriesTheRebuiltFields() {
+        assertThat(columnsOf("recipe")).containsExactlyInAnyOrder(
+                "cup_id", "method", "dose_g", "water_ml", "yield_ml", "time_sec", "temp_c",
+                "detail", "feedback", "grind", "grinder");
+
+        // grind는 rename이 아니라 DROP 후 재생성이다(D-4·D-8) — 이름이 같아 컬럼 목록만으로는 재편이
+        // 서지 않는다. 타입이 numeric인 것이 「수치 6종에 편입됐다」의 증거이고, TEXT로 남아 있었다면
+        // 위 단언은 그린인 채 V-8 검사만 조용히 비켜갔을 자리다.
+        assertThat(jdbc.queryForObject(
+                "SELECT data_type FROM information_schema.columns"
+                        + " WHERE table_schema = 'test' AND table_name = 'recipe' AND column_name = 'grind'",
+                String.class)).isEqualTo("numeric");
+    }
+
+    @Test
+    @DisplayName("AC-Δ6(TΔ9): grind CHECK가 0·음수·Infinity·NaN을 거부한다 — V-8이 DB 제약으로도 선다")
+    void grindCheckRejectsNonPositiveAndNonFinite() {
+        // numeric은 double과 달리 Infinity·NaN을 값으로 받고 둘 다 0보다 크다고 판정되므로
+        // `> 0`만으로는 부족하다 — CHECK가 `< 'Infinity'`까지 보는 이유다(V1 주석 승계).
+        for (String violating : List.of("0", "-1", "Infinity", "NaN")) {
+            // 위반 삽입은 트랜잭션 전체를 abort시킨다(Postgres) — 세이브포인트로 되감지 않으면
+            // 두 번째 시도부터 "current transaction is aborted"라는 «다른 이유»로 실패해 그린을 가장한다.
+            jdbc.execute("SAVEPOINT before_violation");
+            assertThatThrownBy(() -> jdbc.update(
+                    "INSERT INTO test.recipe (cup_id, grind) VALUES (999, ?::NUMERIC)", violating))
+                    .hasStackTraceContaining("recipe_grind_check");
+            jdbc.execute("ROLLBACK TO SAVEPOINT before_violation");
+        }
+
+        // AC-Δ5의 DB 쪽 절반 — 분쇄값과 그라인더명이 갈린 두 컬럼에 각각 앉는다.
+        jdbc.update("INSERT INTO test.recipe (cup_id, grind, grinder) VALUES (999, 210, ?)", "매버릭 2.0");
+        // V-8 위반은 «값이 있는데 유효하지 않은 것»뿐이다 — 미언급 필드(null)는 CHECK를 통과한다.
+        jdbc.update("INSERT INTO test.recipe (cup_id, grind) VALUES (998, NULL)");
+    }
+
     private List<String> columnsOf(String table) {
         return jdbc.queryForList(
                 "SELECT column_name FROM information_schema.columns"
@@ -161,6 +199,8 @@ class SchemaMigrationTest extends PostgresIntegrationTest {
         // 개수는 TΔ2 판정이 psql로 확인한 값과 같아야 한다(FK 0 = ADR-75).
         // 0029 TΔ4: pending_note 드롭으로 pk 10 → 9, ck 15 → 13(mode·match_type CHECK 2종이 함께 사라졌다).
         // 0029 TΔ8b: note_photo 신설로 pk 9 → 10, uq 6 → 7(UNIQUE(note_id, tasted_on, seq)). CHECK는 없다.
+        // 0030 TΔ9: V7이 grind를 numeric으로 재생성하며 CHECK가 딸려 ck 13 → 14. 개명 3종(V4~V6)은
+        //           제약을 건드리지 않아 이 숫자에 영향이 없었다 — 형태가 바뀐 이번이 처음이다.
         Map<String, Object> byType = jdbc.queryForMap(
                 "SELECT count(*) FILTER (WHERE contype = 'p') AS pk,"
                         + " count(*) FILTER (WHERE contype = 'u') AS uq,"
@@ -171,7 +211,7 @@ class SchemaMigrationTest extends PostgresIntegrationTest {
                         + " WHERE n.nspname = 'test' AND t.relname <> 'flyway_schema_history'");
 
         assertThat(byType).containsEntry("pk", 10L).containsEntry("uq", 7L)
-                .containsEntry("ck", 13L).containsEntry("fk", 0L);
+                .containsEntry("ck", 14L).containsEntry("fk", 0L);
     }
 
     @Test
