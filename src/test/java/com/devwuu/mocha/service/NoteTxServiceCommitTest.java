@@ -312,6 +312,45 @@ class NoteTxServiceCommitTest extends PostgresIntegrationTest {
                 .containsExactly("둘째 잔", "첫 잔");
     }
 
+    /**
+     * TΔ8(changes/0030) Phase 1 게이트 — 개명 후에도 회차 2개짜리 시음일이 왕복에서 순서 그대로 살아난다
+     * (ref: changes/0030/delta.md#AC-Δ4).
+     *
+     * <p><b>위 {@code cupOrderFollowsSeqNotInsertionOrder}의 «AC-Δ4»는 changes/0028의 것이다</b> — 같은
+     * 라벨이 두 델타에서 다른 것을 가리킨다. 0028은 <i>정렬을 seq가 소유하는가</i>를 대조군(seq를 밀어
+     * 순서를 뒤집는다)으로 물었고, 0030은 <i>rename이 그 왕복을 조용히 깨뜨리지 않았는가</i>를 묻는다.
+     *
+     * <p><b>실 DB로는 설 수 없는 단언이다</b>(TΔ0 §5.2 실측): 개발 DB에 {@code seq > 0}인 행이 0건이라
+     * 실사용 왕복 확인은 회차 1개짜리만 지나간다. 회차 2개를 픽스처로 만드는 것이 이 단언의 전제다.
+     *
+     * <p>도메인 순서와 {@code cup.seq} 값을 <b>둘 다</b> 본다. 도메인만 보면 조립 순서가 우연히 삽입 순서와
+     * 맞아 그린이 될 수 있고, 그러면 개명이 옮긴 두 컬럼({@code cup.seq}·{@code cup.tasting_day_id})을
+     * 조회 정렬이 실제로 짚는지가 관측되지 않는다.
+     */
+    @Test
+    @DisplayName("AC-Δ4(0030): 회차 2개 시음일이 왕복 후 seq 0·1로 살아 있고 그 순서대로 복원된다")
+    void twoCupTastingDaySurvivesTheRoundTripInSeqOrder() {
+        long noteId = seed(tastingDay(day(12), List.of(
+                new Cup(new Recipe("핸드드립", 15.0, 240.0, null, 150.0, 92.0, "210클릭 (매버릭 2.0)", null, null, null),
+                        new Review("첫 잔은 새콤했다", "첫 잔은 새콤했다", Rating.GOOD)),
+                new Cup(new Recipe("핸드드립", 15.0, 240.0, null, 140.0, 90.0, "220클릭 (매버릭 2.0)", null, null, null),
+                        new Review("둘째 잔은 달았다", "둘째 잔은 달았다", Rating.PERFECT)))));
+        em.clear();
+
+        TastingDay reloaded = repo.findById(noteId).orElseThrow().tastingDays().getFirst();
+        assertThat(reloaded.cups()).extracting(c -> c.review().myTaste())
+                .containsExactly("첫 잔은 새콤했다", "둘째 잔은 달았다");
+        // 회차별 레시피도 제 회차에 붙어 있다 — 조인 컬럼이 cup_id로 옮겨 간 뒤에도 짝이 안 섞였다는 증거다.
+        assertThat(reloaded.cups()).extracting(c -> c.recipe().grind())
+                .containsExactly("210클릭 (매버릭 2.0)", "220클릭 (매버릭 2.0)");
+
+        long tastingDayId = notes.findTastingDayId(noteId, day(12)).orElseThrow();
+        List<?> seqs = nativeQuery("SELECT seq FROM %s.cup WHERE tasting_day_id = :tastingDayId ORDER BY seq")
+                .setParameter("tastingDayId", tastingDayId)
+                .getResultList();
+        assertThat(seqs).extracting(s -> ((Number) s).intValue()).containsExactly(0, 1);
+    }
+
     // ─────────────────────── 제약 위반 삽입 실패 4건 (AC-Δ3) ───────────────────────
 
     @Test
