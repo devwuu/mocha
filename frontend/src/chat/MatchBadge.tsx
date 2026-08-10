@@ -311,14 +311,14 @@ function TastingDayPicker({ target, onPick }: { target: NoteCandidate; onPick: (
 function summarize(tastingDay: NoteDetailTastingDay): string {
   const parts = [`${tastingDay.cups.length}회차`]
   const rating = tastingDay.cups.map((cup) => cup.review?.rating).find((value) => value != null)
-  const taste = tastingDay.cups
+  const myTaste = tastingDay.cups
     .map((cup) => cup.review?.my_taste)
     .find((value) => value != null && value !== '')
   if (rating != null) {
     parts.push(rating)
   }
-  if (taste != null) {
-    parts.push(`“${taste}”`)
+  if (myTaste != null) {
+    parts.push(`“${myTaste}”`)
   } else if (rating == null) {
     // 레시피만 남긴 날 — 빈 자리를 두면 "왜 이 줄만 짧지"가 된다(V-15: 둘 중 하나는 있다).
     parts.push('레시피만')

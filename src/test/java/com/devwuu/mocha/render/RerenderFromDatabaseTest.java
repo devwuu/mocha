@@ -123,13 +123,13 @@ class RerenderFromDatabaseTest extends PostgresIntegrationTest {
 
         new ThymeleafNoteRenderer(serviceOver(repo), engine, artifactDir, Theme.TYPE_B, new FakeCardImageRenderer()).renderAll();
         assertThat(cardFiles(artifactDir)).contains(
-                cardPath(kept, "2026-07-10-taste-1.jpg"),
-                cardPath(removed, "2026-07-04-taste-1.jpg"));
+                cardPath(kept, "2026-07-10-review-1.jpg"),
+                cardPath(removed, "2026-07-04-review-1.jpg"));
 
         deleteRecursively(artifactDir);
 
         // DB만 바꾼다 — 파일에는 아무것도 남아 있지 않다. 한쪽은 늘리고 한쪽은 지워 방향을 둘 다 본다.
-        repo.commit(kept.id(), metaOf(kept), tasteTastingDay(LocalDate.of(2026, 7, 20), "다음 날은 더 달았다."),
+        repo.commit(kept.id(), metaOf(kept), reviewTastingDay(LocalDate.of(2026, 7, 20), "다음 날은 더 달았다."),
                 Aliases.empty());
         repo.delete(removed.id());
         em.clear();
@@ -140,9 +140,9 @@ class RerenderFromDatabaseTest extends PostgresIntegrationTest {
         assertThat(cardFiles(artifactDir))
                 .as("DB에 추가된 엔트리는 카드로 나타나고, 삭제된 노트는 폴더째 되살아나지 않는다")
                 .containsExactlyInAnyOrder(
-                        cardPath(kept, "2026-07-10-taste-1.jpg"),
+                        cardPath(kept, "2026-07-10-review-1.jpg"),
                         cardPath(kept, "2026-07-10-recipe-1.jpg"),
-                        cardPath(kept, "2026-07-20-taste-1.jpg"));
+                        cardPath(kept, "2026-07-20-review-1.jpg"));
     }
 
     // ────────────────────────────── 표본 ──────────────────────────────
@@ -183,11 +183,11 @@ class RerenderFromDatabaseTest extends PostgresIntegrationTest {
 
         return List.of(
                 repo.commit(null, yirgacheffe, withRecipe, Aliases.empty()),
-                repo.commit(null, geisha, tasteTastingDay(LocalDate.of(2026, 7, 4), "화사하다."), Aliases.empty()));
+                repo.commit(null, geisha, reviewTastingDay(LocalDate.of(2026, 7, 4), "화사하다."), Aliases.empty()));
     }
 
-    private static TastingDay tasteTastingDay(LocalDate date, String taste) {
-        return new TastingDay(date, List.of(new Cup(null, new Review(taste, null, Rating.PERFECT))), IGNORED);
+    private static TastingDay reviewTastingDay(LocalDate date, String myTaste) {
+        return new TastingDay(date, List.of(new Cup(null, new Review(myTaste, null, Rating.PERFECT))), IGNORED);
     }
 
     /** 저장된 노트의 메타 — {@code upsertTastingDay} 재호출이 노트 단위 필드를 그대로 두게 한다. */

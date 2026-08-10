@@ -14,7 +14,7 @@ import java.util.regex.Pattern;
  * <p>사진 아카이브와 카드가 같은 세그먼트를 쓴다:
  * <pre>
  *   data/photos/&lt;접미&gt;/&lt;date&gt;/*
- *   artifact/cards/&lt;접미&gt;/&lt;date&gt;-taste-&lt;n&gt;.jpg
+ *   artifact/cards/&lt;접미&gt;/&lt;date&gt;-review-&lt;n&gt;.jpg
  * </pre>
  * 둘이 어긋나면 사진과 카드가 다른 폴더로 갈라지므로 조립 규칙을 여기 한곳에 모은다
  * (slug 시절 {@code CardFiles}·{@code LocalPhotoStore}가 slug 문자열을 각자 받아 쓰던 자리다).

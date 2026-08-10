@@ -65,8 +65,8 @@ public class WebConfig implements WebMvcConfigurer {
 	@Override
 	public void addFormatters(FormatterRegistry registry) {
 		registry.addConverter(String.class, Rating.class, Rating::from);
-		// 카드 종류도 같은 이유로 명시한다(TΔ9) — 계약이 싣는 것은 상수명(TASTE)이 아니라 파일명과 같은
-		// 표기(taste)이고, 규칙을 안 주면 모든 카드 요청이 400이 된다.
+		// 카드 종류도 같은 이유로 명시한다(TΔ9) — 계약이 싣는 것은 상수명(REVIEW)이 아니라 파일명과 같은
+		// 표기(review)이고, 규칙을 안 주면 모든 카드 요청이 400이 된다.
 		registry.addConverter(String.class, CardType.class, CardType::from);
 	}
 

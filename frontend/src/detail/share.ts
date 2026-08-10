@@ -17,7 +17,7 @@ import { getNoteCard } from '../api'
 export function cardTypesOf(cup: NoteDetailCup): CardType[] {
   const types: CardType[] = []
   if (cup.review !== null) {
-    types.push('taste')
+    types.push('review')
   }
   if (cup.recipe !== null) {
     types.push('recipe')

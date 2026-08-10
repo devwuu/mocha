@@ -9,13 +9,13 @@ import com.devwuu.mocha.domain.Cup;
  * 카드를 파트별로 고르게 하지 않고 전부 보냈다, FR-16). 그래서 이 enum이 사는 이유는 <b>온디맨드 API의
  * 대상 지정</b>뿐이다 — 서버는 요청 1건당 카드 1장을 만들고, 무엇을 만들지가 여기서 갈린다.
  *
- * <p>{@code id}가 그대로 {@code ?type=} 값이자 파일명 세그먼트다({@code <date>-taste-<n>.jpg}) — 두
+ * <p>{@code id}가 그대로 {@code ?type=} 값이자 파일명 세그먼트다({@code <date>-review-<n>.jpg}) — 두
  * 표기를 갈라 두면 URL과 캐시 파일이 서로 다른 어휘를 쓰게 되고, 그 매핑이 또 한 곳의 규칙이 된다.
  */
 public enum CardType {
 
     /** 감상 카드 — {@code review}가 있는 회차만 산출된다(AC-78). */
-    TASTE("taste"),
+    REVIEW("review"),
 
     /** 레시피 카드 — {@code recipe}가 있는 회차만 산출된다(AC-78). */
     RECIPE("recipe");
@@ -53,6 +53,6 @@ public enum CardType {
      * 갈리면 온디맨드가 <i>"있다"</i>고 답한 카드를 렌더러가 굽지 않는 조합이 생긴다.
      */
     public boolean presentIn(Cup cup) {
-        return this == TASTE ? cup.review() != null : cup.recipe() != null;
+        return this == REVIEW ? cup.review() != null : cup.recipe() != null;
     }
 }

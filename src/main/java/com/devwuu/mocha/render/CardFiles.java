@@ -11,7 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 회차 카드 JPG 파일 경로 규약 — {@code artifact/cards/<접미>/<date>-taste-<n>.jpg}·{@code <date>-recipe-<n>.jpg},
+ * 회차 카드 JPG 파일 경로 규약 — {@code artifact/cards/<접미>/<date>-review-<n>.jpg}·{@code <date>-recipe-<n>.jpg},
  * n = 회차 번호(= cups 배열 순서, 1부터) (ref: data-model.md §2.4, plan.md#ADR-54·59, changes/0021 TΔ5a).
  * <p>렌더러(산출·정리)와 카드 파생물 재사용 판정(data-model §3.5)이 같은 규약을
  * 공유하도록 한곳에 모은다. 카드 위에 회차를 표기하지 않으므로 파일명이 회차 구분의 유일한 표현이다(ADR-54 POLICY).
@@ -35,14 +35,14 @@ public final class CardFiles {
      * 붙이면 규약이 <i>"이름을 만드는 규칙"</i>과 <i>"이름을 고르는 규칙"</i>으로 갈린다.
      */
     public static Path card(Path artifactDir, Note note, LocalDate date, CardType type, int cupNumber) {
-        return type == CardType.TASTE
-                ? tasteCard(artifactDir, note, date, cupNumber)
+        return type == CardType.REVIEW
+                ? reviewCard(artifactDir, note, date, cupNumber)
                 : recipeCard(artifactDir, note, date, cupNumber);
     }
 
     /** 감상 카드 경로 — review 있는 회차만 산출된다(AC-78). */
-    public static Path tasteCard(Path artifactDir, Note note, LocalDate date, int cupNumber) {
-        return noteCardsDir(artifactDir, note).resolve(date + "-taste-" + cupNumber + ".jpg");
+    public static Path reviewCard(Path artifactDir, Note note, LocalDate date, int cupNumber) {
+        return noteCardsDir(artifactDir, note).resolve(date + "-review-" + cupNumber + ".jpg");
     }
 
     /** 레시피 카드 경로 — recipe 있는 회차만 산출된다(AC-78). */
@@ -60,7 +60,7 @@ public final class CardFiles {
         for (int i = 0; i < cups.size(); i++) {
             int n = i + 1; // 배열 순서 = 회차 번호(ADR-59)
             if (cups.get(i).review() != null) {
-                expected.add(tasteCard(artifactDir, note, tastingDay.date(), n));
+                expected.add(reviewCard(artifactDir, note, tastingDay.date(), n));
             }
             if (cups.get(i).recipe() != null) {
                 expected.add(recipeCard(artifactDir, note, tastingDay.date(), n));

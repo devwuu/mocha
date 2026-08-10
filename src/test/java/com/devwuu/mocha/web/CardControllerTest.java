@@ -42,7 +42,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>검증의 축은 셋이다.
  * <ul>
  *   <li><b>대상 지정</b> — 경로·쿼리가 렌더러에 <i>그대로</i> 닿는가. {@code type}이 상수명이 아니라
- *       파일명과 같은 표기({@code taste})로 들어오므로 변환 규칙이 없으면 <b>모든 카드 요청이 400</b>이
+ *       파일명과 같은 표기({@code review})로 들어오므로 변환 규칙이 없으면 <b>모든 카드 요청이 400</b>이
  *       된다 — 그래서 {@link WebConfig}를 함께 들인다(슬라이스가 컨버터를 자동으로 얻지 않는다).</li>
  *   <li><b>바이트</b> — 응답이 JPEG이고 파일 내용 그대로인가. 파생물을 만드는 API라 <i>돌려준 것이
  *       그 파일인가</i>가 계약의 본체다.</li>
@@ -101,23 +101,23 @@ class CardControllerTest {
     @Test
     @DisplayName("TΔ9: n을 안 주면 1회차다 — 회차가 하나뿐인 기록이 대다수다")
     void cupNumberDefaultsToOne() throws Exception {
-        renderer.card = write("2026-07-18-taste-1.jpg", new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF});
+        renderer.card = write("2026-07-18-review-1.jpg", new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF});
 
-        mockMvc.perform(get("/api/notes/42/tasting-days/2026-07-18/card").param("type", "taste"))
+        mockMvc.perform(get("/api/notes/42/tasting-days/2026-07-18/card").param("type", "review"))
                 .andExpect(status().isOk());
 
-        assertThat(renderer.calls).containsExactly("42 2026-07-18 TASTE 1");
+        assertThat(renderer.calls).containsExactly("42 2026-07-18 REVIEW 1");
     }
 
     @Test
     @DisplayName("POLICY: 카드는 no-store다 — 노트를 고치면 내용이 바뀌는 파생물이라 사진(30일 캐시)과 갈린다")
     void cardIsNotCachedByTheBrowser() throws Exception {
-        renderer.card = write("2026-07-18-taste-1.jpg", new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF});
+        renderer.card = write("2026-07-18-review-1.jpg", new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF});
 
-        mockMvc.perform(get("/api/notes/42/tasting-days/2026-07-18/card").param("type", "taste"))
+        mockMvc.perform(get("/api/notes/42/tasting-days/2026-07-18/card").param("type", "review"))
                 .andExpect(header().string("Cache-Control", "no-store"))
                 // 파일명은 내려받기 경로의 이름이 된다(공유 시트가 없는 환경의 폴백).
-                .andExpect(header().string("Content-Disposition", "inline; filename=\"2026-07-18-taste-1.jpg\""));
+                .andExpect(header().string("Content-Disposition", "inline; filename=\"2026-07-18-review-1.jpg\""));
 
         assertThat(contract.get("response_cache_control").stringValue()).isEqualTo("no-store");
     }
@@ -144,11 +144,29 @@ class CardControllerTest {
     }
 
     @Test
+    @DisplayName("AC-Δ2(0030 TΔ7): 계약이 싣는 type 열거가 CardType의 표기와 같다 — 카드 타입 값은 review|recipe다")
+    void contractTypeValuesMatchTheCardTypeIds() {
+        List<String> declared = new ArrayList<>();
+        contract.get("params").get("type").forEach(node -> declared.add(node.stringValue()));
+
+        List<String> ids = new ArrayList<>();
+        for (CardType type : CardType.values()) {
+            ids.add(type.id());
+        }
+
+        // 위 테스트들이 무는 것은 "알 수 없는 표기가 400"까지다 — 계약 파일의 열거는 어디에도 안 걸려 있어
+        // 한쪽만 고쳐도 그린이 된다(구 taste가 계약에만 남는 조합). 두 소유자를 여기서 맞물린다.
+        assertThat(declared).isEqualTo(ids).containsExactly("review", "recipe");
+        // example도 같은 표기여야 한다 — 값만 고치고 예시를 두면 계약 문서가 구 어휘로 갈린다.
+        assertThat(contract.get("example").stringValue()).contains("type=review");
+    }
+
+    @Test
     @DisplayName("plan §7: 굽다 실패하면 500이다 — 저장된 기록은 멀쩡하고 실패한 것은 파생물뿐이다")
     void renderFailureIsServerError() throws Exception {
         renderer.failure = new IllegalStateException("Chromium 기동 실패");
 
-        mockMvc.perform(get("/api/notes/42/tasting-days/2026-07-18/card").param("type", "taste"))
+        mockMvc.perform(get("/api/notes/42/tasting-days/2026-07-18/card").param("type", "review"))
                 .andExpect(status().isInternalServerError());
 
         assertThat(contract.get("render_failure_status").intValue()).isEqualTo(500);

@@ -17,24 +17,24 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * TΔ4a(changes/0021): 감상 카드 템플릿({@code <theme>/taste.html}) 이식 계약 검증 — 실 래스터화 없이
+ * TΔ4a(changes/0021): 감상 카드 템플릿({@code <theme>/review.html}) 이식 계약 검증 — 실 래스터화 없이
  * Thymeleaf 산출 HTML로 FR-7 필드↔영역 매핑·확정 편차·null 분기를 결정론적으로 본다(백엔드 CLAUDE.md §5.2).
- * 실 Chromium 스모크(비주얼·오프라인 렌더)는 {@link TasteCardChromiumSmokeTest}(태그 분리).
+ * 실 Chromium 스모크(비주얼·오프라인 렌더)는 {@link ReviewCardChromiumSmokeTest}(태그 분리).
  * <ul>
  *   <li>AC-64: beans 원두별 설명+가공방식 병기</li>
  *   <li>AC-Δ5: FR-7 매핑 렌더·rating 뱃지 이모티콘 없음</li>
  *   <li>AC-Δ9: CDN·외부 URL 참조 없음(로컬 번들 폰트 참조)</li>
  * </ul>
  */
-class TasteCardTemplateTest {
+class ReviewCardTemplateTest {
 
     private final SpringTemplateEngine engine = RenderConfig.offlineTemplateEngine();
 
     // 구 템플릿(note.html·RatingStyle.emoji)이 쓰던 장식 이모지 전수 — 이식 편차①로 감상 카드에서 제거됐다.
     private static final List<String> BANNED_EMOJIS = List.of("☕", "🌍", "💧", "🔥", "🏷", "🐾", "🔗", "❤", "😋", "🙂", "😓");
 
-    private static NoteView.TasteCard blendCard(Rating rating) {
-        return new NoteView.TasteCard(
+    private static NoteView.ReviewCard blendCard(Rating rating) {
+        return new NoteView.ReviewCard(
                 "레인보우 블렌드",
                 "커피가게 동경",
                 List.of(
@@ -48,7 +48,7 @@ class TasteCardTemplateTest {
                 rating);
     }
 
-    private String render(Theme theme, NoteView.TasteCard card) {
+    private String render(Theme theme, NoteView.ReviewCard card) {
         Context ctx = new Context(Locale.KOREAN);
         // TΔ5a 렌더러 baseContext와 같은 컨텍스트 계약 — fmt/rs/amt 헬퍼 + 마스코트 상대 경로.
         ctx.setVariable("fmt", new KoreanDates());
@@ -56,7 +56,7 @@ class TasteCardTemplateTest {
         ctx.setVariable("amt", new RecipeAmounts());
         ctx.setVariable("mascotHref", "mascot-face.png");
         ctx.setVariable("card", card);
-        return engine.process(theme.id() + "/taste", ctx);
+        return engine.process(theme.id() + "/review", ctx);
     }
 
     @ParameterizedTest
@@ -124,7 +124,7 @@ class TasteCardTemplateTest {
     @EnumSource(Theme.class)
     @DisplayName("값 없는 항목은 숨긴다 — rating·roastery·roastLevel 미기재, official_notes 빈 배열(구 AC-25 승계)")
     void hidesAbsentFields(Theme theme) {
-        NoteView.TasteCard sparse = new NoteView.TasteCard(
+        NoteView.ReviewCard sparse = new NoteView.ReviewCard(
                 "핸드드립 하우스 블렌드", null,
                 List.of(new NoteView.BeanLine("과테말라 안티구아", null)),
                 null, List.of(),

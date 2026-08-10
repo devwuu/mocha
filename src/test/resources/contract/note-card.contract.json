@@ -2,10 +2,10 @@
   "path": "/api/notes/{id}/tasting-days/{date}/card",
   "method": "GET",
   "params": {
-    "type": ["taste", "recipe"],
+    "type": ["review", "recipe"],
     "n": 1
   },
-  "example": "/api/notes/42/tasting-days/2026-07-18/card?type=taste&n=2",
+  "example": "/api/notes/42/tasting-days/2026-07-18/card?type=review&n=2",
   "response_content_type": "image/jpeg",
   "response_status": 200,
   "response_cache_control": "no-store",

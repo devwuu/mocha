@@ -7,7 +7,7 @@ import java.util.Optional;
 
 /**
  * 파이프라인 [6] — 회차 카드 산출 경계 (ref: plan.md §1 [6], §3; ADR-1, ADR-7, ADR-10, ADR-54·59).
- * <p>저장소(원본)만으로 회차 카드 JPG({@code cards/<접미>/<date>-taste-<n>.jpg}·{@code <date>-recipe-<n>.jpg},
+ * <p>저장소(원본)만으로 회차 카드 JPG({@code cards/<접미>/<date>-review-<n>.jpg}·{@code <date>-recipe-<n>.jpg},
  * n = 회차)를 재생성한다. 산출물은 파생물이며 삭제해도 데이터 손실이 없어야 한다(NFR-3, AC-6).
  * 카드 HTML은 굽는 순간의 중간 입력이라 파일로 남기지 않는다(ADR-10). 갤러리 페이지는 폐기됐다(ADR-9).
  * <p>POLICY: 렌더러는 저장소 외 어떤 상태도 읽지 않는다 — 전체 리렌더 가능성 보장 (ref: plan.md#ADR-1, AC-6).

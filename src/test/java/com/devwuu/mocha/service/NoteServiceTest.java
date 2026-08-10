@@ -246,7 +246,7 @@ class NoteServiceTest {
             tx.photos.add("photos/7-로스터리-커피/2026-07-10/bag.jpg");
             Path cardsDir = artifactDir.resolve("cards").resolve(NoteFolderName.of(note));
             Files.createDirectories(cardsDir);
-            Files.writeString(cardsDir.resolve("2026-07-10-taste-1.jpg"), "카드");
+            Files.writeString(cardsDir.resolve("2026-07-10-review-1.jpg"), "카드");
 
             service.delete(7);
 
@@ -399,8 +399,8 @@ class NoteServiceTest {
         void metaUpdateInvalidatesEveryCardOfTheNote() throws IOException {
             Note note = saved(7, "커피", "로스터리", Aliases.empty());
             tx.put(note);
-            Path july = seedCard(note, "2026-07-10-taste-1.jpg");
-            Path june = seedCard(note, "2026-06-01-taste-1.jpg");
+            Path july = seedCard(note, "2026-07-10-review-1.jpg");
+            Path june = seedCard(note, "2026-06-01-review-1.jpg");
 
             service.updateMeta(7, meta("커피", "새 로스터리"));
 
@@ -413,7 +413,7 @@ class NoteServiceTest {
         void dateMoveInvalidatesOldDateCards() throws IOException {
             Note note = saved(7, "커피", "로스터리", Aliases.empty());
             tx.put(note);
-            Path old = seedCard(note, "2026-07-09-taste-1.jpg");
+            Path old = seedCard(note, "2026-07-09-review-1.jpg");
 
             service.replaceTastingDay(7, day(9), tastingDay());
 
@@ -425,7 +425,7 @@ class NoteServiceTest {
         void mergeCommitInvalidatesCards() throws IOException {
             Note note = saved(7, "커피", "로스터리", Aliases.empty());
             tx.put(note);
-            Path card = seedCard(note, "2026-07-10-taste-1.jpg");
+            Path card = seedCard(note, "2026-07-10-review-1.jpg");
 
             service.commit(draft(7L, "커피", "로스터리"), MatchInfo.existing(7L, day(10)));
 
@@ -437,7 +437,7 @@ class NoteServiceTest {
         void invalidationHappensBeforeTheWrite() throws IOException {
             Note note = saved(7, "커피", "옛 로스터리", Aliases.empty());
             tx.put(note);
-            Path card = seedCard(note, "2026-07-10-taste-1.jpg");
+            Path card = seedCard(note, "2026-07-10-review-1.jpg");
             // 쓰기가 실패해도 무효화는 이미 일어났다 — 캐시가 비는 것은 무해하고(다음 공유가 다시 굽는다)
             // 순서가 뒤집혀 있었다면 이 시점에 카드가 살아 있다.
             tx.updateFailure = new IllegalStateException("대상 소실");

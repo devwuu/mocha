@@ -33,8 +33,8 @@ import java.util.stream.Stream;
  * 파이프라인 [6] — Thymeleaf를 오프라인 실행해 JSON 원본을 회차 카드 JPG로 굽는다
  * (ref: plan.md §1 [6], ADR-1, ADR-7, ADR-10, ADR-54·59; changes/0021 TΔ5a).
  * <ul>
- *   <li>{@code artifact/cards/<접미>/<date>-taste-<n>.jpg} — 회차 n의 감상 카드(review 있는 회차만, AC-78).
- *       {@code templates/<theme>/taste.html}을 회차 파트 1건으로 렌더한 뒤
+ *   <li>{@code artifact/cards/<접미>/<date>-review-<n>.jpg} — 회차 n의 감상 카드(review 있는 회차만, AC-78).
+ *       {@code templates/<theme>/review.html}을 회차 파트 1건으로 렌더한 뒤
  *       {@link CardImageRenderer}(헤드리스 Chromium)로 래스터화한다(ADR-10/ADR-11).</li>
  *   <li>{@code artifact/cards/<접미>/<date>-recipe-<n>.jpg} — 회차 n의 레시피 카드(recipe 있는 회차만, AC-78).</li>
  *   <li>{@code artifact/mascot-face.png}·{@code artifact/fonts/*.ttf} — 카드가 참조하는 로컬 자산(ADR-11).</li>
@@ -43,7 +43,7 @@ import java.util.stream.Stream;
  * 구워지고, 노트를 고치면 쓰기 경로가 그 노트의 카드를 통째로 걷는다({@code NoteService}). 그래서 이
  * 디렉터리에 무엇이 있는지는 <b>무엇을 공유했는지</b>의 흔적이지 저장된 기록의 완결된 사영이 아니다 —
  * 그 사영을 만드는 것은 {@link #renderAll}이고, 그것이 NFR-3의 증거다.
- * <p>POLICY: 렌더 산출물은 cards/&lt;접미&gt;/&lt;date&gt;-taste-&lt;n&gt;.jpg·&lt;date&gt;-recipe-&lt;n&gt;.jpg뿐 —
+ * <p>POLICY: 렌더 산출물은 cards/&lt;접미&gt;/&lt;date&gt;-review-&lt;n&gt;.jpg·&lt;date&gt;-recipe-&lt;n&gt;.jpg뿐 —
  * artifact/ 아래 HTML 산출 금지 (ADR-55·59, AC-67). index.html은 폐기됐다(changes/0021 TΔ6).
  * <p>카드 HTML은 <b>파일로 남기지 않는다</b> — 카드를 굽는 순간의 중간 입력일 뿐이다(ADR-10).
  * <p>디자인은 {@link Theme}(type-a 세리프 / type-b 귀여운)로 고르며 {@code templates/<theme>/} 폴더를 탄다.
@@ -213,7 +213,7 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
             int n = i + 1; // 배열 순서 = 회차 번호(ADR-59)
             Cup cup = cups.get(i);
             if (cup.review() != null) {
-                out.add(bakeTasteCard(ref.note(), ref.tastingDay(), cup.review(), n));
+                out.add(bakeReviewCard(ref.note(), ref.tastingDay(), cup.review(), n));
             }
             if (cup.recipe() != null) {
                 out.add(bakeRecipeCard(ref.note(), ref.tastingDay(), cup.recipe(), n));
@@ -222,10 +222,10 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
         return out;
     }
 
-    // taste.html을 회차 감상 파트 1건으로 렌더해 cards/<접미>/<date>-taste-<n>.jpg로 굽는다.
-    private Path bakeTasteCard(Note note, TastingDay tastingDay, Review review, int cupNumber) {
-        NoteView.TasteCard card = new NoteView.TasteCard(
-                Sourced.valueOrNull(note.coffeeName()), // 제목은 값만 — 출처 무표기(제목=정체성, NoteView.TasteCard)
+    // review.html을 회차 감상 파트 1건으로 렌더해 cards/<접미>/<date>-review-<n>.jpg로 굽는다.
+    private Path bakeReviewCard(Note note, TastingDay tastingDay, Review review, int cupNumber) {
+        NoteView.ReviewCard card = new NoteView.ReviewCard(
+                Sourced.valueOrNull(note.coffeeName()), // 제목은 값만 — 출처 무표기(제목=정체성, NoteView.ReviewCard)
                 Sourced.valueOrNull(note.roastery()),
                 beanLines(note.beans()),
                 Sourced.valueOrNull(note.roastLevel()),
@@ -233,8 +233,8 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
                 tastingDay.date(),
                 review.myTaste(),
                 review.rating());
-        Path out = CardFiles.tasteCard(artifactDir, note, tastingDay.date(), cupNumber);
-        cardImageRenderer.render(render("taste", cardContext(card)), artifactDir, out);
+        Path out = CardFiles.reviewCard(artifactDir, note, tastingDay.date(), cupNumber);
+        cardImageRenderer.render(render("review", cardContext(card)), artifactDir, out);
         return out;
     }
 

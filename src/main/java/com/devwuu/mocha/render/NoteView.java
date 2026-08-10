@@ -9,7 +9,7 @@ import java.util.List;
 /**
  * 렌더 템플릿에 넘기는 표시용 뷰 모델 — 도메인 {@link com.devwuu.mocha.domain.Note}를 화면 표현으로 축약한다
  * (날짜 포맷은 {@link KoreanDates}, 파생 수치 표기는 {@link RecipeAmounts}가 렌더 시 계산).
- * <p>카드 단위 = <b>회차 파트 1건</b>(감상 {@link TasteCard} / 레시피 {@link RecipeCard} — changes/0021
+ * <p>카드 단위 = <b>회차 파트 1건</b>(감상 {@link ReviewCard} / 레시피 {@link RecipeCard} — changes/0021
  * ADR-54·59). 인덱스 뷰는 index 폐기(ADR-55, TΔ6)와 함께 소멸했다.
  */
 public final class NoteView {
@@ -18,7 +18,7 @@ public final class NoteView {
     }
 
     /**
-     * 감상 카드 뷰 — {@code templates/<theme>/taste.html}의 바인딩 계약
+     * 감상 카드 뷰 — {@code templates/<theme>/review.html}의 바인딩 계약
      * (ref: FR-7 감상 카드 필드↔영역 매핑, changes/0021 ADR-54·59, TΔ4a).
      * <p>카드 단위 = <b>회차 1개의 감상 파트</b>: 노트 메타(커피명·로스터리·beans·roast_level·official_notes)
      * + 그 회차 {@code review}(my_taste·rating). 회차 번호는 카드에 표기하지 않는다(파일명만 — ADR-54 POLICY).
@@ -26,7 +26,7 @@ public final class NoteView {
      * {@code myTaste}가 있는 회차만 이 카드를 굽는다(AC-25·78) — {@code myTaste}는 null 아님 전제.
      * <p>{@link ThymeleafNoteRenderer}가 회차 파트에서 이 뷰를 조립한다(TΔ5a).
      */
-    public record TasteCard(
+    public record ReviewCard(
             String coffeeName,
             String roastery,
             List<BeanLine> beans,

@@ -95,7 +95,7 @@ class NoteFolderNameTest {
         // photos/ 로 시작하지 않거나(다른 트리) 날짜·파일 세그먼트가 없으면 접미를 답할 수 없다.
         assertThat(NoteFolderName.from(null)).isEmpty();
         assertThat(NoteFolderName.from("")).isEmpty();
-        assertThat(NoteFolderName.from("cards/12-프로토콜-예가체프/2026-07-10-taste-1.jpg")).isEmpty();
+        assertThat(NoteFolderName.from("cards/12-프로토콜-예가체프/2026-07-10-review-1.jpg")).isEmpty();
         assertThat(NoteFolderName.from("photos/12-프로토콜-예가체프/2026-07-10")).isEmpty();
         assertThat(NoteFolderName.from("photos//2026-07-10/bag.jpg")).isEmpty();
     }

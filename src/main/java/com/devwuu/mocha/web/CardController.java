@@ -26,7 +26,7 @@ import java.time.LocalDate;
 import java.util.Optional;
 
 /**
- * {@code GET /api/notes/{id}/tasting-days/{date}/card?type=taste|recipe&n=} — 회차 카드 온디맨드
+ * {@code GET /api/notes/{id}/tasting-days/{date}/card?type=review|recipe&n=} — 회차 카드 온디맨드
  * (ref: changes/0029 tasks.md TΔ9, open-questions.md OQ-3 ㉡·OQ-10; spec FR-16 개정 대상;
  * 계약 정본 {@code src/test/resources/contract/note-card.contract.json}).
  *

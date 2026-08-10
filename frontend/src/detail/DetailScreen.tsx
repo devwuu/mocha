@@ -273,7 +273,7 @@ function CupCard({
             <span className="cup__label">내가 느끼길</span>
             {cup.review.rating !== null && <span className="cup__rating">{cup.review.rating}</span>}
           </div>
-          {cup.review.my_taste !== null && <p className="cup__taste">{cup.review.my_taste}</p>}
+          {cup.review.my_taste !== null && <p className="cup__review-body">{cup.review.my_taste}</p>}
         </div>
       )}
     </div>

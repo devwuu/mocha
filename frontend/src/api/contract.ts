@@ -407,4 +407,4 @@ export interface NoteCommitResponse {
  * 화면이 이미 들고 있는 값(`note_id` · `date` · 회차 순번)만으로 정해진다. 계약에 URL을 실으면 서버가
  * **아직 굽지도 않은 카드**의 주소를 상세 응답마다 회차 수만큼 늘어놓게 된다.
  */
-export type CardType = 'taste' | 'recipe'
+export type CardType = 'review' | 'recipe'

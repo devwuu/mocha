@@ -31,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * TΔ4a(changes/0021): 감상 카드 실 렌더 스모크 — 두 테마의 {@code taste.html}을 헤드리스 Chromium으로
+ * TΔ4a(changes/0021): 감상 카드 실 렌더 스모크 — 두 테마의 {@code review.html}을 헤드리스 Chromium으로
  * 실제 래스터화한다. 실 브라우저 기동이라 {@code @Tag("chromium")}로 분리({@code ./gradlew chromiumTest}).
  * <ul>
  *   <li>AC-Δ5: 두 테마 감상 카드가 1080×1350(4:5) 유효 JPG로 구워진다 — 비주얼 확인용 산출은
@@ -41,7 +41,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * </ul>
  */
 @Tag("chromium")
-class TasteCardChromiumSmokeTest {
+class ReviewCardChromiumSmokeTest {
 
     private static final int CARD_W = 1080;
     private static final int CARD_H = 1350;
@@ -60,8 +60,8 @@ class TasteCardChromiumSmokeTest {
                     + "우유에 묻히긴 했지만 목 넘김 끝에 은은하게 남음. 자몽 산미를 좋아하면 꼭 블랙으로 먼저 마셔보길. "
                     + "전체적으로 향의 결이 시간대마다 달라져서 한 잔을 오래 두고 마시는 재미가 있는 커피였음.";
 
-    private static NoteView.TasteCard fixtureCard() {
-        return new NoteView.TasteCard(
+    private static NoteView.ReviewCard fixtureCard() {
+        return new NoteView.ReviewCard(
                 "레인보우 블렌드",
                 "커피가게 동경",
                 List.of(
@@ -78,7 +78,7 @@ class TasteCardChromiumSmokeTest {
     @ParameterizedTest
     @EnumSource(Theme.class)
     @DisplayName("AC-Δ5/AC-Δ9/FR-13: 감상 카드가 오프라인·외부 요청 0으로 4:5 JPG로 구워지고 autofit이 동작한다")
-    void bakesTasteCardOfflineWithAutofit(Theme theme, @TempDir Path work) throws Exception {
+    void bakesReviewCardOfflineWithAutofit(Theme theme, @TempDir Path work) throws Exception {
         copyBundledAssets(theme, work);
 
         Context ctx = new Context(Locale.KOREAN);
@@ -87,11 +87,11 @@ class TasteCardChromiumSmokeTest {
         ctx.setVariable("amt", new RecipeAmounts());
         ctx.setVariable("mascotHref", "mascot-face.png");
         ctx.setVariable("card", fixtureCard());
-        String html = engine.process(theme.id() + "/taste", ctx);
+        String html = engine.process(theme.id() + "/review", ctx);
 
-        Path htmlFile = work.resolve("taste.html");
+        Path htmlFile = work.resolve("review.html");
         Files.writeString(htmlFile, html);
-        Path out = work.resolve("taste-" + theme.id() + ".jpg");
+        Path out = work.resolve("review-" + theme.id() + ".jpg");
 
         List<String> nonFileRequests = new CopyOnWriteArrayList<>();
         double fittedPx;
