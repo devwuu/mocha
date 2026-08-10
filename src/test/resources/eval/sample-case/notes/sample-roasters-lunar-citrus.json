@@ -48,9 +48,9 @@
             "yield_ml": null,
             "time_sec": 150.0,
             "temp_c": 92.0,
-            "grind": "24클릭 (코만단테)",
-            "machine": null,
-            "pouring": null,
+            "grind": 24.0,
+            "grinder": "코만단테",
+            "detail": null,
             "feedback": null
           },
           "review": {

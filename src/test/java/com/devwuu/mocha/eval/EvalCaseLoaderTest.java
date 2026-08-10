@@ -1,8 +1,12 @@
 package com.devwuu.mocha.eval;
 
+import com.devwuu.mocha.domain.Note;
+import com.devwuu.mocha.domain.Recipe;
+import com.devwuu.mocha.json.MochaObjectMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -45,7 +49,8 @@ class EvalCaseLoaderTest {
 
         EvalCase.Expect expect = c.expect();
         assertThat(expect.proposal().state()).isEqualTo(EvalCase.Proposal.State.CREATED);
-        assertThat(expect.proposal().draft()).hasSize(4);
+        // 5 = date · cups size · grind · grinder · my_taste. grinder는 changes/0030 ADR-86에서 늘어난 칸이다.
+        assertThat(expect.proposal().draft()).hasSize(5);
         assertThat(expect.proposal().draft().getFirst().path()).isEqualTo("tasting_days[0].date");
         assertThat(expect.proposal().draft().getFirst().value()).isEqualTo("2026-03-14");
         assertThat(expect.proposal().draft().get(1).size()).isEqualTo(1);
@@ -84,6 +89,32 @@ class EvalCaseLoaderTest {
             assertThat(files.map(p -> p.getFileName().toString()))
                     .isNotEmpty()
                     .allSatisfy(name -> assertThat(name).endsWith(".json"));
+        }
+    }
+
+    @Test
+    @DisplayName("AC-Δ8: 노트 픽스처가 현재 도메인으로 역직렬화된다 — 코퍼스가 저장 포맷과 함께 늙지 않는다")
+    void sampleCaseNotesFixtureParsesIntoTheCurrentDomain() throws IOException {
+        // EvalHarness.loadFixtures가 하는 것과 같은 호출이다(mapper.readValue(.., Note.class)).
+        // 그 경로는 evalTest(온디맨드·실 API)에서만 도는데, 픽스처가 저장 포맷을 따라오지 못하면
+        // 깨지는 것은 «기본 test 그린»을 지나 실행하는 순간이다 — 그 층을 여기로 당긴다.
+        //
+        // ⚠️ changes/0030 재편(ADR-86)에서 이 단언이 스캔보다 강한 자리가 생겼다: machine·pouring은
+        // 이름이 사라져 grep이 잡지만 grind는 «이름이 그대로고 타입만 바뀐» 필드라, 문자열
+        // "25클릭 (코만단테)"가 남아 있어도 어떤 어휘 스캔도 그린이다. 여기서는 그것이 파싱 실패가 된다.
+        JsonMapper mapper = MochaObjectMapper.create();
+        List<Path> fixtures;
+        try (Stream<Path> files = Files.list(sampleCaseDir().resolve("notes"))) {
+            fixtures = files.toList();
+        }
+        assertThat(fixtures).isNotEmpty();
+
+        for (Path file : fixtures) {
+            Note note = mapper.readValue(Files.readString(file, StandardCharsets.UTF_8), Note.class);
+            assertThat(note.tastingDays()).isNotEmpty();
+            Recipe recipe = note.tastingDays().getFirst().cups().getFirst().recipe();
+            assertThat(recipe.grind()).isEqualTo(24.0);
+            assertThat(recipe.grinder()).isEqualTo("코만단테");
         }
     }
 

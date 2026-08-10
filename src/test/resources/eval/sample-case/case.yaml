@@ -28,8 +28,10 @@ expect:
         value: "2026-03-14"
       - path: tasting_days[0].cups
         size: 1
-      - path: tasting_days[0].cups[0].recipe.grind
-        value: "22클릭 (코만단테)"
+      - path: tasting_days[0].cups[0].recipe.grind      # 분쇄값은 수치만(changes/0030 ADR-86 — 구 "<수치>클릭 (<기기>)" 폐기)
+        value: 22
+      - path: tasting_days[0].cups[0].recipe.grinder    # 그라인더명은 제 칸으로
+        value: "코만단테"
       - path: tasting_days[0].cups[0].review.my_taste
         present: true
   tools:

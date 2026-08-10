@@ -52,6 +52,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * {@code @JsonProperty("tasting")}·{@code ("brews")}·{@code ("entries")}뿐이고 셋 다 금지 토큰을
  * 인자로 물고 있다. 애너테이션 자체를 금지하지 않는 이유는 그것이 이 델타의 잔재가 아니라 정당한 Jackson
  * API이기 때문이다 — 금지하면 규칙이 델타보다 오래 살아남아 낡는다.
+ *
+ * <p><b>Phase 2의 몫 하나가 여기 얹혀 있다</b>({@link #evalCorpusCarriesNoRetiredRecipeFields()}, TΔ16) —
+ * 레시피 필드 재편(ADR-86)의 eval 코퍼스 잔재 검사다. 개명이 아니라 <i>필드 폐기</i>라 성격이 다르지만
+ * 대상 경로와 스캔 기계가 같고, 무엇보다 <b>코퍼스는 {@code evalTest}(온디맨드·실 API) 밖에서 검증되지
+ * 않는다</b> — 기본 실행에 남는 결정론 층이 이 스캔뿐이라 tasks.md TΔ16이 여기를 지목했다.
  */
 class Change0030RenameGuardTest {
 
@@ -154,6 +159,42 @@ class Change0030RenameGuardTest {
         assertThat(firstBannedToken("private static final String SPA_ENTRY = \"index.html\";")).isNull();
         assertThat(firstBannedToken("// 구 send_entry_card는 0029에서 폐기됐다")).isNull();
         assertThat(firstBannedToken("<div class=\"label\">BREW RECIPE</div>")).isNull();
+    }
+
+    /**
+     * 폐기된 레시피 필드(ADR-86 — {@code machine} 폐기 · {@code pouring}→{@code detail}).
+     * <p>개명 토큰과 <b>목록을 합치지 않는다</b>: 이 둘은 {@code src/main/java}에 이력 서술로 살아 있고
+     * ({@code Recipe} javadoc의 <i>"구 {@code machine} 폐기"</i>) 템플릿에도 TΔ20까지 남는다.
+     * 대상 경로가 eval 코퍼스로 갈리므로 규칙도 갈라 둔다.
+     */
+    private static final List<String> RETIRED_RECIPE_FIELDS = List.of("machine", "pouring");
+
+    /** eval 코퍼스 루트 — 위 {@link #SCAN_ROOTS} 중 코퍼스 몫만 골라내는 접두. */
+    private static final List<String> EVAL_ROOTS = List.of("src/test/resources/eval", "eval/cases");
+
+    @Test
+    @DisplayName("AC-Δ8: eval 코퍼스에 구 레시피 필드(machine·pouring)가 0건이다")
+    void evalCorpusCarriesNoRetiredRecipeFields() {
+        List<String> violations = new ArrayList<>();
+        for (Path file : filesToScan()) {
+            if (EVAL_ROOTS.stream().noneMatch(root -> file.startsWith(root))) {
+                continue;
+            }
+            List<String> lines = readLines(file);
+            for (int i = 0; i < lines.size(); i++) {
+                for (String field : RETIRED_RECIPE_FIELDS) {
+                    if (lines.get(i).contains(field)) {
+                        violations.add(file + ":" + (i + 1) + " [" + field + "] " + lines.get(i).strip());
+                    }
+                }
+            }
+        }
+        assertThat(violations)
+                .describedAs("eval 코퍼스에 폐기된 레시피 필드가 남아 있다(ADR-86) — 픽스처가 도메인으로 역직렬화된다")
+                .isEmpty();
+
+        // 대조군 — 위 «0건»은 루프가 통째로 비어도 성립한다. 코퍼스가 실제로 스캔에 들어왔는지 따로 본다.
+        assertThat(filesToScan()).anyMatch(p -> p.startsWith("src/test/resources/eval"));
     }
 
     @Test
