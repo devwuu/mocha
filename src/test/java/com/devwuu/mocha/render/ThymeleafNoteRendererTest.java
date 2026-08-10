@@ -154,7 +154,8 @@ class ThymeleafNoteRendererTest {
         assertTrue(review2.contains("두 번째는 부드러움"), "2회차 감상 카드 = 2회차 감상");
         String recipe1 = capturedHtml(cards, "cards/" + RAINBOW + "/2026-07-18-recipe-1.jpg");
         assertTrue(recipe1.contains("다음엔 분쇄를 더 굵게 갈 것"), "1회차 레시피 카드 = 1회차 피드백");
-        assertTrue(recipe1.contains("210클릭"), "1회차 분쇄값 렌더(grind 정규화 값)");
+        // 분쇄도 타일 = grind(수치) + grinder(서브라벨). 구 단일 문자열 "210클릭"은 ADR-86 재편으로 소멸했다.
+        assertTrue(recipe1.contains("210") && recipe1.contains("매버릭 2.0"), "1회차 분쇄값·그라인더 렌더");
     }
 
     @Test
