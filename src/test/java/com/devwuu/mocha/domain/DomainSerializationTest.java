@@ -28,7 +28,7 @@ class DomainSerializationTest {
         TastingDay tastingDay = new TastingDay(
                 LocalDate.of(2026, 7, 10),
                 List.of(new Cup(
-                        new Recipe(null, 15.0, 240.0, null, null, null, "중간", null, null, null),   // 레시피 포함 — Note 왕복에 회차 recipe도 실린다(FR-18)
+                        new Recipe(null, 15.0, 240.0, null, null, null, 210.0, null, null, null),   // 레시피 포함 — Note 왕복에 회차 recipe도 실린다(FR-18)
                         new Review("새콤하고 좋았다", null, Rating.GOOD))),
                 ts
         );
@@ -165,7 +165,7 @@ class DomainSerializationTest {
                 List.of(
                         new Cup(
                                 new Recipe("에스프레소", 18.0, null, 10.0, 28.0, 93.0,
-                                        "210클릭 (매버릭 2.0)", "게이지아 클래식", null,
+                                        210.0, "매버릭 2.0", "게이지아 클래식으로 내림",
                                         "퍽은 물퍽, 다음엔 220클릭으로"),
                                 new Review("새콤하고 좋았음", "새콤하고 좋았다", Rating.GOOD)),
                         new Cup(
@@ -179,8 +179,11 @@ class DomainSerializationTest {
 
         assertThat(json).contains("\"cups\"")
                 .contains("\"yield_ml\":10").contains("\"time_sec\":28")   // 신설 수치 필드 snake_case·number
-                .contains("\"grind\":\"210클릭 (매버릭 2.0)\"")
-                .contains("\"pouring\":\"뜸 40ml 30초 → 100ml → 100ml\"");
+                // 0030: grind는 number가 됐고(구 "210클릭 (매버릭 2.0)" 단일 문자열) 그라인더명이 제 칸으로 갈렸다.
+                .contains("\"grind\":210").contains("\"grinder\":\"매버릭 2.0\"")
+                // 구 pouring 키 자체가 detail로 옮겨 갔다 — 구 machine("게이지아 클래식")도 이 칸으로 흡수된다.
+                .contains("\"detail\":\"뜸 40ml 30초 → 100ml → 100ml\"")
+                .doesNotContain("\"pouring\"").doesNotContain("\"machine\"");
         assertThat(restored).isEqualTo(tastingDay);
         assertThat(restored.cups()).hasSize(2);
         assertThat(restored.cups().getFirst().recipe().feedback()).isEqualTo("퍽은 물퍽, 다음엔 220클릭으로");
@@ -201,14 +204,14 @@ class DomainSerializationTest {
     @DisplayName("0021-TΔ1b/V-15: normalize — recipe·review 둘 다 null인 회차와 빈 감상 review을 드롭한다")
     void cupsNormalizeDropsEmptyElements() {
         List<Cup> normalized = Cup.normalize(Arrays.asList(
-                new Cup(new Recipe(null, 15.0, 240.0, null, null, null, "중간", null, null, null), new Review("새콤", null, Rating.GOOD)),
+                new Cup(new Recipe(null, 15.0, 240.0, null, null, null, 210.0, null, null, null), new Review("새콤", null, Rating.GOOD)),
                 new Cup(null, null),                                          // 빈 회차 → 드롭
                 null,                                                          // null 요소 → 드롭
                 new Cup(null, Review.normalize("  ", null, Rating.GOOD)),    // 빈 감상 review → null → 드롭
-                new Cup(new Recipe(null, 0.0, null, null, null, null, "  ", null, null, null), null)));                 // recipe 전무 정규화 → null → 드롭
+                new Cup(new Recipe(null, 0.0, null, null, null, null, 0.0, null, null, null), null)));                  // recipe 전무 정규화 → null → 드롭
 
         assertThat(normalized).containsExactly(
-                new Cup(new Recipe(null, 15.0, 240.0, null, null, null, "중간", null, null, null), new Review("새콤", "새콤", Rating.GOOD)));
+                new Cup(new Recipe(null, 15.0, 240.0, null, null, null, 210.0, null, null, null), new Review("새콤", "새콤", Rating.GOOD)));
         assertThat(Cup.normalize(null)).isEmpty(); // null 배열은 빈 배열
     }
 
@@ -227,8 +230,9 @@ class DomainSerializationTest {
     void recipeNormalizeAllNull() {
         assertThat(Recipe.normalize(null)).isNull();
         assertThat(Recipe.normalize(new Recipe(null, null, null, null, null, null, null, null, null, null))).isNull();
-        assertThat(Recipe.normalize(new Recipe(null, null, null, null, null, null, "  ", null, null, null))).isNull();  // 공백 grind도 전무로 간주
-        assertThat(Recipe.normalize(new Recipe(null, -18.0, null, 0.0, null, null, " ", "", null, null)))
+        // 공백뿐인 텍스트(grinder·detail)도 전무로 간주 — 구 공백 grind가 이 자리였다(0030 전 grind는 텍스트였다).
+        assertThat(Recipe.normalize(new Recipe(null, null, null, null, null, null, null, "  ", " ", null))).isNull();
+        assertThat(Recipe.normalize(new Recipe(null, -18.0, null, 0.0, null, null, 0.0, " ", "", null)))
                 .isNull(); // 위반 값만으로 채워진 recipe도 전무로 수렴
     }
 
@@ -236,19 +240,59 @@ class DomainSerializationTest {
     @DisplayName("0021-TΔ1b/V-8: 위반 값(음수·0·공백)은 해당 항목만 null로 드롭한다 — 10필드 확장형")
     void recipeNormalizeDropsInvalid() {
         // dose 음수·water 0 → 각 null 드롭, grind만 살아 Recipe는 유지(부속 정보라 저장 거부 아님).
-        Recipe dropped = Recipe.normalize(new Recipe(null, -15.0, 0.0, null, null, null, "굵게", null, null, null));
-        assertThat(dropped).isEqualTo(new Recipe(null, null, null, null, null, null, "굵게", null, null, null));
+        Recipe dropped = Recipe.normalize(new Recipe(null, -15.0, 0.0, null, null, null, 210.0, null, null, null));
+        assertThat(dropped).isEqualTo(new Recipe(null, null, null, null, null, null, 210.0, null, null, null));
 
-        // 신설 수치(yield_ml·time_sec·temp_c)도 양수만 보존, 공백 텍스트(machine)는 드롭.
+        // 신설 수치(yield_ml·time_sec·temp_c)도 양수만 보존, 공백 텍스트(grinder)는 드롭.
         Recipe expanded = Recipe.normalize(new Recipe(
-                "에스프레소", 18.0, null, -10.0, 28.0, 0.0, "78클릭", "  ", null, "다음엔 78클릭"));
+                "에스프레소", 18.0, null, -10.0, 28.0, 0.0, 78.0, "  ", null, "다음엔 78클릭"));
         assertThat(expanded).isEqualTo(new Recipe(
-                "에스프레소", 18.0, null, null, 28.0, null, "78클릭", null, null, "다음엔 78클릭"));
+                "에스프레소", 18.0, null, null, 28.0, null, 78.0, null, null, "다음엔 78클릭"));
 
         // 비유한값(Infinity·NaN)도 위반 — 렌더 표기·비율이 재가드 없이 정렬되도록 정규화가 거른다(changes/0025 리뷰 후속).
         Recipe nonFinite = Recipe.normalize(new Recipe(
                 null, Double.POSITIVE_INFINITY, 240.0, Double.NEGATIVE_INFINITY, Double.NaN, null, null, null, null, null));
         assertThat(nonFinite).isEqualTo(new Recipe(null, null, 240.0, null, null, null, null, null, null, null));
+    }
+
+    // --- 0030 TΔ10: 레시피 필드 재편 (D-3·D-4 — plan ADR-86) ---
+
+    @Test
+    @DisplayName("0030-TΔ10/AC-Δ6: grind가 수치 검사(V-8)로 옮겨졌다 — 0·음수·Infinity·NaN은 그 항목만 드롭")
+    void recipeGrindNowRidesTheNumericRule() {
+        // 구 grind는 텍스트라 blankToNull만 탔고 "0클릭"·"-1"도 그대로 저장됐다. 0030부터 나머지 수치 6종과
+        // 같은 positiveOrNull을 타므로 아래 4종이 여기서 걸린다(AC-Δ6의 애플리케이션 절반 — DB CHECK가 나머지 절반).
+        for (Double violation : Arrays.asList(0.0, -1.0, Double.POSITIVE_INFINITY, Double.NaN)) {
+            Recipe survived = Recipe.normalize(new Recipe(
+                    null, 15.0, null, null, null, null, violation, "매버릭 2.0", null, null));
+            // grind만 드롭되고 같은 회차의 다른 값은 살아 있다 — 레시피는 부속 정보라 저장을 거부하지 않는다.
+            assertThat(survived).isEqualTo(new Recipe(
+                    null, 15.0, null, null, null, null, null, "매버릭 2.0", null, null));
+        }
+        // 양수는 그대로 통과. 210클릭 같은 실기록이 수치로만 남는다.
+        assertThat(Recipe.normalize(new Recipe(null, null, null, null, null, null, 210.0, null, null, null)))
+                .isEqualTo(new Recipe(null, null, null, null, null, null, 210.0, null, null, null));
+    }
+
+    @Test
+    @DisplayName("0030-TΔ10/AC-Δ5·Δ7: grind(수치)·grinder(이름)가 갈려 있고 비수치 분쇄 표현은 detail이 받는다")
+    void recipeSplitsGrindFromGrinderAndAbsorbsProseIntoDetail() {
+        // AC-Δ5: "매버릭 2.0으로 갈았는데 210클릭이었어" → 두 칸에 각각. 구 단일 문자열 "210 (매버릭 2.0)"의 자리다.
+        Recipe split = Recipe.normalize(new Recipe(
+                "핸드드립", 15.0, 150.0, null, null, null, 210.0, "매버릭 2.0", null, null));
+        assertThat(split.grind()).isEqualTo(210.0);
+        assertThat(split.grinder()).isEqualTo("매버릭 2.0");
+
+        // 그라인더 미언급이면 grind만 채워진다(AC-Δ5 뒷문장).
+        assertThat(Recipe.normalize(new Recipe(null, null, null, null, null, null, 210.0, null, null, null)).grinder())
+                .isNull();
+
+        // AC-Δ7: "중간 굵기로 갈았음"은 숫자로 안 떨어진다 → grind는 비고 detail이 문장을 받는다.
+        // 구조화되지 않는 것의 행선지는 detail 하나이고, 폐기된 machine의 기구·머신 정보도 여기로 모인다(ADR-86 POLICY).
+        Recipe prose = Recipe.normalize(new Recipe(
+                null, null, null, null, null, null, null, null, "중간 굵기로 갈았음. 게이지아 클래식으로 93℃", null));
+        assertThat(prose.grind()).isNull();
+        assertThat(prose.detail()).isEqualTo("중간 굵기로 갈았음. 게이지아 클래식으로 93℃");
     }
 
     // --- TΔ1: coffee_name Sourced 승격 (V-5, changes/0010) ---
