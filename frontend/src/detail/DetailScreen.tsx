@@ -328,7 +328,7 @@ function ShareButton({
 /**
  * 레시피 수치 — 시안의 3열 격자. **없는 값은 자리를 비우지 않고 `—`로 남긴다**(시안 2회차의 `시간`).
  *
- * 슬롯은 고정이다: 원두 · 물(또는 추출) · 시간 · 물온도 · 분쇄도·기구. 방식별 분기가 없는 flat
+ * 슬롯은 고정이다: 원두 · 물(또는 추출) · 시간 · 물온도 · 분쇄도. 방식별 분기가 없는 flat
  * 스키마(V-8)라 화면도 분기하지 않는다.
  *
  * **시안과 갈린 것 ②**: 시안에 `추출`(`yield_ml`) 슬롯이 없다 — 핸드드립 예시만 그려서 생긴 공백이고,
@@ -336,8 +336,14 @@ function ShareButton({
  * 보탠다** — 핸드드립 노트에서는 시안과 정확히 같은 6칸(4 + span 2)이 나오고, 에스프레소는 `추출`이
  * 한 칸 늘어 격자가 3의 배수로 다시 맞는다.
  *
- * 마지막 `분쇄도 · 기구` 칸이 남은 열을 채운다 — 앞의 칸들은 전부 1칸이라 순서가 곧 열 위치이고,
+ * 마지막 `분쇄도` 칸이 남은 열을 채운다 — 앞의 칸들은 전부 1칸이라 순서가 곧 열 위치이고,
  * 그래서 테두리 규칙(3n번째의 오른쪽 선 제거)이 span이 있어도 성립한다.
+ *
+ * **changes/0030 재편**(ADR-86): 그 칸이 담던 두 값이 `grind`(수치)·`machine`(기구)에서
+ * **`grind`(수치)·`grinder`(그라인더명)**로 바뀌었다. 폐기된 `machine`이 아니라 `grinder`가 옆에 서므로
+ * **라벨이 값에 따라 갈릴 이유가 사라졌다** — 구 로직은 기구만 있는 경우를 `기구`로, 둘 다면 `분쇄도 · 기구`로
+ * 부르며 한 칸이 두 개념을 오갔지만, 이제 두 값은 *같은 한 개념*(무엇으로 얼마나 갈았나)이라 라벨이 `분쇄도`
+ * 하나다. 폼(`EditScreen`·`DraftForm`)이 두 칸에 붙인 라벨과도 같은 어휘다.
  */
 function Stats({ recipe }: { recipe: Recipe }) {
   const cells: { label: string; value: string | null }[] = [{ label: '원두', value: unit(recipe.dose_g, 'g') }]
@@ -351,7 +357,7 @@ function Stats({ recipe }: { recipe: Recipe }) {
   cells.push({ label: '물온도', value: unit(recipe.temp_c, '℃') })
 
   // 수치가 하나도 없는 레시피(문장만 남긴 기록)는 격자를 통째로 접는다 — `—`만 다섯 칸 세우지 않는다.
-  if (cells.every((cell) => cell.value === null) && recipe.grind === null && recipe.machine === null) {
+  if (cells.every((cell) => cell.value === null) && recipe.grind === null && recipe.grinder === null) {
     return null
   }
 
@@ -367,36 +373,31 @@ function Stats({ recipe }: { recipe: Recipe }) {
         </div>
       ))}
       <div className="stat" style={{ gridColumn: `span ${rest === 0 ? 3 : 3 - rest}` }}>
-        <div className="stat__label">{grindLabel(recipe)}</div>
+        <div className="stat__label">분쇄도</div>
         <div className="stat__pair">
-          {recipe.grind === null && recipe.machine === null ? (
-            <div className="stat__value stat__value--absent">—</div>
-          ) : (
-            <>
-              {/* 기구만 있으면 그것이 이 칸의 값이다 — 라벨도 함께 바뀐다(grindLabel). */}
-              <div className="stat__value">{recipe.grind ?? recipe.machine}</div>
-              {recipe.grind !== null && recipe.machine !== null && (
-                <div className="stat__machine">{recipe.machine}</div>
-              )}
-            </>
-          )}
+          {/* 수치가 이 칸의 값이고 그라인더명은 그 옆에 작게 붙는다 — 그라인더만 있으면 값 자리는 다른 칸과
+              같은 규칙으로 `—`가 된다(자리를 비우지 않는다). 구 `machine`처럼 값 자리를 대신 차지하지 않는
+              것은, 이름은 «얼마나 갈았나»의 답이 아니기 때문이다. */}
+          <div className={recipe.grind === null ? 'stat__value stat__value--absent' : 'stat__value'}>
+            {recipe.grind ?? '—'}
+          </div>
+          {recipe.grinder !== null && <div className="stat__grinder">{recipe.grinder}</div>}
         </div>
       </div>
     </div>
   )
 }
 
-function grindLabel(recipe: Recipe): string {
-  if (recipe.grind === null && recipe.machine !== null) {
-    return '기구'
-  }
-  return recipe.machine === null ? '분쇄도' : '분쇄도 · 기구'
-}
-
-/** 문장류는 격자에 넣지 않는다 — 길이가 제각각이라 칸에 갇히면 읽히지 않는다(시안의 별도 블록). */
+/**
+ * 문장류는 격자에 넣지 않는다 — 길이가 제각각이라 칸에 갇히면 읽히지 않는다(시안의 별도 블록).
+ *
+ * 첫 줄의 라벨이 **`상세 레시피`**인 것은 그 자리가 받는 것이 과정 서술만이 아니기 때문이다(ADR-86) —
+ * 구 `pouring`은 핸드드립 어휘라 에스프레소·아메리카노의 과정을 담기 어색했고, 지금 `detail`에는 기구·머신
+ * 정보와 숫자로 안 떨어지는 분쇄 표현("중간 굵기")까지 모인다. 폼의 라벨과 같은 어휘다.
+ */
 function sentenceRows(recipe: Recipe): { label: string; value: string }[] {
   return [
-    recipe.pouring !== null && { label: '푸어링', value: recipe.pouring },
+    recipe.detail !== null && { label: '상세 레시피', value: recipe.detail },
     recipe.feedback !== null && { label: '관찰', value: recipe.feedback },
   ].filter((row) => row !== false)
 }
