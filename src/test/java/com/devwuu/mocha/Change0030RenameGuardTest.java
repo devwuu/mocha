@@ -163,9 +163,9 @@ class Change0030RenameGuardTest {
 
     /**
      * 폐기된 레시피 필드(ADR-86 — {@code machine} 폐기 · {@code pouring}→{@code detail}).
-     * <p>개명 토큰과 <b>목록을 합치지 않는다</b>: 이 둘은 {@code src/main/java}에 이력 서술로 살아 있고
-     * ({@code Recipe} javadoc의 <i>"구 {@code machine} 폐기"</i>) 템플릿에도 TΔ20까지 남는다.
-     * 대상 경로가 eval 코퍼스로 갈리므로 규칙도 갈라 둔다.
+     * <p>개명 토큰과 <b>목록을 합치지 않는다</b>: 이 둘은 {@code src/main/java}에 이력 서술로 살아 있다
+     * ({@code Recipe} javadoc의 <i>"구 {@code machine} 폐기"</i>). 템플릿에도 TΔ20·TΔ21의 재이식 전까지
+     * 참조가 남아 있었고 지금은 0건이다. 대상 경로가 eval 코퍼스로 갈리므로 규칙도 갈라 둔다.
      */
     private static final List<String> RETIRED_RECIPE_FIELDS = List.of("machine", "pouring");
 

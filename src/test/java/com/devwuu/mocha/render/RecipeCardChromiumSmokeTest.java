@@ -60,7 +60,8 @@ class RecipeCardChromiumSmokeTest {
                     + "확인해 보기. 추출량을 조금 줄이는 대신 도징을 1g 늘리는 비교 실험도 해볼 것. 컵을 데워서 마시면 "
                     + "향이 더 오래 가는 것 같으니 다음엔 예열도 잊지 말 것.";
 
-    // Recipe 필드 순서: method, doseG, waterMl, yieldMl, timeSec, tempC, grind, machine, pouring, feedback
+    // Recipe 필드 순서: method, doseG, waterMl, yieldMl, timeSec, tempC, grind, grinder, detail, feedback
+    // (changes/0030 ADR-86 재편 — 구 machine 폐기 · 구 pouring → detail · grind 수치 + grinder 분리)
     private static NoteView.RecipeCard handdripCard() {
         return new NoteView.RecipeCard(
                 "레인보우 블렌드", "커피가게 동경", LocalDate.parse("2026-07-18"),
