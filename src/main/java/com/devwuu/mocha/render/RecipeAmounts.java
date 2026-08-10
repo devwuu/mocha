@@ -1,8 +1,5 @@
 package com.devwuu.mocha.render;
 
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
 /**
  * 레시피 수량·파생 표기 헬퍼 — 템플릿 컨텍스트에 {@code amt}로 주입한다(TΔ6 도입 · TΔ4b 확장).
  * 시간·수치 표기의 단일 소스다(changes/0025 ADR-67). 두 번째 소비자였던 Slack 미리보기
@@ -15,11 +12,12 @@ import java.util.regex.Pattern;
  * <p>전 메서드 정적 — stateless 헬퍼라 인스턴스 상태가 없고, 생성 지점이 분화해도 표기가 갈라질 수 없다
  * (backlog CR25-4 해소, 2026-07-23 사용자 확정). 인스턴스화는 템플릿 컨텍스트 {@code amt} 주입용으로만
  * 남긴다 — SpEL은 인스턴스 참조로도 정적 메서드를 해석하므로 템플릿 계약({@code amt.time(...)} 형태)은 불변.
+ * <p>여기 남은 파생 표기는 <b>비율·시간·수치 다듬기 셋뿐</b>이다. 구 {@code grindValue}·{@code grindGrinder}는
+ * {@code grind}가 «값 + 그라인더»를 한 문자열에 담던 시절 그것을 정규식으로 되쪼개는 자리였고,
+ * 두 개념이 {@code grind}(수치)·{@code grinder}(이름) 두 컬럼으로 갈리면서 <b>되쪼갤 대상 자체가 사라졌다</b>
+ * (changes/0030 ADR-86 — 합쳐 저장하고 다시 나누는 왕복의 제거).
  */
 public final class RecipeAmounts {
-
-    // FR-18 정규화 형식 "<분쇄값> (<그라인더명>)" — 그라인더 언급이 없으면 괄호 없이 값만.
-    private static final Pattern GRIND = Pattern.compile("^(.+?)\\s*\\(([^()]+)\\)$");
 
     /** {@code 15.0 → "15"}, {@code 15.5 → "15.5"}. null·비유한값은 빈 문자열. */
     public static String num(Double v) {
@@ -63,30 +61,5 @@ public final class RecipeAmounts {
         long minutes = total / 60;
         long seconds = total % 60;
         return seconds == 0 ? minutes + "분" : minutes + "분 " + seconds + "초";
-    }
-
-    /**
-     * grind의 분쇄값 부분 — {@code "210클릭 (매버릭 2.0)" → "210클릭"}. FR-18 정규화 형식의 괄호를 시안의
-     * 값+그라인더 서브라벨 분리 표시로 되돌린다(파생 표기 — 저장 형식은 한 문자열 그대로).
-     * 괄호가 없으면 원문 그대로, null이면 null.
-     */
-    public static String grindValue(String grind) {
-        if (grind == null) {
-            return null;
-        }
-        Matcher m = GRIND.matcher(grind.strip());
-        return m.matches() ? m.group(1) : grind.strip();
-    }
-
-    /**
-     * grind의 그라인더명 부분 — {@code "210클릭 (매버릭 2.0)" → "매버릭 2.0"}. 괄호가 없으면 {@code null}
-     * (서브라벨 생략). "기준" 접미는 템플릿이 붙인다.
-     */
-    public static String grindGrinder(String grind) {
-        if (grind == null) {
-            return null;
-        }
-        Matcher m = GRIND.matcher(grind.strip());
-        return m.matches() ? m.group(2) : null;
     }
 }

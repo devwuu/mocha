@@ -48,7 +48,8 @@ public final class NoteView {
      * <p>카드 단위 = <b>회차 1개의 레시피 파트</b>: 노트 메타(커피명·로스터리) + 그 회차 {@code recipe}.
      * {@code recipe}가 있는 회차만 이 카드를 굽는다(AC-25·78) — {@code recipe}는 null 아님 전제.
      * 회차 번호는 카드에 표기하지 않는다(파일명만 — ADR-54 POLICY).
-     * <p>비율·시간·grind 서브라벨은 저장하지 않는 파생 표기다 — {@link RecipeAmounts}가 렌더 시 계산한다(ADR-54).
+     * <p>비율·시간은 저장하지 않는 파생 표기다 — {@link RecipeAmounts}가 렌더 시 계산한다(ADR-54).
+     * 구 grind 서브라벨은 파생이 아니게 됐다({@code grinder}가 별 컬럼 — changes/0030 ADR-86).
      * <p>{@link ThymeleafNoteRenderer}가 회차 파트에서 이 뷰를 조립한다(TΔ5a).
      */
     public record RecipeCard(

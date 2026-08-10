@@ -7,8 +7,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 /**
- * TΔ4b(changes/0021): 레시피 카드 파생 표기 계산 — 비율·시간·grind 서브라벨은 저장하지 않고
- * 렌더 시 계산한다(ADR-54, ADR-1 POLICY). 계산 불가 시 null → 템플릿이 행·서브라벨을 숨긴다.
+ * TΔ4b(changes/0021): 레시피 카드 파생 표기 계산 — 비율·시간은 저장하지 않고 렌더 시 계산한다
+ * (ADR-54, ADR-1 POLICY). 계산 불가 시 null → 템플릿이 행·서브라벨을 숨긴다.
+ * <p>grind 서브라벨 분리는 changes/0030에서 파생 표기가 아니게 됐다 — {@code grinder}가 별 컬럼이라
+ * 계산할 것이 없다(ADR-86, TΔ19).
  */
 class RecipeAmountsTest {
 
@@ -44,16 +46,9 @@ class RecipeAmountsTest {
         assertNull(RecipeAmounts.time(Double.NaN));
     }
 
-    @Test
-    @DisplayName("FR-18: grind 정규화 형식 '<분쇄값> (<그라인더명>)'이 값·그라인더 서브라벨로 분리된다")
-    void grindSplitsValueAndGrinder() {
-        assertEquals("210클릭", RecipeAmounts.grindValue("210클릭 (매버릭 2.0)"));
-        assertEquals("매버릭 2.0", RecipeAmounts.grindGrinder("210클릭 (매버릭 2.0)"));
-        assertEquals("수동 3바퀴", RecipeAmounts.grindValue("수동 3바퀴"), "그라인더 언급 없으면 값만(FR-18)");
-        assertNull(RecipeAmounts.grindGrinder("수동 3바퀴"), "그라인더 없으면 서브라벨 생략");
-        assertNull(RecipeAmounts.grindValue(null));
-        assertNull(RecipeAmounts.grindGrinder(null));
-    }
+    // 구 grindSplitsValueAndGrinder(FR-18 정규화 형식의 되쪼개기)는 changes/0030 TΔ19에서 함께 삭제됐다 —
+    // grind가 수치, grinder가 이름으로 갈려 저장되므로 분리 계산이 없다(ADR-86). 분쇄도 타일이 그 두 값을
+    // 값·서브라벨로 나눠 받는 것은 이제 NoteViewRecipeCardTest가 뷰 모델 층에서 단언한다.
 
     @Test
     @DisplayName("수량 표기: 정수는 소수점 생략, 소수는 그대로, null은 빈 문자열(기존 num 계약 회귀 가드)")
