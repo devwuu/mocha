@@ -9,10 +9,15 @@ import org.junit.jupiter.params.provider.EnumSource;
 import org.thymeleaf.context.Context;
 import org.thymeleaf.spring6.SpringTemplateEngine;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.time.LocalDate;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -139,5 +144,41 @@ class ReviewCardTemplateTest {
         for (Rating rating : Rating.values()) {
             assertFalse(html.contains(rating.label()), "rating 없음 → 뱃지 숨김: " + rating);
         }
+    }
+
+    /**
+     * 감상 카드 템플릿의 <b>바이트 동일성</b> — 개명(changes/0030)이 이 카드의 렌더 결과를 건드리지 않았음을
+     * 파일 층에서 못 박는다(AC-Δ14, TΔ22).
+     *
+     * <p><b>왜 픽셀이 아니라 바이트인가</b>: AC-Δ14는 <i>"감상 카드의 렌더 결과가 개명 전후로 동일하다
+     * (파일명·타입 값만 다르다)"</i>인데, 개명 전 산출을 지금 다시 만들 수 없으므로 픽셀 비교에는 비교 대상이
+     * 없다. 대신 <b>렌더 결과를 결정하는 두 입력이 둘 다 안 움직였음</b>을 보이면 동일성이 따라온다:
+     * ① 템플릿 바이트(이 단언) ② 바인딩 이름 — {@code card.myTaste}는 {@code my_taste} 유지 결정(D-Δ0-1)
+     * 덕에 개명 대상이 아니었고, 나머지 바인딩({@code coffeeName}·{@code beans}·{@code rating}…)도 심볼
+     * 4종 밖이다. 그래서 같은 회차를 넣으면 같은 HTML이 나오고, 갈리는 것은 산출 <b>파일명</b>뿐이다.
+     *
+     * <p><b>동일성의 출처는 git이다</b> — TΔ7이 {@code taste.html} → {@code review.html}을 순수 rename으로
+     * 옮겼고(변경 0줄), 개명 전 blob 해시가 지금 파일의 해시와 같다:
+     * {@code type-a cd8b6bb…} · {@code type-b 3a829b1…}. 아래 SHA-256은 그 시점의 바이트를 이 테스트가
+     * 계속 물고 있게 하는 못이다.
+     *
+     * <p><b>이 못은 영구 잠금이 아니다</b> — 감상 카드 시안이 실제로 개정되면 값을 갱신한다
+     * ({@code Change0021RegressionGuardTest.DESIGN_SHA256}과 같은 운용). 다만 그때는 «개정했다»가
+     * 의도적 결정이어야 하고, 이 테스트가 레드가 되는 것이 그 확인 절차다.
+     */
+    @ParameterizedTest
+    @EnumSource(Theme.class)
+    @DisplayName("AC-Δ14: 감상 카드 템플릿이 개명 전 taste.html과 바이트 동일하다 — 파일명만 바뀌었다")
+    void templateIsByteIdenticalToPreRenameTasteHtml(Theme theme) throws Exception {
+        String expected = switch (theme) {
+            case TYPE_A -> "4861c8de897c9978a9287e26d597a5afbec0194537386daa09770aa2f36f57f2";
+            case TYPE_B -> "af0995de4a94672b25af86a07d8c4c2242e3f39ddd3136024965ee8347922d2e";
+        };
+        Path template = Path.of("src/main/resources/templates", theme.id(), "review.html");
+        byte[] digest = MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(template));
+
+        assertEquals(expected, HexFormat.of().formatHex(digest),
+                "감상 카드 템플릿이 바뀌었다 — 개명은 파일명만 옮기는 것이 결정이다(AC-Δ14, delta.md 비범위). "
+                        + "시안 개정이 의도라면 이 값을 갱신할 것: " + template);
     }
 }
