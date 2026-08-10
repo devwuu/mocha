@@ -200,7 +200,7 @@ class NoteControllerTest {
     @DisplayName("TΔ6b: 저장할 시음이 없는 본문은 400 — 폼이 아닌 것을 저장으로 받지 않는다")
     void bodyWithoutTastingDaysIsRejected() throws Exception {
         ObjectNode request = (ObjectNode) contract.get("request");
-        ((ObjectNode) request.get("note")).putArray("entries");
+        ((ObjectNode) request.get("note")).putArray("tasting_days");
         noteService.failure = new IllegalArgumentException("저장할 시음 엔트리가 없다: noteId=null");
 
         perform(request, status().isBadRequest());
@@ -385,7 +385,7 @@ class NoteControllerTest {
     @Test
     @DisplayName("TΔ5a: 엔트리 없는 노트도 200 — 정상 상태이지 실패가 아니다")
     void noteWithoutTastingDaysIsStillANote() throws Exception {
-        JsonNode expected = load(DETAIL_CONTRACT).get("response_no_entries");
+        JsonNode expected = load(DETAIL_CONTRACT).get("response_no_tasting_days");
         noteService.detail = detailOf(expected);
 
         String body = mockMvc.perform(get("/api/notes/3"))
@@ -478,7 +478,7 @@ class NoteControllerTest {
         JsonNode update = load(UPDATE_CONTRACT);
         noteService.updated = detailOf(update.get("response_after_meta"));
 
-        patch("/api/notes/21/entries/2026-07-02", update.get("entry_request"), status().isOk());
+        patch("/api/notes/21/tasting-days/2026-07-02", update.get("tasting_day_request"), status().isOk());
 
         assertThat(noteService.lastTastingDayId).isEqualTo(21L);
         assertThat(noteService.lastTargetDate).isEqualTo(LocalDate.of(2026, 7, 2));
@@ -493,7 +493,7 @@ class NoteControllerTest {
         JsonNode expected = update.get("response_after_move");
         noteService.updated = detailOf(expected);
 
-        String body = patch("/api/notes/21/entries/2026-07-02", update.get("entry_request_moved"), status().isOk());
+        String body = patch("/api/notes/21/tasting-days/2026-07-02", update.get("tasting_day_request_moved"), status().isOk());
 
         // 대상은 경로, 결과는 본문 — 둘이 다르다는 사실 자체가 "이동"이다(합치는 일은 아래 층의 규칙).
         assertThat(noteService.lastTargetDate).isEqualTo(LocalDate.of(2026, 7, 2));
@@ -508,7 +508,7 @@ class NoteControllerTest {
         JsonNode update = load(UPDATE_CONTRACT);
         noteService.updated = detailOf(update.get("response_after_meta"));
 
-        patch("/api/notes/21/entries/2026-07-02", update.get("entry_request"), status().isOk());
+        patch("/api/notes/21/tasting-days/2026-07-02", update.get("tasting_day_request"), status().isOk());
 
         Review review = noteService.lastTastingDay.cups().getLast().review();
         assertThat(review.myTaste()).isEqualTo("온도 낮추니 떫은 맛이 사라졌다. 다음에도 90℃로.");
@@ -518,12 +518,12 @@ class NoteControllerTest {
     @Test
     @DisplayName("TΔ5b-3/V-15: 회차가 하나도 남지 않는 본문은 400 — 화면에 없는 엔트리 삭제 경로를 만들지 않는다")
     void tastingDayUpdateWithoutCupsIsRejected() throws Exception {
-        ObjectNode empty = (ObjectNode) load(UPDATE_CONTRACT).get("entry_request");
+        ObjectNode empty = (ObjectNode) load(UPDATE_CONTRACT).get("tasting_day_request");
         // 빈 회차(레시피도 감상도 없음)는 V-15 정규화가 드롭한다 — 그 결과가 0건이면 저장할 시음이 없다.
         empty.set("cups", mapper.createArrayNode().add(
                 mapper.createObjectNode().putNull("recipe").putNull("review")));
 
-        patch("/api/notes/21/entries/2026-07-02", empty, status().isBadRequest());
+        patch("/api/notes/21/tasting-days/2026-07-02", empty, status().isBadRequest());
 
         assertThat(noteService.lastTastingDay).as("저장할 회차가 없는 요청이 쓰기까지 갔다").isNull();
     }
@@ -533,7 +533,7 @@ class NoteControllerTest {
     void tastingDayUpdateOnMissingTargetIsNotFound() throws Exception {
         noteService.editFailure = new IllegalStateException("수정 대상 엔트리 소실: 21 2026-01-01");
 
-        patch("/api/notes/21/entries/2026-01-01", load(UPDATE_CONTRACT).get("entry_request"), status().isNotFound());
+        patch("/api/notes/21/tasting-days/2026-01-01", load(UPDATE_CONTRACT).get("tasting_day_request"), status().isNotFound());
     }
 
     @Test

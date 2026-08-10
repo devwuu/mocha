@@ -92,10 +92,10 @@ class ProposalTools {
               "official_notes":%s,
               "cups":{"type":"array","description":"회차 배열 — 배열 순서 = 회차 번호. 시도를 나눠 말했으면 시도마다 요소(V-15). target_date 하루의 시도만 담는다 — 다른 날짜의 시도를 이 날짜의 회차로 합치지 않는다(다중 날짜 발화는 active_date 세그먼트의 내용만 — ADR-59·61)","items":%s},
               "target_date":{"type":"string","description":"시음일 YYYY-MM-DD — 상대 날짜(\\"어제\\")는 컨텍스트의 today 기준으로 절대화해 보낸다. 발화에 시음 날짜가 2개 이상 섞여 있으면 컨텍스트의 자동 분해 세그먼트 중 active_date(가장 이른 날짜)로만 제안한다 — 세그먼트 컨텍스트가 없으면(분해 실패) 이 tool을 호출하지 말고 한 날짜씩 나눠 보내달라고 안내한다(FR-15, ADR-61)"},
-              "match":{"type":"object","description":"이 제안이 무엇인지 — new(새 커피) · existing(기존 노트를 또 마신 새 시음 = 회차 추가) · edit(이미 저장된 기록을 고침 = 그 날짜 엔트리 교체). existing과 edit은 인자 모양이 같지만 뜻이 반대다: \\"또 마셨다\\"면 existing, \\"그때 기록이 틀렸다\\"면 edit. 기존 노트 대조는 list_notes로 한다","properties":{
+              "match":{"type":"object","description":"이 제안이 무엇인지 — new(새 커피) · existing(기존 노트를 또 마신 새 시음 = 회차 추가) · edit(이미 저장된 기록을 고침 = 그 날짜 시음일 교체). existing과 edit은 인자 모양이 같지만 뜻이 반대다: \\"또 마셨다\\"면 existing, \\"그때 기록이 틀렸다\\"면 edit. 기존 노트 대조는 list_notes로 한다","properties":{
                 "type":{"type":"string","enum":["new","existing","edit"]},
                 "note_id":{"type":["integer","null"],"description":"existing·edit일 때 대상 노트 id — list_notes 응답의 id"},
-                "date":{"type":["string","null"],"description":"existing·edit일 때 대상 날짜 YYYY-MM-DD. edit에서는 고칠 엔트리를 가리키는 키라 실제로 있는 날짜여야 한다(get_note로 확인) — 날짜를 바꾸려면 여기는 원래 날짜를 두고 target_date에 새 날짜를 넣어라"}
+                "date":{"type":["string","null"],"description":"existing·edit일 때 대상 날짜 YYYY-MM-DD. edit에서는 고칠 시음일을 가리키는 키라 실제로 있는 날짜여야 한다(get_note로 확인) — 날짜를 바꾸려면 여기는 원래 날짜를 두고 target_date에 새 날짜를 넣어라"}
               },"required":["type","note_id","date"],"additionalProperties":false},
               "sources":{"type":"array","items":{"type":"string"},"description":"검색 참조 링크 — 동일성 가드를 통과한 출처만(AC-58)"}
             },"required":["coffee_name","roastery","beans","roast_level","official_notes","cups","target_date","match","sources"],"additionalProperties":false}"""
@@ -153,7 +153,7 @@ class ProposalTools {
                         + "수정(edit)이고, 어느 것인지는 match가 말한다. 검증 통과 시 제안 내용이 사용자 "
                         + "화면의 작성 폼으로 돌아간다. 저장은 사용자의 [저장] 확정만 한다. 작성 중인 draft가 있으면 "
                         + "재호출은 그 draft 위에 이번 발화를 반영한 전체 내용이어야 한다 — 건드리지 않은 필드도 draft "
-                        + "값을 그대로 다시 실어라. edit은 get_note로 읽은 그 날짜 엔트리의 회차를 전부 실어야 한다 "
+                        + "값을 그대로 다시 실어라. edit은 get_note로 읽은 그 날짜 시음일의 회차를 전부 실어야 한다 "
                         + "— 저장이 회차 배열을 통째로 교체하므로 빠뜨린 회차는 사라진다. "
                         + "검증 거부는 사유를 돌려주니 정정해 재호출해라.",
                 PROPOSE_RECORD_SCHEMA,
@@ -246,7 +246,7 @@ class ProposalTools {
         // 사용자가 [저장]을 누른 뒤라 정정할 자리가 없다. 루프 안에서 되돌린다.
         boolean hasTastingDay = target.tastingDays().stream().anyMatch(tastingDay -> match.date().equals(tastingDay.date()));
         if (!hasTastingDay) {
-            return "노트 " + match.noteId() + "에 " + match.date() + " 기록이 없다 — get_note로 실제 엔트리 "
+            return "노트 " + match.noteId() + "에 " + match.date() + " 기록이 없다 — get_note로 실제 시음일 "
                     + "날짜를 확인하고 고칠 날짜를 다시 지목해라. 새로 마신 것을 더하는 것이라면 "
                     + "match.type=existing이다.";
         }

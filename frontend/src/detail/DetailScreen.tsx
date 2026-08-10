@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { NoteDetail, NoteDetailCup, NoteDetailEntry, NotePhoto, Recipe, Source } from '../api'
+import type { NoteDetail, NoteDetailCup, NoteDetailTastingDay, NotePhoto, Recipe, Source } from '../api'
 import { getNoteDetail } from '../api'
 import { SOURCE_LABELS } from '../formValues'
 import { editPath, GALLERY } from '../routes'
@@ -56,7 +56,7 @@ export function DetailScreen({ noteId, onNavigate }: DetailScreenProps) {
 
   // 갤러리에서 보던 그 사진이 상단에 서야 진입 맥락이 이어진다 — 가장 최근 날짜의 첫 장이고, 목록의
   // thumbnail_url이 고르는 것과 같은 사진이다.
-  const hero = note === null ? null : heroPhoto(note.entries)
+  const hero = note === null ? null : heroPhoto(note.tasting_days)
 
   return (
     <div className="shell">
@@ -99,13 +99,13 @@ export function DetailScreen({ noteId, onNavigate }: DetailScreenProps) {
 
             <Meta note={note} />
 
-            <div className="detail__entries">
-              {note.entries.length === 0 && (
+            <div className="detail__tasting-days">
+              {note.tasting_days.length === 0 && (
                 // 시음일 없는 노트는 정상 상태다(계약 예시가 박는다) — 빈 화면 대신 그렇다고 말한다.
                 <div className="detail__empty">아직 시음 기록이 없어요.</div>
               )}
-              {note.entries.map((entry) => (
-                <EntrySection key={entry.date} entry={entry} noteId={note.note_id} />
+              {note.tasting_days.map((tastingDay) => (
+                <TastingDaySection key={tastingDay.date} tastingDay={tastingDay} noteId={note.note_id} />
               ))}
 
               {/* 시안과 갈린 것 ③ — 참조 링크는 시안에 없다. FR-12가 저장하는 값이고 캡처 폼도 보여주므로
@@ -130,9 +130,9 @@ export function DetailScreen({ noteId, onNavigate }: DetailScreenProps) {
 }
 
 /** 히어로 = 가장 최근 날짜의 첫 사진. 시음일은 날짜 오름차순이므로 뒤에서부터 찾는다. */
-function heroPhoto(entries: NoteDetailEntry[]): NotePhoto | null {
-  for (let index = entries.length - 1; index >= 0; index--) {
-    const photos = entries[index].photos
+function heroPhoto(tastingDays: NoteDetailTastingDay[]): NotePhoto | null {
+  for (let index = tastingDays.length - 1; index >= 0; index--) {
+    const photos = tastingDays[index].photos
     if (photos.length > 0) {
       return photos[0]
     }
@@ -196,24 +196,24 @@ function Meta({ note }: { note: NoteDetail }) {
  *
  * 사진이 회차 위에 오는 것이 시안의 순서다 — 그 날의 장면이 먼저고 기록이 뒤다.
  */
-function EntrySection({ entry, noteId }: { entry: NoteDetailEntry; noteId: number }) {
+function TastingDaySection({ tastingDay, noteId }: { tastingDay: NoteDetailTastingDay; noteId: number }) {
   return (
-    <section className="entry">
-      <div className="entry__rule">
-        <span className="entry__date">{formatDate(entry.date)}</span>
+    <section className="tasting-day">
+      <div className="tasting-day__rule">
+        <span className="tasting-day__date">{formatDate(tastingDay.date)}</span>
         <i />
       </div>
 
-      {entry.photos.length > 0 && (
-        <div className="entry__photos">
-          {entry.photos.map((photo) => (
+      {tastingDay.photos.length > 0 && (
+        <div className="tasting-day__photos">
+          {tastingDay.photos.map((photo) => (
             <img key={photo.url} src={photo.url} alt="" loading="lazy" />
           ))}
         </div>
       )}
 
-      {entry.cups.map((cup, index) => (
-        <CupCard key={index} cup={cup} no={index + 1} noteId={noteId} date={entry.date} />
+      {tastingDay.cups.map((cup, index) => (
+        <CupCard key={index} cup={cup} no={index + 1} noteId={noteId} date={tastingDay.date} />
       ))}
     </section>
   )

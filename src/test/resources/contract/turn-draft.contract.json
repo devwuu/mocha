@@ -32,7 +32,7 @@
       "roastery" : [ ]
     },
     "sources" : [ "https://example.test/chelbesa" ],
-    "entries" : [ {
+    "tasting_days" : [ {
       "date" : "2026-07-16",
       "cups" : [ {
         "recipe" : {

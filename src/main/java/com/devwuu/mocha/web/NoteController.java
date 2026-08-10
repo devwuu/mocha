@@ -39,7 +39,7 @@ import java.util.Optional;
  *   <li>{@code GET /api/notes} — 갤러리 목록(TΔ5a·TΔ12, {@code note-list})</li>
  *   <li>{@code GET /api/notes/&#123;id&#125;} — 상세(TΔ5a·TΔ13a, {@code note-detail})</li>
  *   <li>{@code PATCH /api/notes/&#123;id&#125;} — 메타 수정(TΔ5b-3·TΔ13b, {@code note-update})</li>
- *   <li>{@code PATCH /api/notes/&#123;id&#125;/entries/&#123;date&#125;} — 시음일 수정·날짜 이동(같은 계약)</li>
+ *   <li>{@code PATCH /api/notes/&#123;id&#125;/tasting-days/&#123;date&#125;} — 시음일 수정·날짜 이동(같은 계약)</li>
  *   <li>{@code DELETE /api/notes/&#123;id&#125;} — 노트 삭제(같은 계약)</li>
  * </ul>
  *
@@ -105,7 +105,7 @@ public class NoteController {
         }
         // POLICY: 수정 모드 폼은 이 경로로 저장하지 않는다 — 커밋은 회차를 **더하는** 일이라
         //         match=edit이 여기 오면 "고치려던 것이 회차 추가로 저장되는" 조합이 된다.
-        //         수정의 저장 경로는 PATCH /api/notes/{id}/entries/{date}다
+        //         수정의 저장 경로는 PATCH /api/notes/{id}/tasting-days/{date}다
         //         (ref: changes/0029 delta.md#D-14, tasks.md TΔ28b·TΔ29a).
         if (request.match().type() == MatchInfo.MatchType.EDIT) {
             log.warn("저장 거부(경로 불일치): match=edit은 시음일 PATCH로 저장한다 — noteId={}",
@@ -256,11 +256,11 @@ public class NoteController {
      * 저장할 시음이 없다는 뜻이고, 그대로 쓰면 <i>화면에 없는 시음일 삭제 경로</i>가 생긴다 — 시음일 삭제는
      * spec에 없다(TΔ13b 편차 ⑤).
      */
-    @PatchMapping("/{id:\\d+}/entries/{date}")
+    @PatchMapping("/{id:\\d+}/tasting-days/{date}")
     public ResponseEntity<NoteDetailBody> replaceTastingDay(
             @PathVariable long id,
             @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
-            @RequestBody NoteEntryBody request) {
+            @RequestBody TastingDayBody request) {
         if (request == null || request.date() == null) {
             return ResponseEntity.badRequest().build();
         }

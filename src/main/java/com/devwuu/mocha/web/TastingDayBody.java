@@ -8,7 +8,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 /**
- * {@code PATCH /api/notes/&#123;id&#125;/entries/&#123;date&#125;} 요청 — 그 날짜 시음 기록의 회차 교체
+ * {@code PATCH /api/notes/&#123;id&#125;/tasting-days/&#123;date&#125;} 요청 — 그 날짜 시음 기록의 회차 교체
  * + 날짜 이동 (ref: changes/0029 tasks.md TΔ13b·TΔ5b-3, 계약 정본
  * {@code contract/note-update.contract.json}).
  *
@@ -24,7 +24,7 @@ import java.util.List;
  * 정규화본을 양쪽에 담는다. 수정하면 <i>"말한 그대로"</i>가 편집본으로 수렴하는 것이 이 계약의 뜻이다
  * (ref: data-model.md#V-11 뒷문장).
  */
-public record NoteEntryBody(LocalDate date, List<NoteDetailBody.DetailCup> cups) {
+public record TastingDayBody(LocalDate date, List<NoteDetailBody.DetailCup> cups) {
 
     /**
      * 도메인 시음일로 되돌린다 — 회차는 <b>V-15 정규화를 거친다</b>(빈 감상 드롭 · 레시피·감상 둘 다 없는
@@ -34,7 +34,7 @@ public record NoteEntryBody(LocalDate date, List<NoteDetailBody.DetailCup> cups)
      * <p>{@code updatedAt}은 {@code null}이다 — 시음일 행의 시각은 감사 리스너가 채운다(0028 TΔ4).
      */
     public TastingDay toTastingDay() {
-        List<Cup> raw = cups == null ? List.of() : cups.stream().map(NoteEntryBody::toCup).toList();
+        List<Cup> raw = cups == null ? List.of() : cups.stream().map(TastingDayBody::toCup).toList();
         return new TastingDay(date, Cup.normalize(raw), null);
     }
 

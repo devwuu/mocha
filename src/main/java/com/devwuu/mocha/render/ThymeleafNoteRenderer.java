@@ -197,8 +197,8 @@ public class ThymeleafNoteRenderer implements NoteRenderer {
     }
 
     private static boolean isEmptyDir(Path dir) throws IOException {
-        try (Stream<Path> entries = Files.list(dir)) {
-            return entries.findAny().isEmpty();
+        try (Stream<Path> children = Files.list(dir)) {
+            return children.findAny().isEmpty();
         }
     }
 

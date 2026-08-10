@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import type { Draft, NoteDetail } from '../api'
-import { patchNoteEntry, postAgentCancel, postAgentTurn, postNoteCommit, postPhotos } from '../api'
-import type { EntryDraft } from '../edit/noteEdits'
-import { toEntryUpdate } from '../edit/noteEdits'
+import { patchNoteTastingDay, postAgentCancel, postAgentTurn, postNoteCommit, postPhotos } from '../api'
+import type { TastingDayDraft } from '../edit/noteEdits'
+import { toTastingDayUpdate } from '../edit/noteEdits'
 import { editPath, GALLERY, notePath } from '../routes'
 import { DraftForm } from './DraftForm'
 
@@ -239,8 +239,8 @@ export function ChatScreen({ onNavigate }: ChatScreenProps) {
    * 재시도할 것도 없다. 그래도 조용히 삼키지는 않는다 — 다음 대화가 이상하면 이 줄이 단서다.
    */
   async function saveEdit(current: Draft, noteId: number): Promise<Message[]> {
-    const update = toEntryUpdate(current)
-    const saved = await patchNoteEntry(noteId, update.targetDate, update.value)
+    const update = toTastingDayUpdate(current)
+    const saved = await patchNoteTastingDay(noteId, update.targetDate, update.value)
     const notice: Message = {
       role: 'system',
       text: editedNotice(saved, update),
@@ -508,12 +508,12 @@ function savedNotice(noteId: number, merged: boolean): string {
  * 병합 판정이 *"보낸 회차보다 많다"*인 것은 그 자리에 원래 있던 회차 뒤로 이어 붙기 때문이다(D-12 —
  * 기존이 앞, 옮겨 온 것이 뒤). 이동처가 비어 있었으면 보낸 그대로라 수가 같다.
  */
-function editedNotice(saved: NoteDetail, update: EntryDraft): string {
+function editedNotice(saved: NoteDetail, update: TastingDayDraft): string {
   const suffix = `(노트 #${saved.note_id})`
   if (update.value.date === update.targetDate) {
     return `${update.value.date} 기록을 고쳤어. ${suffix}`
   }
-  const cups = saved.entries.find((entry) => entry.date === update.value.date)?.cups.length ?? 0
+  const cups = saved.tasting_days.find((tastingDay) => tastingDay.date === update.value.date)?.cups.length ?? 0
   return cups > update.value.cups.length
     ? `${update.targetDate} 기록을 ${update.value.date} 기록에 합쳤어. 이제 ${cups}회차야. ${suffix}`
     : `${update.targetDate} 기록을 ${update.value.date}로 옮겼어. ${suffix}`

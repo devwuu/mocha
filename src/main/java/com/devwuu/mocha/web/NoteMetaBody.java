@@ -16,7 +16,7 @@ import java.util.List;
  * {@code NoteTxService.updateMeta}의 저장값 대조는 그 아래의 최종 방어선으로 남는다(TΔ4a) — 이 경로에서
  * 그 검사는 <b>항상 통과</b>하지만, 지우지 않는 이유는 호출부가 하나 더 생기는 날의 방어선이어서다.
  *
- * <p>필드 목록은 {@link NoteDetailBody}에서 {@code noteId}·{@code coffeeName}·{@code entries}를 뺀 것과
+ * <p>필드 목록은 {@link NoteDetailBody}에서 {@code noteId}·{@code coffeeName}·{@code tasting_days}를 뺀 것과
  * 정확히 같다 — 수정 폼이 {@code GET /api/notes/&#123;id&#125;}를 그대로 딛기 때문이다. <b>출처를 함께
  * 싣는 이유가 그것이다</b>: 고치지 않은 필드가 원래 출처를 유지해야 이후 검색 보강이 닿을 수 있는 값으로
  * 남는다(V-6이 막으려던 방향의 반대편 사고).

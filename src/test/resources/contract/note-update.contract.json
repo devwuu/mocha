@@ -1,10 +1,10 @@
 {
   "meta_path": "/api/notes/{id}",
-  "entry_path": "/api/notes/{id}/entries/{date}",
+  "tasting_day_path": "/api/notes/{id}/tasting-days/{date}",
   "delete_path": "/api/notes/{id}",
   "missing_status": 404,
   "delete_status": 204,
-  "date_move": "entry_request.date != path {date} 이면 그 엔트리가 그 날짜로 옮겨간다",
+  "date_move": "tasting_day_request.date != path {date} 이면 그 시음일이 그 날짜로 옮겨간다",
   "date_conflict": "merge_cups",
   "meta_request": {
     "roastery": { "value": "프릳츠커피", "source": "user" },
@@ -22,7 +22,7 @@
     "official_notes": { "value": ["자몽", "베르가못", "홍차"], "source": "search" },
     "sources": ["https://fritz.co.kr/products/ethiopia-gedeb"]
   },
-  "entry_request": {
+  "tasting_day_request": {
     "date": "2026-07-02",
     "cups": [
       {
@@ -49,7 +49,7 @@
       }
     ]
   },
-  "entry_request_moved": {
+  "tasting_day_request_moved": {
     "date": "2026-06-28",
     "cups": [
       {
@@ -93,7 +93,7 @@
     "roast_level": { "value": "라이트", "source": "photo" },
     "official_notes": { "value": ["자몽", "베르가못", "홍차"], "source": "search" },
     "sources": ["https://fritz.co.kr/products/ethiopia-gedeb"],
-    "entries": [
+    "tasting_days": [
       {
         "date": "2026-06-28",
         "cups": [
@@ -168,7 +168,7 @@
     "roast_level": { "value": "라이트", "source": "photo" },
     "official_notes": { "value": ["자몽", "베르가못", "홍차"], "source": "search" },
     "sources": ["https://fritz.co.kr/products/ethiopia-gedeb"],
-    "entries": [
+    "tasting_days": [
       {
         "date": "2026-06-28",
         "cups": [

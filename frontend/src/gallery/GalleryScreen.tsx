@@ -140,8 +140,8 @@ export function GalleryScreen({ onNavigate }: GalleryScreenProps) {
         })
     }
 
-    const observer = new IntersectionObserver((entries) => {
-      if (entries[0].isIntersecting) {
+    const observer = new IntersectionObserver((observed) => {
+      if (observed[0].isIntersecting) {
         more()
       }
     })

@@ -26,7 +26,7 @@ import java.time.LocalDate;
 import java.util.Optional;
 
 /**
- * {@code GET /api/notes/{id}/entries/{date}/card?type=taste|recipe&n=} — 회차 카드 온디맨드
+ * {@code GET /api/notes/{id}/tasting-days/{date}/card?type=taste|recipe&n=} — 회차 카드 온디맨드
  * (ref: changes/0029 tasks.md TΔ9, open-questions.md OQ-3 ㉡·OQ-10; spec FR-16 개정 대상;
  * 계약 정본 {@code src/test/resources/contract/note-card.contract.json}).
  *
@@ -72,7 +72,7 @@ public class CardController {
      *
      * @param n 회차 번호(1부터). 기본값이 1인 것은 회차가 하나뿐인 기록이 대다수여서다.
      */
-    @GetMapping("/{id:\\d+}/entries/{date}/card")
+    @GetMapping("/{id:\\d+}/tasting-days/{date}/card")
     public ResponseEntity<Resource> card(
             @PathVariable long id,
             @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,

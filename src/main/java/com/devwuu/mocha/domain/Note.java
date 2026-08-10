@@ -1,7 +1,5 @@
 package com.devwuu.mocha.domain;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
-
 import java.time.OffsetDateTime;
 import java.util.List;
 
@@ -34,9 +32,6 @@ public record Note(
         Sourced<List<String>> officialNotes,
         Aliases aliases,
         List<String> sources,
-        // 0030 TΔ5a 임시 조치: 개명은 식별자까지만 옮기고 JSON 키는 그대로 둔다 — 계약 스냅샷·프론트·eval
-        // 코퍼스가 이 단계에서 안 깨지게 하기 위해서다. TΔ6이 키를 tasting_days로 옮기며 이 줄을 걷는다.
-        @JsonProperty("entries")
         List<TastingDay> tastingDays,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt

@@ -9,7 +9,6 @@ import com.devwuu.mocha.domain.Rating;
 import com.devwuu.mocha.domain.Recipe;
 import com.devwuu.mocha.domain.Sourced;
 import com.devwuu.mocha.domain.Review;
-import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -49,8 +48,6 @@ public record NoteDetailBody(
         Sourced<String> roastLevel,
         Sourced<List<String>> officialNotes,
         List<String> sources,
-        // 0030 TΔ5a 임시 조치 — JSON 키는 TΔ6이 옮긴다(도메인 {@code Note}와 같은 이유).
-        @JsonProperty("entries")
         List<DetailTastingDay> tastingDays) {
 
     /**

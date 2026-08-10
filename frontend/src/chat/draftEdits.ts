@@ -3,12 +3,12 @@ import type {
   Cup,
   Draft,
   DraftNote,
-  Entry,
   NoteCandidate,
   NoteDetail,
   NoteDetailCup,
   Recipe,
   Review,
+  TastingDay,
 } from '../api/contract'
 
 /**
@@ -84,8 +84,8 @@ export function selectNew(draft: Draft): Draft {
  * 담는다. `note-update.contract.json`이 이미 같은 규약이다.
  */
 export function selectEditTarget(detail: NoteDetail, date: string): Draft {
-  const entry = detail.entries.find((candidate) => candidate.date === date)
-  if (entry === undefined) {
+  const tastingDay = detail.tasting_days.find((candidate) => candidate.date === date)
+  if (tastingDay === undefined) {
     // 시트는 이 상세 응답에서 날짜를 뽑아 보여주므로 정상 경로에서 성립할 수 없다 — 조용히 빈 폼을
     // 만들면 무엇을 고치는지 모르는 채 [저장]이 열린다.
     throw new Error(`${date} 기록을 찾지 못했어`)
@@ -99,12 +99,12 @@ export function selectEditTarget(detail: NoteDetail, date: string): Draft {
       roast_level: detail.roast_level,
       official_notes: detail.official_notes,
       sources: detail.sources,
-      entries: [{ date: entry.date, cups: entry.cups.map(toDraftCup), updated_at: null }],
+      tasting_days: [{ date: tastingDay.date, cups: tastingDay.cups.map(toDraftCup), updated_at: null }],
       // 감사 컬럼은 상세 계약에 없다 — 화면이 쓰지 않는 값이라 잘려 있고(TΔ13a) 폼도 쓰지 않는다.
       created_at: null,
       updated_at: null,
     },
-    match: { type: 'edit', note_id: detail.note_id, date: entry.date },
+    match: { type: 'edit', note_id: detail.note_id, date: tastingDay.date },
   }
 }
 
@@ -121,27 +121,27 @@ export function patchBean(draft: Draft, beanIndex: number, patch: Partial<Bean>)
   return patchNote(draft, { beans: replaceAt(draft.note.beans, beanIndex, (bean) => ({ ...bean, ...patch })) })
 }
 
-export function patchEntry(draft: Draft, entryIndex: number, patch: Partial<Entry>): Draft {
-  return patchNote(draft, { entries: replaceAt(draft.note.entries, entryIndex, (entry) => ({ ...entry, ...patch })) })
+export function patchTastingDay(draft: Draft, dayIndex: number, patch: Partial<TastingDay>): Draft {
+  return patchNote(draft, { tasting_days: replaceAt(draft.note.tasting_days, dayIndex, (tastingDay) => ({ ...tastingDay, ...patch })) })
 }
 
-export function patchCup(draft: Draft, entryIndex: number, cupIndex: number, patch: Partial<Cup>): Draft {
-  const entry = draft.note.entries[entryIndex]
-  return patchEntry(draft, entryIndex, {
-    cups: replaceAt(entry.cups, cupIndex, (cup) => ({ ...cup, ...patch })),
+export function patchCup(draft: Draft, dayIndex: number, cupIndex: number, patch: Partial<Cup>): Draft {
+  const tastingDay = draft.note.tasting_days[dayIndex]
+  return patchTastingDay(draft, dayIndex, {
+    cups: replaceAt(tastingDay.cups, cupIndex, (cup) => ({ ...cup, ...patch })),
   })
 }
 
 /** 레시피가 없던 회차에 값을 넣으면 레시피가 생긴다 — 전 필드 null인 레시피는 서버가 드롭한다(V-8). */
-export function patchRecipe(draft: Draft, entryIndex: number, cupIndex: number, patch: Partial<Recipe>): Draft {
-  const current = draft.note.entries[entryIndex].cups[cupIndex].recipe ?? EMPTY_RECIPE
-  return patchCup(draft, entryIndex, cupIndex, { recipe: { ...current, ...patch } })
+export function patchRecipe(draft: Draft, dayIndex: number, cupIndex: number, patch: Partial<Recipe>): Draft {
+  const current = draft.note.tasting_days[dayIndex].cups[cupIndex].recipe ?? EMPTY_RECIPE
+  return patchCup(draft, dayIndex, cupIndex, { recipe: { ...current, ...patch } })
 }
 
 /** 감상이 없던 회차도 같다 — `my_taste`가 빈 review은 서버가 드롭한다(V-15). */
-export function patchReview(draft: Draft, entryIndex: number, cupIndex: number, patch: Partial<Review>): Draft {
-  const current = draft.note.entries[entryIndex].cups[cupIndex].review ?? EMPTY_REVIEW
-  return patchCup(draft, entryIndex, cupIndex, { review: { ...current, ...patch } })
+export function patchReview(draft: Draft, dayIndex: number, cupIndex: number, patch: Partial<Review>): Draft {
+  const current = draft.note.tasting_days[dayIndex].cups[cupIndex].review ?? EMPTY_REVIEW
+  return patchCup(draft, dayIndex, cupIndex, { review: { ...current, ...patch } })
 }
 
 const EMPTY_RECIPE: Recipe = {

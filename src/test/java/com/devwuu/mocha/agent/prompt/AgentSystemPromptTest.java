@@ -139,10 +139,10 @@ class AgentSystemPromptTest {
     @Test
     @DisplayName("FR-15·22/AC-77·AC-Δ2: 다중 날짜 발화는 순차 제안 — 이른 날짜만 제안 + 나머지 저장 후 이어서 안내, 근거 포함")
     void encodesMultiDateSequentialProposal() {
-        // changes/0023 ADR-61: 구 "분리 안내"에서 개정 — 문구는 명령이 아니라 근거(폼은 엔트리 1건 →
+        // changes/0023 ADR-61: 구 "분리 안내"에서 개정 — 문구는 명령이 아니라 근거(폼은 시음일 1건 →
         // 가장 이른 날짜부터)를 담는다(ADR-60 사유 정보량 원칙의 프롬프트 측 적용). 0029 TΔ4에서 근거가
         // "pending 단일 대기"에서 "작성 폼 1건"으로 바뀌었다 — 규칙은 같고 소유자가 옮겨졌다.
-        assertThat(PROMPT).contains("작성 폼은 한 번에 한 건(엔트리 1건)만 담을 수 있으니");
+        assertThat(PROMPT).contains("작성 폼은 한 번에 한 건(시음일 1건)만 담을 수 있으니");
         assertThat(PROMPT).contains("active_date(가장 이른 날짜) 세그먼트");
         assertThat(PROMPT).contains("나머지 날짜는 저장 후 이어서 제안하겠다는 안내를 담는다");
         assertThat(PROMPT).contains("다른 날짜의 시도를 한 날짜의 회차로 합치지도 마라");
@@ -194,7 +194,7 @@ class AgentSystemPromptTest {
         // 구 금지 규칙이 이 기능을 막고 있었다 — 부재 단언이 개정의 절반이다(TΔ27의 "~멍"과 같은 형태).
         assertThat(PROMPT).doesNotContain("저장이 끝난 기록은 대화로 고치지 않는다");
         assertThat(PROMPT).contains("match.type=edit으로 제안한다");
-        assertThat(PROMPT).contains("고치는 단위는 그 날짜 엔트리 하나다");
+        assertThat(PROMPT).contains("고치는 단위는 그 날짜 시음일 하나다");
         // 대상 키는 짐작이 아니라 get_note가 돌려준 값에서 고른다 — 없는 날짜는 서버가 거부한다(TΔ29a).
         assertThat(PROMPT).contains("get_note가 돌려준 날짜 중에서 고른다");
         // 잠긴 메타는 저장된 값 그대로 되싣는다 — V-9는 서버가 최종 방어하지만(TΔ29a) 애초에 안 바꾸게 한다.

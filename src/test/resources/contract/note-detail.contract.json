@@ -2,7 +2,7 @@
   "request_path": "/api/notes/{id}",
   "missing_status": 404,
   "photo_url_prefix": "/api/photos/",
-  "entry_order": "date asc",
+  "tasting_day_order": "date asc",
   "response": {
     "note_id": 21,
     "coffee_name": { "value": "에티오피아 게뎁", "source": "photo" },
@@ -20,7 +20,7 @@
     "roast_level": { "value": "라이트", "source": "photo" },
     "official_notes": { "value": ["자몽", "베르가못", "홍차"], "source": "search" },
     "sources": ["https://fritz.co.kr/products/ethiopia-gedeb"],
-    "entries": [
+    "tasting_days": [
       {
         "date": "2026-06-28",
         "cups": [
@@ -86,7 +86,7 @@
     "roast_level": null,
     "official_notes": null,
     "sources": [],
-    "entries": [
+    "tasting_days": [
       {
         "date": "2026-07-02",
         "cups": [
@@ -99,7 +99,7 @@
       }
     ]
   },
-  "response_no_entries": {
+  "response_no_tasting_days": {
     "note_id": 3,
     "coffee_name": { "value": "게뎁 워시드", "source": "user" },
     "roastery": null,
@@ -107,6 +107,6 @@
     "roast_level": null,
     "official_notes": null,
     "sources": [],
-    "entries": []
+    "tasting_days": []
   }
 }

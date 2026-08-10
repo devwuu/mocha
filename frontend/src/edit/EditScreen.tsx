@@ -4,22 +4,22 @@ import type {
   NoteDetail,
   NoteDetailCup,
   NoteDetailReview,
-  NoteEntryUpdate,
   NoteMetaUpdate,
   Rating,
   Recipe,
   Sourced,
+  TastingDayUpdate,
 } from '../api'
-import { deleteNote, getNoteDetail, patchNoteEntry, patchNoteMeta, RATINGS } from '../api'
+import { deleteNote, getNoteDetail, patchNoteMeta, patchNoteTastingDay, RATINGS } from '../api'
 import { numberValue, SOURCE_LABELS, textValue, userValue } from '../formValues'
 import { GALLERY, notePath } from '../routes'
-import type { EntryDraft } from './noteEdits'
+import type { TastingDayDraft } from './noteEdits'
 import {
   beanSlots,
   changed,
   mergeTargetOf,
-  toEntryDrafts,
   toMetaUpdate,
+  toTastingDayDrafts,
   trimBeans,
   withBean,
   withDate,
@@ -43,8 +43,8 @@ import {
  * ⑥ 저장 버튼의 자리와 노트 삭제 구역.
  *
  * **저장 단위가 섹션별인 것이 계약이다**(사용자 확정 2026-08-01). TΔ4a가 `applyEdit`을 `updateMeta`·
- * `replaceEntry`로 나눈 것을 화면이 그대로 드러낸다 — 커피 정보 [저장] 하나가 `PATCH /api/notes/{id}`
- * 하나이고, 날짜 [저장] 하나가 `PATCH /api/notes/{id}/entries/{date}` 하나다. 버튼을 하나로 합치면
+ * `replaceTastingDay`로 나눈 것을 화면이 그대로 드러낸다 — 커피 정보 [저장] 하나가 `PATCH /api/notes/{id}`
+ * 하나이고, 날짜 [저장] 하나가 `PATCH /api/notes/{id}/tasting-days/{date}` 하나다. 버튼을 하나로 합치면
  * 요청이 N개가 되고 **부분 실패**(메타는 저장됐고 7/2는 실패)를 화면이 표현해야 하는데, 나눠 두면 그
  * 상태가 애초에 성립하지 않는다.
  *
@@ -61,7 +61,7 @@ export function EditScreen({ noteId, onNavigate }: EditScreenProps) {
   const [note, setNote] = useState<NoteDetail | null>(null)
   const [failed, setFailed] = useState(false)
   const [meta, setMeta] = useState<NoteMetaUpdate | null>(null)
-  const [entries, setEntries] = useState<EntryDraft[]>([])
+  const [tastingDays, setTastingDays] = useState<TastingDayDraft[]>([])
   const [collapsed, setCollapsed] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<Notice | null>(null)
@@ -114,7 +114,7 @@ export function EditScreen({ noteId, onNavigate }: EditScreenProps) {
   function adopt(loaded: NoteDetail) {
     setNote(loaded)
     setMeta(toMetaUpdate(loaded))
-    setEntries(toEntryDrafts(loaded))
+    setTastingDays(toTastingDayDrafts(loaded))
     setCollapsed([])
   }
 
@@ -136,15 +136,15 @@ export function EditScreen({ noteId, onNavigate }: EditScreenProps) {
     }
   }
 
-  async function saveEntry(draft: EntryDraft) {
+  async function saveTastingDay(draft: TastingDayDraft) {
     if (busy) {
       return
     }
     setBusy(true)
     setNotice(null)
     try {
-      const merged = mergeTargetOf(entries, draft)
-      adopt(await patchNoteEntry(noteId, draft.targetDate, draft.value))
+      const merged = mergeTargetOf(tastingDays, draft)
+      adopt(await patchNoteTastingDay(noteId, draft.targetDate, draft.value))
       setNotice({
         tone: 'ok',
         text:
@@ -180,7 +180,7 @@ export function EditScreen({ noteId, onNavigate }: EditScreenProps) {
     )
   }
 
-  const baselineEntries = toEntryDrafts(note)
+  const baselineTastingDays = toTastingDayDrafts(note)
 
   return (
     <Frame
@@ -197,14 +197,14 @@ export function EditScreen({ noteId, onNavigate }: EditScreenProps) {
         onSave={() => void saveMeta()}
       />
 
-      {note.entries.length === 0 && <div className="edit__empty">아직 시음 기록이 없어요.</div>}
+      {note.tasting_days.length === 0 && <div className="edit__empty">아직 시음 기록이 없어요.</div>}
 
-      {entries.map((draft, index) => (
+      {tastingDays.map((draft, index) => (
         <DateSection
           key={draft.targetDate}
           draft={draft}
-          merged={mergeTargetOf(entries, draft)}
-          dirty={changed(baselineEntries[index]?.value, draft.value)}
+          merged={mergeTargetOf(tastingDays, draft)}
+          dirty={changed(baselineTastingDays[index]?.value, draft.value)}
           collapsed={collapsed.includes(draft.targetDate)}
           busy={busy}
           onToggle={() =>
@@ -214,9 +214,9 @@ export function EditScreen({ noteId, onNavigate }: EditScreenProps) {
                 : [...prev, draft.targetDate],
             )
           }
-          onChange={(next) => setEntries(entries.map((item, i) => (i === index ? { ...item, value: next } : item)))}
-          onRevert={() => setEntries(entries.map((item, i) => (i === index ? baselineEntries[index] : item)))}
-          onSave={() => void saveEntry(draft)}
+          onChange={(next) => setTastingDays(tastingDays.map((item, i) => (i === index ? { ...item, value: next } : item)))}
+          onRevert={() => setTastingDays(tastingDays.map((item, i) => (i === index ? baselineTastingDays[index] : item)))}
+          onSave={() => void saveTastingDay(draft)}
         />
       ))}
 
@@ -242,7 +242,7 @@ export function EditScreen({ noteId, onNavigate }: EditScreenProps) {
             <h2 className="sheet__title">{note.coffee_name.value}</h2>
           </div>
           <p className="edit__danger-why">
-            시음 기록 {note.entries.length}일치와 사진이 모두 지워져요. 되돌릴 수 없어요.
+            시음 기록 {note.tasting_days.length}일치와 사진이 모두 지워져요. 되돌릴 수 없어요.
           </p>
           <div className="edit__actions">
             <button type="button" className="edit__revert" onClick={() => confirm.current?.close()}>
@@ -413,14 +413,14 @@ function NoteChips({ meta, onChange }: { meta: NoteMetaUpdate; onChange: (next: 
         )}
       </div>
       <div className="edit__chips">
-        {notes.map((entry) => (
-          <span className="edit__chip" key={entry}>
-            {entry}
+        {notes.map((text) => (
+          <span className="edit__chip" key={text}>
+            {text}
             <button
               type="button"
               className="edit__chip-x"
-              aria-label={`${entry} 지우기`}
-              onClick={() => onChange(withNotes(meta, notes.filter((item) => item !== entry)))}
+              aria-label={`${text} 지우기`}
+              onClick={() => onChange(withNotes(meta, notes.filter((item) => item !== text)))}
             >
               ✕
             </button>
@@ -446,7 +446,7 @@ function NoteChips({ meta, onChange }: { meta: NoteMetaUpdate; onChange: (next: 
 }
 
 /**
- * 날짜 하나 = 저장 단위 하나 — `PATCH /api/notes/{id}/entries/{date}` 하나에 대응한다.
+ * 날짜 하나 = 저장 단위 하나 — `PATCH /api/notes/{id}/tasting-days/{date}` 하나에 대응한다.
  *
  * 시안의 날짜 헤더 바를 이식했다: 모노스페이스 날짜 + 요일, 펼치면 짙은 갈색·접으면 밝은 톤. **다만 날짜가
  * 표시가 아니라 입력이다**(시안에는 날짜를 고치는 자리가 없다) — 날짜 이동이 이 화면의 기능이고(V-10·D-12,
@@ -466,34 +466,34 @@ function DateSection({
   onRevert,
   onSave,
 }: {
-  draft: EntryDraft
-  merged: EntryDraft | null
+  draft: TastingDayDraft
+  merged: TastingDayDraft | null
   dirty: boolean
   collapsed: boolean
   busy: boolean
   onToggle: () => void
-  onChange: (next: NoteEntryUpdate) => void
+  onChange: (next: TastingDayUpdate) => void
   onRevert: () => void
   onSave: () => void
 }) {
-  const entry = draft.value
+  const tastingDay = draft.value
 
   return (
     <section className="edit__section">
       <div className={collapsed ? 'edit__date-head edit__date-head--folded' : 'edit__date-head'}>
         <div className="edit__date-left">
           {collapsed ? (
-            <span className="edit__date-text">{formatDate(entry.date)}</span>
+            <span className="edit__date-text">{formatDate(tastingDay.date)}</span>
           ) : (
             <input
               className="edit__date-input"
               type="date"
-              value={entry.date}
+              value={tastingDay.date}
               aria-label="시음 날짜"
-              onChange={(event) => onChange(withDate(entry, event.target.value))}
+              onChange={(event) => onChange(withDate(tastingDay, event.target.value))}
             />
           )}
-          <span className="edit__weekday">{weekdayOf(entry.date)}</span>
+          <span className="edit__weekday">{weekdayOf(tastingDay.date)}</span>
         </div>
         <button type="button" className="edit__fold" onClick={onToggle}>
           {collapsed ? '펼치기 ▾' : '접기 ▴'}
@@ -502,7 +502,7 @@ function DateSection({
 
       {collapsed ? (
         <div className="edit__section-body">
-          {entry.cups.map((cup, index) => (
+          {tastingDay.cups.map((cup, index) => (
             <div className="edit__summary" key={index}>
               {summarize(cup) || `${index + 1}회차`}
             </div>
@@ -518,24 +518,24 @@ function DateSection({
           */}
           {merged !== null && (
             <p className="edit__merge">
-              {entry.date}에 이미 기록이 있어요. 그날 기록에 {merged.value.cups.length + 1}회차부터 합쳐집니다.
+              {tastingDay.date}에 이미 기록이 있어요. 그날 기록에 {merged.value.cups.length + 1}회차부터 합쳐집니다.
             </p>
           )}
 
-          {entry.cups.map((cup, cupIndex) => (
+          {tastingDay.cups.map((cup, cupIndex) => (
             <CupCard
               key={cupIndex}
               cup={cup}
               no={cupIndex + 1}
-              onRecipe={(patch) => onChange(withRecipe(entry, cupIndex, patch))}
-              onReview={(patch) => onChange(withReview(entry, cupIndex, patch))}
+              onRecipe={(patch) => onChange(withRecipe(tastingDay, cupIndex, patch))}
+              onReview={(patch) => onChange(withReview(tastingDay, cupIndex, patch))}
             />
           ))}
 
           {/* 시안과 갈린 것 ⑥ — 시안은 [저장]을 회차 카드 안에 뒀지만 그 카드가 하나뿐인 그림이다.
               PATCH는 **시음일 단위**라(회차별 저장 API가 없다) 회차마다 버튼을 두면 각 버튼이 그 날짜
               전체를 저장하게 되어 거짓말이 된다. 저장 단위가 곧 이 섹션이므로 버튼도 섹션 발치에 둔다. */}
-          <Actions dirty={dirty} busy={busy || entry.date === ''} onRevert={onRevert} onSave={onSave} />
+          <Actions dirty={dirty} busy={busy || tastingDay.date === ''} onRevert={onRevert} onSave={onSave} />
         </div>
       )}
     </section>

@@ -88,7 +88,7 @@ class NoteLookupTools {
     ToolCallback getNote() {
         return new ToolCallback(
                 "get_note",
-                "note_id로 노트 전체(모든 시음 엔트리 포함)를 돌려준다 — 상세 확인·수정 대상 검증용. "
+                "note_id로 노트 전체(모든 시음일 포함)를 돌려준다 — 상세 확인·수정 대상 검증용. "
                         + "미존재 id는 오류를 돌려준다.",
                 GET_NOTE_SCHEMA,
                 this::executeGetNote);

@@ -13,7 +13,7 @@
       "roast_level": { "value": "라이트", "source": "search" },
       "official_notes": { "value": [ "자스민", "베르가못" ], "source": "search" },
       "sources": [ "https://example.test/chelbesa" ],
-      "entries": [
+      "tasting_days": [
         {
           "date": "2026-07-16",
           "cups": [

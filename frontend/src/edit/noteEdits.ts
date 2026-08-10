@@ -5,17 +5,17 @@ import type {
   NoteDetail,
   NoteDetailCup,
   NoteDetailReview,
-  NoteEntryUpdate,
   NoteMetaUpdate,
   Recipe,
+  TastingDayUpdate,
 } from '../api'
 
 /**
  * 수정 폼 편집 = 요청 본문의 불변 갱신 (changes/0029 TΔ13b).
  *
  * 캡처 쪽(`chat/draftEdits.ts`)과 대칭이지만 **다루는 값이 다르다**: 저쪽은 아직 저장되지 않은 `Draft`
- * 하나이고 이쪽은 **저장 단위가 갈린 두 요청 본문**이다(`NoteMetaUpdate` · `NoteEntryUpdate` — TΔ4a가
- * 나눈 `updateMeta`·`replaceEntry` 2경로). 그래서 한 화면 안에서도 편집 상태가 하나로 합쳐지지 않는다.
+ * 하나이고 이쪽은 **저장 단위가 갈린 두 요청 본문**이다(`NoteMetaUpdate` · `TastingDayUpdate` — TΔ4a가
+ * 나눈 `updateMeta`·`replaceTastingDay` 2경로). 그래서 한 화면 안에서도 편집 상태가 하나로 합쳐지지 않는다.
  *
  * 입력값 변환(고친 필드는 출처가 `user`)은 `../formValues`가 소유한다 — 두 폼의 공유 규칙이다.
  */
@@ -27,9 +27,9 @@ import type {
  * 대상을 찾는 키)이고 뒤는 본문의 `date`(결과 날짜)다. 사용자가 날짜를 바꾸면 뒤만 움직이고 앞은 로드
  * 시점의 값에 못 박힌다 — 둘을 한 필드로 두면 날짜를 고치는 순간 *"어느 시음일을 고치는 중인가"*를 잃는다.
  */
-export interface EntryDraft {
+export interface TastingDayDraft {
   targetDate: string
-  value: NoteEntryUpdate
+  value: TastingDayUpdate
 }
 
 /** 상세 응답 → 메타 수정 본문. `coffee_name`은 옮기지 않는다 — 계약에 필드가 없다(V-9 구조 차단). */
@@ -44,10 +44,10 @@ export function toMetaUpdate(note: NoteDetail): NoteMetaUpdate {
 }
 
 /** 상세 응답 → 날짜별 편집 상태. 사진은 옮기지 않는다 — 폼이 고치는 값이 아니다. */
-export function toEntryDrafts(note: NoteDetail): EntryDraft[] {
-  return note.entries.map((entry) => ({
-    targetDate: entry.date,
-    value: { date: entry.date, cups: entry.cups },
+export function toTastingDayDrafts(note: NoteDetail): TastingDayDraft[] {
+  return note.tasting_days.map((tastingDay) => ({
+    targetDate: tastingDay.date,
+    value: { date: tastingDay.date, cups: tastingDay.cups },
   }))
 }
 
@@ -55,20 +55,20 @@ export function toEntryDrafts(note: NoteDetail): EntryDraft[] {
  * 채팅 수정 모드 폼 → 시음일 PATCH 본문 (changes/0029 TΔ28b, D-14, AC-13).
  *
  * **이 함수가 수정 화면 쪽 모듈에 사는 것이 요점이다**: 저장 요청을 만드는 코드는 한 벌이어야 한다
- * (D-14 ③). 같은 `PATCH /api/notes/{id}/entries/{date}`를 두 화면이 각자 조립하면 한쪽만 고치는 순간
+ * (D-14 ③). 같은 `PATCH /api/notes/{id}/tasting-days/{date}`를 두 화면이 각자 조립하면 한쪽만 고치는 순간
  * delta.md §1.2와 같은 부류의 **조용한 어긋남**이 난다 — 그래서 입구는 둘이고(`NoteDetail`은
- * `toEntryDrafts`, `Draft`는 여기) 출구는 이 모듈의 `EntryDraft` 하나다.
+ * `toTastingDayDrafts`, `Draft`는 여기) 출구는 이 모듈의 `TastingDayDraft` 하나다.
  *
  * **`targetDate`가 `match.date`에서 온다**: 경로의 대상은 *"고르던 시점의 그 기록"*이고 본문의 `date`는
- * 폼이 든 결과 날짜다(위 `EntryDraft` 주석과 같은 갈래). 둘이 다르면 서버가 날짜 이동으로 읽고 이동처의
+ * 폼이 든 결과 날짜다(위 `TastingDayDraft` 주석과 같은 갈래). 둘이 다르면 서버가 날짜 이동으로 읽고 이동처의
  * 회차 뒤로 합친다(D-12) — 채팅 폼은 날짜 입력이 없으므로 지금 그 경로로 가는 것은 모델이 다른 날짜를
  * 실어 왔을 때뿐이다.
  *
- * **`my_taste_original`을 떨군다** — PATCH 계약에 그 필드가 없고(`NoteEntryUpdate`), 비면 서버가
+ * **`my_taste_original`을 떨군다** — PATCH 계약에 그 필드가 없고(`TastingDayUpdate`), 비면 서버가
  * 정규화본을 양쪽에 담는다(V-11 뒷문장). 수정 모드 draft의 감상은 저장된 값이거나 모델이 요구를 반영해
  * 다시 지은 값이라 어느 쪽도 *"말한 그대로의 원문"*이 아니다.
  */
-export function toEntryUpdate(draft: Draft): EntryDraft {
+export function toTastingDayUpdate(draft: Draft): TastingDayDraft {
   if (draft.match.type !== 'edit') {
     // 호출부가 이미 갈라서 부르지만(ChatScreen의 저장 분기) 여기서도 막는다 — 다른 모드의 폼을 PATCH로
     // 보내면 «새 기록을 남기려던 조작이 남의 기록을 덮는» 형태가 된다.
@@ -76,11 +76,11 @@ export function toEntryUpdate(draft: Draft): EntryDraft {
   }
   // 폼의 단위는 시음일 1건이다(TΔ28a) — 조용히 첫 건만 고르면 사용자가 보지 못한 회차가 저장되거나
   // 사라진다. 계약이 깨진 것이므로 요청을 만들지 않는다.
-  if (draft.note.entries.length !== 1) {
+  if (draft.note.tasting_days.length !== 1) {
     throw new Error('수정 모드 폼은 기록 1건만 담아')
   }
-  const entry = draft.note.entries[0]
-  return { targetDate: draft.match.date, value: { date: entry.date, cups: entry.cups.map(toUpdateCup) } }
+  const tastingDay = draft.note.tasting_days[0]
+  return { targetDate: draft.match.date, value: { date: tastingDay.date, cups: tastingDay.cups.map(toUpdateCup) } }
 }
 
 function toUpdateCup(cup: Cup): NoteDetailCup {
@@ -129,22 +129,22 @@ export function trimBeans(meta: NoteMetaUpdate): NoteMetaUpdate {
 }
 
 /** 레시피가 없던 회차에 값을 넣으면 레시피가 생긴다 — 전 필드 null인 레시피는 서버가 드롭한다(V-8). */
-export function withRecipe(entry: NoteEntryUpdate, cupIndex: number, patch: Partial<Recipe>): NoteEntryUpdate {
-  return withCup(entry, cupIndex, (cup) => ({ ...cup, recipe: { ...(cup.recipe ?? EMPTY_RECIPE), ...patch } }))
+export function withRecipe(tastingDay: TastingDayUpdate, cupIndex: number, patch: Partial<Recipe>): TastingDayUpdate {
+  return withCup(tastingDay, cupIndex, (cup) => ({ ...cup, recipe: { ...(cup.recipe ?? EMPTY_RECIPE), ...patch } }))
 }
 
 /** 감상이 없던 회차도 같다 — `my_taste`가 빈 review은 서버가 드롭한다(V-15). */
 export function withReview(
-  entry: NoteEntryUpdate,
+  tastingDay: TastingDayUpdate,
   cupIndex: number,
   patch: Partial<NoteDetailReview>,
-): NoteEntryUpdate {
-  return withCup(entry, cupIndex, (cup) => ({ ...cup, review: { ...(cup.review ?? EMPTY_REVIEW), ...patch } }))
+): TastingDayUpdate {
+  return withCup(tastingDay, cupIndex, (cup) => ({ ...cup, review: { ...(cup.review ?? EMPTY_REVIEW), ...patch } }))
 }
 
-/** 결과 날짜 변경 — `targetDate`는 건드리지 않는다(위 `EntryDraft` 주석). */
-export function withDate(entry: NoteEntryUpdate, date: string): NoteEntryUpdate {
-  return { ...entry, date }
+/** 결과 날짜 변경 — `targetDate`는 건드리지 않는다(위 `TastingDayDraft` 주석). */
+export function withDate(tastingDay: TastingDayUpdate, date: string): TastingDayUpdate {
+  return { ...tastingDay, date }
 }
 
 /**
@@ -154,7 +154,7 @@ export function withDate(entry: NoteEntryUpdate, date: string): NoteEntryUpdate 
  * pending에 실어 보냈는데(`date_conflict`, changes/0012), 그것이 필요했던 이유는 Slack에 폼이 없어
  * 클라이언트가 노트의 다른 날짜를 몰랐기 때문이다. 폼이 노트 전문을 들고 있는 지금은 사정이 다르다.
  */
-export function mergeTargetOf(drafts: EntryDraft[], draft: EntryDraft): EntryDraft | null {
+export function mergeTargetOf(drafts: TastingDayDraft[], draft: TastingDayDraft): TastingDayDraft | null {
   if (draft.value.date === draft.targetDate) {
     return null
   }
@@ -167,11 +167,11 @@ export function changed(before: unknown, after: unknown): boolean {
 }
 
 function withCup(
-  entry: NoteEntryUpdate,
+  tastingDay: TastingDayUpdate,
   cupIndex: number,
   update: (cup: NoteDetailCup) => NoteDetailCup,
-): NoteEntryUpdate {
-  return { ...entry, cups: entry.cups.map((cup, i) => (i === cupIndex ? update(cup) : cup)) }
+): TastingDayUpdate {
+  return { ...tastingDay, cups: tastingDay.cups.map((cup, i) => (i === cupIndex ? update(cup) : cup)) }
 }
 
 const EMPTY_BEAN: Bean = { description: { value: '', source: 'user' }, process: null }

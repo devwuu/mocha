@@ -24,13 +24,13 @@ expect:
   proposal:
     state: created      # created | absent
     draft:              # 제안 내용(Note 구조, snake_case) 경로 부분 일치 — 케이스가 실제로 보려는 필드만
-      - path: entries[0].date
+      - path: tasting_days[0].date
         value: "2026-03-14"
-      - path: entries[0].cups
+      - path: tasting_days[0].cups
         size: 1
-      - path: entries[0].cups[0].recipe.grind
+      - path: tasting_days[0].cups[0].recipe.grind
         value: "22클릭 (코만단테)"
-      - path: entries[0].cups[0].review.my_taste
+      - path: tasting_days[0].cups[0].review.my_taste
         present: true
   tools:
     sequence_contains: [propose_record]   # 부분 시퀀스(순서 유지, 사이에 다른 호출 허용)

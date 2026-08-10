@@ -15,7 +15,7 @@
         "roast_level": { "value": "라이트", "source": "search" },
         "official_notes": { "value": [ "자스민", "베르가못" ], "source": "search" },
         "sources": [ "https://example.test/chelbesa" ],
-        "entries": [
+        "tasting_days": [
           {
             "date": "2026-07-16",
             "cups": [
@@ -80,7 +80,7 @@
         "roast_level": { "value": "라이트", "source": "search" },
         "official_notes": { "value": [ "자스민", "베르가못" ], "source": "search" },
         "sources": [ "https://example.test/chelbesa" ],
-        "entries": [
+        "tasting_days": [
           {
             "date": "2026-07-16",
             "cups": [
@@ -133,7 +133,7 @@
         "roast_level": { "value": "라이트", "source": "search" },
         "official_notes": { "value": [ "자스민", "베르가못" ], "source": "search" },
         "sources": [ "https://example.test/chelbesa" ],
-        "entries": [
+        "tasting_days": [
           {
             "date": "2026-07-28",
             "cups": [
@@ -158,9 +158,9 @@
   "match_types": ["new", "existing", "edit"],
   "edit_target_axis": "note_id + date",
   "edit_locked_fields": ["coffee_name", "roastery", "beans", "roast_level", "official_notes", "sources"],
-  "edit_editable_fields": ["entries[].date", "entries[].cups"],
+  "edit_editable_fields": ["tasting_days[].date", "tasting_days[].cups"],
   "commit_save_path": "POST /api/notes",
-  "edit_save_path": "PATCH /api/notes/{id}/entries/{date}",
-  "edit_date_move": "entries[0].date != match.date 이면 날짜 이동 — match.date가 경로의 대상이고 폼의 date가 결과다",
+  "edit_save_path": "PATCH /api/notes/{id}/tasting-days/{date}",
+  "edit_date_move": "tasting_days[0].date != match.date 이면 날짜 이동 — match.date가 경로의 대상이고 폼의 date가 결과다",
   "capture_editable_dates": false
 }

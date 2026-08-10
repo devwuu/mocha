@@ -57,8 +57,8 @@ export interface Cup {
   review: Review | null
 }
 
-/** 날짜별 시음 기록 — `date`가 entries 내 유일 키다(V-3). */
-export interface Entry {
+/** 날짜별 시음 기록 — `date`가 tasting_days 내 유일 키다(V-3). */
+export interface TastingDay {
   date: string
   cups: Cup[]
   updated_at: string | null
@@ -78,7 +78,7 @@ export interface DraftNote {
   roast_level: Sourced<string> | null
   official_notes: Sourced<string[]> | null
   sources: string[]
-  entries: Entry[]
+  tasting_days: TastingDay[]
   created_at: string | null
   updated_at: string | null
 }
@@ -96,9 +96,9 @@ export interface DraftNote {
  * 시스템이 추측으로 채우는 자리를 만들지 않는 것이 이 필수 표기의 뜻이다(사용자 확정 2026-08-02).
  *
  * **`edit.date`는 «대상»이지 «폼이 든 날짜»가 아니다**(TΔ28c). 수정 모드에서 날짜는 편집 가능하고, 폼의
- * `entries[0].date`가 이 값과 달라지면 그것이 곧 날짜 이동 요청이다 — 저장이 `PATCH
- * /api/notes/{id}/entries/{date}`로 나갈 때 **경로에 실리는 것이 이쪽**이고 본문에 실리는 것이 폼의
- * 날짜다(`NoteEntryUpdate`의 같은 축). 그래서 이 필드는 폼 편집으로 움직이지 않는다 — 함께 움직이면
+ * `tasting_days[0].date`가 이 값과 달라지면 그것이 곧 날짜 이동 요청이다 — 저장이 `PATCH
+ * /api/notes/{id}/tasting-days/{date}`로 나갈 때 **경로에 실리는 것이 이쪽**이고 본문에 실리는 것이 폼의
+ * 날짜다(`TastingDayUpdate`의 같은 축). 그래서 이 필드는 폼 편집으로 움직이지 않는다 — 함께 움직이면
  * *"어느 시음일을 고치는 중인가"*를 잃는다.
  */
 export type MatchInfo =
@@ -188,7 +188,7 @@ export interface PhotoUploadResponse {
  * 갤러리 그리드의 한 칸 — 노트 1건의 납작한 사영 (changes/0029 TΔ12).
  *
  * 필드가 `NoteCandidate` + `thumbnail_url`인 것은 우연이 아니다: 두 화면 다 노트를 *고르는* 자리라
- * 3단 중첩(entries → cups → recipe/review)을 한 줄도 쓰지 않는다. 상세가 무엇을 보여줄지는
+ * 3단 중첩(tasting_days → cups → recipe/review)을 한 줄도 쓰지 않는다. 상세가 무엇을 보여줄지는
  * `GET /api/notes/{id}`가 따로 답한다(TΔ13a·TΔ5a).
  *
  * `thumbnail_url`은 **서버가 만든 완성된 경로**다 — 클라이언트는 `<img src>`에 그대로 꽂고 URL 규칙을
@@ -296,7 +296,7 @@ export interface NoteDetailCup {
  * (TΔ8b, 사용자 확정 2026-08-01). 화면은 가장 최근 날짜의 첫 장을 상단 히어로로 쓰고 나머지를 그 날짜
  * 섹션에 두는데, **계약 하나로 둘 다 된다** — 노트 레벨 배열을 따로 두면 같은 사진이 두 자리에 실린다.
  */
-export interface NoteDetailEntry {
+export interface NoteDetailTastingDay {
   date: string
   cups: NoteDetailCup[]
   photos: NotePhoto[]
@@ -324,7 +324,7 @@ export interface NoteDetail {
   roast_level: Sourced<string> | null
   official_notes: Sourced<string[]> | null
   sources: string[]
-  entries: NoteDetailEntry[]
+  tasting_days: NoteDetailTastingDay[]
 }
 
 /**
@@ -335,7 +335,7 @@ export interface NoteDetail {
  * 막던 자리이고(data-model §3.4), 그 tool이 TΔ1에서 사라지며 잠시 비었다가 여기서 다시 선다.
  * `NoteTxService.updateMeta`의 저장값 대조는 그 아래의 최종 방어선으로 남는다(TΔ4a).
  *
- * 상세 응답(`NoteDetail`)에서 `coffee_name`·`note_id`·`entries`를 뺀 것과 정확히 같다 — 수정 폼이
+ * 상세 응답(`NoteDetail`)에서 `coffee_name`·`note_id`·`tasting_days`를 뺀 것과 정확히 같다 — 수정 폼이
  * `GET /api/notes/{id}`를 그대로 딛기 때문이고, **출처를 함께 싣는 이유가 그것이다**: 고치지 않은 필드는
  * 원래 출처를 유지해야 이후 검색 보강이 닿을 수 있는 값으로 남는다(V-6이 막으려던 방향의 반대편 사고).
  */
@@ -348,12 +348,12 @@ export interface NoteMetaUpdate {
 }
 
 /**
- * `PATCH /api/notes/{id}/entries/{date}` — 그 날짜 시음 기록의 회차 교체 + 날짜 이동
+ * `PATCH /api/notes/{id}/tasting-days/{date}` — 그 날짜 시음 기록의 회차 교체 + 날짜 이동
  * (changes/0029 TΔ13b, 구현은 TΔ5b-3, AC-5).
  *
  * 경로의 `{date}`가 **대상**이고 본문의 `date`가 **결과**다. 둘이 다르면 날짜 이동이고, 같으면 제자리
- * 수정이다. 한 필드가 두 뜻을 지지 않게 자리를 나눈 것이라(`NoteTxService.replaceEntry(noteId,
- * targetDate, entry)`가 이미 그 모양이다) 요청만 보고 어느 쪽인지 알 수 있다.
+ * 수정이다. 한 필드가 두 뜻을 지지 않게 자리를 나눈 것이라(`NoteTxService.replaceTastingDay(noteId,
+ * targetDate, tastingDay)`가 이미 그 모양이다) 요청만 보고 어느 쪽인지 알 수 있다.
  *
  * **이동처에 이미 기록이 있으면 그날의 회차 뒤로 합쳐진다**(D-12, 2026-08-01 사용자 확정). 시음일 총수는
  * 1 줄고(둘이 하나가 된다) 그날의 사진도 함께 옮겨 온다. 구 V-10은 이동처를 *덮어썼는데* — 시음일이
@@ -367,7 +367,7 @@ export interface NoteMetaUpdate {
  * **회차를 더하거나 지우지 않는다** — 배열 길이·순서가 요청과 응답에서 같다. 새 회차는 대화로 쌓는 것이
  * 캡처 경로이고(ADR-4·59), 회차 삭제는 spec에 없는 동작이다(루트 §3).
  */
-export interface NoteEntryUpdate {
+export interface TastingDayUpdate {
   date: string
   cups: NoteDetailCup[]
 }
@@ -396,7 +396,7 @@ export interface NoteCommitResponse {
  */
 
 /**
- * `GET /api/notes/{id}/entries/{date}/card?type=&n=` — 회차 카드 JPG 온디맨드 (TΔ9, OQ-3 ㉡).
+ * `GET /api/notes/{id}/tasting-days/{date}/card?type=&n=` — 회차 카드 JPG 온디맨드 (TΔ9, OQ-3 ㉡).
  *
  * 응답이 이미지 바이트라 타입으로 옮길 본문이 없다 — 계약의 정본은
  * `src/test/resources/contract/note-card.contract.json`이고 이 주석이 그 짝이다. 여기 사는 것은

@@ -360,7 +360,7 @@ class DomainSerializationTest {
         String withoutBeans = "{\"id\":1,\"coffee_name\":{\"value\":\"커피\",\"source\":\"user\"},"
                 + "\"roastery\":null,\"roast_level\":null,\"official_notes\":null,"
                 + "\"aliases\":{\"coffee_name\":[],\"roastery\":[]},"
-                + "\"sources\":[],\"entries\":[],\"created_at\":null,\"updated_at\":null}";
+                + "\"sources\":[],\"tasting_days\":[],\"created_at\":null,\"updated_at\":null}";
         String nullBeans = withoutBeans.replace("\"roastery\":null", "\"beans\":null,\"roastery\":null");
 
         assertThat(mapper.readValue(withoutBeans, Note.class).beans()).isEmpty();

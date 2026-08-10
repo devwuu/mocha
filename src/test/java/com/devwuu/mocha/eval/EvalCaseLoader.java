@@ -63,8 +63,8 @@ public final class EvalCaseLoader {
             return List.of();
         }
         List<Path> caseDirs;
-        try (Stream<Path> entries = Files.list(casesDir)) {
-            caseDirs = entries
+        try (Stream<Path> children = Files.list(casesDir)) {
+            caseDirs = children
                     .filter(Files::isDirectory)
                     // 숨김 폴더는 케이스가 아니다(.git·.DS_Store 부류 — ADR-66의 비자산 파일 제외와 같은 정신).
                     .filter(p -> !p.getFileName().toString().startsWith("."))
@@ -276,7 +276,7 @@ public final class EvalCaseLoader {
     private static void validateAssertion(String at, EvalCase.PathAssertion assertion) {
         if (assertion == null || isBlank(assertion.path())) {
             throw new EvalCaseFormatException(at + ".path — 필수 필드가 비었다"
-                    + " (예: entries[0].cups[0].recipe.grind)");
+                    + " (예: tasting_days[0].cups[0].recipe.grind)");
         }
         try {
             EvalPath.parse(assertion.path());

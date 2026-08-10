@@ -3,7 +3,7 @@ import type { Draft, Rating, Sourced } from '../api/contract'
 import { RATINGS } from '../api/contract'
 import { numberValue, SOURCE_LABELS, textValue, userList, userValue } from '../formValues'
 import { MatchBadge } from './MatchBadge'
-import { patchBean, patchEntry, patchNote, patchRecipe, patchReview } from './draftEdits'
+import { patchBean, patchTastingDay, patchNote, patchRecipe, patchReview } from './draftEdits'
 
 /**
  * 미리보기 폼 — 에이전트가 제안한 draft를 사용자가 확인하고 고치는 자리 (changes/0029 TΔ10, AC-1).
@@ -51,7 +51,7 @@ export function DraftForm({ draft, busy, onChange, onSave, onCancel }: DraftForm
   const target = draft.match.type === 'edit' ? draft.match.date : null
   // 날짜가 빈 폼은 보내지 않는다 — 시음일의 유일 키라(V-3) 서버가 400으로 답할 요청이고, 그 실패를
   // 「저장하지 못했어」로 옮기면 사용자는 무엇이 문제인지 모른 채 폼을 들여다보게 된다.
-  const incomplete = note.entries.some((entry) => entry.date === '')
+  const incomplete = note.tasting_days.some((tastingDay) => tastingDay.date === '')
 
   return (
     <section className="draft" aria-label={locked ? '고치는 중인 기록' : '작성 중인 노트'}>
@@ -121,11 +121,11 @@ export function DraftForm({ draft, busy, onChange, onSave, onCancel }: DraftForm
         </div>
       )}
 
-      {note.entries.map((entry, entryIndex) => (
+      {note.tasting_days.map((tastingDay, dayIndex) => (
         // key가 날짜가 아니라 인덱스인 것은 날짜가 편집 가능해졌기 때문이다(TΔ28c) — 날짜를 키로 두면
         // 값이 바뀔 때마다 섹션이 통째로 다시 마운트돼 입력 중 포커스가 날아간다. 폼 안에서 시음일이
         // 재정렬되거나 늘고 주는 일이 없어 인덱스가 안정적인 키다.
-        <div className="draft__section" key={entryIndex}>
+        <div className="draft__section" key={dayIndex}>
           {/*
             **날짜는 수정 모드에서만 열린다**(TΔ28c, 사용자 확정 2026-08-02). 서버 의미론이 이미 있는
             자리라서다: PATCH는 «경로=대상, 본문=결과»로 날짜 이동을 규정하고(D-12) 수정 폼은 시음일을
@@ -133,15 +133,15 @@ export function DraftForm({ draft, busy, onChange, onSave, onCancel }: DraftForm
             여러 시음일을 든 draft에서 날짜가 겹칠 수 있고, 그때 서버는 병합하지 않고 UNIQUE로 깨진다(V-3).
           */}
           {target === null ? (
-            <h3>{entry.date}</h3>
+            <h3>{tastingDay.date}</h3>
           ) : (
             <div className="draft__date">
               <input
                 className="draft__date-input"
                 type="date"
-                value={entry.date}
+                value={tastingDay.date}
                 aria-label="시음 날짜"
-                onChange={(event) => onChange(patchEntry(draft, entryIndex, { date: event.target.value }))}
+                onChange={(event) => onChange(patchTastingDay(draft, dayIndex, { date: event.target.value }))}
               />
               {/*
                 이동은 «알리기만» 한다(D-12 — 합병에는 잃는 것이 없어 경고가 아니라 안내다). 다만 이
@@ -149,14 +149,14 @@ export function DraftForm({ draft, busy, onChange, onSave, onCancel }: DraftForm
                 전에 충돌을 판정하지만(`mergeTargetOf`) 채팅 폼은 기록 1건만 담는다. 그래서 아는 것까지만
                 말하고, 실제로 합쳐졌는지는 저장 응답이 답한다(`ChatScreen`의 저장 안내).
               */}
-              {entry.date !== '' && entry.date !== target && (
+              {tastingDay.date !== '' && tastingDay.date !== target && (
                 <p className="draft__date-move">
                   {target} 기록을 이 날짜로 옮겨. 그날 이미 기록이 있으면 뒤 회차로 합쳐져.
                 </p>
               )}
             </div>
           )}
-          {entry.cups.map((cup, cupIndex) => (
+          {tastingDay.cups.map((cup, cupIndex) => (
             <div className="draft__cup" key={cupIndex}>
               <div className="draft__cup-no">{cupIndex + 1}회차</div>
               <div className="draft__grid">
@@ -164,7 +164,7 @@ export function DraftForm({ draft, busy, onChange, onSave, onCancel }: DraftForm
                   <input
                     value={cup.recipe?.method ?? ''}
                     onChange={(event) =>
-                      onChange(patchRecipe(draft, entryIndex, cupIndex, { method: textValue(event.target.value) }))
+                      onChange(patchRecipe(draft, dayIndex, cupIndex, { method: textValue(event.target.value) }))
                     }
                   />
                 </Field>
@@ -172,40 +172,40 @@ export function DraftForm({ draft, busy, onChange, onSave, onCancel }: DraftForm
                   <input
                     value={cup.recipe?.grind ?? ''}
                     onChange={(event) =>
-                      onChange(patchRecipe(draft, entryIndex, cupIndex, { grind: textValue(event.target.value) }))
+                      onChange(patchRecipe(draft, dayIndex, cupIndex, { grind: textValue(event.target.value) }))
                     }
                   />
                 </Field>
                 <NumberField
                   label="원두 g"
                   value={cup.recipe?.dose_g ?? null}
-                  onChange={(next) => onChange(patchRecipe(draft, entryIndex, cupIndex, { dose_g: next }))}
+                  onChange={(next) => onChange(patchRecipe(draft, dayIndex, cupIndex, { dose_g: next }))}
                 />
                 <NumberField
                   label="물 ml"
                   value={cup.recipe?.water_ml ?? null}
-                  onChange={(next) => onChange(patchRecipe(draft, entryIndex, cupIndex, { water_ml: next }))}
+                  onChange={(next) => onChange(patchRecipe(draft, dayIndex, cupIndex, { water_ml: next }))}
                 />
                 <NumberField
                   label="추출 ml"
                   value={cup.recipe?.yield_ml ?? null}
-                  onChange={(next) => onChange(patchRecipe(draft, entryIndex, cupIndex, { yield_ml: next }))}
+                  onChange={(next) => onChange(patchRecipe(draft, dayIndex, cupIndex, { yield_ml: next }))}
                 />
                 <NumberField
                   label="시간 초"
                   value={cup.recipe?.time_sec ?? null}
-                  onChange={(next) => onChange(patchRecipe(draft, entryIndex, cupIndex, { time_sec: next }))}
+                  onChange={(next) => onChange(patchRecipe(draft, dayIndex, cupIndex, { time_sec: next }))}
                 />
                 <NumberField
                   label="온도 ℃"
                   value={cup.recipe?.temp_c ?? null}
-                  onChange={(next) => onChange(patchRecipe(draft, entryIndex, cupIndex, { temp_c: next }))}
+                  onChange={(next) => onChange(patchRecipe(draft, dayIndex, cupIndex, { temp_c: next }))}
                 />
                 <Field label="기구">
                   <input
                     value={cup.recipe?.machine ?? ''}
                     onChange={(event) =>
-                      onChange(patchRecipe(draft, entryIndex, cupIndex, { machine: textValue(event.target.value) }))
+                      onChange(patchRecipe(draft, dayIndex, cupIndex, { machine: textValue(event.target.value) }))
                     }
                   />
                 </Field>
@@ -215,7 +215,7 @@ export function DraftForm({ draft, busy, onChange, onSave, onCancel }: DraftForm
                   rows={2}
                   value={cup.recipe?.pouring ?? ''}
                   onChange={(event) =>
-                    onChange(patchRecipe(draft, entryIndex, cupIndex, { pouring: textValue(event.target.value) }))
+                    onChange(patchRecipe(draft, dayIndex, cupIndex, { pouring: textValue(event.target.value) }))
                   }
                 />
               </Field>
@@ -224,7 +224,7 @@ export function DraftForm({ draft, busy, onChange, onSave, onCancel }: DraftForm
                   rows={2}
                   value={cup.recipe?.feedback ?? ''}
                   onChange={(event) =>
-                    onChange(patchRecipe(draft, entryIndex, cupIndex, { feedback: textValue(event.target.value) }))
+                    onChange(patchRecipe(draft, dayIndex, cupIndex, { feedback: textValue(event.target.value) }))
                   }
                 />
               </Field>
@@ -233,7 +233,7 @@ export function DraftForm({ draft, busy, onChange, onSave, onCancel }: DraftForm
                   rows={2}
                   value={cup.review?.my_taste ?? ''}
                   onChange={(event) =>
-                    onChange(patchReview(draft, entryIndex, cupIndex, { my_taste: textValue(event.target.value) }))
+                    onChange(patchReview(draft, dayIndex, cupIndex, { my_taste: textValue(event.target.value) }))
                   }
                 />
               </Field>
@@ -242,7 +242,7 @@ export function DraftForm({ draft, busy, onChange, onSave, onCancel }: DraftForm
                   value={cup.review?.rating ?? ''}
                   onChange={(event) =>
                     onChange(
-                      patchReview(draft, entryIndex, cupIndex, {
+                      patchReview(draft, dayIndex, cupIndex, {
                         rating: event.target.value === '' ? null : (event.target.value as Rating),
                       }),
                     )

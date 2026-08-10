@@ -85,7 +85,7 @@ public record EvalCase(
      * @param draft 제안 내용(Note 구조, snake_case) 경로 단언. 전체 일치가 아니라 <b>부분 일치</b>다 —
      *              LLM이 채우는 필드 대부분은 비결정이고, 케이스가 실제로 보려는 필드만 못박는다.
      * @param match 제안의 <b>매칭 판정</b>(`{type, note_id, date}`) 경로 단언 — changes/0029 TΔ21 신설.
-     *              <p>{@code draft}와 뿌리를 나눈 이유: 전자는 {@code Note} 구조라 {@code entries[0].date} 같은
+     *              <p>{@code draft}와 뿌리를 나눈 이유: 전자는 {@code Note} 구조라 {@code tasting_days[0].date} 같은
      *              경로가 노트 안을 가리키는데, {@code match}는 노트 밖의 형제 필드다. 한 뿌리로 합치면
      *              기존 케이스의 경로가 전부 한 단계 깊어진다.
      *              <p><b>tool 인자 단언으로 갈음하지 않는 이유</b>: {@code calls[].args}는 <i>모델이 무엇을
@@ -135,7 +135,7 @@ public record EvalCase(
     /**
      * JSON 경로 단언 — 정확히 한 종류만 지정한다(둘을 겹쳐 쓰면 무엇이 깨졌는지가 흐려진다).
      *
-     * @param path    {@code entries[0].cups[0].recipe.grind} 문법. 필드명은 저장 포맷 그대로 snake_case.
+     * @param path    {@code tasting_days[0].cups[0].recipe.grind} 문법. 필드명은 저장 포맷 그대로 snake_case.
      * @param value   값 동등 비교(스칼라).
      * @param size    배열 크기.
      * @param present 존재 여부 — {@code true}면 null 아닌 값이 있어야 하고, {@code false}면 없어야 한다.

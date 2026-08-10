@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Draft, NoteCandidate, NoteDetail, NoteDetailEntry } from '../api'
+import type { Draft, NoteCandidate, NoteDetail, NoteDetailTastingDay } from '../api'
 import { getNoteCandidates, getNoteDetail } from '../api'
 import { selectEditTarget, selectExisting, selectNew } from './draftEdits'
 
@@ -233,7 +233,7 @@ function CandidateSheet({
             )}
           </>
         ) : (
-          <EntryPicker target={target} onPick={onPick} />
+          <TastingDayPicker target={target} onPick={onPick} />
         )}
       </div>
     </dialog>
@@ -247,7 +247,7 @@ function CandidateSheet({
  * 모카가 반영해 뒀던 요구(*"평가 낮춰줘"*)가 사라진다. 고른 뒤에 알리면 사용자는 *"낮춘 게 왜 원래대로
  * 돌아왔지"*를 먼저 겪고, 여기서 알리면 무를 기회가 함께 있다.
  */
-function EntryPicker({ target, onPick }: { target: NoteCandidate; onPick: (draft: Draft) => void }) {
+function TastingDayPicker({ target, onPick }: { target: NoteCandidate; onPick: (draft: Draft) => void }) {
   const [detail, setDetail] = useState<NoteDetail | null>(null)
   const [failed, setFailed] = useState(false)
 
@@ -281,19 +281,19 @@ function EntryPicker({ target, onPick }: { target: NoteCandidate; onPick: (draft
       <ul className="sheet__list">
         {detail === null && !failed && <li className="sheet__empty">불러오는 중…</li>}
         {failed && <li className="sheet__empty">기록을 불러오지 못했어요.</li>}
-        {detail !== null && detail.entries.length === 0 && <li className="sheet__empty">아직 기록이 없어요.</li>}
+        {detail !== null && detail.tasting_days.length === 0 && <li className="sheet__empty">아직 기록이 없어요.</li>}
         {/* 상세는 날짜 오름차순이다(TΔ13a 계약) — 고를 때는 최근 것이 위여야 한다.
             "어제 마신 그거"가 손에 가까운 자리에 온다. */}
         {detail !== null &&
-          [...detail.entries].reverse().map((entry) => (
-            <li key={entry.date}>
+          [...detail.tasting_days].reverse().map((tastingDay) => (
+            <li key={tastingDay.date}>
               <button
                 type="button"
                 className="sheet__item"
-                onClick={() => onPick(selectEditTarget(detail, entry.date))}
+                onClick={() => onPick(selectEditTarget(detail, tastingDay.date))}
               >
-                <span className="sheet__date">{entry.date}</span>
-                <span className="sheet__meta">{summarize(entry)}</span>
+                <span className="sheet__date">{tastingDay.date}</span>
+                <span className="sheet__meta">{summarize(tastingDay)}</span>
               </button>
             </li>
           ))}
@@ -308,10 +308,10 @@ function EntryPicker({ target, onPick }: { target: NoteCandidate; onPick: (draft
  * 날짜만으로는 그날이 어느 날인지 알아보기 어렵다. 감상 한 조각이 붙으면 *"아, 자몽 같다고 했던 날"*로
  * 잡힌다 — 갤러리·후보 목록이 로스터리로 동명 후보를 가르는 것과 같은 자리다.
  */
-function summarize(entry: NoteDetailEntry): string {
-  const parts = [`${entry.cups.length}회차`]
-  const rating = entry.cups.map((cup) => cup.review?.rating).find((value) => value != null)
-  const taste = entry.cups
+function summarize(tastingDay: NoteDetailTastingDay): string {
+  const parts = [`${tastingDay.cups.length}회차`]
+  const rating = tastingDay.cups.map((cup) => cup.review?.rating).find((value) => value != null)
+  const taste = tastingDay.cups
     .map((cup) => cup.review?.my_taste)
     .find((value) => value != null && value !== '')
   if (rating != null) {

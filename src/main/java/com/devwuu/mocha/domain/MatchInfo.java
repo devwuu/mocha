@@ -17,7 +17,7 @@ import java.util.Arrays;
  * </ul>
  * <p><b>{@code EXISTING}과 {@code EDIT}은 같은 노트를 가리켜도 의도가 반대다</b>(D-14 ②): 전자는
  * <i>"같은 커피를 또 마셨다"</i>(회차 추가), 후자는 <i>"그때 그 기록이 틀렸다"</i>(시음일 교체). 그래서 축을
- * 합칠 수 없고, 저장 경로도 갈린다 — {@code POST /api/notes} ↔ {@code PATCH /api/notes/{id}/entries/{date}}.
+ * 합칠 수 없고, 저장 경로도 갈린다 — {@code POST /api/notes} ↔ {@code PATCH /api/notes/{id}/tasting-days/{date}}.
  * <p>{@code noteId}는 {@code NEW}에서만 비어 있다 — 저장 전이라 식별자가 없기 때문이다
  * (D-1, changes/0028 ADR-75). {@code date}는 {@code EDIT}에서 <b>필수</b>다: 고칠 시음일을 가리키는
  * 대상 키라 없으면 무엇을 고칠지 정해지지 않는다(추측하는 자리를 만들지 않는다 — TΔ28a).

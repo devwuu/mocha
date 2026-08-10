@@ -273,9 +273,9 @@ class ToolCallbackProviderTest {
 
         assertThat(result.get("id").asInt()).isEqualTo(12);
         assertThat(result.get("coffee_name").get("value").asString()).isEqualTo("Ethiopia Chelbesa");
-        assertThat(result.get("entries")).hasSize(1);
-        assertThat(result.get("entries").get(0).get("date").asString()).isEqualTo("2026-07-13");
-        assertThat(result.get("entries").get(0).get("cups").get(0).get("review").get("my_taste").asString()).isEqualTo("새콤하고 좋았음");
+        assertThat(result.get("tasting_days")).hasSize(1);
+        assertThat(result.get("tasting_days").get(0).get("date").asString()).isEqualTo("2026-07-13");
+        assertThat(result.get("tasting_days").get(0).get("cups").get(0).get("review").get("my_taste").asString()).isEqualTo("새콤하고 좋았음");
     }
 
     @Test

@@ -165,8 +165,8 @@ public class LocalPhotoStore implements PhotoStore {
         if (dir == null || !Files.isDirectory(dir) || dir.equals(photosDir)) {
             return;
         }
-        try (Stream<Path> entries = Files.list(dir)) {
-            if (entries.findAny().isEmpty()) {
+        try (Stream<Path> children = Files.list(dir)) {
+            if (children.findAny().isEmpty()) {
                 Files.delete(dir);
             }
         } catch (IOException e) {
@@ -264,8 +264,8 @@ public class LocalPhotoStore implements PhotoStore {
 
     // 스테이징 소멸: 남은 항목(걸러진 비사진 포함)을 지운 뒤 폴더까지 제거 — 커밋·폐기 공용.
     private static void deleteStaging(Path staging) throws IOException {
-        try (Stream<Path> entries = Files.list(staging)) {
-            for (Path p : entries.toList()) {
+        try (Stream<Path> children = Files.list(staging)) {
+            for (Path p : children.toList()) {
                 Files.deleteIfExists(p);
             }
         }

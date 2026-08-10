@@ -36,7 +36,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * TΔ9(changes/0029): {@code GET /api/notes/{id}/entries/{date}/card} — 계약 구현 가드
+ * TΔ9(changes/0029): {@code GET /api/notes/{id}/tasting-days/{date}/card} — 계약 구현 가드
  * (대조 기준 {@code contract/note-card.contract.json}).
  *
  * <p>검증의 축은 셋이다.
@@ -86,7 +86,7 @@ class CardControllerTest {
         byte[] jpeg = {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, 0x42};
         renderer.card = write("2026-07-18-recipe-2.jpg", jpeg);
 
-        byte[] body = mockMvc.perform(get("/api/notes/42/entries/2026-07-18/card")
+        byte[] body = mockMvc.perform(get("/api/notes/42/tasting-days/2026-07-18/card")
                         .param("type", "recipe").param("n", "2"))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.IMAGE_JPEG))
@@ -103,7 +103,7 @@ class CardControllerTest {
     void cupNumberDefaultsToOne() throws Exception {
         renderer.card = write("2026-07-18-taste-1.jpg", new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF});
 
-        mockMvc.perform(get("/api/notes/42/entries/2026-07-18/card").param("type", "taste"))
+        mockMvc.perform(get("/api/notes/42/tasting-days/2026-07-18/card").param("type", "taste"))
                 .andExpect(status().isOk());
 
         assertThat(renderer.calls).containsExactly("42 2026-07-18 TASTE 1");
@@ -114,7 +114,7 @@ class CardControllerTest {
     void cardIsNotCachedByTheBrowser() throws Exception {
         renderer.card = write("2026-07-18-taste-1.jpg", new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF});
 
-        mockMvc.perform(get("/api/notes/42/entries/2026-07-18/card").param("type", "taste"))
+        mockMvc.perform(get("/api/notes/42/tasting-days/2026-07-18/card").param("type", "taste"))
                 .andExpect(header().string("Cache-Control", "no-store"))
                 // 파일명은 내려받기 경로의 이름이 된다(공유 시트가 없는 환경의 폴백).
                 .andExpect(header().string("Content-Disposition", "inline; filename=\"2026-07-18-taste-1.jpg\""));
@@ -127,7 +127,7 @@ class CardControllerTest {
     void absentCardIsNotFound() throws Exception {
         renderer.card = null; // 렌더러가 빈 Optional로 답한다
 
-        mockMvc.perform(get("/api/notes/42/entries/2026-07-18/card").param("type", "recipe"))
+        mockMvc.perform(get("/api/notes/42/tasting-days/2026-07-18/card").param("type", "recipe"))
                 .andExpect(status().isNotFound());
 
         assertThat(contract.get("missing_status").intValue()).isEqualTo(404);
@@ -136,7 +136,7 @@ class CardControllerTest {
     @Test
     @DisplayName("TΔ9: 알 수 없는 종류는 400 — 표기 판정의 소유자가 CardType 하나다")
     void unknownTypeIsRejected() throws Exception {
-        mockMvc.perform(get("/api/notes/42/entries/2026-07-18/card").param("type", "thumbnail"))
+        mockMvc.perform(get("/api/notes/42/tasting-days/2026-07-18/card").param("type", "thumbnail"))
                 .andExpect(status().isBadRequest());
 
         assertThat(renderer.calls).isEmpty();
@@ -148,7 +148,7 @@ class CardControllerTest {
     void renderFailureIsServerError() throws Exception {
         renderer.failure = new IllegalStateException("Chromium 기동 실패");
 
-        mockMvc.perform(get("/api/notes/42/entries/2026-07-18/card").param("type", "taste"))
+        mockMvc.perform(get("/api/notes/42/tasting-days/2026-07-18/card").param("type", "taste"))
                 .andExpect(status().isInternalServerError());
 
         assertThat(contract.get("render_failure_status").intValue()).isEqualTo(500);

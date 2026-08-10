@@ -16,12 +16,12 @@ import type {
   NoteCommitRequest,
   NoteCommitResponse,
   NoteDetail,
-  NoteEntryUpdate,
   NoteListResponse,
   NoteMetaUpdate,
   NoteQuery,
   PhotoUploadResponse,
   Rating,
+  TastingDayUpdate,
 } from './contract'
 
 export async function postAgentTurn(request: AgentTurnRequest): Promise<AgentTurnResponse> {
@@ -121,12 +121,12 @@ export async function patchNoteMeta(noteId: number, body: NoteMetaUpdate): Promi
  * 합쳐지고 사진도 함께 옮겨 오는데(D-12), **그 규칙의 소유자는 서버**다 — mock이 흉내내던 병합을 여기서는
  * 흉내내지 않는다. 응답의 시음일·사진 URL이 곧 결과다.
  */
-export async function patchNoteEntry(
+export async function patchNoteTastingDay(
   noteId: number,
   targetDate: string,
-  body: NoteEntryUpdate,
+  body: TastingDayUpdate,
 ): Promise<NoteDetail> {
-  return patchJson<NoteDetail>(`/api/notes/${noteId}/entries/${targetDate}`, body)
+  return patchJson<NoteDetail>(`/api/notes/${noteId}/tasting-days/${targetDate}`, body)
 }
 
 /**
@@ -137,7 +137,7 @@ export async function patchNoteEntry(
  * 화면마다 갈린다.
  */
 export function noteCardUrl(noteId: number, date: string, type: CardType, n: number): string {
-  return `/api/notes/${noteId}/entries/${date}/card?type=${type}&n=${n}`
+  return `/api/notes/${noteId}/tasting-days/${date}/card?type=${type}&n=${n}`
 }
 
 /**

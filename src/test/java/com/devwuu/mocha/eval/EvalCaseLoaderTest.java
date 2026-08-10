@@ -46,7 +46,7 @@ class EvalCaseLoaderTest {
         EvalCase.Expect expect = c.expect();
         assertThat(expect.proposal().state()).isEqualTo(EvalCase.Proposal.State.CREATED);
         assertThat(expect.proposal().draft()).hasSize(4);
-        assertThat(expect.proposal().draft().getFirst().path()).isEqualTo("entries[0].date");
+        assertThat(expect.proposal().draft().getFirst().path()).isEqualTo("tasting_days[0].date");
         assertThat(expect.proposal().draft().getFirst().value()).isEqualTo("2026-03-14");
         assertThat(expect.proposal().draft().get(1).size()).isEqualTo(1);
         assertThat(expect.proposal().draft().getLast().present()).isTrue();
@@ -67,7 +67,7 @@ class EvalCaseLoaderTest {
                 .allSatisfy(a -> assertThat(a.parsedPath().segments()).isNotEmpty());
         assertThat(c.expect().proposal().draft().get(2).parsedPath().segments())
                 .containsExactly(
-                        new EvalPath.Segment.Field("entries"),
+                        new EvalPath.Segment.Field("tasting_days"),
                         new EvalPath.Segment.Index(0),
                         new EvalPath.Segment.Field("cups"),
                         new EvalPath.Segment.Index(0),
@@ -269,7 +269,7 @@ class EvalCaseLoaderTest {
                   proposal:
                     state: absent
                     draft:
-                      - path: entries[0].date
+                      - path: tasting_days[0].date
                         value: "2026-03-14"
                 """;
 
@@ -373,7 +373,7 @@ class EvalCaseLoaderTest {
                   proposal:
                     state: created
                     draft:
-                      - path: entries[0].cups
+                      - path: tasting_days[0].cups
                         size: 2
                         present: true
                 """;
@@ -396,7 +396,7 @@ class EvalCaseLoaderTest {
                   proposal:
                     state: created
                     draft:
-                      - path: entries[0].date
+                      - path: tasting_days[0].date
                 """;
 
         assertThatThrownBy(() -> loadYaml(tmp, "no-predicate", yaml))
@@ -416,7 +416,7 @@ class EvalCaseLoaderTest {
                   proposal:
                     state: created
                     draft:
-                      - path: "entries[0]..grind"
+                      - path: "tasting_days[0]..grind"
                         present: true
                 """;
 
