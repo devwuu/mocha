@@ -77,13 +77,18 @@ public final class NoteView {
                     : recipe.doseG() != null || recipe.waterMl() != null || recipe.grind() != null;
         }
 
-        /** 라벨 그리드(타일 아래 상세 행)에 오를 값이 하나라도 있는가 — 없으면 영역 자체를 숨긴다. */
+        /**
+         * 라벨 그리드(타일 아래 상세 행)에 오를 값이 하나라도 있는가 — 없으면 영역 자체를 숨긴다.
+         * <p>changes/0030 TΔ11에서 폐기된 {@code machine} 항이 빠지고 {@code pouring}이 {@code detail}로
+         * 옮겨졌다 — <b>구 필드가 사라진 자리를 메운 최소 수정</b>이고 배치 판단은 그대로다.
+         * 이 메서드와 {@link #espressoLayout()}은 TΔ18에서 통째로 삭제된다(ADR-87 — 방식 분기 폐기).
+         */
         public boolean hasDetailRows() {
             return espressoLayout()
-                    ? recipe.grind() != null || recipe.machine() != null || recipe.tempC() != null
-                            || recipe.waterMl() != null || recipe.pouring() != null
-                    : recipe.tempC() != null || recipe.machine() != null || recipe.yieldMl() != null
-                            || recipe.pouring() != null || RecipeAmounts.time(recipe.timeSec()) != null;
+                    ? recipe.grind() != null || recipe.tempC() != null
+                            || recipe.waterMl() != null || recipe.detail() != null
+                    : recipe.tempC() != null || recipe.yieldMl() != null
+                            || recipe.detail() != null || RecipeAmounts.time(recipe.timeSec()) != null;
         }
     }
 }

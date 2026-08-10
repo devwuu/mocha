@@ -176,8 +176,8 @@ class RerenderFromDatabaseTest extends PostgresIntegrationTest {
         TastingDay withRecipe = new TastingDay(
                 LocalDate.of(2026, 7, 10),
                 List.of(new Cup(
-                        new Recipe("핸드드립", 15.0, 240.0, null, 160.0, 92.5, "중간 (코만단테)", "V60",
-                                "뜸 40ml 30초 → 100ml → 100ml", "다음엔 더 굵게"),
+                        new Recipe("핸드드립", 15.0, 240.0, null, 160.0, 92.5, 21.0, "코만단테",
+                                "V60 · 뜸 40ml 30초 → 100ml → 100ml", "다음엔 더 굵게"),
                         new Review("새콤하고 좋았다.", null, Rating.GOOD))),
                 IGNORED);
 

@@ -27,9 +27,9 @@
                   "yield_ml": 220.0,
                   "time_sec": 160.0,
                   "temp_c": 92.0,
-                  "grind": "210클릭 (매버릭 2.0)",
-                  "machine": "V60",
-                  "pouring": "40초 뜸 후 3회 분할",
+                  "grind": 210.0,
+                  "grinder": "매버릭 2.0",
+                  "detail": "V60 · 40초 뜸 후 3회 분할",
                   "feedback": "퍽이 물퍽이었음"
                 },
                 "review": {
@@ -92,9 +92,9 @@
                   "yield_ml": 220.0,
                   "time_sec": 160.0,
                   "temp_c": 92.0,
-                  "grind": "210클릭 (매버릭 2.0)",
-                  "machine": "V60",
-                  "pouring": "40초 뜸 후 3회 분할",
+                  "grind": 210.0,
+                  "grinder": "매버릭 2.0",
+                  "detail": "V60 · 40초 뜸 후 3회 분할",
                   "feedback": "퍽이 물퍽이었음"
                 },
                 "review": {

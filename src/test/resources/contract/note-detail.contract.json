@@ -32,9 +32,9 @@
               "yield_ml": null,
               "time_sec": 160.0,
               "temp_c": 92.0,
-              "grind": "210클릭",
-              "machine": "매버릭 2.0",
-              "pouring": "뜸 40ml 30초 → 100ml → 100ml",
+              "grind": 210.0,
+              "grinder": "매버릭 2.0",
+              "detail": "뜸 40ml 30초 → 100ml → 100ml",
               "feedback": "다음엔 한 단계 굵게"
             },
             "review": {
@@ -56,9 +56,9 @@
               "yield_ml": null,
               "time_sec": null,
               "temp_c": 90.0,
-              "grind": "220클릭",
-              "machine": "매버릭 2.0",
-              "pouring": null,
+              "grind": 220.0,
+              "grinder": "매버릭 2.0",
+              "detail": null,
               "feedback": null
             },
             "review": null

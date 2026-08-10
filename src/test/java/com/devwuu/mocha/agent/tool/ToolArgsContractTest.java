@@ -46,8 +46,8 @@ class ToolArgsContractTest {
                   "official_notes": { "value": ["자스민", "베르가못"], "source": "search" },
                   "cups": [
                     { "recipe": { "method": "핸드드립", "dose_g": 15, "water_ml": 240, "yield_ml": null,
-                                  "time_sec": 160, "temp_c": 92, "grind": "210클릭 (매버릭 2.0)",
-                                  "machine": null, "pouring": "뜸 40ml 30초 → 100ml → 100ml",
+                                  "time_sec": 160, "temp_c": 92, "grind": 210,
+                                  "grinder": "매버릭 2.0", "detail": "뜸 40ml 30초 → 100ml → 100ml",
                                   "feedback": "첫 모금이 살짝 떫었으니 다음엔 220클릭으로" },
                       "review": { "my_taste": "새콤하고 좋았음",
                                    "my_taste_original": "새콤하고 좋았다",
@@ -66,7 +66,7 @@ class ToolArgsContractTest {
         assertThat(args.officialNotes().value()).containsExactly("자스민", "베르가못");
         assertThat(args.cups()).hasSize(1);
         assertThat(args.cups().getFirst().recipe()).isEqualTo(new Recipe(
-                "핸드드립", 15.0, 240.0, null, 160.0, 92.0, "210클릭 (매버릭 2.0)", null,
+                "핸드드립", 15.0, 240.0, null, 160.0, 92.0, 210.0, "매버릭 2.0",
                 "뜸 40ml 30초 → 100ml → 100ml", "첫 모금이 살짝 떫었으니 다음엔 220클릭으로"));
         assertThat(args.cups().getFirst().review()).isEqualTo(
                 new CupArg.ReviewArg("새콤하고 좋았음", "새콤하고 좋았다", "맛있다"));

@@ -78,11 +78,11 @@ class ThymeleafNoteRendererTest {
     // 실사용 샘플(ideas/sample.md 07-18) 수준의 회차 2개 엔트리 — 시도별 레시피·감상이 갈린다(AC-Δ6).
     private static TastingDay twoCupTastingDay(LocalDate date, OffsetDateTime ts) {
         Cup first = new Cup(
-                new Recipe("핸드드립", 15.0, 240.0, null, 160.0, 92.0, "210클릭 (매버릭 2.0)", null,
+                new Recipe("핸드드립", 15.0, 240.0, null, 160.0, 92.0, 210.0, "매버릭 2.0",
                         "뜸 40ml 30초 → 100ml → 100ml", "다음엔 분쇄를 더 굵게 갈 것"),
                 new Review("첫 시도는 새콤함", null, Rating.GOOD));
         Cup second = new Cup(
-                new Recipe(null, 18.0, 250.0, null, null, null, "중간", null, null, null),
+                new Recipe(null, 18.0, 250.0, null, null, null, null, null, "중간 굵기", null),
                 new Review("두 번째는 부드러움", null, Rating.PERFECT));
         return new TastingDay(date, List.of(first, second), ts);
     }
@@ -185,7 +185,7 @@ class ThymeleafNoteRendererTest {
                 null, new Sourced<>(List.of(), Source.SEARCH), List.of());
         // 1회차 = 레시피만(감상 없음), 2회차 = 감상만(레시피 없음).
         TastingDay tastingDay = new TastingDay(LocalDate.parse("2026-07-18"), List.of(
-                new Cup(new Recipe(null, 15.0, 240.0, null, null, null, "중간", null, null, null), null),
+                new Cup(new Recipe(null, 15.0, 240.0, null, null, null, null, null, "중간 굵기", null), null),
                 new Cup(null, new Review("두 번째 잔이 더 달다", null, Rating.GOOD))), now);
         NoteService repo = new InMemoryNoteService().put(noteOf(1, meta, Aliases.empty(), tastingDay));
 
@@ -544,7 +544,8 @@ class ThymeleafNoteRendererTest {
     @Test
     @DisplayName("ADR-54·59: recipe 있는 회차는 두 테마 모두 레시피 카드가 별도로 구워지고 수치가 렌더된다")
     void recipeCupBakesRecipeCard(@TempDir Path artA, @TempDir Path artB) {
-        Recipe recipe = new Recipe(null, 15.0, 240.0, null, null, null, "중간", null, null, null);
+        // 비수치 분쇄 표현은 grind가 아니라 detail로 간다(AC-Δ7 — changes/0030 ADR-86).
+        Recipe recipe = new Recipe(null, 15.0, 240.0, null, null, null, null, null, "중간 굵기", null);
         for (Theme theme : new Theme[]{Theme.TYPE_A, Theme.TYPE_B}) {
             NoteService repo = seedWithRecipe(new Sourced<>("예가체프 G1 워시드", Source.USER), recipe);
             Path artifactDir = theme == Theme.TYPE_A ? artA : artB;

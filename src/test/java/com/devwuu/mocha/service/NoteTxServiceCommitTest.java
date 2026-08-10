@@ -122,14 +122,14 @@ class NoteTxServiceCommitTest extends PostgresIntegrationTest {
     @DisplayName("ADR-59/AC-14: 같은 날 회차 append — 에이전트 구성 배열로 통째 교체, 엔트리 수 불변·회차 증가")
     void sameDayCommitAppendsCupRound() {
         Cup first = new Cup(
-                new Recipe("핸드드립", 15.0, 240.0, null, 160.0, 92.0, "210클릭 (매버릭 2.0)", null, null,
+                new Recipe("핸드드립", 15.0, 240.0, null, 160.0, 92.0, 210.0, "매버릭 2.0", null,
                         "첫 모금이 살짝 떫었으니 다음엔 220클릭으로"),
                 new Review("새콤하고 좋았음", "새콤하고 좋았다", Rating.GOOD));
         long noteId = seed(tastingDay(day(18), List.of(first)));
 
         // 같은 날 2번째 시도 — 에이전트가 기존 회차를 포함해 append한 전체 배열을 구성한다(V-15 검증 통과분).
         Cup second = new Cup(
-                new Recipe("핸드드립", 15.0, 240.0, null, 150.0, 92.0, "220클릭 (매버릭 2.0)", null, null, null),
+                new Recipe("핸드드립", 15.0, 240.0, null, 150.0, 92.0, 220.0, "매버릭 2.0", null, null),
                 new Review("떫은맛 사라지고 단맛 올라옴", "떫은맛이 사라지고 단맛이 올라온다", Rating.PERFECT));
         Note note = repo.commit(noteId, fullMeta(), tastingDay(day(18), List.of(first, second)), Aliases.empty());
 
@@ -146,7 +146,7 @@ class NoteTxServiceCommitTest extends PostgresIntegrationTest {
     @Test
     @DisplayName("ADR-59/AC-79: 기존 회차 지칭 병합 — 그 회차 review만 바뀐 배열로 교체, 회차 수 불변")
     void sameDayCommitMergesIntoReferredCupRound() {
-        Recipe recipe = new Recipe("핸드드립", 15.0, 240.0, null, 160.0, 92.0, "210클릭 (매버릭 2.0)", null, null, null);
+        Recipe recipe = new Recipe("핸드드립", 15.0, 240.0, null, 160.0, 92.0, 210.0, "매버릭 2.0", null, null);
         long noteId = seed(tastingDay(day(18),
                 List.of(new Cup(recipe, new Review("새콤하고 좋았음", "새콤하고 좋았다", Rating.GOOD)))));
 
@@ -161,7 +161,7 @@ class NoteTxServiceCommitTest extends PostgresIntegrationTest {
         Cup merged = note.tastingDays().getFirst().cups().getFirst();
         assertThat(merged.review().myTaste()).isEqualTo("새콤하고 좋았음. 식으니까 더 맛있음");
         assertThat(merged.review().rating()).isEqualTo(Rating.GOOD);
-        assertThat(merged.recipe().grind()).isEqualTo("210클릭 (매버릭 2.0)");
+        assertThat(merged.recipe().grind()).isEqualTo(210.0);
     }
 
     @Test
@@ -331,9 +331,9 @@ class NoteTxServiceCommitTest extends PostgresIntegrationTest {
     @DisplayName("AC-Δ4(0030): 회차 2개 시음일이 왕복 후 seq 0·1로 살아 있고 그 순서대로 복원된다")
     void twoCupTastingDaySurvivesTheRoundTripInSeqOrder() {
         long noteId = seed(tastingDay(day(12), List.of(
-                new Cup(new Recipe("핸드드립", 15.0, 240.0, null, 150.0, 92.0, "210클릭 (매버릭 2.0)", null, null, null),
+                new Cup(new Recipe("핸드드립", 15.0, 240.0, null, 150.0, 92.0, 210.0, "매버릭 2.0", null, null),
                         new Review("첫 잔은 새콤했다", "첫 잔은 새콤했다", Rating.GOOD)),
-                new Cup(new Recipe("핸드드립", 15.0, 240.0, null, 140.0, 90.0, "220클릭 (매버릭 2.0)", null, null, null),
+                new Cup(new Recipe("핸드드립", 15.0, 240.0, null, 140.0, 90.0, 220.0, "매버릭 2.0", null, null),
                         new Review("둘째 잔은 달았다", "둘째 잔은 달았다", Rating.PERFECT)))));
         em.clear();
 
@@ -342,7 +342,7 @@ class NoteTxServiceCommitTest extends PostgresIntegrationTest {
                 .containsExactly("첫 잔은 새콤했다", "둘째 잔은 달았다");
         // 회차별 레시피도 제 회차에 붙어 있다 — 조인 컬럼이 cup_id로 옮겨 간 뒤에도 짝이 안 섞였다는 증거다.
         assertThat(reloaded.cups()).extracting(c -> c.recipe().grind())
-                .containsExactly("210클릭 (매버릭 2.0)", "220클릭 (매버릭 2.0)");
+                .containsExactly(210.0, 220.0);
 
         long tastingDayId = notes.findTastingDayId(noteId, day(12)).orElseThrow();
         List<?> seqs = nativeQuery("SELECT seq FROM %s.cup WHERE tasting_day_id = :tastingDayId ORDER BY seq")

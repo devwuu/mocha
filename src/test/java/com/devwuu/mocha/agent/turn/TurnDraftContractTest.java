@@ -78,8 +78,8 @@ class TurnDraftContractTest {
     private static TurnDraft canonicalDraft() {
         OffsetDateTime timestamp = OffsetDateTime.of(2026, 7, 16, 10, 0, 0, 0, ZoneOffset.ofHours(9));
         TastingDay tastingDay = new TastingDay(LocalDate.of(2026, 7, 16), List.of(new Cup(
-                new Recipe("핸드드립", 15.0, 240.0, 220.0, 160.0, 92.0, "210클릭 (매버릭 2.0)",
-                        "V60", "40초 뜸 후 3회 분할", "퍽이 물퍽이었음"),
+                new Recipe("핸드드립", 15.0, 240.0, 220.0, 160.0, 92.0, 210.0,
+                        "매버릭 2.0", "V60 · 40초 뜸 후 3회 분할", "퍽이 물퍽이었음"),
                 new Review("새콤하고 좋았음", "새콤하고 좋았다", Rating.GOOD))), timestamp);
         Note note = new Note(
                 null,

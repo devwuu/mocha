@@ -19,6 +19,10 @@ import java.math.BigDecimal;
  * {@link com.devwuu.mocha.domain.Recipe}는 {@code Double}이고 변환은 변환기(TΔ3c)가 소유한다.
  * V-8(양수 <b>유한</b>)은 컬럼 CHECK가 강제하며, {@code numeric}은 {@code double}과 달리 비유한값이
  * 값으로 들어올 수 있어 CHECK가 {@code < 'Infinity'}까지 본다(TΔ2 실측).
+ *
+ * <p><b>changes/0030 필드 재편</b>(V7, ADR-86): 구 {@code machine} 폐기 · 구 {@code pouring} → {@code detail} ·
+ * 구 TEXT {@code grind}를 {@code numeric grind} + {@code grinder}로 분리. 분쇄값이 수치 6종에 편입돼
+ * {@code numeric}이 <b>7종</b>이 됐고, 그래서 위 CHECK 원형이 {@code recipe_grind_check}에도 그대로 걸린다.
  */
 @Entity
 @Table(name = "recipe")
@@ -47,14 +51,16 @@ public class RecipeEntity {
     @Column(name = "temp_c")
     private BigDecimal tempC;
 
+    // changes/0030: 구 TEXT("210클릭 (매버릭 2.0)")에서 numeric으로 재생성 — 수치 6종에 편입됐다(V7, ADR-86).
     @Column(name = "grind")
-    private String grind;
+    private BigDecimal grind;
 
-    @Column(name = "machine")
-    private String machine;
+    @Column(name = "grinder")
+    private String grinder;
 
-    @Column(name = "pouring")
-    private String pouring;
+    // changes/0030: 구 pouring의 RENAME. 폐기된 machine의 기구·머신 정보도 여기로 모인다(ADR-86 POLICY).
+    @Column(name = "detail")
+    private String detail;
 
     @Column(name = "feedback")
     private String feedback;
@@ -64,7 +70,7 @@ public class RecipeEntity {
     }
 
     public RecipeEntity(Long cupId, String method, BigDecimal doseG, BigDecimal waterMl, BigDecimal yieldMl,
-                        BigDecimal timeSec, BigDecimal tempC, String grind, String machine, String pouring,
+                        BigDecimal timeSec, BigDecimal tempC, BigDecimal grind, String grinder, String detail,
                         String feedback) {
         this.cupId = cupId;
         this.method = method;
@@ -74,8 +80,8 @@ public class RecipeEntity {
         this.timeSec = timeSec;
         this.tempC = tempC;
         this.grind = grind;
-        this.machine = machine;
-        this.pouring = pouring;
+        this.grinder = grinder;
+        this.detail = detail;
         this.feedback = feedback;
     }
 
@@ -107,16 +113,16 @@ public class RecipeEntity {
         return tempC;
     }
 
-    public String getGrind() {
+    public BigDecimal getGrind() {
         return grind;
     }
 
-    public String getMachine() {
-        return machine;
+    public String getGrinder() {
+        return grinder;
     }
 
-    public String getPouring() {
-        return pouring;
+    public String getDetail() {
+        return detail;
     }
 
     public String getFeedback() {

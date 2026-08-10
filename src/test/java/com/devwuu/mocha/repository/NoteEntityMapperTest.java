@@ -57,8 +57,8 @@ class NoteEntityMapperTest {
         TastingDay first = new TastingDay(
                 LocalDate.of(2026, 7, 10),
                 List.of(
-                        new Cup(new Recipe("핸드드립", 15.0, 240.0, 220.0, 150.0, 92.5, "중간 (코만단테)",
-                                "V60", "뜸 40ml 30초 → 100ml → 100ml", "다음엔 더 굵게"),
+                        new Cup(new Recipe("핸드드립", 15.0, 240.0, 220.0, 150.0, 92.5, 21.0,
+                                "코만단테", "V60 · 뜸 40ml 30초 → 100ml → 100ml", "다음엔 더 굵게"),
                                 new Review("새콤하고 좋았음", "It was pleasantly bright", Rating.GOOD)),
                         new Cup(new Recipe(null, 16.0, null, null, null, null, null, null, null, null), null)),
                 CREATED);

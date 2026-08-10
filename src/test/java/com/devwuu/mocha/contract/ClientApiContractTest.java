@@ -172,6 +172,29 @@ class ClientApiContractTest {
     }
 
     @Test
+    @DisplayName("0030 TΔ11/AC-Δ8: 계약 어디에도 machine·pouring 키가 없고 grinder·detail이 그 자리를 대신한다")
+    void recipeFieldReworkReachesTheClientContracts() throws IOException {
+        // 개명(위 세 단언)과 갈리는 지점: 여기는 «형태»가 바뀌었다. 그래서 부재만으로는 부족하다 —
+        // 개명은 구 이름이 남으면 신 이름이 없지만, 필드 폐기·추가는 둘이 함께 실려 나갈 수 있다.
+        for (String contract : List.of(TURN_DRAFT_SNAPSHOT, AGENT_TURN_CONTRACT, NOTE_COMMIT_CONTRACT,
+                NOTE_DETAIL_CONTRACT, NOTE_UPDATE_CONTRACT, NOTE_LIST_CONTRACT, NOTE_CANDIDATES_CONTRACT)) {
+            assertThat(keysAnywhere(load(contract)))
+                    .as("%s 에 폐기된 레시피 필드가 남아 있다", contract)
+                    .doesNotContain("machine", "pouring");
+        }
+        assertThat(keysAnywhere(load(NOTE_DETAIL_CONTRACT))).contains("grind", "grinder", "detail");
+
+        // grind는 이름이 그대로라 키 단언이 재편을 못 잡는다 — 갈린 것은 «타입»이라 값으로 못 박는다
+        // (TEXT "210클릭 (매버릭 2.0)"에서 number 210으로. 그라인더명은 grinder가 따로 진다 — ADR-86).
+        JsonNode recipe = load(NOTE_DETAIL_CONTRACT)
+                .get("response").get("tasting_days").get(0).get("cups").get(0).get("recipe");
+        assertThat(recipe.get("grind").isNumber())
+                .as("grind가 수치가 아니면 V-8 수치 규칙 편입이 계약에 도달하지 않은 것이다")
+                .isTrue();
+        assertThat(recipe.get("grinder").stringValue()).isEqualTo("매버릭 2.0");
+    }
+
+    @Test
     @DisplayName("TΔ10: 턴 요청 본문 = {utterance, draft, photos}, draft는 첫 턴에 null — 폼이 없으면 보낼 것이 없다")
     void turnRequestCarriesUtteranceAndOptionalDraft() throws IOException {
         JsonNode contract = load(AGENT_TURN_CONTRACT);

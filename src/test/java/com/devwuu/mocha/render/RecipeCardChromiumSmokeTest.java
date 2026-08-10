@@ -64,15 +64,15 @@ class RecipeCardChromiumSmokeTest {
     private static NoteView.RecipeCard handdripCard() {
         return new NoteView.RecipeCard(
                 "레인보우 블렌드", "커피가게 동경", LocalDate.parse("2026-07-18"),
-                new Recipe("핸드드립", 15.0, 240.0, null, 160.0, 92.0, "210클릭 (매버릭 2.0)", null,
+                new Recipe("핸드드립", 15.0, 240.0, null, 160.0, 92.0, 210.0, "매버릭 2.0",
                         "뜸 40ml 30초 → 100ml → 100ml", LONG_FEEDBACK));
     }
 
     private static NoteView.RecipeCard espressoCard() {
         return new NoteView.RecipeCard(
                 "레인보우 블렌드", "커피가게 동경", LocalDate.parse("2026-07-18"),
-                new Recipe("에스프레소", 18.0, null, 36.0, 28.0, 93.0, "90클릭 (매버릭 2.0)", "게이지아 클래식",
-                        null, LONG_FEEDBACK));
+                new Recipe("에스프레소", 18.0, null, 36.0, 28.0, 93.0, 90.0, "매버릭 2.0",
+                        "게이지아 클래식으로 내림", LONG_FEEDBACK));
     }
 
     @ParameterizedTest

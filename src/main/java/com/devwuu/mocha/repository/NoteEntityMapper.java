@@ -187,8 +187,8 @@ public final class NoteEntityMapper {
         }
         return new RecipeEntity(cupId, recipe.method(),
                 toNumeric(recipe.doseG()), toNumeric(recipe.waterMl()), toNumeric(recipe.yieldMl()),
-                toNumeric(recipe.timeSec()), toNumeric(recipe.tempC()),
-                recipe.grind(), recipe.machine(), recipe.pouring(), recipe.feedback());
+                toNumeric(recipe.timeSec()), toNumeric(recipe.tempC()), toNumeric(recipe.grind()),
+                recipe.grinder(), recipe.detail(), recipe.feedback());
     }
 
     /** 감상 행 — 회차의 {@code review}가 없으면 {@code null}(행 미생성, V-15). */
@@ -348,8 +348,8 @@ public final class NoteEntityMapper {
         }
         return new Recipe(recipe.getMethod(),
                 toDouble(recipe.getDoseG()), toDouble(recipe.getWaterMl()), toDouble(recipe.getYieldMl()),
-                toDouble(recipe.getTimeSec()), toDouble(recipe.getTempC()),
-                recipe.getGrind(), recipe.getMachine(), recipe.getPouring(), recipe.getFeedback());
+                toDouble(recipe.getTimeSec()), toDouble(recipe.getTempC()), toDouble(recipe.getGrind()),
+                recipe.getGrinder(), recipe.getDetail(), recipe.getFeedback());
     }
 
     public static Review toReview(ReviewEntity review) {

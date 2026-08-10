@@ -432,7 +432,7 @@ class ProposalValidatorsTest {
         @DisplayName("V-8: 위반 값(음수·0·공백)은 항목만 드롭되고 저장은 거부되지 않는다")
         void invalidItemsDroppedNotRejected() {
             RecordProposal proposal = okOf(validateRecord(recordArgsWith(
-                    null, List.of(new CupArg(new Recipe(null, -1.0, 240.0, null, null, null, "  ", null, null, null), null)))));
+                    null, List.of(new CupArg(new Recipe(null, -1.0, 240.0, null, null, null, -1.0, "  ", null, null), null)))));
             // 감상 없는 recipe만의 발화 = recipe만 담긴 회차 1개(V-15 허용).
             assertThat(proposal.cups().getFirst().recipe()).isEqualTo(new Recipe(null, null, 240.0, null, null, null, null, null, null, null));
             assertThat(proposal.cups().getFirst().review()).isNull();
@@ -441,18 +441,18 @@ class ProposalValidatorsTest {
         @Test
         @DisplayName("V-8: 확장 10필드(수치 양수·텍스트 공백)에도 항목 단위 드롭이 적용된다(changes/0021)")
         void tenFieldNormalizationAppliesPerItem() {
-            Recipe raw = new Recipe("에스프레소", 18.0, null, -1.0, 28.0, 0.0, "8 (매버릭 2.0)", " ", null, "다음엔 220클릭");
+            Recipe raw = new Recipe("에스프레소", 18.0, null, -1.0, 28.0, 0.0, 8.0, " ", null, "다음엔 220클릭");
             RecordProposal proposal = okOf(validateRecord(recordArgsWith(
                     null, List.of(new CupArg(raw, null)))));
             assertThat(proposal.cups().getFirst().recipe()).isEqualTo(
-                    new Recipe("에스프레소", 18.0, null, null, 28.0, null, "8 (매버릭 2.0)", null, null, "다음엔 220클릭"));
+                    new Recipe("에스프레소", 18.0, null, null, 28.0, null, 8.0, null, null, "다음엔 220클릭"));
         }
 
         @Test
         @DisplayName("V-8: recipe 전 필드 전무면 recipe 자체가 null로 정규화된다(레시피 카드 미생성 근거)")
         void allInvalidNormalizedToNull() {
             RecordProposal proposal = okOf(validateRecord(recordArgsWith(
-                    null, List.of(new CupArg(new Recipe(null, 0.0, null, null, null, null, "", null, null, null),
+                    null, List.of(new CupArg(new Recipe(null, 0.0, null, null, null, null, 0.0, "", null, null),
                             new CupArg.ReviewArg("좋았음", null, null))))));
             // recipe 전무 정규화가 저장 거부로 번지지 않는다 — 감상 review이 있어 회차는 성립(V-15).
             assertThat(proposal.cups().getFirst().recipe()).isNull();
@@ -476,20 +476,20 @@ class ProposalValidatorsTest {
         void allEmptyCupsRejected() {
             assertThat(rejectionOf(validateRecord(recordArgsWith(
                     null, List.of(new CupArg(null, null),
-                            new CupArg(new Recipe(null, 0.0, null, null, null, null, " ", null, null, null), new CupArg.ReviewArg(" ", null, null))))))).contains("회차").contains("V-15");
+                            new CupArg(new Recipe(null, 0.0, null, null, null, null, 0.0, " ", null, null), new CupArg.ReviewArg(" ", null, null))))))).contains("회차").contains("V-15");
         }
 
         @Test
         @DisplayName("V-15/AC-74: 시도 2회 발화는 회차 2개로 정규화된다 — 배열 순서 = 회차 번호, 시도별 recipe·review 유지")
         void twoAttemptsBecomeTwoCups() {
             RecordProposal proposal = okOf(validateRecord(recordArgsWith(null, List.of(
-                    new CupArg(new Recipe(null, 15.0, 240.0, null, null, null, "210클릭 (매버릭 2.0)", null, null, null),
+                    new CupArg(new Recipe(null, 15.0, 240.0, null, null, null, 210.0, "매버릭 2.0", null, null),
                             new CupArg.ReviewArg("떫었음", "떫었다", null)),
-                    new CupArg(new Recipe(null, 15.0, 240.0, null, null, null, "220클릭 (매버릭 2.0)", null, null, null),
+                    new CupArg(new Recipe(null, 15.0, 240.0, null, null, null, 220.0, "매버릭 2.0", null, null),
                             new CupArg.ReviewArg("부드러웠음", "부드러웠다", "맛있다"))))));
             assertThat(proposal.cups()).containsExactly(
-                    new Cup(new Recipe(null, 15.0, 240.0, null, null, null, "210클릭 (매버릭 2.0)", null, null, null), new Review("떫었음", "떫었다", null)),
-                    new Cup(new Recipe(null, 15.0, 240.0, null, null, null, "220클릭 (매버릭 2.0)", null, null, null),
+                    new Cup(new Recipe(null, 15.0, 240.0, null, null, null, 210.0, "매버릭 2.0", null, null), new Review("떫었음", "떫었다", null)),
+                    new Cup(new Recipe(null, 15.0, 240.0, null, null, null, 220.0, "매버릭 2.0", null, null),
                             new Review("부드러웠음", "부드러웠다", Rating.GOOD)));
         }
 
