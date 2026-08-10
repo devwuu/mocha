@@ -30,7 +30,14 @@ export interface Bean {
   process: Sourced<string> | null
 }
 
-/** 회차 추출 레시피 — 방식별 분기 없는 flat 스키마, 전 필드 nullable(V-8). 사용자 발화 전용(보강 금지). */
+/**
+ * 회차 추출 레시피 — 방식별 분기 없는 flat 스키마, 전 필드 nullable(V-8). 사용자 발화 전용(보강 금지).
+ *
+ * **changes/0030 재편**(ADR-86): 수치 6종(`dose_g`·`water_ml`·`yield_ml`·`time_sec`·`temp_c`·**`grind`**) +
+ * 텍스트 4종(`method`·`grinder`·`detail`·`feedback`)이다. 구 `grind`는 `"210클릭 (매버릭 2.0)"` 단일
+ * 문자열이었는데 **수치 `grind` + 이름 `grinder` 두 칸으로 갈렸고**, 구 `machine`은 폐기, 구 `pouring`은
+ * `detail`이 됐다. 숫자로 떨어지지 않는 분쇄 표현·기구 정보의 행선지는 `detail` 하나다.
+ */
 export interface Recipe {
   method: string | null
   dose_g: number | null
@@ -38,9 +45,9 @@ export interface Recipe {
   yield_ml: number | null
   time_sec: number | null
   temp_c: number | null
-  grind: string | null
-  machine: string | null
-  pouring: string | null
+  grind: number | null
+  grinder: string | null
+  detail: string | null
   feedback: string | null
 }
 

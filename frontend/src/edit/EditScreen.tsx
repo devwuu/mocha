@@ -39,7 +39,7 @@ import {
  * `EDIT NOTE` 헤더 · **구획 머리 바**(커피 정보 / 날짜) · 잠긴 커피명 블록 · **공식 노트 칩** ·
  * 점선 빈 슬롯 · **모노스페이스 날짜 + 요일 헤더와 접기/펼치기** · 회차 카드의 `레시피`/`평가` 구획 머리와
  * 부제 · `되돌리기` + `저장`. 시안과 갈린 것은 여섯이고 각각 그 자리 주석이 근거를 소유한다:
- * ① 출처 배지 ② 추출 ml 슬롯 ③ 분쇄도·기구 분리 ④ `feedback` 단일 필드 ⑤ 회차/날짜 추가·시음일 삭제 부재
+ * ① 출처 배지 ② 추출 ml 슬롯 ③ 분쇄도·그라인더 분리 ④ `feedback` 단일 필드 ⑤ 회차/날짜 추가·시음일 삭제 부재
  * ⑥ 저장 버튼의 자리와 노트 삭제 구역.
  *
  * **저장 단위가 섹션별인 것이 계약이다**(사용자 확정 2026-08-01). TΔ4a가 `applyEdit`을 `updateMeta`·
@@ -592,22 +592,28 @@ function CupCard({
         <NumberInput label="시간 초" value={recipe?.time_sec ?? null} onChange={(next) => onRecipe({ time_sec: next })} />
         <NumberInput label="물온도 ℃" value={recipe?.temp_c ?? null} onChange={(next) => onRecipe({ temp_c: next })} />
         {/* 시안과 갈린 것 ③ — 시안은 `분쇄도 (그라인더 · 클릭)` 한 칸에 "매버릭 2.0 · 210클릭"을 담는데
-            도메인은 `grind`·`machine` 별도 필드다(V-8). 합치면 저장할 때 어느 쪽에 넣을지 결정론이 없다. */}
-        <PlainInput label="분쇄도" value={recipe?.grind ?? ''} onChange={(next) => onRecipe({ grind: textValue(next) })} />
+            도메인은 `grind`(수치)·`grinder`(이름) 별도 필드다(V-8). 합치면 저장할 때 어느 쪽에 넣을지
+            결정론이 없다 — changes/0030 전에는 `grind` 한 칸이 그 두 개념을 문자열로 담고 있었고, 실제로
+            `210클릭`·`210 (매버릭)`로 갈렸다(ADR-86이 가른 근거). 분쇄도가 수치 칸이 되어 `NumberInput`을
+            타므로 V-8 양수 규칙이 폼에서도 선다. */}
+        <NumberInput label="분쇄도" value={recipe?.grind ?? null} onChange={(next) => onRecipe({ grind: next })} />
         <PlainInput
-          label="기구"
+          label="그라인더"
           span
-          value={recipe?.machine ?? ''}
-          onChange={(next) => onRecipe({ machine: textValue(next) })}
+          value={recipe?.grinder ?? ''}
+          onChange={(next) => onRecipe({ grinder: textValue(next) })}
         />
       </div>
 
       <div className="ecup__block">
+        {/* 구 "푸어링"은 핸드드립 어휘라 에스프레소·아메리카노의 과정을 담기 어색했다(ADR-86). 이 칸이
+            받는 것은 과정 서술만이 아니라 구조화되지 않는 것 전부다 — 기구·머신(폐기된 `machine`의
+            정보)과 숫자로 안 떨어지는 분쇄 표현이 여기로 모인다. */}
         <TextArea
-          label="푸어링"
+          label="상세 레시피"
           rows={2}
-          value={recipe?.pouring ?? ''}
-          onChange={(next) => onRecipe({ pouring: textValue(next) })}
+          value={recipe?.detail ?? ''}
+          onChange={(next) => onRecipe({ detail: textValue(next) })}
         />
         {/* 시안과 갈린 것 ④ — 시안은 `내리면서 본 것`·`다음에 바꿀 것` 두 칸인데 도메인은 `feedback`
             하나다(FR-18: *"그 시도의 관찰·진단·다음 계획"*). 가르는 것은 스키마 변경이라 프롬프트·eval
@@ -780,14 +786,20 @@ function TextArea({
   )
 }
 
-/** 접힌 날짜의 한 줄 요약(시안) — `핸드드립 · 15g / 240ml · 92℃ · 매버릭 2.0 210클릭`. */
+/**
+ * 접힌 날짜의 한 줄 요약(시안) — `핸드드립 · 15g / 240ml · 92℃ · 매버릭 2.0 210`.
+ *
+ * **분쇄값에 단위를 붙이지 않는다** — 구 `grind`가 `"210클릭"`처럼 단위를 문자열에 담고 있어 요약도 그것을
+ * 그대로 실었는데, changes/0030에서 수치만 남았고 단위는 그라인더에 딸린 성질이라 별도로 보존하지 않는
+ * 것이 결정이다(delta.md §비범위 — `grind_unit` 기각). 여기서 `클릭`을 붙이면 그 결정을 화면이 뒤집는다.
+ */
 function summarize(cup: NoteDetailCup): string {
   const recipe = cup.recipe
   if (recipe === null) {
     return cup.review?.my_taste ?? ''
   }
   const amounts = [unit(recipe.dose_g, 'g'), unit(recipe.water_ml ?? recipe.yield_ml, 'ml')].filter((v) => v !== null)
-  const gear = [recipe.machine, recipe.grind].filter((v) => v !== null).join(' ')
+  const gear = [recipe.grinder, unit(recipe.grind, '')].filter((v) => v !== null).join(' ')
   return [recipe.method, amounts.join(' / ') || null, unit(recipe.temp_c, '℃'), gear || null]
     .filter((part) => part !== null && part !== '')
     .join(' · ')

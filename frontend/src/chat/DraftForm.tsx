@@ -168,14 +168,6 @@ export function DraftForm({ draft, busy, onChange, onSave, onCancel }: DraftForm
                     }
                   />
                 </Field>
-                <Field label="분쇄도">
-                  <input
-                    value={cup.recipe?.grind ?? ''}
-                    onChange={(event) =>
-                      onChange(patchRecipe(draft, dayIndex, cupIndex, { grind: textValue(event.target.value) }))
-                    }
-                  />
-                </Field>
                 <NumberField
                   label="원두 g"
                   value={cup.recipe?.dose_g ?? null}
@@ -201,21 +193,33 @@ export function DraftForm({ draft, busy, onChange, onSave, onCancel }: DraftForm
                   value={cup.recipe?.temp_c ?? null}
                   onChange={(next) => onChange(patchRecipe(draft, dayIndex, cupIndex, { temp_c: next }))}
                 />
-                <Field label="기구">
+                {/* 분쇄도는 changes/0030에서 두 칸이 됐다(ADR-86) — 수치는 `grind`, 그라인더명은 `grinder`.
+                    한 칸이던 시절에는 "210클릭 (매버릭 2.0)"을 통째로 받아 렌더가 정규식으로 되쪼갰다.
+                    수치 칸이라 나머지 수치 5종 뒤에 붙고(V-8 같은 규칙을 탄다), 그라인더가 바로 옆에 서야
+                    두 칸이 한 개념으로 읽힌다. 숫자로 안 떨어지는 분쇄 표현("중간 굵기")은 상세 레시피로. */}
+                <NumberField
+                  label="분쇄도"
+                  value={cup.recipe?.grind ?? null}
+                  onChange={(next) => onChange(patchRecipe(draft, dayIndex, cupIndex, { grind: next }))}
+                />
+                <Field label="그라인더">
                   <input
-                    value={cup.recipe?.machine ?? ''}
+                    value={cup.recipe?.grinder ?? ''}
                     onChange={(event) =>
-                      onChange(patchRecipe(draft, dayIndex, cupIndex, { machine: textValue(event.target.value) }))
+                      onChange(patchRecipe(draft, dayIndex, cupIndex, { grinder: textValue(event.target.value) }))
                     }
                   />
                 </Field>
               </div>
-              <Field label="푸어링">
+              {/* 구 "푸어링"은 핸드드립 어휘라 에스프레소·아메리카노의 과정을 담기 어색했다 — 이 칸이
+                  받는 것은 과정 서술만이 아니라 **구조화되지 않는 것 전부**이고(기구·머신, 비수치 분쇄
+                  표현), 그래서 행선지가 하나뿐이라는 뜻의 이름이어야 한다(ADR-86 POLICY). */}
+              <Field label="상세 레시피">
                 <textarea
                   rows={2}
-                  value={cup.recipe?.pouring ?? ''}
+                  value={cup.recipe?.detail ?? ''}
                   onChange={(event) =>
-                    onChange(patchRecipe(draft, dayIndex, cupIndex, { pouring: textValue(event.target.value) }))
+                    onChange(patchRecipe(draft, dayIndex, cupIndex, { detail: textValue(event.target.value) }))
                   }
                 />
               </Field>

@@ -152,8 +152,8 @@ const EMPTY_RECIPE: Recipe = {
   time_sec: null,
   temp_c: null,
   grind: null,
-  machine: null,
-  pouring: null,
+  grinder: null,
+  detail: null,
   feedback: null,
 }
 
