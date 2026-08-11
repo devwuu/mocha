@@ -139,21 +139,21 @@ class NoteTxServiceCandidatesTest extends PostgresIntegrationTest {
     }
 
     @Test
-    @DisplayName("TΔ7: 최근 시음일은 엔트리 여러 건 중 가장 늦은 날짜다 — 노트당 한 줄로 접힌다")
+    @DisplayName("TΔ7: 최근 시음일은 여러 건 중 가장 늦은 날짜다 — 노트당 한 줄로 접힌다")
     void latestDateIsTheMaximumAcrossTastingDays() {
         insert("에티오피아 게뎁", "모모스커피",
                 dates(LocalDate.of(2026, 7, 3), LocalDate.of(2026, 7, 28), LocalDate.of(2026, 7, 11)));
         em.clear();
 
-        // 엔트리 3건이 join으로 3행이 됐다가 groupBy로 접힌다 — 접지 않으면 시트에 같은 노트가 셋 뜬다.
+        // 시음일 3건이 join으로 3행이 됐다가 groupBy로 접힌다 — 접지 않으면 시트에 같은 노트가 셋 뜬다.
         assertThat(repo.findCandidates("게뎁")).singleElement()
                 .extracting(NoteCandidate::latestDate).isEqualTo(LocalDate.of(2026, 7, 28));
     }
 
     @Test
-    @DisplayName("TΔ7: 로스터리 미상·엔트리 0건 노트도 후보다 — nullable 지점이 계약에 있는 이유다")
+    @DisplayName("TΔ7: 로스터리 미상·시음일 0건 노트도 후보다 — nullable 지점이 계약에 있는 이유다")
     void notesWithoutRoasteryOrTastingDaysAreStillCandidates() {
-        // 엔트리 0건은 결손이 아니라 정상 상태다(삭제 직후가 그렇다). inner join이면 여기서 통째로 빠진다.
+        // 시음일 0건은 결손이 아니라 정상 상태다(삭제 직후가 그렇다). inner join이면 여기서 통째로 빠진다.
         insert("게뎁 워시드", null, List.of());
         em.clear();
 

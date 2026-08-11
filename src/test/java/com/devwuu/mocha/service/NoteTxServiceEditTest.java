@@ -37,10 +37,10 @@ import java.util.Map;
  *
  * <p>구 {@code JsonFileNoteRepositoryTest}의 수정 세션 검증분 4건 이관에서 출발했고(0028 TΔ5c), 0029
  * TΔ4a에서 <b>구 {@code applyEdit}이 둘로 갈리며</b> 이 파일도 두 축으로 재편됐다 — 노트 메타 갱신과
- * 엔트리 교체는 UI에서 별개의 조작이라 계약도 갈렸다.
+ * 시음일 교체는 UI에서 별개의 조작이라 계약도 갈렸다.
  *
  * <p>저장 매체가 바뀌어도 답이 같아야 하는 것이 AC-Δ1이다. 다만 <b>파일에 없던 위험</b>이 하나 붙는다:
- * 파일 구현은 엔트리 목록을 메모리에서 재조립해 한 번에 썼지만 <b>DB는 중간 상태에서 제약을 검사</b>한다
+ * 파일 구현은 시음일 목록을 메모리에서 재조립해 한 번에 썼지만 <b>DB는 중간 상태에서 제약을 검사</b>한다
  * — 날짜 이동은 {@code UNIQUE(note_id, tasted_on)}를 지나야 하므로 "이동처를 비운 뒤 넣는다"가 순서로
  * 지켜져야 한다.
  *
@@ -82,7 +82,7 @@ class NoteTxServiceEditTest extends PostgresIntegrationTest {
         Note updated = repo.updateMeta(saved.id(), metaWithRoastery("커피베라 성수점")).note();
 
         assertThat(updated.roastery().value()).isEqualTo("커피베라 성수점");
-        // 엔트리는 메타 수정의 대상이 아니다 — 손대지 않은 채 그대로 남는다(0029 TΔ4a가 계약을 가른 지점).
+        // 시음일은 메타 수정의 대상이 아니다 — 손대지 않은 채 그대로 남는다(0029 TΔ4a가 계약을 가른 지점).
         assertThat(updated.tastingDays()).hasSize(1);
         assertThat(tasteOf(updated.tastingDays().getFirst())).isEqualTo("새콤하고 좋았다");
 
@@ -94,9 +94,9 @@ class NoteTxServiceEditTest extends PostgresIntegrationTest {
     }
 
     @Test
-    @DisplayName("TΔ4a: 메타 수정은 엔트리 행을 재발급하지 않는다 — 로스터리만 고칠 때 회차가 살아남는다")
+    @DisplayName("TΔ4a: 메타 수정은 시음일 행을 재발급하지 않는다 — 로스터리만 고칠 때 회차가 살아남는다")
     void updateMetaLeavesTastingDayRowsUntouched() {
-        // 구 applyEdit은 엔트리 1건을 반드시 실어야 해서, 로스터리만 고쳐도 그 엔트리의 회차가 통째로
+        // 구 applyEdit은 시음일 1건을 반드시 실어야 해서, 로스터리만 고쳐도 그 시음일의 회차가 통째로
         // 지워지고 다시 심겼다. 계약을 가른 실질 이유가 이것이다.
         Note saved = seed(tastingDay(day(10), "감상"));
         long tastingDayIdBefore = notes.findTastingDayId(saved.id(), day(10)).orElseThrow();
@@ -205,7 +205,7 @@ class NoteTxServiceEditTest extends PostgresIntegrationTest {
         assertThat(updated.coffeeName().value()).isEqualTo("커피베라 예가체프 G1");
     }
 
-    // ─────────────────────── 엔트리 교체 (ADR-59, 이관) ───────────────────────
+    // ─────────────────────── 시음일 교체 (ADR-59, 이관) ───────────────────────
 
     @Test
     @DisplayName("이관: replaceTastingDay — 대상 date의 회차가 새 내용으로 갈린다")
@@ -251,7 +251,7 @@ class NoteTxServiceEditTest extends PostgresIntegrationTest {
 
         Note updated = repo.replaceTastingDay(saved.id(), day(9), tastingDay(day(10), "이동해 온 9일 기록"), Map.of()).note();
 
-        // 엔트리 총수 1 감소는 구 규칙에서 유일하게 살아남는 부분이다 — 둘이 하나가 되는 것이라서다.
+        // 시음일 총수 1 감소는 구 규칙에서 유일하게 살아남는 부분이다 — 둘이 하나가 되는 것이라서다.
         assertThat(updated.tastingDays()).hasSize(1);
         assertThat(updated.tastingDays().getFirst().date()).isEqualTo(day(10));
         // 순서가 곧 회차 번호다(V-15) — 그날 먼저 있던 기록이 앞 회차다.
@@ -289,10 +289,10 @@ class NoteTxServiceEditTest extends PostgresIntegrationTest {
     }
 
     @Test
-    @DisplayName("D-12: 병합에서 살아남는 행은 이동처 엔트리다 — 합쳐지는 자리는 그날의 기록이다")
+    @DisplayName("D-12: 병합에서 살아남는 행은 이동처 시음일이다 — 합쳐지는 자리는 그날의 기록이다")
     void mergeKeepsDestinationTastingDayRow() {
         // 무충돌 이동과 갈리는 지점이다(저쪽은 원본 행이 tasted_on만 바꿔 살아남는다). 병합은 옮겨 온
-        // 쪽이 회차로 흡수되므로 엔트리 행으로 남을 자리가 없고, created_at은 그날 첫 기록의 것이 맞다.
+        // 쪽이 회차로 흡수되므로 시음일 행으로 남을 자리가 없고, created_at은 그날 첫 기록의 것이 맞다.
         Note saved = seed(tastingDay(day(9), "9일"));
         saved = repo.commit(saved.id(), fullMeta(), tastingDay(day(10), "10일"), Aliases.empty());
         long destinationBefore = notes.findTastingDayId(saved.id(), day(10)).orElseThrow();
@@ -305,7 +305,7 @@ class NoteTxServiceEditTest extends PostgresIntegrationTest {
     }
 
     @Test
-    @DisplayName("TΔ5c: 날짜 이동은 행 교체가 아니라 갱신 — 엔트리 행이 살아남는다(created_at 보존)")
+    @DisplayName("TΔ5c: 날짜 이동은 행 교체가 아니라 갱신 — 시음일 행이 살아남는다(created_at 보존)")
     void dateMovePreservesTastingDayRow() {
         // 수정은 "같은 기록이 다른 날짜에 놓이는 것"이라 행이 살아야 감사 축이 의미를 갖는다 —
         // 지우고 다시 넣으면 created_at이 매번 새로 발급된다(재기록 경로가 치르는 대가, TΔ5b).
@@ -332,9 +332,9 @@ class NoteTxServiceEditTest extends PostgresIntegrationTest {
     }
 
     @Test
-    @DisplayName("ADR-75: 날짜 이동이 하위 행을 남기지 않는다 — 병합으로 걷히는 원본 엔트리의 회차까지")
+    @DisplayName("ADR-75: 날짜 이동이 하위 행을 남기지 않는다 — 병합으로 걷히는 원본 시음일의 회차까지")
     void dateMoveLeavesNoOrphanRows() {
-        // 병합은 삭제 하나(원본 엔트리 + 그 회차)와 삽입 하나(이동처 뒤로 잇는 회차)다. 삭제가 하위를
+        // 병합은 삭제 하나(원본 시음일 + 그 회차)와 삽입 하나(이동처 뒤로 잇는 회차)다. 삭제가 하위를
         // 빠뜨리면 DB는 아무 말도 하지 않고 고아가 쌓인다 — FK가 없어 이 단언이 유일한 안전망이다.
         Note saved = seed(tastingDay(day(9), List.of(
                 cup(15.0, "9일 첫 잔"),
@@ -345,7 +345,7 @@ class NoteTxServiceEditTest extends PostgresIntegrationTest {
         repo.replaceTastingDay(saved.id(), day(9), tastingDay(day(10), List.of(cup(18.0, "이동"))), Map.of());
         flushAndClear();
 
-        // 남는 것은 이동처 엔트리 하나이고, 그 아래 회차는 기존 1 + 옮겨 온 1 = 2다(구 규칙에서는 1이었다).
+        // 남는 것은 이동처 시음일 하나이고, 그 아래 회차는 기존 1 + 옮겨 온 1 = 2다(구 규칙에서는 1이었다).
         assertThat(rowCount("tasting_day")).isOne();
         assertThat(rowCount("cup")).isEqualTo(2);
         assertThat(rowCount("recipe")).isEqualTo(2);
@@ -362,7 +362,7 @@ class NoteTxServiceEditTest extends PostgresIntegrationTest {
     }
 
     @Test
-    @DisplayName("plan §7: 대상 date 엔트리 소실은 IllegalStateException — 행이 판정 기준이다")
+    @DisplayName("plan §7: 대상 date 시음일 소실은 IllegalStateException — 행이 판정 기준이다")
     void replaceTastingDayRejectsMissingTargetTastingDay() {
         Note saved = seed(tastingDay(day(10), "원본"));
 
@@ -390,7 +390,7 @@ class NoteTxServiceEditTest extends PostgresIntegrationTest {
      * 실 커밋이 하는 일을 재현한다 — <b>flush 뒤에</b> 컨텍스트를 비운다.
      *
      * <p>{@code clear()}만 부르면 아직 나가지 않은 UPDATE가 <b>버려진다</b>. 수정 경로는 관리되는 엔티티의
-     * 필드 갱신이라(노트 본문·엔트리 날짜) 그 UPDATE가 flush까지 pending으로 남는데, 자식 INSERT는
+     * 필드 갱신이라(노트 본문·시음일 날짜) 그 UPDATE가 flush까지 pending으로 남는데, 자식 INSERT는
      * {@code IDENTITY} PK라 persist 즉시 나가버려 조립 질의의 auto-flush마저 트리거되지 않는다 —
      * 즉 비우기 전에 flush하지 않으면 <b>테스트만 갱신을 잃는다</b>(프로덕션은 트랜잭션 커밋이 flush한다).
      *
@@ -454,7 +454,7 @@ class NoteTxServiceEditTest extends PostgresIntegrationTest {
     }
 
     /**
-     * 그 엔트리의 회차 {@code seq} 오름차순 — <b>행으로</b> 본다.
+     * 그 시음일의 회차 {@code seq} 오름차순 — <b>행으로</b> 본다.
      * <p>조립 경로는 seq로 정렬만 하고 값을 도메인에 싣지 않아(배열 순서가 대신한다) 0부터 다시 발급됐는지
      * 빈 칸이 생겼는지를 도메인으로는 볼 수 없다.
      */

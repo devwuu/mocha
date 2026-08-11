@@ -28,18 +28,18 @@
 
 | 용어 | 정의 |
 |---|---|
-| **노트(Note)** | **커피 1종**에 대한 기록 전체. `note` 테이블 1행 + 자식 행들에 대응한다. 커피명·로스터리·원두 구성(beans) 같은 "커피의 사실"과, 날짜별 시음 기록(엔트리) 목록을 담는다. |
-| **엔트리(Entry)** | 노트에 딸린 **날짜별 시음 기록 1건**. "버전 = 날짜"가 원칙이라 하루 2엔트리는 없다(`UNIQUE(note_id, tasted_on)`) — 같은 날짜에 다시 기록하면 그날 엔트리의 회차(brews)로 병합된다. |
-| **회차(Brew)** | 엔트리 안의 **한 번 내려서 마신 단위** — `{ recipe, tasting }` 1쌍. 레시피와 그 결과물의 감상이 회차 안에서 1:1로 짝지어지며(참조 필드 없음 — 구조가 짝을 표현), **회차 번호는 `brew.seq` 컬럼이 소유한다**(구 JSON의 "배열 순서 = 회차 번호"라는 암묵 의존은 0028에서 사라졌다). |
+| **노트(Note)** | **커피 1종**에 대한 기록 전체. `note` 테이블 1행 + 자식 행들에 대응한다. 커피명·로스터리·원두 구성(beans) 같은 "커피의 사실"과, 날짜별 시음 기록(시음일) 목록을 담는다. |
+| **시음일(TastingDay)** | 노트에 딸린 **날짜별 시음 기록 1건**. "버전 = 날짜"가 원칙이라 하루 2시음일은 없다(`UNIQUE(note_id, tasted_on)`) — 같은 날짜에 다시 기록하면 그날 시음일의 회차(cups)로 병합된다. |
+| **회차(Cup)** | 시음일 안의 **한 번 내려서 마신 단위** — `{ recipe, review }` 1쌍. 레시피와 그 결과물의 감상이 회차 안에서 1:1로 짝지어지며(참조 필드 없음 — 구조가 짝을 표현), **회차 번호는 `cup.seq` 컬럼이 소유한다**(구 JSON의 "배열 순서 = 회차 번호"라는 암묵 의존은 0028에서 사라졌다). |
 | **id (대체키)** | 노트의 식별자 — DB가 발급하는 `BIGSERIAL`. **구 `slug`(파일명이자 식별자)는 파일 폐기와 함께 근거를 잃고 폐기됐다**(ADR-75). `Note.id == null`이 *"아직 저장되지 않음"*의 유일한 표현이고, 그 판정이 곧 신규/기존 분기다. |
 | **원두 구성(beans)** | 노트의 `beans` — 원두 1종당 `{ description(원산지·품종 자유 텍스트), process(가공방식) }`. 블렌드는 구성 원두마다 요소를 만들어 원두별 가공방식을 담는다(ADR-53). |
 | **official_notes(공식 노트)** | 로스터리가 상품 페이지·원두 봉투에 **전시한 테이스팅 노트**("자스민, 베르가못" 등). 사용자의 감상(`my_taste`)과 구분되는 "로스터리가 말하길" 영역이며, 로스터리 출처가 없으면 비워둔다(일반 출처 대체 금지). |
-| **my_taste / my_taste_original** | 사용자가 실제로 느낀 감상 — 회차 tasting 안에 있다. `my_taste`는 한국어 음슴체로 정규화한 표시용 값("맛있더라"→"맛있었음"), `my_taste_original`은 말한 그대로의 원문. 항상 함께 저장되고 렌더는 정규화본만 쓴다. |
-| **레시피(Recipe)** | 회차의 추출 정보 — 방식별 분기 없는 flat 10필드(`method`·`dose_g`·`water_ml`·`yield_ml`·`time_sec`·`temp_c`·`grind`·`machine`·`pouring`·`feedback`), 전 필드 nullable. 사용자 발화에서만 채우고(검색·사진 보강 금지) 언급 없는 항목은 비운다. 비율·시간 표기 같은 파생값은 저장하지 않고 렌더가 계산한다. |
-| **평가(Rating)** | 4단계 범주형 단일 선택 — `완전 내스타일`/`맛있다`/`맛은 있는데 내스타일은 아님`/`맛이 없다`. 회차 tasting 안에 있다(감상마다 평가가 다를 수 있음). |
+| **my_taste / my_taste_original** | 사용자가 실제로 느낀 감상 — 회차 review 안에 있다. `my_taste`는 한국어 음슴체로 정규화한 표시용 값("맛있더라"→"맛있었음"), `my_taste_original`은 말한 그대로의 원문. 항상 함께 저장되고 렌더는 정규화본만 쓴다. |
+| **레시피(Recipe)** | 회차의 추출 정보 — 방식별 분기 없는 flat 10필드, 전 필드 nullable. **수치 6**(`dose_g`·`water_ml`·`yield_ml`·`time_sec`·`temp_c`·`grind`)이 그대로 카드의 6타일이고, **텍스트 4**는 `method`(뱃지 표시 전용)·`grinder`(분쇄도 타일의 서브라벨)·`detail`(상세 레시피)·`feedback`이다. `grind`가 **수치**인 것과 `grinder`가 갈라져 나온 것은 *"매버릭 2.0으로 갈았는데 210클릭"*을 한 문자열에 담던 규칙이 폐기됐기 때문이고(ADR-86), **구조화되지 않는 표현의 행선지는 `detail` 하나**다(구 `machine`·`pouring`은 그 자리로 흡수·폐기). 사용자 발화에서만 채우고(검색·사진 보강 금지) 언급 없는 항목은 비운다. 비율·시간 표기 같은 파생값은 저장하지 않고 렌더가 계산한다. |
+| **평가(Rating)** | 4단계 범주형 단일 선택 — `완전 내스타일`/`맛있다`/`맛은 있는데 내스타일은 아님`/`맛이 없다`. 회차 review 안에 있다(감상마다 평가가 다를 수 있음). |
 | **별칭(Aliases)** | 노트의 **내부 매칭 전용** 한국어 음차·이표기 목록(예: "Ethiopia Chelbesa" → "에티오피아 첼베사"). 화면 어디에도 표시하지 않는다. 신규 노트 첫 저장 시 LLM 1콜로 생성하고, 이후 같은 노트로 매칭된 기록의 관측 표기를 콜 없이 축적한다. |
 | **출처(Source) / Sourced** | 필드 값이 어디서 왔는지 — `user`(사용자) / `photo`(사진 OCR) / `search`(검색 보강). `Sourced<T>`는 값+출처를 함께 담는 래퍼이고, DB에서는 `(value, source)` 두 컬럼으로 떨어진다. 우선순위는 `user > photo > search`. 폼에서 `(사진)`/`(검색)` 표기의 근거이자, **사용자가 폼에서 고치면 그 값의 출처가 `user`가 되어 이후 보강이 덮지 못한다**(V-6). |
-| **사진 색인(`note_photo`)** | 아카이브 사진 1장을 노트에 잇는 행 — `(note_id, tasted_on, seq, path)`. **참조 축이 엔트리 id가 아니라 날짜**인 이유는 엔트리가 저장 때마다 통째로 교체되기 때문이다(ADR-79). **바이트가 정본이고 행은 색인이다.** |
+| **사진 색인(`note_photo`)** | 아카이브 사진 1장을 노트에 잇는 행 — `(note_id, tasted_on, seq, path)`. **참조 축이 시음일 id가 아니라 날짜**인 이유는 시음일이 저장 때마다 통째로 교체되기 때문이다(ADR-79). **바이트가 정본이고 행은 색인이다.** |
 
 ### 확인 플로우(저장 전)
 
@@ -47,9 +47,9 @@
 |---|---|
 | **draft(작성 중인 폼 상태)** | 아직 저장되지 않은 노트 1건. **서버가 아니라 클라이언트가 소유한다**(ADR-80) — 매 턴 요청 본문의 `draft`로 올라가고, 에이전트의 제안이 응답의 `draft`로 내려와 폼을 채운다. *구 `pending`(서버 확인 대기 행)·단일 대기 게이트·`propose_edit`는 0029에서 함께 폐기됐다.* |
 | **제안(proposal)** | 모델의 `propose_record` 호출이 서버 검증을 통과한 결과. **효과는 폼을 채우는 데까지**이고 어떤 행도 쓰지 않는다 — 수거함(`TurnProposalSink`)에 담겨 턴 응답에 실린다. |
-| **매칭(match)** | 이번 폼이 무엇인지의 판정 — `new`(새 노트) / `existing`(기존 노트에 회차·엔트리 추가) / **`edit`(기존 엔트리를 고침)**. **`existing`과 `edit`은 같은 노트를 가리켜도 의도가 반대**라(추가 ↔ 교체) 합치지 않는다. 저장 경로가 여기서 갈린다 — `edit`이면 `PATCH`, 그 외는 `POST`. |
+| **매칭(match)** | 이번 폼이 무엇인지의 판정 — `new`(새 노트) / `existing`(기존 노트에 회차·시음일 추가) / **`edit`(기존 시음일을 고침)**. **`existing`과 `edit`은 같은 노트를 가리켜도 의도가 반대**라(추가 ↔ 교체) 합치지 않는다. 저장 경로가 여기서 갈린다 — `edit`이면 `PATCH`, 그 외는 `POST`. |
 | **수정 모드 폼** | *"어제 마신 첼베사 평가 낮춰줘"* 류 발화가 만드는 폼(D-14). 자연어가 하는 일은 **대상 지목 + 초안 채우기**까지이고 확정은 폼 + [저장]이다. 노트 레벨 값은 잠기고(readOnly) 회차·날짜만 열린다. |
-| **커밋(commit)** | `POST /api/notes`(신규·추가) 또는 `PATCH /api/notes/{id}`·`/entries/{date}`(수정)로 실제 행이 쓰이는 것. **에이전트 턴은 읽기만 한다** — 쓰기는 사용자의 [저장]이 만드는 이 요청뿐이다(ADR-3 불변). |
+| **커밋(commit)** | `POST /api/notes`(신규·추가) 또는 `PATCH /api/notes/{id}`·`/tasting-days/{date}`(수정)로 실제 행이 쓰이는 것. **에이전트 턴은 읽기만 한다** — 쓰기는 사용자의 [저장]이 만드는 이 요청뿐이다(ADR-3 불변). |
 | **접힘(fold)** | 트랜스크립트를 비우는 결정론 이벤트. 트리거는 둘 — `SAVE_COMMIT`(`POST /api/notes`)과 `FORM_CLOSED`(`POST /api/agent/cancel` — 취소든 저장 후 정리든 서버가 아는 사실은 *"이 작업은 끝났다"*뿐이라 라벨을 그 수준으로 낮췄다). TTL 소멸은 내부 판정이라 트리거가 아니다. |
 
 ### 에이전트 루프
@@ -61,7 +61,7 @@
 | **검색 보강(enrich)** | `official_notes` 또는 `beans`가 빈 제안에 한해 **루프 밖에서 반드시 도는 결정론 단계**(ADR-84). 빈 필드만 채우므로 사용자·사진 값을 덮을 경로가 구조적으로 없다. *모델 재량 tool이던 시절 호출이 조용히 0회로 수렴한 실측이 이 결정의 근거다.* |
 | **트랜스크립트(transcript)** | 에이전트 턴 **사이**의 대화 문맥(`FoldingChatMemory`). "그거"류 지시어, 되물음 왕복, 잡담→기록 전환을 해석하는 근거가 되는 (사용자 발화, 모카 응답) 쌍의 목록이다. 사용자당 1건, **메모리 전용**(재시작 시 소멸), TTL·턴 수 상한을 가진다. |
 | **다중 날짜 게이트 / 세그먼트 분해** | 한 발화에 서로 다른 절대 시음 날짜가 2개 이상 섞였을 때의 이중 장치(ADR-60·61). 결정론 **날짜 탐지기**(정규식, 상대 날짜 제외)가 다중 날짜를 보고하면 **세그먼터**(LLM 1콜)가 원문을 날짜별로 분해해 컨텍스트에 주입하고, 에이전트는 가장 이른 날짜만 제안한다. 서버 검증의 게이트(V-16)가 뭉뚱그림 제안을 최종 방어한다. |
-| **환각 필터** | 실존하지 않는 노트·엔트리를 대상으로 제안이 진행되지 않게 막는 서버 검사. 미존재 대상은 오류 사유를 tool 결과로 돌려줘 에이전트가 루프 안에서 정정한다. |
+| **환각 필터** | 실존하지 않는 노트·시음일을 대상으로 제안이 진행되지 않게 막는 서버 검사. 미존재 대상은 오류 사유를 tool 결과로 돌려줘 에이전트가 루프 안에서 정정한다. |
 | **strict schema** | 제안 tool 인자의 JSON 스키마 강제(전 필드 required, additionalProperties=false). 인자의 **형태**는 스키마가, **값 수준 규칙**(rating 4범주 등)은 서버 검증(`RecordProposalValidator`)이 담당한다. |
 | **폴백(fallback)** | 에이전트 턴 실패 시(LLM 오류·턴 상한 3종 도달 — tool 호출 수·누적 토큰·경과 시간, ADR-62) 수렴하는 결정론 경로 — 어떤 행도 건드리지 않고 안내만 하며, 사용자 원문은 파일 로그에 남아 유실되지 않는다(ADR-69 ① 박제 회수 경로). |
 
@@ -81,7 +81,7 @@
 
 | 용어 | 정의 |
 |---|---|
-| **회차 카드(brew card)** | 회차 파트 1건을 담은 4:5 비율(1080×1350) 공유용 JPG — 감상 카드(`<date>-taste-<n>.jpg`, tasting 있는 회차만)와 레시피 카드(`<date>-recipe-<n>.jpg`, recipe 있는 회차만) 2종. Thymeleaf로 조판한 HTML을 헤드리스 Chromium으로 래스터화해 굽는다(카드 HTML은 파일로 남기지 않는 중간 입력). |
+| **회차 카드(cup card)** | 회차 파트 1건을 담은 4:5 비율(1080×1350) 공유용 JPG — 감상 카드(`<date>-review-<n>.jpg`, review 있는 회차만)와 레시피 카드(`<date>-recipe-<n>.jpg`, recipe 있는 회차만) 2종. Thymeleaf로 조판한 HTML을 헤드리스 Chromium으로 래스터화해 굽는다(카드 HTML은 파일로 남기지 않는 중간 입력). |
 | **온디맨드 렌더 + 캐시 무효화** | 카드는 **저장 시점이 아니라 요청받은 때** 굽는다(ADR-81). `GET …/card`가 유일한 생성 경로이고 `artifact/cards/`는 산출 디렉터리가 아니라 **캐시**다. 그래서 **저장이 지는 카드 책임은 굽는 것이 아니라 지우는 것**이며, 무효화 축은 노트 하나·시점은 **쓰기 전**이다(폴더 접미가 지금 이름으로 계산되므로 나중에 지우면 옛 카드가 고아로 남는다). |
 | **리렌더(rerender)** | DB만으로 카드 전체를 재생성하는 것. `--rerender` CLI가 웹 서버 없이 단독 실행하며, 성격은 *"완결된 산출"*이 아니라 **전체 예열 + 고아 정리**(무효화 실패의 최종 회수 지점)다. |
 | **테마(Theme)** | 카드의 디자인 세트(type-a 세리프·명조 / type-b 귀여운·고딕+마스코트). 템플릿 폴더와 번들 폰트를 선택하며 데이터에는 영향이 없다. |
@@ -134,7 +134,7 @@ flowchart TB
     ARCHIVE[("data/photos/<노트폴더>/<date>/<br/>아카이브 확정")]
 
     subgraph REN["파생물 — render (요청받은 때 굽는다)"]
-        RENDER["NoteRenderer.entryCard<br/>캐시 미스면 그 엔트리 카드 전부"]
+        RENDER["NoteRenderer.tastingDayCard<br/>캐시 미스면 그 시음일 카드 전부"]
         CARDS[("artifact/cards/ — 캐시<br/>date-taste-n.jpg · date-recipe-n.jpg")]
     end
 
@@ -206,15 +206,15 @@ flowchart TB
 | 클래스 | 종류 | 역할 |
 |---|---|---|
 | `AgentTurnController` | @RestController | `POST /api/agent/turn` — `{utterance, draft?, photos?}`를 받아 턴을 돌리고 `{reply, draft}`를 돌려준다. 턴 실패는 500이 아니라 **안내 문구를 담은 정상 응답 + 빈 draft**로 수렴한다(ADR-48). `POST /api/agent/cancel`은 트랜스크립트 접힘(`FORM_CLOSED`) 통지 — 본문도 응답도 없다. |
-| `NoteController` | @RestController | 노트 REST 표면 — 쓰기 넷·읽기 셋. `POST /api/notes`(폼 확정 저장 + `SAVE_COMMIT` 접힘) · `GET /api/notes/candidates`(매칭 후보) · `GET /api/notes`(갤러리 목록) · `GET /api/notes/{id}`(상세) · `PATCH /api/notes/{id}`(메타 수정) · `PATCH …/entries/{date}`(엔트리 교체·날짜 이동) · `DELETE /api/notes/{id}`. **`POST`는 `match.type: edit`을 거부한다**(400 — 통과시키면 «의도는 수정, 결과는 추가»가 된다). 실패 코드가 자리로 갈린다: `POST`의 대상 소실은 **409**(상태 충돌), `PATCH`·`DELETE`의 그것은 **404**(자원 부재). |
+| `NoteController` | @RestController | 노트 REST 표면 — 쓰기 넷·읽기 셋. `POST /api/notes`(폼 확정 저장 + `SAVE_COMMIT` 접힘) · `GET /api/notes/candidates`(매칭 후보) · `GET /api/notes`(갤러리 목록) · `GET /api/notes/{id}`(상세) · `PATCH /api/notes/{id}`(메타 수정) · `PATCH …/tasting-days/{date}`(시음일 교체·날짜 이동) · `DELETE /api/notes/{id}`. **`POST`는 `match.type: edit`을 거부한다**(400 — 통과시키면 «의도는 수정, 결과는 추가»가 된다). 실패 코드가 자리로 갈린다: `POST`의 대상 소실은 **409**(상태 충돌), `PATCH`·`DELETE`의 그것은 **404**(자원 부재). |
 | `PhotoController` | @RestController | `POST /api/photos`(multipart) — EXIF 제거·포맷 게이트·스테이징까지 하고 파일명을 즉시 돌려준다. **여기서 OCR이 돌지 않는 것이 이 API의 정의다**(D-11). |
-| `CardController` | @RestController | `GET /api/notes/{id}/entries/{date}/card?type=taste|recipe&n=` — 회차 카드 온디맨드. **카드의 유일한 생성·소비 경로**이고, 미스면 그 엔트리의 카드 전부를 굽는다(브라우저 기동이 카드 장수보다 비싸다). `no-store`. |
+| `CardController` | @RestController | `GET /api/notes/{id}/tasting-days/{date}/card?type=review|recipe&n=` — 회차 카드 온디맨드. **카드의 유일한 생성·소비 경로**이고, 미스면 그 시음일의 카드 전부를 굽는다(브라우저 기동이 카드 장수보다 비싸다). `no-store`. |
 | `DraftBody` | record | 클라이언트가 주고받는 **폼 상태 전체** — `TurnDraft`의 REST 판본. 같은 값이 세 방향으로 흐른다(폼→서버 / 제안→폼 / 저장 본문). |
 | `NoteBody` | record | 작성 중인 노트 — 도메인 `Note`에서 `aliases`만 뺀 형태. 별칭은 내부 전용이라 폼이 표시도 편집도 하지 않는다. |
 | `NoteDetailBody` | record | `GET /api/notes/{id}` 응답 — 저장된 노트 전문 + 날짜별 사진. `NoteBody`(작성 중)와 갈리는 것이 존재 이유다. |
 | `NoteListBody` | record | `GET /api/notes` 응답 — 갤러리 한 페이지. 도메인 `NotePage`와 갈리는 지점은 둘뿐(사진이 URL, 커서가 불투명 문자열). |
 | `NoteMetaBody` | record | `PATCH /api/notes/{id}` 요청. **`coffeeName` 필드가 없는 것이 이 타입의 존재 이유다** — 커피명 불변(V-9)을 구조로 차단한다. |
-| `NoteEntryBody` | record | `PATCH …/entries/{date}` 요청. **경로의 `date`가 대상이고 본문의 `date`가 결과다** — 둘이 다르면 날짜 이동. |
+| `TastingDayBody` | record | `PATCH …/tasting-days/{date}` 요청. **경로의 `date`가 대상이고 본문의 `date`가 결과다** — 둘이 다르면 날짜 이동. |
 | `NoteCursorCodec` | final class | 페이징 커서의 전송 표현(`NoteCursor` ↔ base64 불투명 문자열). 클라이언트가 만들지도 해석하지도 않아 정렬 축이 바뀌어도 따라 바뀌지 않는다. |
 | `PhotoUrl` | final class | 아카이브 상대 경로 → `<img src>`에 그대로 꽂는 URL. **규칙의 소유자는 서버 하나** — 폴더 접미가 생성 시점 스냅샷이라 클라이언트가 재계산할 수 있는 값이 아니다. |
 
@@ -268,7 +268,7 @@ flowchart TB
 | `GetNoteArgs` | record | 읽기 tool 인자 값객체. |
 | `ProposeRecordArgs` | record | 제안 tool 인자의 미검증 원시형 — strict schema 계약을 그대로 담는다. |
 | `SourcedArg<T>` | record | 출처 표시 필드의 미검증 원시형(source가 String) — 검증 후 도메인 `Sourced`(enum)로 승격. enum 위반을 역직렬화 예외가 아니라 **사유 있는 거부**로 다루기 위한 계약 타입. |
-| `BeanArg` / `BrewArg` | record | beans·brews 인자의 미검증 원시형. `BrewArg.recipe`는 전 필드 nullable이라 도메인 `Recipe`를 재사용하고, 감상만 중첩 record `TastingArg`(rating이 String)로 따로 받는다. |
+| `BeanArg` / `CupArg` | record | beans·cups 인자의 미검증 원시형. `CupArg.recipe`는 전 필드 nullable이라 도메인 `Recipe`를 재사용하고, 감상만 중첩 record `ReviewArg`(rating이 String)로 따로 받는다. |
 | `NoteSummary` | record | `list_notes` 응답 항목(id·커피명·로스터리·별칭·원두 요약·공식 노트·최근 시음일). |
 | `RecordProposal` | record | 검증 통과 후 정규화된 도메인 제안 — 수거함에 담겨 응답 draft가 된다. |
 
@@ -280,7 +280,7 @@ flowchart TB
 |---|---|---|
 | `RecordProposalValidator` | class | **유일한 검증 진입점** — 공유 패밀리 위임 + 고유 검증(필수 날짜, 다중 날짜 게이트 V-16, **draft 대조 V-6**, `match.type: edit`의 대상·날짜 필수 검사). |
 | `SourceRules` | final class | 출처 규칙 패밀리(V-5·V-14) — 출처 인자를 도메인 `Sourced`로 정규화, 커피명은 user/photo만. |
-| `BrewRules` | final class | 회차 규칙 패밀리(V-1·V-8·V-15) — brews 인자를 도메인 `Brew` 배열로 정규화(rating 4범주·레시피 정규화·빈 회차 드롭). |
+| `CupRules` | final class | 회차 규칙 패밀리(V-1·V-8·V-15) — cups 인자를 도메인 `Cup` 배열로 정규화(rating 4범주·레시피 정규화·빈 회차 드롭). |
 | `ValidationSupport` | final class | 규칙 패밀리 공용 조각 — 빈 값 위생·날짜 파싱 헬퍼. |
 | `ToolValidation<T>` | sealed interface | 검증 결과 타입 — `Ok(값)` 또는 `Rejected(사유)`. |
 | `RejectedException` | exception | 사유를 담아 `Rejected`로 수렴하는 패키지 내부 신호. |
@@ -325,18 +325,18 @@ flowchart TB
 | `NoteChildRows` | record | 자식 행 묶음 — **정렬된 평면 목록**이지 조립된 그래프가 아니다. 그룹핑·3단 중첩 재구성은 매퍼가 한다. |
 | `NoteEntityMapper` | final class | 도메인 record ↔ 엔티티 양방향 변환 + 3단 중첩 조립 + **로드 경계 위생**(ADR-66). 순수 함수라 트랜잭션과 무관하고, 그래서 층이 아니다. |
 | `NoteFolderName` | final class | 노트 폴더 접미 생성기 `<id>-<로스터리>-<커피명>` — 새니타이즈·NFC 정규화·40자 제한. **사진이 이미 있는 노트는 계산하지 않고 `note_photo.path`에서 되읽는다**(폴더명은 생성 시점 스냅샷이라). |
-| `PhotoStore` / `LocalPhotoStore` | interface / class | 사진 파일 저장소 경계와 구현 — 스테이징(`stage`/`readStaged`/`discard`), 아카이브 확정(`commit`), 날짜 이동(`moveEntryPhotos`), 고아 청소용 목록. 매직바이트 필터로 `.DS_Store` 같은 잔재가 OCR·아카이브에 새지 않게 한다. |
+| `PhotoStore` / `LocalPhotoStore` | interface / class | 사진 파일 저장소 경계와 구현 — 스테이징(`stage`/`readStaged`/`discard`), 아카이브 확정(`commit`), 날짜 이동(`moveTastingDayPhotos`), 고아 청소용 목록. 매직바이트 필터로 `.DS_Store` 같은 잔재가 OCR·아카이브에 새지 않게 한다. |
 | `StagedImage` | record | 스테이징 사진 1장(파일명+바이트) — OCR의 입력 단위. |
-| `entity/*` (13) | @Entity 등 | 테이블 매핑 — `NoteEntity`·`EntryEntity`·`BrewEntity`·`RecipeEntity`·`TastingEntity`·`NoteBeanEntity`·`NoteAliasEntity`(+`AliasKind`)·`NoteOfficialNoteEntity`·`NoteSourceEntity`·**`NotePhotoEntity`**·`SourcedValue`(@Embeddable — (value, source) 두 컬럼)·`BaseEntity`(감사 컬럼 4종). 도메인 record를 엔티티로 만들지 않는다 — 영속 관심사가 도메인으로 새지 않게 별도 클래스다. **`_by`는 «변경 주체»가 아니라 이 행을 쓴 사용자다**(ADR-83). |
+| `entity/*` (13) | @Entity 등 | 테이블 매핑 — `NoteEntity`·`TastingDayEntity`·`CupEntity`·`RecipeEntity`·`ReviewEntity`·`NoteBeanEntity`·`NoteAliasEntity`(+`AliasKind`)·`NoteOfficialNoteEntity`·`NoteSourceEntity`·**`NotePhotoEntity`**·`SourcedValue`(@Embeddable — (value, source) 두 컬럼)·`BaseEntity`(감사 컬럼 4종). 도메인 record를 엔티티로 만들지 않는다 — 영속 관심사가 도메인으로 새지 않게 별도 클래스다. **`_by`는 «변경 주체»가 아니라 이 행을 쓴 사용자다**(ADR-83). |
 
 ### 3.11 `render` — DB → 회차 카드 (12개)
 
 | 클래스 | 종류 | 역할 |
 |---|---|---|
-| `NoteRenderer` | interface | 렌더 경계 — `entryCard`(**온디맨드 조회 + 미스 시 굽기**), `renderEntryCard`(그 엔트리 카드 전부), `renderAll`(전체 예열 + 고아 정리). **지우는 일은 여기 없다** — 무효화는 `NoteService`가 한다(쓰기를 아는 곳이 거기 하나이고 반대 주입은 순환). |
+| `NoteRenderer` | interface | 렌더 경계 — `tastingDayCard`(**온디맨드 조회 + 미스 시 굽기**), `renderTastingDayCard`(그 시음일 카드 전부), `renderAll`(전체 예열 + 고아 정리). **지우는 일은 여기 없다** — 무효화는 `NoteService`가 한다(쓰기를 아는 곳이 거기 하나이고 반대 주입은 순환). |
 | `ThymeleafNoteRenderer` | class | 주 구현체 — DB에서 노트를 읽어 회차마다 감상·레시피 카드 HTML을 조판해 JPG로 굽고 고아 카드를 정리한다. 폰트·마스코트 자산 복사도 담당. |
 | `CardImageRenderer` / `PlaywrightCardImageRenderer` | interface / class | "카드 HTML → JPG 래스터화" 경계와 구현. 헤드리스 Chromium 뷰포트 스크린샷(순수 Java로는 flexbox·이모지·웹폰트 렌더가 불가능). 오프라인 컨텍스트로 CDN 미의존을 강제하고 autofit 완료 마커를 기다린 뒤 촬영한다. |
-| `CardFiles` | final class | 카드 경로 규약(`cards/<노트폴더>/<date>-taste-<n>.jpg`·`-recipe-<n>.jpg`)의 단일 소유 — 렌더러(산출·정리)와 온디맨드 조회가 공유한다. |
+| `CardFiles` | final class | 카드 경로 규약(`cards/<노트폴더>/<date>-review-<n>.jpg`·`-recipe-<n>.jpg`)의 단일 소유 — 렌더러(산출·정리)와 온디맨드 조회가 공유한다. |
 | `CardType` | enum | 카드 종류(감상·레시피). 사는 이유는 **온디맨드 API의 대상 지정**뿐이다 — 사용자가 고르는 축이 아니라 렌더 단위다. |
 | `NoteView` | final class | 템플릿용 뷰 모델 — 중첩 record `TasteCard`·`RecipeCard`. 카드 단위 = 회차 파트 1건. |
 | `KoreanDates` / `RatingStyle` | final class | 템플릿 헬퍼 — 한국어 날짜 포맷, 평가 4범주 배지 스타일. |
@@ -348,11 +348,11 @@ flowchart TB
 
 | 클래스 | 종류 | 역할 |
 |---|---|---|
-| `Note` | record | 커피 1종의 애그리게이트 — `id`(신규는 null), 커피명·로스터리·로스팅(출처 표시), `beans`, 공식 노트, 별칭, 참조 링크, 엔트리 목록, 타임스탬프. 로드 경계 위생 `normalized()`의 단일 지점(ADR-66). |
-| `Bean` · `Entry` · `Brew` · `Tasting` · `Recipe` | record | 원두 1종 / 날짜별 기록 / 회차 / 감상 / 레시피. 각자 정규화(V-14·V-15·V-8) 내장. |
+| `Note` | record | 커피 1종의 애그리게이트 — `id`(신규는 null), 커피명·로스터리·로스팅(출처 표시), `beans`, 공식 노트, 별칭, 참조 링크, 시음일 목록, 타임스탬프. 로드 경계 위생 `normalized()`의 단일 지점(ADR-66). |
+| `Bean` · `TastingDay` · `Cup` · `Review` · `Recipe` | record | 원두 1종 / 날짜별 기록 / 회차 / 감상 / 레시피. 각자 정규화(V-14·V-15·V-8) 내장. |
 | `Sourced<T>` · `Source` · `Rating` | record / enum | 값+출처 래퍼, 출처 3종, 평가 4범주. |
 | `Aliases` | record | 별칭 목록 + 축적 로직(관측 표기 병합, 정규화 기준 중복 제거 — 저장값은 첫 등장 표기 보존). |
-| `NoteMeta` | record | Note에서 id/entries/타임스탬프를 뺀 "커피의 사실" 묶음 — 커밋·메타 수정의 입력. |
+| `NoteMeta` | record | Note에서 id/tasting_days/타임스탬프를 뺀 "커피의 사실" 묶음 — 커밋·메타 수정의 입력. |
 | `MatchInfo` | record | 매칭 판정 — `new` / `existing` / **`edit`**(대상 `note_id` + 필수 `date`). 폼의 모드와 저장 경로가 여기서 갈린다. |
 | `NotePhoto` | record | 노트에 딸린 사진 1장 — 아카이브 파일의 색인. **사진은 노트가 아니라 날짜에 붙는다.** |
 | `NoteCandidate` | record | 매칭 후보 1건 — 변경 시트의 한 줄. 노트를 *고르는* 자리라 3단 중첩을 쓰지 않는 납작한 사영. |
@@ -389,12 +389,12 @@ flowchart TB
 | `api/http.ts` · `api/index.ts` | 실제 서버 호출부와 화면이 잡는 표면. 턴·저장·취소·후보·사진·목록·상세·수정·삭제·카드가 전부 실물이다(mock 없음). |
 | `chat/ChatScreen.tsx` | **캡처 화면** — 발화 → 응답 → 폼 → [저장]/[취소]. 사진 첨부는 전송 전 스트립·전송 후 말풍선으로 보이고, 입력창은 줄바꿈을 지원한다(IME 가드 포함). |
 | `chat/DraftForm.tsx` | **작성 폼** — 대화 흐름 안에 카드로 앉는다. 출처 배지(`(사진)`/`(검색)`), 수정 모드의 잠금(`readOnly` — 값이 읽히고 복사되어야 하므로 `disabled`가 아니다), 수정 모드에서만 열리는 날짜 입력. |
-| `chat/MatchBadge.tsx` | **매칭 배지 + 변경 시트** — 에이전트의 판정을 사용자가 뒤집는 자리(배지 전체가 탭 영역). 후보 고르기는 2걸음(노트 → 엔트리). |
+| `chat/MatchBadge.tsx` | **매칭 배지 + 변경 시트** — 에이전트의 판정을 사용자가 뒤집는 자리(배지 전체가 탭 영역). 후보 고르기는 2걸음(노트 → 시음일). |
 | `chat/draftEdits.ts` | 폼 편집 = `Draft`의 불변 갱신. 값 변환 규칙 자체는 `formValues.ts`가 소유한다. |
 | `formValues.ts` | **여기 사는 유일한 규칙**: 폼에서 고친 출처 표시 필드는 출처가 `user`가 된다. 캡처 폼과 수정 폼이 **같은 규칙**을 써야 하므로 어느 한 화면에 두지 않는다. |
 | `gallery/GalleryScreen.tsx` · `FilterBar.tsx` · `noteQuery.ts` | **갤러리** — 사진 썸네일 그리드 + 검색창 + 필터 4축(로스터리·가공방식·원산지·평가) + 무한 스크롤. 사진이 없는 칸은 시안의 사선 패턴이 배경이 된다. |
 | `detail/DetailScreen.tsx` · `share.ts` | **상세** — 노트 전문 + 회차별 레시피·감상 + 그날의 사진. **여기서 나가는 유일한 산출은 카드**이고, 공유는 `navigator.canShare({files})` 성공 시 공유 시트·아니면 다운로드 폴백이다. |
-| `edit/EditScreen.tsx` · `noteEdits.ts` | **수정·삭제 화면** — 저장된 노트를 필드 단위로 고친다. *델타의 결론이 이 화면이다*: 로스터리를 고치는 데 필요한 것이 입력 필드 하나뿐이고, 자연어 인코딩도 동일성 판정도 없다. 저장은 메타·엔트리 두 요청으로 갈린다. |
+| `edit/EditScreen.tsx` · `noteEdits.ts` | **수정·삭제 화면** — 저장된 노트를 필드 단위로 고친다. *델타의 결론이 이 화면이다*: 로스터리를 고치는 데 필요한 것이 입력 필드 하나뿐이고, 자연어 인코딩도 동일성 판정도 없다. 저장은 메타·시음일 두 요청으로 갈린다. |
 
 ---
 
@@ -471,9 +471,9 @@ flowchart TB
     F -->|아니오 — 기존 노트| H
     G --> H["invalidateCards — 쓰기 «전»에 그 노트 카드 전부 삭제"]
     H --> I[NoteTxService.commit — @Transactional<br/>V-9 커피명 불변 · V-13 별칭 축적 · ADR-4 병합]
-    I --> J{같은 날짜 엔트리가 있나?}
-    J -->|예| K[그날 엔트리에 회차 병합 — 엔트리 수 불변]
-    J -->|아니오| L[엔트리 추가]
+    I --> J{같은 날짜 시음일이 있나?}
+    J -->|예| K[그날 시음일에 회차 병합 — 시음일 수 불변]
+    J -->|아니오| L[시음일 추가]
     K --> M[(PostgreSQL)]
     L --> M
     M --> N[PhotoStore.commit<br/>스테이징 → photos/노트폴더/date/]
@@ -513,13 +513,13 @@ flowchart TB
     A2["채팅: «어제 마신 첼베사 평가 낮춰줘»<br/>→ 수정 모드 폼(match.type=edit)"] --> M
     M[noteEdits.ts — 요청 본문 조립]
     M -->|메타| P1["PATCH /api/notes/{id}<br/>coffeeName 필드 자체가 없다 — V-9 구조 차단"]
-    M -->|엔트리| P2["PATCH /api/notes/{id}/entries/{date}<br/>경로 date=대상 · 본문 date=결과"]
+    M -->|시음일| P2["PATCH /api/notes/{id}/tasting-days/{date}<br/>경로 date=대상 · 본문 date=결과"]
     P1 --> S[NoteService — invalidateCards 후 위임]
     P2 --> S
     S --> T[NoteTxService — @Transactional]
     T --> U{날짜가 바뀌었나?}
-    U -->|아니오| V[그 엔트리의 회차 교체]
-    U -->|예| W{이동처에 엔트리가 있나?}
+    U -->|아니오| V[그 시음일의 회차 교체]
+    U -->|예| W{이동처에 시음일이 있나?}
     W -->|아니오| X[tasted_on UPDATE + 사진 행·폴더 이동]
     W -->|예| Y["그날의 회차 뒤로 «병합»<br/>(덮어쓰기 아님 — ADR-82) + 사진 이동"]
     V --> Z[(PostgreSQL)]
@@ -536,11 +536,11 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-    A["상세의 [공유] → GET /api/notes/{id}/entries/{date}/card?type&n"] --> B[CardController]
-    B --> C[NoteRenderer.entryCard]
+    A["상세의 [공유] → GET /api/notes/{id}/tasting-days/{date}/card?type&n"] --> B[CardController]
+    B --> C[NoteRenderer.tastingDayCard]
     C --> D{캐시에 있나?}
     D -->|히트 ~0.03s| E[JPG 응답]
-    D -->|미스 ~4.7s| F["그 엔트리의 카드 «전부» 굽기<br/>Thymeleaf 조판 → Chromium 래스터화"]
+    D -->|미스 ~4.7s| F["그 시음일의 카드 «전부» 굽기<br/>Thymeleaf 조판 → Chromium 래스터화"]
     F --> G[(artifact/cards/ — 캐시)] --> E
     E --> H["share.ts — navigator.share(files)<br/>불가하면 download 폴백"]
 
@@ -602,7 +602,7 @@ flowchart TB
 | `EvalCase` | record | 케이스 1건의 인메모리 표현 — `origin`(어느 관측에서 왔는가·필수)·`today`(instant 고정)·발화 시퀀스·초기 상태·기대 계약. id는 **폴더명이 소유**한다. |
 | `EvalCaseLoader` | class | `<cases-dir>/<id>/case.yaml` 스캔·파싱·검증. **검증이 본체다** — 모르는 필드·빈 기대·모순된 기대·실재하지 않는 픽스처 참조를 사유와 함께 터뜨려 "아무것도 단언하지 않는 케이스가 조용히 통과하는" 초록 거짓말을 끊는다. |
 | `EvalCaseFormatException` | exception | 케이스 스키마 위반 신호 — 케이스 id + 필드 경로 + 사유(bare rejection 금지). 실패 메시지가 곧 포맷 문서다. |
-| `EvalPath` | class | 단언 경로(`entries[0].brews[0].recipe.grind`) 파서 — 필드 하강 + 배열 인덱스만. 오타가 "매치 없음"으로 넘어가지 않고 로더에서 터진다. |
+| `EvalPath` | class | 단언 경로(`tasting_days[0].cups[0].recipe.grind`) 파서 — 필드 하강 + 배열 인덱스만. 오타가 "매치 없음"으로 넘어가지 않고 로더에서 터진다. |
 | `EvalHarness` | class | 조립·실행부 — 케이스 1회분 협력자를 엮어 발화를 순차 주입하고 사후 상태(`Run`)를 캡처한다. `Settings`가 프로덕션 기본값을 한 곳에 복제해 드리프트를 눈에 보이게 둔다. |
 | `EvalJudge` | class | `Run` 하나만 보고 위반 **사유 문자열 목록**을 만든다(첫 실패에서 멈추지 않는다 — 실 API 비용이 드는 하네스에서 재실행이 제일 비싸다). |
 | `EvalFakes` | class | 대체물 모음 — 접촉되면 안 되는 협력자는 stub이 아닌 빈 구현이라 접촉 즉시 드러난다. |
@@ -654,7 +654,7 @@ flowchart TB
 | `TurnProposalEnricher` / `SearchClient` | **대응 없음** | ③ 현행 유지 | 루프 밖에서 반드시 도는 조건부 보강 단계(ADR-84) — 모델 재량 tool이 아니라는 것이 요점이다. |
 | `TastingDateDetector` | **대응 없음** | ③ 현행 유지 | 결정론 날짜 탐지(하네스 엔지니어링). |
 | `UtteranceSegmenter` / `OpenAiUtteranceSegmenter` | **대응 없음** | ③ 현행 유지 | 다중 날짜 발화의 루프 전 분해 콜(ADR-61). |
-| `RecordProposalValidator` + 규칙 패밀리(`SourceRules`·`BrewRules`) | **대응 없음** | ③ 현행 유지 | 제안 서버 검증 — 커밋 게이트 하네스(ADR-45·80). |
+| `RecordProposalValidator` + 규칙 패밀리(`SourceRules`·`CupRules`) | **대응 없음** | ③ 현행 유지 | 제안 서버 검증 — 커밋 게이트 하네스(ADR-45·80). |
 | `TurnPhotoOcr` / `PhotoInfoExtractor` / `VisionClient` | **대응 없음** | ③ 현행 유지 | OCR 루프 전 전처리(ADR-23). "tool이 아닌 결정론 전처리"라는 구조 자체가 모카 고유. |
 | `AgentSystemPrompt`·`TranscriptTurn`·`AgentException`·`TurnDraft` 등 | **대응 없음** | ③ 현행 유지 | 모카 고유 하네스·값객체 — 개명 비대상. |
 
@@ -668,10 +668,10 @@ flowchart TB
 |---|---|---|
 | `note` | 커피 1종 — 커피명·로스터리·로스팅(+각 `_source`), 공식 노트 출처, 정규화 컬럼 2종, 감사 컬럼 4종 | PK `id` BIGSERIAL |
 | `note_bean` · `note_official_note` · `note_alias` · `note_source` | 원두 구성 · 공식 노트 · 별칭 · 참조 링크 | `UNIQUE(note_id, seq)` / `UNIQUE(note_id, kind, normalized)` |
-| `entry` | 날짜별 시음 기록 | **`UNIQUE(note_id, tasted_on)`** — V-10을 제약으로 |
-| `brew` | 회차 | **`UNIQUE(entry_id, seq)`** — 회차 번호를 컬럼이 소유 |
-| `recipe` · `tasting` | 회차의 레시피 · 감상 | PK `brew_id`(1:1 표현) · `CHECK(> 0)` V-8 · rating 4범주 CHECK V-1 |
-| `note_photo` | 아카이브 사진의 색인 | 참조 축 `(note_id, tasted_on)` — 엔트리 id가 아니다(ADR-79) |
+| `tasting_day` | 날짜별 시음 기록 | **`UNIQUE(note_id, tasted_on)`** — V-10을 제약으로 |
+| `cup` | 회차 | **`UNIQUE(tasting_day_id, seq)`** — 회차 번호를 컬럼이 소유 |
+| `recipe` · `review` | 회차의 레시피 · 감상 | PK `cup_id`(1:1 표현) · `CHECK(> 0)` V-8 · rating 4범주 CHECK V-1 |
+| `note_photo` | 아카이브 사진의 색인 | 참조 축 `(note_id, tasted_on)` — 시음일 id가 아니다(ADR-79) |
 
 > **FK 제약은 걸지 않는다**(ADR-75) — 참조 무결성과 삭제 전파를 애플리케이션이 전담하고, 그래서 **테스트가 유일한 안전망**이다(AC-Δ8). 접근은 전부 `NoteTxService` → `NoteEntityRepository`를 지난다.
 
@@ -681,7 +681,7 @@ flowchart TB
 |---|---|---|
 | `data/photos/.staging/<userId>/` | 노트 미확정 사진 임시 보관(EXIF 제거 후) | `LocalPhotoStore` ← `PhotoService` |
 | `data/photos/<노트폴더>/<date>/` | 확정 사진 아카이브 — 갤러리·상세가 `/api/photos/**`로 읽는다 | `LocalPhotoStore` ← `NoteService`, `WebConfig`(서빙) |
-| `artifact/cards/<노트폴더>/<date>-taste-<n>.jpg` | 회차 감상 카드(4:5 JPG) — **캐시** | `ThymeleafNoteRenderer` + `PlaywrightCardImageRenderer` / 삭제는 `NoteService` |
+| `artifact/cards/<노트폴더>/<date>-review-<n>.jpg` | 회차 감상 카드(4:5 JPG) — **캐시** | `ThymeleafNoteRenderer` + `PlaywrightCardImageRenderer` / 삭제는 `NoteService` |
 | `artifact/cards/<노트폴더>/<date>-recipe-<n>.jpg` | 회차 레시피 카드 | 〃 |
 | `artifact/fonts/`, `artifact/mascot-face.png` | 렌더 로컬 자산(CDN 미의존) | `ThymeleafNoteRenderer` |
 | `build/frontend/` → jar의 `static/` | 프론트 번들 — `./gradlew build`가 함께 굽는다 | Vite(빌드) / `WebConfig`(서빙) |
@@ -698,8 +698,8 @@ flowchart TB
 | `GET /api/notes/candidates` | 매칭 후보 검색 | `note-candidates.contract.json` |
 | `GET /api/notes/{id}` | 상세 — 노트 전문 + 날짜별 사진 | `note-detail.contract.json` |
 | `PATCH /api/notes/{id}` | 노트 메타 수정(커피명 필드 없음 — V-9) | `note-update.contract.json` |
-| `PATCH /api/notes/{id}/entries/{date}` | 엔트리 회차 교체 + 날짜 이동(충돌 시 회차 병합) | 〃 |
+| `PATCH /api/notes/{id}/tasting-days/{date}` | 시음일 회차 교체 + 날짜 이동(충돌 시 회차 병합) | 〃 |
 | `DELETE /api/notes/{id}` | 노트 삭제(행·사진·카드까지) | 〃 |
-| `GET /api/notes/{id}/entries/{date}/card?type&n` | 회차 카드 온디맨드(캐시 미스면 그 엔트리 전부) | `note-card.contract.json` |
+| `GET /api/notes/{id}/tasting-days/{date}/card?type&n` | 회차 카드 온디맨드(캐시 미스면 그 시음일 전부) | `note-card.contract.json` |
 | `GET /api/photos/**` | 아카이브 사진 서빙 | — (`WebConfig`) |
 | 그 밖의 경로 | SPA — 실재 파일이면 그대로, 아니면 `index.html` fallback | — (`WebConfig`) |

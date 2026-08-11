@@ -125,7 +125,7 @@ mocha:
     # 값은 templates/<theme>/ 폴더명이자 렌더 선택자다. 미설정 시 코드 default = type-a(세리프 — ADR-54).
     theme: type-a
   card:
-    # 시음 엔트리 카드 이미지(JPG) 뷰포트 (ref: plan.md#ADR-10/ADR-11 §5). 인스타 4:5 = 1080×1350.
+    # 시음일 카드 이미지(JPG) 뷰포트 (ref: plan.md#ADR-10/ADR-11 §5). 인스타 4:5 = 1080×1350.
     # 비율(4:5) 자체는 상수 — 설정 키로 바꾸지 않는다. width/height는 고해상도 배수 대응용 크기 파라미터일 뿐.
     width: 1080
     height: 1350

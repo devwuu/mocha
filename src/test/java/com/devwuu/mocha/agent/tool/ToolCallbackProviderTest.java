@@ -182,7 +182,7 @@ class ToolCallbackProviderTest {
     // ---- match=edit (TΔ29a, delta 0029 D-14) ----
 
     @Test
-    @DisplayName("TΔ29a: match=edit 통과 — 대상 노트·엔트리가 실존하면 수정 모드 draft가 수거함에 실린다(D-14)")
+    @DisplayName("TΔ29a: match=edit 통과 — 대상 노트·시음일이 실존하면 수정 모드 draft가 수거함에 실린다(D-14)")
     void proposeRecordAcceptsEditMatch() {
         noteService.put(note(12L, "Ethiopia Chelbesa", "FroB", Aliases.empty(), LocalDate.of(2026, 7, 13)));
 
@@ -211,7 +211,7 @@ class ToolCallbackProviderTest {
     }
 
     @Test
-    @DisplayName("TΔ29a: 노트는 있어도 그 날짜 엔트리가 없으면 거부 — 없는 기록을 고치는 폼이 서지 않는다")
+    @DisplayName("TΔ29a: 노트는 있어도 그 날짜 시음일이 없으면 거부 — 없는 기록을 고치는 폼이 서지 않는다")
     void proposeRecordRejectsEditOnMissingTastingDay() {
         noteService.put(note(12L, "Ethiopia Chelbesa", "FroB", Aliases.empty(), LocalDate.of(2026, 7, 13)));
 
@@ -264,7 +264,7 @@ class ToolCallbackProviderTest {
     }
 
     @Test
-    @DisplayName("data-model §3.2: get_note는 노트 전체(엔트리 포함)를 돌려준다")
+    @DisplayName("data-model §3.2: get_note는 노트 전체(시음일 포함)를 돌려준다")
     void getNoteReturnsWholeNote() {
         noteService.put(note(12L, "Ethiopia Chelbesa", "FroB",
                 Aliases.empty(), LocalDate.of(2026, 7, 13)));

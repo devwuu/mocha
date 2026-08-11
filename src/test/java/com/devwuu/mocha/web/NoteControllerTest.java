@@ -180,7 +180,7 @@ class NoteControllerTest {
     }
 
     @Test
-    @DisplayName("TΔ29a/D-14: match=edit 본문은 400 — 수정의 저장 경로는 커밋이 아니라 엔트리 PATCH다")
+    @DisplayName("TΔ29a/D-14: match=edit 본문은 400 — 수정의 저장 경로는 커밋이 아니라 시음일 PATCH다")
     void editModeBodyIsRejectedOnTheCommitPath() throws Exception {
         ObjectNode request = (ObjectNode) contract.get("request");
         ObjectNode edit = mapper.createObjectNode();
@@ -201,7 +201,7 @@ class NoteControllerTest {
     void bodyWithoutTastingDaysIsRejected() throws Exception {
         ObjectNode request = (ObjectNode) contract.get("request");
         ((ObjectNode) request.get("note")).putArray("tasting_days");
-        noteService.failure = new IllegalArgumentException("저장할 시음 엔트리가 없다: noteId=null");
+        noteService.failure = new IllegalArgumentException("저장할 시음일이 없다: noteId=null");
 
         perform(request, status().isBadRequest());
     }
@@ -355,7 +355,7 @@ class NoteControllerTest {
     // ────────────────────────────── GET /api/notes/{id} (TΔ5a·TΔ13a) ──────────────────────────────
 
     @Test
-    @DisplayName("TΔ5a: 상세 응답이 계약 파일과 바이트 단위로 같다 — 출처·엔트리별 사진·회차가 한 번에 대조된다")
+    @DisplayName("TΔ5a: 상세 응답이 계약 파일과 바이트 단위로 같다 — 출처·시음일별 사진·회차가 한 번에 대조된다")
     void noteDetailResponseMatchesTheContract() throws Exception {
         JsonNode expected = load(DETAIL_CONTRACT).get("response");
         noteService.detail = detailOf(expected);
@@ -383,7 +383,7 @@ class NoteControllerTest {
     }
 
     @Test
-    @DisplayName("TΔ5a: 엔트리 없는 노트도 200 — 정상 상태이지 실패가 아니다")
+    @DisplayName("TΔ5a: 시음일 없는 노트도 200 — 정상 상태이지 실패가 아니다")
     void noteWithoutTastingDaysIsStillANote() throws Exception {
         JsonNode expected = load(DETAIL_CONTRACT).get("response_no_tasting_days");
         noteService.detail = detailOf(expected);
@@ -473,7 +473,7 @@ class NoteControllerTest {
     }
 
     @Test
-    @DisplayName("TΔ5b-3/AC-5: 엔트리 수정 — 경로의 date가 대상이고 본문의 date가 결과다")
+    @DisplayName("TΔ5b-3/AC-5: 시음일 수정 — 경로의 date가 대상이고 본문의 date가 결과다")
     void tastingDayUpdateSeparatesTargetDateFromResultDate() throws Exception {
         JsonNode update = load(UPDATE_CONTRACT);
         noteService.updated = detailOf(update.get("response_after_meta"));
@@ -498,7 +498,7 @@ class NoteControllerTest {
         // 대상은 경로, 결과는 본문 — 둘이 다르다는 사실 자체가 "이동"이다(합치는 일은 아래 층의 규칙).
         assertThat(noteService.lastTargetDate).isEqualTo(LocalDate.of(2026, 7, 2));
         assertThat(noteService.lastTastingDay.date()).isEqualTo(LocalDate.of(2026, 6, 28));
-        // 병합 결과를 화면이 따라 계산하지 않는다 — 엔트리 총수 감소·사진 URL의 날짜까지 서버가 답한다.
+        // 병합 결과를 화면이 따라 계산하지 않는다 — 시음일 총수 감소·사진 URL의 날짜까지 서버가 답한다.
         assertThat(mapper.readTree(body)).isEqualTo(expected);
     }
 
@@ -516,7 +516,7 @@ class NoteControllerTest {
     }
 
     @Test
-    @DisplayName("TΔ5b-3/V-15: 회차가 하나도 남지 않는 본문은 400 — 화면에 없는 엔트리 삭제 경로를 만들지 않는다")
+    @DisplayName("TΔ5b-3/V-15: 회차가 하나도 남지 않는 본문은 400 — 화면에 없는 시음일 삭제 경로를 만들지 않는다")
     void tastingDayUpdateWithoutCupsIsRejected() throws Exception {
         ObjectNode empty = (ObjectNode) load(UPDATE_CONTRACT).get("tasting_day_request");
         // 빈 회차(레시피도 감상도 없음)는 V-15 정규화가 드롭한다 — 그 결과가 0건이면 저장할 시음이 없다.
@@ -529,9 +529,9 @@ class NoteControllerTest {
     }
 
     @Test
-    @DisplayName("TΔ5b-3: 대상 엔트리 소실은 404 — 고칠 것이 URL에 없다는 뜻이라 노트 소실과 같은 답이다")
+    @DisplayName("TΔ5b-3: 대상 시음일 소실은 404 — 고칠 것이 URL에 없다는 뜻이라 노트 소실과 같은 답이다")
     void tastingDayUpdateOnMissingTargetIsNotFound() throws Exception {
-        noteService.editFailure = new IllegalStateException("수정 대상 엔트리 소실: 21 2026-01-01");
+        noteService.editFailure = new IllegalStateException("수정 대상 시음일 소실: 21 2026-01-01");
 
         patch("/api/notes/21/tasting-days/2026-01-01", load(UPDATE_CONTRACT).get("tasting_day_request"), status().isNotFound());
     }

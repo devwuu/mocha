@@ -610,7 +610,7 @@ class ProposalValidatorsTest {
                     recordArgs("예가체프", null, TASTED.toString(),
                             new ProposeRecordArgs.MatchArg("edit", null, "2026-07-16")))))
                     .contains("note_id");
-            // date는 "고칠 엔트리"의 키다 — 추측으로 메우면 사용자가 보지 못한 회차가 갈린다(TΔ28a).
+            // date는 "고칠 시음일"의 키다 — 추측으로 메우면 사용자가 보지 못한 회차가 갈린다(TΔ28a).
             assertThat(rejectionOf(validateRecord(
                     recordArgs("예가체프", null, TASTED.toString(),
                             new ProposeRecordArgs.MatchArg("edit", "12", null)))))

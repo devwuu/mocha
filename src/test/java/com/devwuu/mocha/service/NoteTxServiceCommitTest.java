@@ -105,7 +105,7 @@ class NoteTxServiceCommitTest extends PostgresIntegrationTest {
     // ─────────────────────── 병합 정책 이관 (AC-Δ1) ───────────────────────
 
     @Test
-    @DisplayName("AC-14: 같은 날 재기록 시 엔트리 수 불변(갱신만) — 이관: JsonFileNoteRepositoryTest")
+    @DisplayName("AC-14: 같은 날 재기록 시 시음일 수 불변(갱신만) — 이관: JsonFileNoteRepositoryTest")
     void sameDayUpsertKeepsSingleTastingDay() {
         long noteId = seed(tastingDay(day(10), "새콤하고 좋았다"));
 
@@ -113,7 +113,7 @@ class NoteTxServiceCommitTest extends PostgresIntegrationTest {
         assertThat(note.tastingDays()).hasSize(1);
         assertThat(tasteOf(note.tastingDays().getFirst())).isEqualTo("오늘은 좀 밍밍");
 
-        // DB에서 다시 읽어도 1건 — 옛 엔트리 행이 남아 있으면 여기서 2건이 된다.
+        // DB에서 다시 읽어도 1건 — 옛 시음일 행이 남아 있으면 여기서 2건이 된다.
         em.clear();
         assertThat(repo.findById(noteId).orElseThrow().tastingDays()).hasSize(1);
 
@@ -125,7 +125,7 @@ class NoteTxServiceCommitTest extends PostgresIntegrationTest {
     }
 
     @Test
-    @DisplayName("ADR-59/AC-14: 같은 날 회차 append — 에이전트 구성 배열로 통째 교체, 엔트리 수 불변·회차 증가")
+    @DisplayName("ADR-59/AC-14: 같은 날 회차 append — 에이전트 구성 배열로 통째 교체, 시음일 수 불변·회차 증가")
     void sameDayCommitAppendsCupRound() {
         Cup first = new Cup(
                 new Recipe("핸드드립", 15.0, 240.0, null, 160.0, 92.0, 210.0, "매버릭 2.0", null,
@@ -171,7 +171,7 @@ class NoteTxServiceCommitTest extends PostgresIntegrationTest {
     }
 
     @Test
-    @DisplayName("ADR-75: 엔트리 교체가 하위 행을 남기지 않는다 — FK가 없어 고아는 조용히 쌓인다")
+    @DisplayName("ADR-75: 시음일 교체가 하위 행을 남기지 않는다 — FK가 없어 고아는 조용히 쌓인다")
     void tastingDayReplacementLeavesNoOrphanRows() {
         // 교체는 삭제 후 재삽입이고, 그 삭제는 코드가 순서를 지고 있다(review·recipe → cup → tastingDay).
         // 한 단이라도 빠지면 DB는 아무 말도 하지 않고 재저장마다 고아가 늘어난다 — 여기가 유일한 안전망이다.
@@ -194,7 +194,7 @@ class NoteTxServiceCommitTest extends PostgresIntegrationTest {
     }
 
     @Test
-    @DisplayName("AC-13: 다른 날 재기록 시 엔트리 추가 + 날짜 오름차순 — 나중 날짜를 먼저 심어도 정렬된다")
+    @DisplayName("AC-13: 다른 날 재기록 시 시음일 추가 + 날짜 오름차순 — 나중 날짜를 먼저 심어도 정렬된다")
     void differentDayAppendsSortedByDate() {
         long noteId = seed(tastingDay(day(10), "10일"));
 
@@ -372,7 +372,7 @@ class NoteTxServiceCommitTest extends PostgresIntegrationTest {
     }
 
     @Test
-    @DisplayName("AC-Δ3/V-10: 같은 (note_id, tasted_on) 두 번째 행은 UNIQUE가 거부한다 — 하루 2엔트리 금지")
+    @DisplayName("AC-Δ3/V-10: 같은 (note_id, tasted_on) 두 번째 행은 UNIQUE가 거부한다 — 하루 2시음일 금지")
     void violationV10IsRejectedByUnique() {
         long noteId = seed(tastingDay(day(10), "10일"));
 
@@ -418,7 +418,7 @@ class NoteTxServiceCommitTest extends PostgresIntegrationTest {
         return repo.commit(null, fullMeta(), tastingDay, Aliases.empty()).id();
     }
 
-    /** 감사 컬럼을 거치지 않고 엔트리 행을 직접 넣는다 — psql 직접 편집 대역(AC-Δ3). */
+    /** 감사 컬럼을 거치지 않고 시음일 행을 직접 넣는다 — psql 직접 편집 대역(AC-Δ3). */
     private int insertTastingDayRow(long noteId, String tastedOn) {
         return nativeQuery("""
                         INSERT INTO %s.tasting_day (note_id, tasted_on, created_at, created_by, modified_at, modified_by)

@@ -222,7 +222,7 @@ class LocalPhotoStoreTest {
     }
 
     @Test
-    @DisplayName("TΔ3(0014): 원본 폴더가 없으면 아무 일도 하지 않는다(사진 없이 날짜만 이동한 엔트리) — no-op")
+    @DisplayName("TΔ3(0014): 원본 폴더가 없으면 아무 일도 하지 않는다(사진 없이 날짜만 이동한 시음일) — no-op")
     void moveTastingDayPhotosNoOpWhenSourceAbsent() {
         // 예외 없이 조용히 통과하고, 대상 폴더를 새로 만들지도 않는다.
         assertThat(store.moveTastingDayPhotos("yirga", "2026-07-08", "2026-07-09")).isEmpty();

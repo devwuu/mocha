@@ -12,7 +12,7 @@
 - 빌드: Gradle
 - OpenAI 클라이언트, Jackson, Thymeleaf(정적 HTML 생성기 용법)
 - **Spring MVC(REST) + React/TypeScript/Vite 프론트**(ADR-78, changes/0029) — 한 저장소·한 프로세스이고 `./gradlew build`가 프론트를 함께 굽는다. 구 Slack SDK(Socket Mode)는 TΔ16에서 제거됐다.
-- **PostgreSQL + Spring Data JPA(+ QueryDSL) + Flyway** (ADR-73, changes/0028). 노트·엔트리·회차·**사진 색인(`note_photo`)**은 DB 행으로 산다(`pending_note`는 changes/0029 TΔ4에서 DROP — plan ADR-80). 로컬은 `docker-compose.yml`의 컨테이너 하나이고, 접속 3종은 `MOCHA_DB_*` 환경변수로 덮는다.
+- **PostgreSQL + Spring Data JPA(+ QueryDSL) + Flyway** (ADR-73, changes/0028). 노트·시음일·회차·**사진 색인(`note_photo`)**은 DB 행으로 산다(`pending_note`는 changes/0029 TΔ4에서 DROP — plan ADR-80). 로컬은 `docker-compose.yml`의 컨테이너 하나이고, 접속 3종은 `MOCHA_DB_*` 환경변수로 덮는다.
   - **스키마 소유권은 Flyway 단독**이다. `ddl-auto: validate`이므로 Hibernate는 스키마를 만들지 않고 대조만 한다 — 컬럼·타입을 바꾸려면 엔티티가 아니라 **마이그레이션 파일이 먼저**다. 파일명은 델타 번호와 대응시킨다(`V2__0029_....sql`, Q-10).
   - 파일에 남는 것은 **사진 아카이브와 업로드 스테이징뿐**이다(`mocha.data.dir` 아래). 노트 JSON·pending 파일은 소멸했고, 구 photo buffer(Slack 배관)는 0029 TΔ16에서 사라졌다. `artifact/cards/`는 산출이 아니라 **캐시**다(ADR-81 — 공유 요청이 채우고 쓰기가 비운다).
 - 그 밖의 인프라(캐시·메시지큐·검색엔진·웹서버 등)를 임의로 추가하지 않는다 — 필요해지면 spec 델타로 먼저 결정한다(루트 §4 right-sizing). DB도 그 절차를 거쳐 들어왔다(changes/0028).
@@ -41,7 +41,7 @@ DB가 유일한 원본이고 프로세스는 하나다. 매체가 파일에서 D
 
 - **DB = source of truth, 카드 JPG = 파생물.** 렌더러는 DB 외 어떤 상태도 읽지 않는다. 파생물은 언제든 전체 재생성 가능해야 한다 (ref: plan.md#ADR-1 개정본·#ADR-73).
 - **트랜잭션 안에서 외부 호출(LLM·검색·파일)을 하지 않는다.** 결과값만 들고 쓰기 구간에 들어간다. 파일 시절보다 강한 요구다 — 외부 지연이 **커넥션을 점유**하고, 롤백은 이미 지불된 LLM 과금이나 이미 옮겨진 사진 파일을 되돌리지 못한다 (Q-11, plan.md §7).
-- **트랜잭션 경계는 tx-service가 소유한다** (changes/0029 ADR-77 — 구 소유자는 저장소 구현체였고, 이름만 바뀐 같은 자리다). `NoteTxService`의 공개 메서드 하나가 한 트랜잭션이고, 노트 행·배열 4종·엔트리·회차·레시피·감상이 **전부 심기거나 전부 안 심긴다**. 상위 계층(controller·service·tool)에 `@Transactional`을 걸어 경계를 늘리지 않는다 — 늘리는 순간 위 규칙(외부 호출 금지)이 지켜질 수 없는 구간이 생긴다.
+- **트랜잭션 경계는 tx-service가 소유한다** (changes/0029 ADR-77 — 구 소유자는 저장소 구현체였고, 이름만 바뀐 같은 자리다). `NoteTxService`의 공개 메서드 하나가 한 트랜잭션이고, 노트 행·배열 4종·시음일·회차·레시피·감상이 **전부 심기거나 전부 안 심긴다**. 상위 계층(controller·service·tool)에 `@Transactional`을 걸어 경계를 늘리지 않는다 — 늘리는 순간 위 규칙(외부 호출 금지)이 지켜질 수 없는 구간이 생긴다.
   - **이 규칙이 계층으로 강제된다**: 외부 콜은 service에만 있고 트랜잭션은 그 아래에서만 열린다. 규칙을 어기려면 층을 건너뛰어야 하므로 리뷰에서 눈에 띈다.
 - **DB 쓰기와 파일 쓰기는 같은 원자 단위가 아니다.** 사진은 파일에 남으므로 노트 커밋은 섰는데 사진 이동이 실패하는 조합이 실재한다 — 그때 노트를 되돌리지 않고 사진은 스테이징에 남아 시작 시 고아 청소가 걷는다(ADR-29, plan.md §7). 새로 이런 조합을 만들면 **어느 쪽을 정본으로 삼을지 먼저 정한다.**
 - **파일 쓰기는 여전히 원자적으로.** 사진은 임시 파일에 쓴 뒤 move(replace)로 반영한다. 프로세스가 쓰기 도중 죽어도 원본이 깨지지 않아야 한다.
@@ -51,7 +51,7 @@ DB가 유일한 원본이고 프로세스는 하나다. 매체가 파일에서 D
 ## 4. 코딩 컨벤션
 
 - **POLICY 주석**: 비즈니스 결정·제약은 `// POLICY: <내용> (ref: specs/coffee-note-agent/<doc>#<항목>)` 형태로 코드에 남긴다. spec의 어느 결정에서 왔는지 추적 가능하게 한다.
-- **DTO/값객체는 record 우선.** Note/Entry 등 도메인 모델도 불변 우선.
+- **DTO/값객체는 record 우선.** Note/TastingDay 등 도메인 모델도 불변 우선.
 - **도메인 로직은 service/domain에.** 전송 계층(`web/` 컨트롤러)은 얇게.
 - **외부 호출(LLM·검색)에는 실패 처리·재시도**를 둔다. 타임아웃·예외를 삼키지 않는다. 실패 모드는 spec이 정의한 응답(plan.md §7)으로 수렴시킨다.
 - **설정 키는 `mocha.*` + 코드 default.** `@Value("${mocha...:기본값}")` 등으로 미설정 프로파일에서도 안전하게 구동되게 한다.
@@ -65,7 +65,7 @@ DB가 유일한 원본이고 프로세스는 하나다. 매체가 파일에서 D
 ### 5.1 수용 기준(AC) 기반
 - spec의 각 **AC**와 **POLICY**는 최소 하나의 테스트로 대응시킨다.
 - 테스트 이름·주석에 대응 spec 항목을 명시한다.
-  예: `@DisplayName("AC-14: 같은 날 재기록 시 엔트리 수 불변")`, `// covers POLICY: source=user 필드 불변`
+  예: `@DisplayName("AC-14: 같은 날 재기록 시 시음일 수 불변")`, `// covers POLICY: source=user 필드 불변`
 - AC/POLICY가 추가되면 대응 테스트도 추가한다. spec 변경 시 어떤 테스트가 깨지는지로 영향 범위가 드러나게 한다.
 
 ### 5.2 계층별 전략

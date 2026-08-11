@@ -73,7 +73,7 @@ class CupRulesSmokeTest {
     /** AC-Δ2(TΔ3d) — 두 날짜 발화 + 세그먼트 컨텍스트 → 이른 날짜(07-18) 제안 + 나머지(07-19) 저장 후 이어서 안내 관측. */
     @Test
     void printsSequentialProposalForSegmentedMultiDate() throws Exception {
-        // 기대: 제안 생성 — draft 최신 엔트리 date=2026-07-18(active_date만 제안) + 최종 응답에 07-19를
+        // 기대: 제안 생성 — draft 최신 시음일 date=2026-07-18(active_date만 제안) + 최종 응답에 07-19를
         //       저장 후 이어서 제안하겠다는 안내. 세그먼트는 수동 분할로 대체(결정론·비용 절약) — 실 세그먼터
         //       매핑·실패 경로는 OpenAiUtteranceSegmenterTest가 모킹으로 검증한다(§5.2 어댑터 전략).
         runProposalSmoke("MULTI-DATE SEQUENTIAL PROPOSAL (AC-Δ2)", sampleWhole(), sampleSegments());
@@ -119,7 +119,7 @@ class CupRulesSmokeTest {
         } else {
             List<TastingDay> tastingDays = proposed.get().note().tastingDays();
             TastingDay latest = tastingDays.get(tastingDays.size() - 1);
-            System.out.println("draft 최신 엔트리 date = " + latest.date()
+            System.out.println("draft 최신 시음일 date = " + latest.date()
                     + " (순차 제안 시나리오 기대: active_date=가장 이른 날짜)");
             System.out.println("draft.cups(" + latest.cups().size() + "개) = "
                     + mapper.writeValueAsString(latest.cups()));

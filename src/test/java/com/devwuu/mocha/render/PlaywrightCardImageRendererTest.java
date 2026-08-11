@@ -116,7 +116,7 @@ class PlaywrightCardImageRendererTest {
                            font-family:'Gowun Dodum',sans-serif;
                            display:flex;align-items:center;justify-content:center;font-size:56px;color:#3a2a1a}
                     </style></head>
-                    <body>모카 엔트리 카드 ☕</body></html>
+                    <body>모카 시음일 카드 ☕</body></html>
                     """.formatted(CARD_W, CARD_H);
 
             Path out = baseDir.resolve("cards/ethiopia-yirg/2026-07-11.jpg");

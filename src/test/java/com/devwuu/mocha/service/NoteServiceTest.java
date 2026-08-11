@@ -107,7 +107,7 @@ class NoteServiceTest {
         }
 
         @Test
-        @DisplayName("커밋은 draft의 마지막 엔트리를 아래로 넘긴다 — 노트 메타는 id/엔트리를 뺀 나머지")
+        @DisplayName("커밋은 draft의 마지막 시음일을 아래로 넘긴다 — 노트 메타는 id/시음일을 뺀 나머지")
         void commitPassesLatestTastingDayAndMeta() {
             service.commit(draft(null, "커피", "로스터리"), MatchInfo.newNote());
 
@@ -117,7 +117,7 @@ class NoteServiceTest {
         }
 
         @Test
-        @DisplayName("저장할 시음 엔트리가 없으면 트랜잭션을 열기 전에 거부 — 외부 콜도 나가지 않는다")
+        @DisplayName("저장할 시음일이 없으면 트랜잭션을 열기 전에 거부 — 외부 콜도 나가지 않는다")
         void commitRejectsDraftWithoutTastingDay() {
             Note empty = new Note(null, new Sourced<>("커피", Source.USER), null, List.of(), null, null,
                     Aliases.empty(), List.of(), List.of(), null, null);
@@ -376,7 +376,7 @@ class NoteServiceTest {
             assertThatThrownBy(() -> service.replaceTastingDay(7, day(9), tastingDay()))
                     .isInstanceOf(IllegalStateException.class);
 
-            // 삼키면 "엔트리는 옮겨졌는데 사진은 옛 날짜"가 조용히 남는다 — 이 task가 고치는 그 상태다.
+            // 삼키면 "시음일은 옮겨졌는데 사진은 옛 날짜"가 조용히 남는다 — 이 task가 고치는 그 상태다.
             assertThat(tx.replaces).isZero();
         }
     }
@@ -504,7 +504,7 @@ class NoteServiceTest {
                 null, null, List.of());
     }
 
-    /** 폼 확정 내용 — 이번 시음 엔트리 1건을 실은 Note. {@code id}가 있으면 그 노트에 병합된다. */
+    /** 폼 확정 내용 — 이번 시음일 1건을 실은 Note. {@code id}가 있으면 그 노트에 병합된다. */
     private static Note draft(Long id, String coffeeName, String roastery) {
         NoteMeta meta = meta(coffeeName, roastery);
         return new Note(id, meta.coffeeName(), meta.roastery(), meta.beans(), meta.roastLevel(),

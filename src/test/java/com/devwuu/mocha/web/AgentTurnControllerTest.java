@@ -45,7 +45,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <ul>
  *   <li>필드명(snake_case) — 어긋나면 값이 <b>조용히 사라진다</b>. 이 델타가 없애려는 실패(§1.2)의 경로다.</li>
  *   <li>{@code aliases} 절단(TΔ10 결정) — {@link NoteBody}가 도메인 {@code Note}를 그대로 노출하지 않는다.</li>
- *   <li>중첩 전 구간(출처 표시·원두·엔트리·회차·레시피·감상)의 직렬화·역직렬화</li>
+ *   <li>중첩 전 구간(출처 표시·원두·시음일·회차·레시피·감상)의 직렬화·역직렬화</li>
  * </ul>
  * 를 한꺼번에 답한다.
  *

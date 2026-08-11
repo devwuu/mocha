@@ -67,7 +67,7 @@ class TurnDraftContractTest {
     /**
      * 계약 캡처용 표준 draft — 필드 <b>종류</b>를 빠짐없이 덮는 것이 목적이다: 출처 표시 스칼라
      * ({@code coffee_name}·{@code roastery}·{@code roast_level}), 출처 표시 목록({@code official_notes}),
-     * 원두 배열(V-14), 엔트리·회차·레시피·감상(V-15), 매칭 배지. 값 자체는 아무 의미 없는 고정 픽스처다.
+     * 원두 배열(V-14), 시음일·회차·레시피·감상(V-15), 매칭 배지. 값 자체는 아무 의미 없는 고정 픽스처다.
      * <p>출처는 user·photo·search를 골고루 섞는다 — V-6 대조의 판정 입력이 계약에 실려 나가는지가
      * 이 스냅샷의 실질적 관심사다.
      * <p>캡처본에 {@code aliases}가 보이는 것은 draft가 {@link Note} 그대로이기 때문이다(별도 DTO를 두지

@@ -215,7 +215,7 @@ class AgentSystemPromptTest {
     }
 
     @Test
-    @DisplayName("D-14 (TΔ29b): 수정 제안은 그 엔트리의 회차를 전부 싣는다 — 저장이 배열을 통째로 교체한다")
+    @DisplayName("D-14 (TΔ29b): 수정 제안은 그 시음일의 회차를 전부 싣는다 — 저장이 배열을 통째로 교체한다")
     void encodesFullCupArrayOnEdit() {
         // 이 규칙이 빠지면 실패가 조용하다 — 폼은 온전해 보이고 [저장] 순간 나머지 회차가 사라진다.
         // 근거(통째 교체)를 함께 싣는 것이 ADR-60 사유 정보량 원칙의 프롬프트 측 적용이다.
@@ -227,7 +227,7 @@ class AgentSystemPromptTest {
     @Test
     @DisplayName("D-14/D-12 (TΔ29b): edit의 갈래 구분 — existing과의 분기·날짜 이동·대상 부재 시 되묻기")
     void encodesEditBranchDistinctions() {
-        // existing과 edit은 인자 모양이 같고 뜻이 반대다(회차 추가 ↔ 엔트리 교체) — 모델이 발화의 뜻으로 고른다.
+        // existing과 edit은 인자 모양이 같고 뜻이 반대다(회차 추가 ↔ 시음일 교체) — 모델이 발화의 뜻으로 고른다.
         assertThat(PROMPT).contains("새로 마신 시음을 더하는 것이면 existing(회차 추가)이고");
         // 날짜 이동은 match.date(대상)와 target_date(결과)가 갈리는 자리다(D-12, TΔ28c).
         assertThat(PROMPT).contains("match.date에 원래 날짜를 두고 target_date에 새 날짜를 넣는다");

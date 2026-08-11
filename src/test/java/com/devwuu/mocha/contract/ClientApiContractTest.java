@@ -43,7 +43,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * {@code PATCH /api/notes/&#123;id&#125;/tasting-days/&#123;date&#125;}·{@code DELETE /api/notes/&#123;id&#125;}이고 <b>구현은 TΔ5b</b>다.
  * 여기 박힌 것 중 둘은 규칙의 실행 가능한 형태다: ① 커피명이 <b>필드로 존재하지 않는다</b>(V-9를 검사가
  * 아니라 구조로 막는다 — 구 {@code propose_edit} patch 스키마가 하던 일이고 TΔ1에서 그 tool과 함께
- * 사라졌다) ② <b>날짜 이동 충돌은 덮어쓰기가 아니라 회차 병합</b>이다(delta.md D-12 — 구 V-10은 엔트리가
+ * 사라졌다) ② <b>날짜 이동 충돌은 덮어쓰기가 아니라 회차 병합</b>이다(delta.md D-12 — 구 V-10은 시음일이
  * 하루치 감상 1건이던 시절의 규칙이라 회차 배열 위에서는 그날을 통째로 지우는 뜻이 됐다).
  *
  * <p><b>{@code aliases} 절단은 이 테스트가 소유한다</b>(TΔ2 이월 (b)의 판단 지점, tasks.md TΔ10). draft가
@@ -284,7 +284,7 @@ class ClientApiContractTest {
     }
 
     @Test
-    @DisplayName("TΔ11: 로스터리·최근 시음일은 nullable — 모르는 노트, 엔트리 없는 노트가 있다")
+    @DisplayName("TΔ11: 로스터리·최근 시음일은 nullable — 모르는 노트, 시음일 없는 노트가 있다")
     void candidateAllowsMissingRoasteryAndDate() throws IOException {
         JsonNode candidates = load(NOTE_CANDIDATES_CONTRACT).get("response").get("candidates");
 
@@ -522,7 +522,7 @@ class ClientApiContractTest {
     }
 
     @Test
-    @DisplayName("TΔ13a: 상세 = 노트 전문 + 날짜별 사진 — 사진이 노트가 아니라 엔트리에 붙는다(참조 축 (note_id, tasted_on))")
+    @DisplayName("TΔ13a: 상세 = 노트 전문 + 날짜별 사진 — 사진이 노트가 아니라 시음일에 붙는다(참조 축 (note_id, tasted_on))")
     void detailCarriesTheWholeNoteWithPhotosUnderEachTastingDay() throws IOException {
         JsonNode contract = load(NOTE_DETAIL_CONTRACT);
 
@@ -533,7 +533,7 @@ class ClientApiContractTest {
                     .containsExactly("note_id", "coffee_name", "roastery", "beans", "roast_level",
                             "official_notes", "sources", "tasting_days");
             detail.get("tasting_days").forEach(tastingDay ->
-                    // POLICY: 사진은 note_photo의 참조 축을 그대로 따라 엔트리에 붙는다(TΔ8b, 사용자 확정
+                    // POLICY: 사진은 note_photo의 참조 축을 그대로 따라 시음일에 붙는다(TΔ8b, 사용자 확정
                     //         2026-08-01). 노트 레벨 배열을 따로 두면 히어로와 날짜 섹션이 같은 사진을 두
                     //         자리에서 실어 나른다 — 화면은 이 한 벌에서 둘 다 만든다.
                     assertThat(fieldNames(tastingDay)).containsExactly("date", "cups", "photos"));
@@ -600,12 +600,12 @@ class ClientApiContractTest {
             assertThat(fieldNames(photo)).containsExactly("url");
             urls.add(photo.get("url").stringValue());
         }));
-        assertThat(urls).as("사진 있는 엔트리가 예시에 있어야 히어로 경로가 계약에 드러난다").isNotEmpty();
+        assertThat(urls).as("사진 있는 시음일이 예시에 있어야 히어로 경로가 계약에 드러난다").isNotEmpty();
         urls.forEach(url -> assertThat(url).startsWith(prefix));
     }
 
     @Test
-    @DisplayName("TΔ13a: 엔트리는 날짜 오름차순이고 날짜가 유일 키다(V-3) — 히어로는 마지막 엔트리에서 나온다")
+    @DisplayName("TΔ13a: 시음일은 날짜 오름차순이고 날짜가 유일 키다(V-3) — 히어로는 마지막 시음일에서 나온다")
     void detailTastingDaysAreDateAscendingAndUnique() throws IOException {
         JsonNode contract = load(NOTE_DETAIL_CONTRACT);
 
@@ -643,7 +643,7 @@ class ClientApiContractTest {
     }
 
     @Test
-    @DisplayName("TΔ13a: nullable 지점이 예시에 있다 — 로스터리 없는 노트, 사진 없는 날, 엔트리 없는 노트")
+    @DisplayName("TΔ13a: nullable 지점이 예시에 있다 — 로스터리 없는 노트, 사진 없는 날, 시음일 없는 노트")
     void detailNullablePointsAreInTheExamples() throws IOException {
         JsonNode contract = load(NOTE_DETAIL_CONTRACT);
 
@@ -654,13 +654,13 @@ class ClientApiContractTest {
         assertThat(minimal.get("official_notes").isNull()).isTrue();
         assertThat(minimal.get("sources")).isEmpty();
 
-        // 엔트리 없는 노트 — 정상 상태다(저장 후 엔트리가 지워진 노트). 화면은 빈 목록을 그린다.
+        // 시음일 없는 노트 — 정상 상태다(저장 후 시음일이 지워진 노트). 화면은 빈 목록을 그린다.
         JsonNode noTastingDays = contract.get("response_no_tasting_days");
         assertThat(noTastingDays.get("roastery").isNull())
                 .as("로스터리를 모르는 노트가 예시에 있어야 한다").isTrue();
         assertThat(noTastingDays.get("tasting_days")).isEmpty();
 
-        // 같은 노트 안에서 사진 있는 날과 없는 날이 섞인다 — 히어로 선택이 "첫 엔트리"가 아닌 이유다.
+        // 같은 노트 안에서 사진 있는 날과 없는 날이 섞인다 — 히어로 선택이 "첫 시음일"가 아닌 이유다.
         assertThat(contract.get("response").get("tasting_days"))
                 .anySatisfy(tastingDay -> assertThat(tastingDay.get("photos")).isEmpty())
                 .anySatisfy(tastingDay -> assertThat(tastingDay.get("photos")).isNotEmpty());
@@ -689,7 +689,7 @@ class ClientApiContractTest {
     }
 
     @Test
-    @DisplayName("TΔ13b: 엔트리 수정 본문 = {date, cups} — 경로의 {date}가 대상이고 본문의 date가 결과다")
+    @DisplayName("TΔ13b: 시음일 수정 본문 = {date, cups} — 경로의 {date}가 대상이고 본문의 date가 결과다")
     void tastingDayUpdateSeparatesTargetDateFromResultDate() throws IOException {
         JsonNode contract = load(NOTE_UPDATE_CONTRACT);
 
@@ -703,7 +703,7 @@ class ClientApiContractTest {
                 .map(tastingDay -> tastingDay.get("date").stringValue()).toList();
         String inPlace = contract.get("tasting_day_request").get("date").stringValue();
         String movedTo = contract.get("tasting_day_request_moved").get("date").stringValue();
-        assertThat(inPlace).as("제자리 수정 예시가 실재하지 않는 엔트리를 가리킨다").isIn(storedDates);
+        assertThat(inPlace).as("제자리 수정 예시가 실재하지 않는 시음일을 가리킨다").isIn(storedDates);
         assertThat(movedTo)
                 .as("이동 예시가 없거나 제자리와 같으면 계약이 이동을 표현하지 못한다")
                 .isIn(storedDates).isNotEqualTo(inPlace);
@@ -736,7 +736,7 @@ class ClientApiContractTest {
         JsonNode before = load(NOTE_DETAIL_CONTRACT).get("response");
         JsonNode moved = contract.get("tasting_day_request_moved");
 
-        // 구 V-10(changes/0012)은 이동처 엔트리를 통째 대체했다. 엔트리가 하루치 감상 1건이던 시절의
+        // 구 V-10(changes/0012)은 이동처 시음일을 통째 대체했다. 시음일이 하루치 감상 1건이던 시절의
         // 규칙이라 회차 배열(ADR-59) 위에서는 그날의 N회차를 통째로 지우는 뜻이 된다 — 캡처 경로가 같은
         // 상황에 이미 "회차 append"로 답하고 있고(ADR-4·59), 사용자 의도도 "그날로 옮긴다"이지 "그날을
         // 지운다"가 아니다. 이 단언이 그 개정을 실행 가능한 형태로 박는다.
@@ -746,7 +746,7 @@ class ClientApiContractTest {
         JsonNode source = tastingDayOf(before, contract.get("tasting_day_request").get("date").stringValue());
         List<JsonNode> after = contract.get("response_after_move").get("tasting_days").valueStream().toList();
 
-        // 엔트리 총수는 1 줄어든다(둘이 하나가 된다) — 구 V-10에서 유일하게 살아남은 부분이다.
+        // 시음일 총수는 1 줄어든다(둘이 하나가 된다) — 구 V-10에서 유일하게 살아남은 부분이다.
         assertThat(after).hasSize(before.get("tasting_days").size() - 1);
         JsonNode mergedTastingDay = after.getFirst();
         assertThat(mergedTastingDay.get("date")).isEqualTo(moved.get("date"));
@@ -808,7 +808,7 @@ class ClientApiContractTest {
         // 저장된 기록을 딛으므로 노트 식별자가 두 자리에서 같아야 한다 — 갈리면 "이 노트의 이 날짜"가
         // 두 가지를 뜻하게 된다(new는 note.id가 null인 것과 대비된다).
         assertThat(draft.get("note").get("id")).isEqualTo(match.get("note_id"));
-        // 폼이 담는 엔트리가 곧 고칠 대상이다 — 폼의 단위가 엔트리 1건이라 그 밖의 날짜는 실릴 자리가 없다.
+        // 폼이 담는 시음일이 곧 고칠 대상이다 — 폼의 단위가 시음일 1건이라 그 밖의 날짜는 실릴 자리가 없다.
         List<String> dates = draft.get("note").get("tasting_days").valueStream()
                 .map(tastingDay -> tastingDay.get("date").stringValue()).toList();
         assertThat(dates).containsExactly(match.get("date").stringValue());
@@ -848,7 +848,7 @@ class ClientApiContractTest {
     }
 
     @Test
-    @DisplayName("TΔ28b: 수정 모드의 [저장]은 커밋이 아니라 엔트리 PATCH로 나간다 — 회차를 늘리지 않는다(AC-13)")
+    @DisplayName("TΔ28b: 수정 모드의 [저장]은 커밋이 아니라 시음일 PATCH로 나간다 — 회차를 늘리지 않는다(AC-13)")
     void editModeSavesThroughTheTastingDayPatchInsteadOfTheCommit() throws IOException {
         JsonNode turn = load(AGENT_TURN_CONTRACT);
         JsonNode update = load(NOTE_UPDATE_CONTRACT);
@@ -870,13 +870,13 @@ class ClientApiContractTest {
     }
 
     @Test
-    @DisplayName("TΔ28b: 수정 모드 폼 → 엔트리 PATCH 본문 — my_taste_original만 떨어진다(V-11 뒷문장)")
+    @DisplayName("TΔ28b: 수정 모드 폼 → 시음일 PATCH 본문 — my_taste_original만 떨어진다(V-11 뒷문장)")
     void editDraftTastingDayConvertsIntoTheTastingDayPatchBody() throws IOException {
         JsonNode draftTastingDay = load(AGENT_TURN_CONTRACT)
                 .get("response_edit_mode").get("draft").get("note").get("tasting_days").get(0);
         JsonNode body = load(NOTE_UPDATE_CONTRACT).get("tasting_day_request");
 
-        // 본문은 {date, cups}뿐이다 — draft 엔트리의 updated_at은 서버가 쓰는 값이라 실을 자리가 없다.
+        // 본문은 {date, cups}뿐이다 — draft 시음일의 updated_at은 서버가 쓰는 값이라 실을 자리가 없다.
         assertThat(fieldNames(body)).containsExactly("date", "cups");
         assertThat(fieldNames(draftTastingDay)).containsExactly("date", "cups", "updated_at");
 
@@ -906,8 +906,8 @@ class ClientApiContractTest {
         assertThat(update.get("date_conflict").stringValue()).isEqualTo("merge_cups");
 
         // POLICY: 캡처 모드(new·existing)의 날짜는 열지 않는다(사용자 확정 2026-08-02) — 다중 날짜
-        //         분해(ADR-61)로 draft가 엔트리를 여럿 들 수 있어 폼에서 날짜가 겹칠 수 있고, 그때
-        //         서버는 병합이 아니라 UNIQUE(note_id, tasted_on)로 깨진다(V-3). 수정 모드는 엔트리를
+        //         분해(ADR-61)로 draft가 시음일을 여럿 들 수 있어 폼에서 날짜가 겹칠 수 있고, 그때
+        //         서버는 병합이 아니라 UNIQUE(note_id, tasted_on)로 깨진다(V-3). 수정 모드는 시음일을
         //         1건만 담아 그 조합이 성립하지 않는다 — 그것이 두 모드를 가르는 근거다.
         assertThat(turn.get("capture_editable_dates").booleanValue()).isFalse();
 
@@ -928,21 +928,21 @@ class ClientApiContractTest {
         assertThat(contract.get("response_status").intValue()).isEqualTo(204);
     }
 
-    /** 엔트리 본문에서 감상이 실린 첫 회차 — 레시피만 있는 회차는 review가 null이다(V-15). */
+    /** 시음일 본문에서 감상이 실린 첫 회차 — 레시피만 있는 회차는 review가 null이다(V-15). */
     private static JsonNode firstReview(JsonNode tastingDayBody) {
         return tastingDayBody.get("cups").valueStream()
                 .map(cup -> cup.get("review"))
                 .filter(review -> review != null && !review.isNull())
                 .findFirst()
-                .orElseThrow(() -> new AssertionError("엔트리 계약 예시에 감상이 실린 회차가 없다"));
+                .orElseThrow(() -> new AssertionError("시음일 계약 예시에 감상이 실린 회차가 없다"));
     }
 
-    /** 상세 계약 예시에서 그 날짜의 엔트리 — 이동 전/후를 견주는 기준점이다. */
+    /** 상세 계약 예시에서 그 날짜의 시음일 — 이동 전/후를 견주는 기준점이다. */
     private static JsonNode tastingDayOf(JsonNode detail, String date) {
         return detail.get("tasting_days").valueStream()
                 .filter(tastingDay -> tastingDay.get("date").stringValue().equals(date))
                 .findFirst()
-                .orElseThrow(() -> new AssertionError("상세 계약 예시에 " + date + " 엔트리가 없다"));
+                .orElseThrow(() -> new AssertionError("상세 계약 예시에 " + date + " 시음일이 없다"));
     }
 
     /** TΔ2 캡처본에서 {@code note.aliases}만 제거한 draft — 이 델타가 확정한 클라이언트 계약형이다. */

@@ -101,7 +101,7 @@ class NotePhotoMoveIntegrationTest extends PostgresIntegrationTest {
     }
 
     @Test
-    @DisplayName("TΔ5b-2: 사진 없는 엔트리의 날짜 이동은 파일을 만들지도 지우지도 않는다")
+    @DisplayName("TΔ5b-2: 사진 없는 시음일의 날짜 이동은 파일을 만들지도 지우지도 않는다")
     void moveWithoutPhotosTouchesNothing() {
         Note saved = service.commit(draft(null, tastingDay(day(10))), MatchInfo.newNote());
         flushAndClear();

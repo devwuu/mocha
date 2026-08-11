@@ -111,7 +111,7 @@ class DomainSerializationTest {
     @Test
     @DisplayName("AC-Δ1(changes/0014): photos 키가 든 JSON도 오류 없이 로드되고 재저장 시 photos 키가 사라진다")
     void legacyPhotosKeyIgnoredOnRoundTrip() throws Exception {
-        // 사진 아카이브 전용화(ADR-32) 이전에 저장된 엔트리 JSON — photos 배열을 품고 있다.
+        // 사진 아카이브 전용화(ADR-32) 이전에 저장된 시음일 JSON — photos 배열을 품고 있다.
         String legacy = "{\"date\":\"2026-07-10\",\"cups\":[{\"recipe\":null,"
                 + "\"review\":{\"my_taste\":\"새콤\",\"my_taste_original\":\"새콤\",\"rating\":\"맛있다\"}}],"
                 + "\"photos\":[\"photos/coffeevera/2026-07-10/a.jpg\"],\"updated_at\":null}";

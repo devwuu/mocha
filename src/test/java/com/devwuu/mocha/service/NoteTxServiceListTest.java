@@ -81,7 +81,7 @@ class NoteTxServiceListTest extends PostgresIntegrationTest {
     }
 
     @Test
-    @DisplayName("TΔ5a: 엔트리 없는 노트는 맨 뒤다(NULLS LAST) — Postgres 기본값은 DESC에서 FIRST라 명시가 필요하다")
+    @DisplayName("TΔ5a: 시음일 없는 노트는 맨 뒤다(NULLS LAST) — Postgres 기본값은 DESC에서 FIRST라 명시가 필요하다")
     void notesWithoutTastingDaysSortLast() {
         long withoutTastingDays = insert("게뎁 워시드", null);
         long withTastingDays = insert("에티오피아 게뎁", "모모스커피", date(2026, 7, 2));
@@ -93,7 +93,7 @@ class NoteTxServiceListTest extends PostgresIntegrationTest {
     }
 
     @Test
-    @DisplayName("TΔ5a: 엔트리가 여럿이면 가장 최근 날짜가 정렬 키다 — 노트의 위치는 마지막으로 마신 날이 정한다")
+    @DisplayName("TΔ5a: 시음일이 여럿이면 가장 최근 날짜가 정렬 키다 — 노트의 위치는 마지막으로 마신 날이 정한다")
     void latestDateIsTheMaxOfTastingDays() {
         insert("에티오피아 게뎁", "프릳츠", date(2026, 6, 28), date(2026, 7, 2));
         insert("케냐 AA", "커피베라", date(2026, 6, 30));

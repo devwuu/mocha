@@ -32,8 +32,8 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  *       TΔ16에서 삭제됐다. 저장 확정은 {@link com.devwuu.mocha.web.NoteControllerTest}가 가드하고,
  *       카드 배달은 온디맨드 공유로 형태가 바뀌어 TΔ9가 그 자리를 다시 세운다.</li>
  *   <li>~~send_entry_card 재전송~~ — tool이 changes/0029 TΔ1에서 폐기됐다(갤러리·상세 화면이 대체).</li>
- *   <li>하루 엔트리 2개 금지(AC-14) — {@link com.devwuu.mocha.repository.JsonFileNoteRepositoryTest}
- *       (같은 날 재기록 시 엔트리 수 불변)</li>
+ *   <li>하루 시음일 2개 금지(AC-14) — {@link com.devwuu.mocha.repository.JsonFileNoteRepositoryTest}
+ *       (같은 날 재기록 시 시음일 수 불변)</li>
  *   <li>레시피 사용자 발화 전용(보강 금지) — {@link com.devwuu.mocha.agent.prompt.AgentSystemPromptTest}
  *       (recipe 전 필드 발화 전용 규칙)</li>
  *   <li>사진 아카이브 비렌더(ADR-32) — {@link com.devwuu.mocha.render.ThymeleafNoteRendererTest}

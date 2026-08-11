@@ -56,7 +56,7 @@ import java.util.stream.Stream;
  *
  * <p>재현 동일성만으로는 <b>입력이 DB라는 것</b>이 관측되지 않는다 — 아무것도 읽지 않고 상수를 굽는
  * 렌더러도 두 번 같은 산출을 낸다. 그래서 두 번째 테스트가 지운 뒤 DB를 바꾸고, 산출이 그 변경을 따라가는지
- * 본다(추가된 엔트리는 나타나고 삭제된 노트는 되살아나지 않는다).
+ * 본다(추가된 시음일은 나타나고 삭제된 노트는 되살아나지 않는다).
  *
  * <p>카드 자산(마스코트·폰트)은 <b>클래스패스 리소스</b>라 DB에서 오지 않는다. 이것은 예외가 아니라 규칙의
  * 반대편이다 — 자산은 코드와 함께 배포되는 정적 입력이지 기록된 데이터가 아니다. 삭제 후 함께 복원되는지는
@@ -138,7 +138,7 @@ class RerenderFromDatabaseTest extends PostgresIntegrationTest {
                 new FakeCardImageRenderer()).renderAll();
 
         assertThat(cardFiles(artifactDir))
-                .as("DB에 추가된 엔트리는 카드로 나타나고, 삭제된 노트는 폴더째 되살아나지 않는다")
+                .as("DB에 추가된 시음일은 카드로 나타나고, 삭제된 노트는 폴더째 되살아나지 않는다")
                 .containsExactlyInAnyOrder(
                         cardPath(kept, "2026-07-10-review-1.jpg"),
                         cardPath(kept, "2026-07-10-recipe-1.jpg"),

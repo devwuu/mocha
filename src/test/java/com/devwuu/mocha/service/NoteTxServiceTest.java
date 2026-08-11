@@ -95,7 +95,7 @@ class NoteTxServiceTest extends PostgresIntegrationTest {
     }
 
     @Test
-    @DisplayName("TΔ5a: 엔트리 정렬은 질의가 소유한다 — 내림차순으로 심어도 날짜 오름차순으로 돌아온다")
+    @DisplayName("TΔ5a: 시음일 정렬은 질의가 소유한다 — 내림차순으로 심어도 날짜 오름차순으로 돌아온다")
     void tastingDayOrderComesFromQueryNotInsertion() {
         // 날짜 내림차순으로 심는다 — 삽입 순서를 그대로 되돌려주면 여기서 갈린다(Note 계약: 날짜 오름차순).
         Note input = sampleNote(List.of(secondTastingDay(), firstTastingDay()));
@@ -106,7 +106,7 @@ class NoteTxServiceTest extends PostgresIntegrationTest {
 
         assertThat(restored.tastingDays()).extracting(TastingDay::date)
                 .containsExactly(LocalDate.of(2026, 7, 10), LocalDate.of(2026, 7, 12));
-        // 회차는 seq 오름차순 — 첫 엔트리의 두 회차가 뒤집히지 않았다(AC-Δ4의 저장소 쪽 최소 확인).
+        // 회차는 seq 오름차순 — 첫 시음일의 두 회차가 뒤집히지 않았다(AC-Δ4의 저장소 쪽 최소 확인).
         assertThat(restored.tastingDays().getFirst().cups()).extracting(b -> b.recipe().doseG())
                 .containsExactly(15.0, 16.0);
     }
@@ -191,9 +191,9 @@ class NoteTxServiceTest extends PostgresIntegrationTest {
     }
 
     @Test
-    @DisplayName("재정의/CR25-10: 엔트리 0건 노트가 findAll 전체를 마비시키지 않는다 — 곁의 정상 노트도 온전하다")
+    @DisplayName("재정의/CR25-10: 시음일 0건 노트가 findAll 전체를 마비시키지 않는다 — 곁의 정상 노트도 온전하다")
     void zeroTastingDayNoteDoesNotBreakFindAll() {
-        // 파일 시절의 "entries 키 없는 JSON"이라는 형태는 소멸했지만 성질은 남는다 — DB에서 엔트리 0행은
+        // 파일 시절의 "entries 키 없는 JSON"이라는 형태는 소멸했지만 성질은 남는다 — DB에서 시음일 0행은
         // 결손이 아니라 정상 상태이고(삭제 직후가 그렇다), 그 노트가 조립을 지나며 넘어지면 결손 1건이
         // findAll을 통해 조회·매칭·전체 렌더를 통째로 마비시킨다.
         long empty = repo.insert(sampleNote(List.of())).id();

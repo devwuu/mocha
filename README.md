@@ -78,7 +78,7 @@
 **아키텍처**
 
 - **한 프로세스가 API와 화면을 함께 낸다.** `/api/**`는 REST 컨트롤러가 받고(매핑이 없으면 fallback 없이 404), 나머지 경로는 `index.html`로 떨어져 클라이언트 라우터가 해석한다. 프로세스 1개·오리진 1개라 CORS가 애초에 없다.
-- **에이전트 턴은 어떤 행도 쓰지 않는다.** `POST /api/agent/turn`(`{utterance, draft?, photos?}`)이 사진 OCR → 루프 → 제안 수거 → 조건부 검색 보강을 거쳐 `{reply, draft}`를 돌려주고, **작성 중인 폼은 클라이언트가 소유**한다(서버에 확인 대기 상태가 없다). 실제 쓰기는 `POST /api/notes`(신규·회차 추가)와 `PATCH /api/notes/{id}`·`/entries/{date}`(수정)뿐이다.
+- **에이전트 턴은 어떤 행도 쓰지 않는다.** `POST /api/agent/turn`(`{utterance, draft?, photos?}`)이 사진 OCR → 루프 → 제안 수거 → 조건부 검색 보강을 거쳐 `{reply, draft}`를 돌려주고, **작성 중인 폼은 클라이언트가 소유**한다(서버에 확인 대기 상태가 없다). 실제 쓰기는 `POST /api/notes`(신규·회차 추가)와 `PATCH /api/notes/{id}`·`/tasting-days/{date}`(수정)뿐이다.
 - **계층 분할 축은 트랜잭션이다**: `Controller → NoteService`(외부 IO 오케스트레이션) `→ NoteTxService`(한 트랜잭션 단위 비즈니스 로직) `→ NoteEntityRepository`(행 입출력). 도메인↔엔티티 변환·조립은 층이 아니라 순수 함수(`NoteEntityMapper`)다.
 - **카드는 요청받은 때 굽는다.** `artifact/cards/`는 산출 디렉터리가 아니라 **캐시**이고, 쓰기 경로는 굽는 대신 **쓰기 전에 무효화**한다. 어느 카드든 DB만으로 다시 만들어진다(`--rerender`가 전체 예열 + 고아 정리).
 - **사진은 파일이 정본, DB 행은 색인이다**(`note_photo`). 업로드가 EXIF를 지워 스테이징에 세우고, 저장 커밋 뒤에 아카이브로 옮기며 색인을 남긴다 — 어느 실패 조합에서도 사진 바이트가 조용히 사라지지 않는 순서다.

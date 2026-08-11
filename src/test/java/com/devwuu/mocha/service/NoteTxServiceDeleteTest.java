@@ -33,6 +33,10 @@ import java.util.List;
 /**
  * TΔ5d (changes/0028-rdb-storage) — {@link NoteTxService#delete} (AC-Δ8).
  *
+ * <p><b>changes/0030 AC-Δ18이 이 자리를 승계한다</b> — 삭제 순서가 {@code recipe}·{@code review} →
+ * {@code cup} → {@code tasting_day} → 배열 4종 → {@code note}로 <b>테이블명만</b> 바뀌었고 안전망은 같다.
+ * 개명이 순서를 흐트러뜨렸다면 아래 «잔존 0» 단언이 먼저 무너진다.
+ *
  * <p>이 테스트가 <b>유일한 안전망</b>이다. FK를 걸지 않기로 했으므로(ADR-75) 하위 단을 하나라도 빠뜨리면
  * DB는 아무 말 없이 고아를 남기고, 조립 경로는 부모를 통해서만 읽어 끊긴 행을 <b>지나쳐 버린다</b> —
  * 즉 도메인으로는 관측되지 않는다(TΔ5b·TΔ5c가 같은 사각을 만났다). 그래서 판정은 도메인이 아니라
@@ -147,7 +151,7 @@ class NoteTxServiceDeleteTest extends PostgresIntegrationTest {
     // ────────────────────────────── 표본·헬퍼 ──────────────────────────────
 
     /**
-     * 8개 하위 테이블에 전부 행이 생기는 노트 하나 — 엔트리 2건 × 회차 2개, 각 회차에 레시피·감상.
+     * 8개 하위 테이블에 전부 행이 생기는 노트 하나 — 시음일 2건 × 회차 2개, 각 회차에 레시피·감상.
      * <p>회차를 둘 두는 것은 {@code cup} 삭제가 한 건만 지우고 나머지를 남기는 갈래를 가르기 위해서다.
      */
     private Note seedFullyPopulated() {

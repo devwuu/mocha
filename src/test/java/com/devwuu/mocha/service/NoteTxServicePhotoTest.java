@@ -73,7 +73,7 @@ class NoteTxServicePhotoTest extends PostgresIntegrationTest {
     @Test
     @DisplayName("TΔ8b: 같은 날짜를 다시 저장하면 사진은 쌓인다 — seq가 이어지고 UNIQUE에 걸리지 않는다")
     void sameDateAccumulatesPhotos() {
-        // 엔트리는 통째로 교체되지만(ADR-4·59) 사진은 아카이브에 그대로 남아 있다 — 지우는 것이
+        // 시음일은 통째로 교체되지만(ADR-4·59) 사진은 아카이브에 그대로 남아 있다 — 지우는 것이
         // 재기록의 뜻이 아니므로 색인도 함께 쌓인다. seq를 0부터 다시 매기면 UNIQUE가 막는다.
         Note saved = seed();
         tx.attachPhotos(saved.id(), day(10), List.of(folderPath(saved, 10, "bag.jpg")));
@@ -178,7 +178,7 @@ class NoteTxServicePhotoTest extends PostgresIntegrationTest {
     @Test
     @DisplayName("D-12 ③: 날짜 이동이 사진 색인을 데리고 간다 — tasted_on과 경로가 함께 새 날짜다")
     void dateMoveCarriesPhotoRows() {
-        // 참조 축이 (note_id, tasted_on)이라 엔트리만 옮기면 사진이 옛 날짜에 남아 어느 화면에도 보이지
+        // 참조 축이 (note_id, tasted_on)이라 시음일만 옮기면 사진이 옛 날짜에 남아 어느 화면에도 보이지
         // 않는다(TΔ8b 이월 (a)). 경로는 계산이 아니라 파일이 실제로 간 자리를 받아 적는다.
         Note saved = seed();
         tx.attachPhotos(saved.id(), day(10), List.of(folderPath(saved, 10, "bag.jpg")));
@@ -233,7 +233,7 @@ class NoteTxServicePhotoTest extends PostgresIntegrationTest {
     @Test
     @DisplayName("TΔ5b-3: 이동을 끝낸 트랜잭션이 사진까지 실어 돌려준다 — 화면이 새 URL을 계산하지 않는다")
     void dateMoveAnswersWithTheMovedPhotos() {
-        // 되읽기를 나눠 부르면 그 사이가 "엔트리는 새 날짜인데 사진은 옛 목록"인 조합을 만든다
+        // 되읽기를 나눠 부르면 그 사이가 "시음일은 새 날짜인데 사진은 옛 목록"인 조합을 만든다
         // (NoteDetail의 근거가 쓰기 뒤에도 그대로 걸린다). 응답이 곧 화면의 새 기준선이다.
         Note saved = seed();
         tx.attachPhotos(saved.id(), day(10), List.of(folderPath(saved, 10, "bag.jpg")));
@@ -278,7 +278,7 @@ class NoteTxServicePhotoTest extends PostgresIntegrationTest {
     // ────────────────────────────── 상세 조회 (TΔ5a) ──────────────────────────────
 
     @Test
-    @DisplayName("TΔ5a: 상세는 노트와 사진을 함께 준다 — 사진이 (노트, 날짜)로 붙어 엔트리에 실린다")
+    @DisplayName("TΔ5a: 상세는 노트와 사진을 함께 준다 — 사진이 (노트, 날짜)로 붙어 시음일에 실린다")
     void detailCarriesPhotosKeyedByDate() {
         Note saved = tx.commit(null, meta(), tastingDay(day(10)), Aliases.empty());
         tx.commit(saved.id(), meta(), tastingDay(day(12)), null);
@@ -289,7 +289,7 @@ class NoteTxServicePhotoTest extends PostgresIntegrationTest {
         NoteDetail detail = tx.findDetail(saved.id()).orElseThrow();
 
         assertThat(detail.note().tastingDays()).extracting(TastingDay::date).containsExactly(day(10), day(12));
-        // 사진 없는 날과 있는 날이 같은 노트 안에 섞인다 — 히어로 선택이 "첫 엔트리"가 아닌 이유다.
+        // 사진 없는 날과 있는 날이 같은 노트 안에 섞인다 — 히어로 선택이 "첫 시음일"가 아닌 이유다.
         assertThat(detail.photosOn()).containsOnlyKeys(day(12));
         assertThat(detail.photosOn().get(day(12)))
                 .containsExactly(folderPath(saved, 12, "bag.jpg"), folderPath(saved, 12, "brew.jpg"));
