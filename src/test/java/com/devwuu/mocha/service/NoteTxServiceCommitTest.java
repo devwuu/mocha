@@ -116,6 +116,12 @@ class NoteTxServiceCommitTest extends PostgresIntegrationTest {
         // DB에서 다시 읽어도 1건 — 옛 엔트리 행이 남아 있으면 여기서 2건이 된다.
         em.clear();
         assertThat(repo.findById(noteId).orElseThrow().tastingDays()).hasSize(1);
+
+        // AC-Δ16(0030): 도메인 단언만으로는 부족하다 — 조립 경로는 부모를 통해서만 읽으므로 note_id가
+        // 끊긴 시음일 행이 남아도 hasSize(1)이 된다(NoteTxServiceDeleteTest가 세운 것과 같은 사각).
+        // 테이블을 직접 세는 것이 «하루 1시음일»의 관측이고, 그 1건성을 DB 제약이 진다는 쪽은
+        // violationV10IsRejectedByUnique가 따로 단언한다 — 애플리케이션 경로와 제약이 짝이다.
+        assertThat(rowCount("tasting_day")).isOne();
     }
 
     @Test

@@ -87,6 +87,32 @@ class NoteTxServicePhotoTest extends PostgresIntegrationTest {
     }
 
     @Test
+    @DisplayName("AC-Δ15(0030): 같은 날 재커밋이 시음일 행을 갈아치워도 사진 색인은 살아남는다 — 축이 (note_id, tasted_on)이라서")
+    void sameDayRecommitKeepsPhotoRows() {
+        // 개명(0030)이 건드리지 않았음을 보여야 하는 자리는 «수정»이 아니라 «재커밋»이다: 수정 경로는
+        // 시음일 행을 갱신하지만(NoteTxServiceEditTest.dateMovePreservesTastingDayRow) 커밋 경로는
+        // 통째 교체라 행을 지우고 다시 넣는다(ADR-4·59, replaceTastingDayRows). 사진이 tasting_day.id를
+        // 참조했다면 바로 여기서 고아가 됐을 것이고, (note_id, tasted_on) 축이라 무사하다(ADR-79).
+        Note saved = seed();
+        tx.attachPhotos(saved.id(), day(10), List.of(
+                folderPath(saved, 10, "bag.jpg"), folderPath(saved, 10, "label.jpg")));
+        flushAndClear();
+        long before = tastingDayId(saved.id(), day(10));
+
+        tx.commit(saved.id(), meta(), tastingDay(day(10)), null);
+        flushAndClear();
+
+        // 재삽입이 실제로 일어났는지부터 본다 — 행이 그대로였다면 아래 단언은 아무것도 검증하지 않는다.
+        assertThat(tastingDayId(saved.id(), day(10)))
+                .as("재커밋이 시음일 행을 새로 발급했다 — 그래야 사진 생존이 «축이 다르다»의 증거가 된다")
+                .isNotEqualTo(before);
+        assertThat(tx.photoPaths(saved.id())).containsExactly(
+                folderPath(saved, 10, "bag.jpg"), folderPath(saved, 10, "label.jpg"));
+        // 경로만 보면 행이 지워졌다 다시 붙은 경우와 안 갈린다 — seq가 0·1 그대로인 것이 «건드리지 않았다»다.
+        assertThat(seqsOn(saved.id(), 10)).containsExactly(0, 1);
+    }
+
+    @Test
     @DisplayName("TΔ8b: 날짜가 다르면 seq는 각자 0부터 — 축이 (노트, 날짜)라는 뜻이다")
     void seqIsScopedToDate() {
         Note saved = seed();
@@ -312,6 +338,11 @@ class NoteTxServicePhotoTest extends PostgresIntegrationTest {
     /** 실제 커밋이 남기는 모양의 상대 경로 — {@code photos/<접미>/<date>/<파일>}(V-4 어휘). */
     private static String folderPath(Note note, int dayOfMonth, String filename) {
         return "photos/" + note.id() + "-커피베라-커피베라 예가체프 G1/2026-07-%02d/".formatted(dayOfMonth) + filename;
+    }
+
+    /** 그 (노트, 날짜)의 시음일 행 id — 재커밋이 행을 갈아치웠는지를 가르는 유일한 관측점이다. */
+    private long tastingDayId(long noteId, LocalDate date) {
+        return notes.findTastingDayId(noteId, date).orElseThrow();
     }
 
     /** 그 (노트, 날짜)의 사진 seq — 네이티브 질의로 행을 직접 본다(조립 경로는 seq를 도메인에 싣지 않는다). */

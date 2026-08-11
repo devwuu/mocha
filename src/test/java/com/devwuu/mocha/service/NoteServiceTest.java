@@ -421,6 +421,23 @@ class NoteServiceTest {
         }
 
         @Test
+        @DisplayName("AC-Δ17(0030): 병합 이동은 이동처 날짜 카드도 걷는다 — 회차가 뒤에 붙어 그날 카드가 낡는다")
+        void mergeMoveInvalidatesBothDatesCards() throws IOException {
+            // 날짜 이동이 충돌하면 덮어쓰기가 아니라 회차 병합이다(V-10·ADR-82). 그러면 낡는 카드가
+            // 옛 날짜 것만이 아니다 — 이동처의 그날 카드도 회차가 하나 늘어난 상태를 모른다.
+            // 무효화가 노트 폴더 통째라 이것이 따라오지만, 날짜별로 골라 지우는 구현으로 바뀌면 여기가 갈린다.
+            Note note = saved(7, "커피", "로스터리", Aliases.empty());
+            tx.put(note);
+            Path source = seedCard(note, "2026-07-09-review-1.jpg");
+            Path destination = seedCard(note, "2026-07-10-recipe-1.jpg");
+
+            service.replaceTastingDay(7, day(9), tastingDay());
+
+            assertThat(source).doesNotExist();
+            assertThat(destination).as("이동처 카드가 살아남았다 — 병합으로 회차가 늘어난 그날의 카드다").doesNotExist();
+        }
+
+        @Test
         @DisplayName("기존 노트 커밋도 무효화한다 — 회차가 붙으면 그 날짜 카드가 낡는다")
         void mergeCommitInvalidatesCards() throws IOException {
             Note note = saved(7, "커피", "로스터리", Aliases.empty());
