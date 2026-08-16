@@ -1,0 +1,46 @@
+# 실사용 프로파일 (ref: specs/coffee-note-agent/changes/0032-dev-prod-data-split/delta.md#ADR-89).
+#
+# 이 앱은 로컬 단일 프로세스로 상주하므로(NFR-1) 개발 실행과 실사용 실행이 같은 머신·같은 Postgres·
+# 같은 파일 루트를 딛는다. 그 둘을 가르는 유일한 장치가 프로파일이고, «실사용 값»의 소유자는 이 파일 하나다.
+#
+# 기동: ./gradlew bootRun --args='--spring.profiles.active=prod'
+#      (카드 전체 재생성: --args='--spring.profiles.active=prod --rerender'
+#       — MochaApplication이 setAdditionalProfiles로 rerender를 «더하므로» 둘이 함께 켜진다)
+#
+# POLICY: base(application.yaml)는 개발 값을 든다 — 이 프로파일을 «명시해야만» 실기록에 붙는다.
+#         프로파일 이름을 잘못 치면 dev로 떨어지는 것이 의도된 동작이다(ADR-89). 그러므로 이 파일에
+#         새 키를 더할 때는 «base에도 개발용 대응값이 있는가»를 함께 본다 — 여기에만 있는 키는
+#         개발 기동에서 미설정이 되어 코드 default(있으면)나 기동 실패로 흐른다.
+#
+# 갈리는 값은 넷이고 함께 갈린다: 스키마 · data.dir · artifact.dir · 로그 루트.
+# 접속 3종(MOCHA_DB_*)은 여기서 건드리지 않는다 — 그 축은 «어느 서버·어느 DB»이고 이 파일은
+# «그 안의 어느 스키마»를 가른다(ADR-89, ADR-73과 직교). 클라우드 이전(델타 B)에서 prod가 원격 DB로
+# 나가면 두 축이 자연히 갈라지고, 그때도 이 파일의 스키마 지정은 그대로 유효하다.
+spring:
+  jpa:
+    properties:
+      hibernate:
+        # 실기록이 사는 스키마. changes/0028 이래 모든 노트가 여기 있고, 이 델타는 그 자리를 옮기지 않는다.
+        default_schema: public
+  flyway:
+    # public.flyway_schema_history에 V1~V7이 이미 적용돼 있다(findings-TΔ0 §1) — 이 프로파일의 첫 기동은
+    # 이력을 그대로 인식해 «적용할 마이그레이션 0건»으로 지나가야 한다(AC-Δ2). 마이그레이션이 하나라도
+    # 돌면 default-schema가 이력을 못 찾은 것이고, 그건 설정 오류다.
+    schemas: public
+    default-schema: public
+
+# 실사용 파일 산출물 루트 — 사진 원본(정본, ADR-79)과 카드 JPG(파생물). 둘 다 커밋 금지(루트 CLAUDE.md §5).
+mocha:
+  data:
+    dir: ./data
+  artifact:
+    dir: ./artifact
+
+# 실사용 로그 루트. 롤링·보존 정책(일 단위·30일·300MB)은 base와 공통이고 루트만 갈린다.
+# POLICY: logs/도 logs-dev/도 개인 데이터 취급 — 사용자 메시지 원문이 남는다(NFR-7, ADR-21).
+logging:
+  file:
+    name: logs/mocha.log
+  logback:
+    rollingpolicy:
+      file-name-pattern: logs/mocha.%d{yyyy-MM-dd}.%i.log.gz

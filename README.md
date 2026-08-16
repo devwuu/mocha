@@ -87,7 +87,7 @@
 
 **구동**: 집 로컬 머신의 단일 프로세스(포트 하나). 공인 IP·SSL·포트포워딩은 없고, 집 밖 접근(Tailscale)은 필요가 생기면 켜는 스위치로 백로그에 남겨뒀다.
 
-**테스트**: `./gradlew test`(645건, 실 Chromium·실 OpenAI 호출 제외) · 저장소 통합 테스트는 인메모리 대체 없이 **로컬 Postgres의 `test` 스키마**를 쓴다 · `./gradlew evalTest`는 실 LLM으로 도는 **행동 회귀 하네스**(실발화 케이스 리플레이 + 계약 판정, 비용 발생하므로 온디맨드).
+**테스트**: `./gradlew test`(693건, 실 Chromium·실 OpenAI 호출 제외) · 저장소 통합 테스트는 인메모리 대체 없이 **로컬 Postgres의 `test` 스키마**를 쓴다 — 한 DB 안에 `public`(실사용)·`dev`(개발)·`test` 세 스키마가 병존하고 clean 사정권은 `test` 하나다(ADR-89) · `./gradlew evalTest`는 실 LLM으로 도는 **행동 회귀 하네스**(실발화 케이스 리플레이 + 계약 판정, 비용 발생하므로 온디맨드).
 
 **진행 방식**: SDD(Spec-Driven Development). 모든 요구사항(FR)·수용 기준(AC)·설계 결정(ADR)이 [`specs/coffee-note-agent/`](specs/coffee-note-agent/)에 문서화되어 있고, 구현·테스트가 이를 참조합니다. 기존 기능 수정은 델타(`changes/<NNNN>-<slug>/`)로 남깁니다 — 에이전트 전환은 `0018`, DB 전환은 `0028`, 앱 전환은 `0029` 델타에 기록돼 있습니다. 읽는 순서: [spec](specs/coffee-note-agent/spec.md) → [plan](specs/coffee-note-agent/plan.md) → [data-model](specs/coffee-note-agent/data-model.md) → [tasks](specs/coffee-note-agent/tasks.md)
 
@@ -112,10 +112,28 @@ DB는 레포 트리 밖(로컬은 `docker-compose.yml`의 컨테이너 볼륨)�
 
 1. **API 키 준비** — `.env.example`을 복사해 `.env.local`을 만들고 `OPENAI_API_KEY`를 채웁니다. **`.env`류는 절대 커밋하지 않습니다**(`.gitignore`로 차단, CLAUDE.md §5). OpenAI 키는 종량제 API 키이며 일반 구독과 별개입니다.
 2. **DB 기동** — `docker compose up -d`. 스키마는 앱이 뜰 때 Flyway가 만듭니다. (중지는 `docker compose down`, 데이터까지 초기화는 `-v`)
-3. **앱 실행** — `./gradlew bootRun`. 프론트가 함께 빌드돼 같은 프로세스에서 서빙되므로 실행은 이것 하나입니다. 브라우저에서 <http://localhost:8080>을 열면 채팅 화면이 나옵니다. 폰에서 홈 화면에 추가하면 PWA로 붙습니다.
+3. **앱 실행** — 프론트가 함께 빌드돼 같은 프로세스에서 서빙되므로 실행은 명령 하나입니다. 브라우저에서 <http://localhost:8080>을 열면 채팅 화면이 나옵니다. 폰에서 홈 화면에 추가하면 PWA로 붙습니다.
+
+   **개발과 실사용은 데이터가 갈립니다**(ADR-89 · `changes/0032`). 컨테이너·DB·포트는 하나를 공유하고, 갈리는 것은 **Postgres 스키마와 파일 루트**입니다.
+
+   ```bash
+   ./gradlew bootRun                                          # 개발 — dev 스키마 · data-dev/ · artifact-dev/ · logs-dev/
+   ./gradlew bootRun --args='--spring.profiles.active=prod'   # 실사용 — public 스키마 · data/ · artifact/ · logs/
+   ```
+
+   **기본이 개발이고 실사용은 명시해야 붙습니다.** 프로파일 이름을 빠뜨리거나 잘못 쳐도 개발 쪽으로 떨어지도록 배치했습니다 — 반대 방향의 실수는 실기록을 오염시키기 때문입니다.
+
+   개발 데이터를 비우려면 스키마를 지우면 됩니다(다음 기동에 Flyway가 다시 만듭니다):
+   ```bash
+   docker compose exec postgres psql -U mocha -d mocha -c 'DROP SCHEMA dev CASCADE'
+   ```
 4. **(선택) 프론트 개발 모드** — HMR이 필요하면 `cd frontend && npm run dev`. `/api`는 8080으로 프록시됩니다. 다만 **배포 산출물은 언제나 Gradle 통합 경로 하나**입니다.
 5. **(선택) 카드 렌더 준비** — `./gradlew installChromium`으로 Playwright가 구동할 Chromium을 미리 받아둘 수 있습니다(첫 렌더 시 자동 다운로드도 됩니다).
-6. **(선택) 카드 전체 재생성** — `./gradlew bootRun --args='--rerender'`. 웹 서버 없이 DB만 읽어 카드를 전부 다시 굽고 고아 파일을 정리한 뒤 종료합니다.
+6. **(선택) 카드 전체 재생성** — 웹 서버 없이 DB만 읽어 카드를 전부 다시 굽고 고아 파일을 정리한 뒤 종료합니다. **프로파일을 함께 지정하세요** — 고아 정리가 지정한 쪽의 카드 폴더만 사정권에 두므로, 실사용 카드를 재생성하려면 `prod`를 명시해야 합니다.
+   ```bash
+   ./gradlew bootRun --args='--rerender'                                 # 개발 — artifact-dev/ 만 건드림
+   ./gradlew bootRun --args='--spring.profiles.active=prod --rerender'   # 실사용 — artifact/ 재생성
+   ```
 
 </details>
 

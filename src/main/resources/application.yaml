@@ -1,3 +1,12 @@
+# ┌─ 이 파일은 «개발» 값을 든다 (changes/0032, ADR-89) ────────────────────────────────────┐
+# │ 실사용 값은 application-prod.yaml이 단독 소유하고, `--spring.profiles.active=prod`로  │
+# │ 명시해야만 붙는다. base를 dev로 두는 것이 결정의 핵심이다 — spring.profiles.default를 │
+# │ 쓰면 프로파일 이름을 잘못 쳤을 때(prd) active가 채워져 default가 안 붙고 base만 남는데,│
+# │ base가 prod 값이면 «오타가 실기록 방향으로 실패»한다. base가 dev면 무옵션도·오타도    │
+# │ 전부 개발 쪽으로 떨어지고, 잘못될 수 있는 방향이 되돌릴 수 있는 쪽 하나뿐이다.        │
+# │ 갈리는 값은 넷이고 «함께» 갈린다: 스키마 · data.dir · artifact.dir · 로그 루트.      │
+# │ 하나만 가르면 나머지에서 섞인다(특히 --rerender의 고아 정리가 상대편 카드를 지운다).  │
+# └────────────────────────────────────────────────────────────────────────────────────────┘
 spring:
   application:
     name: mocha
@@ -18,12 +27,24 @@ spring:
       # 스키마 소유권은 Flyway 단독이다. validate = 엔티티 매핑과 실제 DDL의 드리프트를 기동 시 잡는다.
       # create/update로 두면 마이그레이션 이력과 실제 스키마가 갈라진다.
       ddl-auto: validate
+    properties:
+      hibernate:
+        # 엔티티가 dev 스키마를 향한다 (ADR-89). prod는 public — application-prod.yaml이 덮는다.
+        # 아래 flyway.schemas/default-schema와 «함께» 맞춰야 한다: JPA가 보는 스키마와 Flyway가 만드는
+        # 스키마가 갈리면 ddl-auto: validate가 기동 시 깨진다(엔티티가 찾는 테이블이 다른 스키마에 있다).
+        default_schema: dev
     # 트랜잭션 경계는 tx-service가 소유한다(ADR-77) — 응답 직렬화까지 세션을 끌고 갈 이유가 없다.
     # 웹 계층이 생긴 뒤(ADR-78)에도 그대로다: 뷰가 지연 로딩을 트리거하면 트랜잭션 밖에서 쿼리가 나간다.
     open-in-view: false
   flyway:
     # 마이그레이션 파일명은 델타 번호와 대응시킨다(V1__0028_..., Q-10) — 스키마 이력이 델타와 1:1로 추적된다.
     locations: classpath:db/migration
+    # 개발 스키마 (ADR-89). 없으면 Flyway가 만든다(create-schemas 기본 true) — V1~V7이 여기에 새로 적용된다.
+    # 이력 테이블(flyway_schema_history)도 스키마별로 따로 산다: dev·public·test가 서로의 이력을 모른다.
+    schemas: dev
+    default-schema: dev
+    # clean-disabled는 기본값(true = 금지) 그대로 둔다 — 여기서 열면 application-prod.yaml에서 닫는 것을
+    # 잊는 순간 실기록이 사정권에 든다. dev 스키마 초기화는 `DROP SCHEMA dev CASCADE` 한 줄로 한다(README).
 
   # 사진 업로드(POST /api/photos, changes/0029 TΔ8a). 부트 기본값이 파일당 1MB인데 아이폰 원본 JPEG는
   # 보통 2~5MB라 기본값으로는 정상 업로드가 전부 413으로 떨어진다. 상한은 vision 1콜 이미지 상한
@@ -47,13 +68,16 @@ server:
 # 파일 로깅 (NFR-7, ADR-21 · changes/0009). Spring 표준 logback 설정 — 콘솔과 병행해 logs/ 아래 상시 기록.
 # 레벨은 root 기본(INFO 이상 전체 — 에러 앞뒤 맥락 보존). 일 단위 롤링 + 30일 보존 + 총 300MB 상한.
 # POLICY: logs/는 개인 데이터 취급 — 사용자 메시지 원문이 남을 수 있어 커밋·공개 금지(.gitignore 유지, 루트 CLAUDE.md §5).
+# POLICY: 두 루트(logs/·logs-dev/) 모두 개인 데이터 취급 — .gitignore 유지 (NFR-7·NFR-8).
 logging:
   file:
-    name: logs/mocha.log
+    # 개발 로그 루트 (ADR-89). 실사용은 logs/ — application-prod.yaml이 덮는다. 롤링·보존 정책은 공통이다.
+    # 아래 file-name-pattern과 «함께» 갈려야 한다 — 하나만 바꾸면 현재 로그와 롤링분이 다른 폴더로 흩어진다.
+    name: logs-dev/mocha.log
   logback:
     rollingpolicy:
       # %d=일 단위 롤링, %i=크기 분할 인덱스(SizeAndTimeBased). .gz로 롤링분 압축.
-      file-name-pattern: logs/mocha.%d{yyyy-MM-dd}.%i.log.gz
+      file-name-pattern: logs-dev/mocha.%d{yyyy-MM-dd}.%i.log.gz
       max-history: 30
       total-size-cap: 300MB
 
@@ -115,12 +139,18 @@ mocha:
     max-results: 3
   # mocha.photo.buffer-window(텍스트/사진 분리 수신 그룹핑 윈도우, FR-10)는 changes/0029 TΔ16에서
   # 삭제됐다 — 앱에서는 사용자가 ＋ 버튼으로 사진과 발화를 직접 묶어 추정할 윈도우가 없다(D-3·D-11).
+  # 아래 두 루트는 ADR-50 관례("yml에 코드 default와 같은 초기값 명시")의 «명시적 예외»다(ADR-89):
+  # 코드 default는 ./data·./artifact(= prod 값)로 남아 있고 여기 base는 dev 값이라 둘이 갈린다.
+  # 코드 default는 yaml을 싣지 않는 컨텍스트(ApplicationContextRunner 테스트)의 fallback이고
+  # 실제 앱은 항상 yaml을 실으므로 실행 경로가 갈리지 않는다. 값을 맞추려면 ConfigDefaultsTest 3건과
+  # plan.md §5가 동반 대상이라 0032 비범위로 뒀다.
   data:
-    # 사진 원본 루트 (커밋 금지). 노트는 DB로 옮겨졌다(0028 ADR-73).
-    dir: ./data
+    # 개발 사진 원본 루트 (커밋 금지). 노트는 DB로 옮겨졌다(0028 ADR-73). 실사용은 ./data.
+    dir: ./data-dev
   artifact:
-    # 산출물(파생물) 루트 — 회차 카드 JPG (커밋 금지, 전체 재생성 가능).
-    dir: ./artifact
+    # 개발 산출물(파생물) 루트 — 회차 카드 JPG (커밋 금지, 전체 재생성 가능). 실사용은 ./artifact.
+    # 폰트·마스코트는 렌더러가 클래스패스에서 복사하므로 이 폴더를 미리 채울 필요가 없다(findings-TΔ0 §3.1).
+    dir: ./artifact-dev
     # 카드 디자인 테마. type-a=세리프(명조·액자), type-b=귀여운(고딕·카드·마스코트).
     # 값은 templates/<theme>/ 폴더명이자 렌더 선택자다. 미설정 시 코드 default = type-a(세리프 — ADR-54).
     theme: type-a

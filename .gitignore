@@ -10,6 +10,13 @@
 /ideas/*
 /design/*
 /logs/*
+
+### 개발 프로파일 산출물 (changes/0032, ADR-89)
+# 실사용분(위 /data·/artifact·/logs)과 같은 성격이라 같은 취급 — 사진·로그는 개인 데이터,
+# 카드는 DB에서 재생성 가능한 파생물이다(루트 CLAUDE.md §5·§2). 개발분이라고 커밋 대상이 되지 않는다.
+/data-dev/*
+/artifact-dev/*
+/logs-dev/*
 /docs/*
 !/docs/sample-card.jpg
 /review
